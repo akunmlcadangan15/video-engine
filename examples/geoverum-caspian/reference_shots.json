@@ -1,0 +1,568 @@
+{
+ "video": {
+  "file": "/workspace/style-lab/geoverum/xGmyqt_Ild0.mp4",
+  "title": "Why the Caspian Sea is Not a Sea",
+  "duration_s": 72.79,
+  "frames": 2182,
+  "fps": 30,
+  "size": [
+   1080,
+   1920
+  ]
+ },
+ "boundaries": [
+  {
+   "frame": 495,
+   "s": 16.5,
+   "kind": "continuous 3D tilt (no cut), satellite to cross-section"
+  },
+  {
+   "frame": 683,
+   "s": 22.767,
+   "kind": "zoom blur"
+  },
+  {
+   "frame": 1273,
+   "s": 42.433,
+   "kind": "hard cut to red-graded version of the same map"
+  },
+  {
+   "frame": 1471,
+   "s": 49.033,
+   "kind": "zoom-blur whip"
+  }
+ ],
+ "shots": [
+  {
+   "id": "S1",
+   "type": "satellite",
+   "background": "Blue Marble-like satellite globe, Caspian region",
+   "content": "title 'Caspian Sea' on the lake; 'Lake' gag; zoom out to show largest lake; 750 mi / 1,200 km measurement; five bordering countries; 32 ft waves close-up with storm flashes (~15.3 s)",
+   "start_frame": 0,
+   "end_frame": 495,
+   "start_s": 0.0,
+   "end_s": 16.5,
+   "duration_s": 16.5,
+   "camera_legs": [
+    {
+     "start_s": 0.0,
+     "end_s": 2.5,
+     "move": "zoom_in",
+     "dz_ln": 1.73
+    },
+    {
+     "start_s": 2.5,
+     "end_s": 3.0,
+     "move": "hold",
+     "dz_ln": 0.04
+    },
+    {
+     "start_s": 3.0,
+     "end_s": 4.0,
+     "move": "zoom_out",
+     "dz_ln": -0.34
+    },
+    {
+     "start_s": 4.0,
+     "end_s": 5.0,
+     "move": "hold",
+     "dz_ln": -0.04
+    },
+    {
+     "start_s": 5.0,
+     "end_s": 7.0,
+     "move": "zoom_out",
+     "dz_ln": -1.82
+    },
+    {
+     "start_s": 7.0,
+     "end_s": 8.0,
+     "move": "hold",
+     "dz_ln": -0.02
+    },
+    {
+     "start_s": 8.0,
+     "end_s": 10.0,
+     "move": "zoom_in",
+     "dz_ln": 1.96
+    },
+    {
+     "start_s": 10.0,
+     "end_s": 10.5,
+     "move": "hold",
+     "dz_ln": -0.0
+    },
+    {
+     "start_s": 10.5,
+     "end_s": 11.5,
+     "move": "zoom_out",
+     "dz_ln": -0.49
+    },
+    {
+     "start_s": 11.5,
+     "end_s": 13.0,
+     "move": "hold",
+     "dz_ln": -0.02
+    },
+    {
+     "start_s": 13.0,
+     "end_s": 14.5,
+     "move": "zoom_in",
+     "dz_ln": 1.95
+    },
+    {
+     "start_s": 14.5,
+     "end_s": 16.0,
+     "move": "hold",
+     "dz_ln": 0.03
+    },
+    {
+     "start_s": 16.0,
+     "end_s": 16.5,
+     "move": "pan",
+     "dz_ln": -0.07
+    }
+   ]
+  },
+  {
+   "id": "S2",
+   "type": "diagram",
+   "background": "3D cross-section of the Caspian basin (continuous 3D tilt out of the satellite from 16.5 s)",
+   "content": "depth counter to 3,363 ft; Burj Khalifa (2,717 ft) comparison",
+   "start_frame": 495,
+   "end_frame": 683,
+   "start_s": 16.5,
+   "end_s": 22.767,
+   "duration_s": 6.267,
+   "camera_legs": [
+    {
+     "start_s": 16.5,
+     "end_s": 17.5,
+     "move": "pan",
+     "dz_ln": -0.03
+    },
+    {
+     "start_s": 17.5,
+     "end_s": 19.0,
+     "move": "hold",
+     "dz_ln": 0.0
+    },
+    {
+     "start_s": 19.0,
+     "end_s": 19.5,
+     "move": "pan",
+     "dz_ln": 0.05
+    },
+    {
+     "start_s": 19.5,
+     "end_s": 20.0,
+     "move": "zoom_in",
+     "dz_ln": 0.38
+    },
+    {
+     "start_s": 20.0,
+     "end_s": 20.5,
+     "move": "pan",
+     "dz_ln": 0.03
+    },
+    {
+     "start_s": 20.5,
+     "end_s": 22.0,
+     "move": "hold",
+     "dz_ln": -0.0
+    },
+    {
+     "start_s": 22.0,
+     "end_s": 22.767,
+     "move": "zoom_out",
+     "dz_ln": -1.31
+    }
+   ]
+  },
+  {
+   "id": "S3",
+   "type": "satellite",
+   "background": "satellite globe, Caspian to Europe/Atlantic (enters by zoom blur)",
+   "content": "'salty' with salt props; big/deep/salty/waves recap; no link to the ocean; Black Sea; Bosphorus; arrow to Mediterranean; Gibraltar; Atlantic; back to the Caspian",
+   "start_frame": 683,
+   "end_frame": 1273,
+   "start_s": 22.767,
+   "end_s": 42.433,
+   "duration_s": 19.667,
+   "camera_legs": [
+    {
+     "start_s": 23.0,
+     "end_s": 24.5,
+     "move": "zoom_out",
+     "dz_ln": -1.22
+    },
+    {
+     "start_s": 24.5,
+     "end_s": 25.5,
+     "move": "hold",
+     "dz_ln": -0.03
+    },
+    {
+     "start_s": 25.5,
+     "end_s": 27.0,
+     "move": "zoom_out",
+     "dz_ln": -1.19
+    },
+    {
+     "start_s": 27.0,
+     "end_s": 28.0,
+     "move": "hold",
+     "dz_ln": -0.02
+    },
+    {
+     "start_s": 28.0,
+     "end_s": 29.5,
+     "move": "zoom_out",
+     "dz_ln": -1.45
+    },
+    {
+     "start_s": 29.5,
+     "end_s": 30.0,
+     "move": "hold",
+     "dz_ln": -0.0
+    },
+    {
+     "start_s": 30.0,
+     "end_s": 32.0,
+     "move": "zoom_in",
+     "dz_ln": 1.83
+    },
+    {
+     "start_s": 32.0,
+     "end_s": 32.5,
+     "move": "hold",
+     "dz_ln": 0.01
+    },
+    {
+     "start_s": 32.5,
+     "end_s": 34.0,
+     "move": "zoom_in",
+     "dz_ln": 1.54
+    },
+    {
+     "start_s": 34.0,
+     "end_s": 35.0,
+     "move": "zoom_out",
+     "dz_ln": -0.3
+    },
+    {
+     "start_s": 35.0,
+     "end_s": 35.5,
+     "move": "pan",
+     "dz_ln": -0.06
+    },
+    {
+     "start_s": 35.5,
+     "end_s": 37.5,
+     "move": "zoom_out",
+     "dz_ln": -1.62
+    },
+    {
+     "start_s": 37.5,
+     "end_s": 39.0,
+     "move": "pan",
+     "dz_ln": -0.06
+    },
+    {
+     "start_s": 39.0,
+     "end_s": 40.0,
+     "move": "zoom_out",
+     "dz_ln": -0.76
+    },
+    {
+     "start_s": 40.0,
+     "end_s": 41.5,
+     "move": "pan",
+     "dz_ln": 0.03
+    },
+    {
+     "start_s": 41.5,
+     "end_s": 42.433,
+     "move": "zoom_in",
+     "dz_ln": 1.28
+    }
+   ]
+  },
+  {
+   "id": "S4",
+   "type": "satellite+grade",
+   "background": "same satellite view, red full-frame tint (hard cut 42.433 s, map stays registered)",
+   "content": "lock icon / 'landlocked'; 'LAKE'; question marks 'so why is it salty?'",
+   "start_frame": 1273,
+   "end_frame": 1471,
+   "start_s": 42.433,
+   "end_s": 49.033,
+   "duration_s": 6.6,
+   "camera_legs": [
+    {
+     "start_s": 42.5,
+     "end_s": 43.5,
+     "move": "hold",
+     "dz_ln": 0.05
+    },
+    {
+     "start_s": 43.5,
+     "end_s": 45.5,
+     "move": "zoom_out",
+     "dz_ln": -0.87
+    },
+    {
+     "start_s": 45.5,
+     "end_s": 46.5,
+     "move": "hold",
+     "dz_ln": -0.02
+    },
+    {
+     "start_s": 46.5,
+     "end_s": 48.0,
+     "move": "zoom_in",
+     "dz_ln": 1.35
+    },
+    {
+     "start_s": 48.0,
+     "end_s": 48.5,
+     "move": "hold",
+     "dz_ln": 0.0
+    },
+    {
+     "start_s": 48.5,
+     "end_s": 49.0,
+     "move": "pan",
+     "dz_ln": -0.07
+    },
+    {
+     "start_s": 49.0,
+     "end_s": 49.033,
+     "move": "zoom_out",
+     "dz_ln": -0.33
+    }
+   ]
+  },
+  {
+   "id": "S5",
+   "type": "satellite",
+   "background": "satellite globe zoom-out (enters by zoom-blur whip 49.033 s)",
+   "content": "Paratethys ancient sea; Black Sea / Caspian split; rivers bring salt (Volga, Ural); ancient people; oversized fly-through title 'Caspian Sea' over continuous zoom (68.6 s); 'LAKE' with arrow",
+   "start_frame": 1471,
+   "end_frame": 2182,
+   "start_s": 49.033,
+   "end_s": 72.733,
+   "duration_s": 23.7,
+   "camera_legs": [
+    {
+     "start_s": 49.5,
+     "end_s": 51.5,
+     "move": "zoom_out",
+     "dz_ln": -1.21
+    },
+    {
+     "start_s": 51.5,
+     "end_s": 59.0,
+     "move": "hold",
+     "dz_ln": 0.55
+    },
+    {
+     "start_s": 59.0,
+     "end_s": 61.0,
+     "move": "zoom_in",
+     "dz_ln": 1.59
+    },
+    {
+     "start_s": 61.0,
+     "end_s": 62.0,
+     "move": "hold",
+     "dz_ln": -0.01
+    },
+    {
+     "start_s": 62.0,
+     "end_s": 63.0,
+     "move": "zoom_out",
+     "dz_ln": -0.54
+    },
+    {
+     "start_s": 63.0,
+     "end_s": 63.5,
+     "move": "hold",
+     "dz_ln": -0.02
+    },
+    {
+     "start_s": 63.5,
+     "end_s": 66.0,
+     "move": "zoom_in",
+     "dz_ln": 2.81
+    },
+    {
+     "start_s": 66.0,
+     "end_s": 67.5,
+     "move": "hold",
+     "dz_ln": -0.03
+    },
+    {
+     "start_s": 67.5,
+     "end_s": 70.0,
+     "move": "zoom_out",
+     "dz_ln": -3.37
+    },
+    {
+     "start_s": 70.0,
+     "end_s": 71.5,
+     "move": "hold",
+     "dz_ln": 0.06
+    },
+    {
+     "start_s": 71.5,
+     "end_s": 72.0,
+     "move": "zoom_in",
+     "dz_ln": 0.09
+    },
+    {
+     "start_s": 72.0,
+     "end_s": 72.733,
+     "move": "hold",
+     "dz_ln": 0.03
+    }
+   ]
+  }
+ ],
+ "beats": [
+  {
+   "s": 0.0,
+   "what": "title 'Caspian Sea' on the lake"
+  },
+  {
+   "s": 2.4,
+   "what": "'Lake' gag"
+  },
+  {
+   "s": 5.3,
+   "what": "zoom out: largest lake on Earth"
+  },
+  {
+   "s": 8.5,
+   "what": "1,200 km / 750 mi length measurement"
+  },
+  {
+   "s": 10.5,
+   "what": "bordering countries named"
+  },
+  {
+   "s": 13.2,
+   "what": "zoom in: waves up to 32 ft"
+  },
+  {
+   "s": 15.3,
+   "what": "storm flashes"
+  },
+  {
+   "s": 16.5,
+   "what": "3D tilt into cross-section"
+  },
+  {
+   "s": 17.0,
+   "what": "depth counter 3,363 ft"
+  },
+  {
+   "s": 19.5,
+   "what": "Burj Khalifa comparison"
+  },
+  {
+   "s": 22.767,
+   "what": "zoom-blur into satellite"
+  },
+  {
+   "s": 22.8,
+   "what": "'salty'"
+  },
+  {
+   "s": 25.5,
+   "what": "recap: big, deep, salty, waves"
+  },
+  {
+   "s": 28.1,
+   "what": "no link to the ocean"
+  },
+  {
+   "s": 30.0,
+   "what": "Black Sea"
+  },
+  {
+   "s": 32.5,
+   "what": "Bosphorus"
+  },
+  {
+   "s": 34.2,
+   "what": "route arrow"
+  },
+  {
+   "s": 35.5,
+   "what": "Mediterranean"
+  },
+  {
+   "s": 37.6,
+   "what": "Gibraltar"
+  },
+  {
+   "s": 39.1,
+   "what": "Atlantic"
+  },
+  {
+   "s": 40.6,
+   "what": "back to Caspian"
+  },
+  {
+   "s": 42.433,
+   "what": "red tint + lock (landlocked)"
+  },
+  {
+   "s": 44.4,
+   "what": "'LAKE'"
+  },
+  {
+   "s": 46.6,
+   "what": "question marks: so why is it salty?"
+  },
+  {
+   "s": 49.033,
+   "what": "zoom-blur whip, satellite zoom-out"
+  },
+  {
+   "s": 50.6,
+   "what": "Paratethys"
+  },
+  {
+   "s": 53.4,
+   "what": "Black Sea / Caspian split"
+  },
+  {
+   "s": 58.6,
+   "what": "back on the Caspian"
+  },
+  {
+   "s": 61.3,
+   "what": "Volga brings salt"
+  },
+  {
+   "s": 62.6,
+   "what": "Ural"
+  },
+  {
+   "s": 64.0,
+   "what": "ancient people / coast zoom"
+  },
+  {
+   "s": 67.4,
+   "what": "oversized fly-through title 'Caspian Sea'"
+  },
+  {
+   "s": 71.2,
+   "what": "'LAKE' with arrow"
+  }
+ ],
+ "method": "Boundaries from ffmpeg scene scores (>0.06/0.15) checked frame-by-frame on extracted stills (out/ref/chk); camera legs from ORB+RANSAC similarity per 0.5 s window (out/ref/motion_05s.json, dz_ln = ln zoom change, legs = consecutive windows with |dz| > 0.08); beats read from 0.5 s contact sheets and stills. Codex (gpt-6-astra, max effort, read-only) reviewed the same data and agreed on: storm flashes at 15.3 s and the 68.6 s spike are not cuts, two zoom-blur transitions, 42.433 s is a colour/lock effect on the same registered map; its run hit the account usage limit before writing the final JSON (log: out/ref/codex_log.txt).",
+ "remake_segments": "5 segments at frames 0/495/683/1273/1471/2182: S2 (16.5-22.767) is its own segment because the remake cannot tilt into a 3D diagram; S4 (42.433-49.033) is its own segment because the engine has no full-frame red grade."
+}

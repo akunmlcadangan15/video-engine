@@ -1,6 +1,6 @@
 # Compositional patterns for the director storyboard stage (`video_engine/director/`).
 # Original parameterised table authored for this engine; informed by the public REMOTION.md guidance of
-# motif-dev/motif (https://github.com/motif-dev/motif, Apache License 2.0 — see NOTICE in this directory)
+# motif-dev/motif (https://github.com/motif-dev/motif, Apache License 2.0 — see NOTICE in this directory).
 
 [patterns.establish]
 purpose = "Orient the viewer in place and time on a single strong visual before any detail is added."
@@ -39,25 +39,37 @@ render_cost = 1
 needs = { min_assets = 1, kinds = ["image", "map", "video"] }
 
 [patterns.paradox_hook]
-purpose = "Open on a moving map with a stark dividing line, blocked highway, or counter-intuitive proximity that challenges a geographic assumption in the first 3 seconds."
+purpose = "Open on a moving map with a stark dividing line, blocked highway, visual pun, or magnifying-glass mystery (? ? ?) that challenges a geographic assumption in the first 3 seconds."
 params = ["assumption_challenged", "visual_split_or_gap", "hero_stat"]
 render_cost = 2
 needs = { min_assets = 1, kinds = ["map"], map = true }
 
 [patterns.border_anomaly_tour]
-purpose = "Fly continuously from one border enclave, disputed island, or micro-territory to the next on the same map, pairing each stop with a flag badge and dashed distance callout."
+purpose = "Fly continuously or via magnifying-glass loupe from one border enclave, disputed island, or micro-territory to the next on the same map, pairing each stop with a flag badge and dashed distance callout."
 params = ["stops", "distance_callouts", "sovereign_entities"]
 render_cost = 3
 needs = { min_assets = 1, kinds = ["map"], map = true }
 
 [patterns.scale_overlay]
-purpose = "Overlay a familiar city silhouette, landmark icon, or high-contrast stat pill onto a map region so abstract population or area numbers become immediately tangible."
+purpose = "Drag a country polygon over another continent (e.g. Chile over London-Baghdad), tile reference polygons (5x France in Tibet), or place a familiar object/city cutout (Costco lot, NYC) beside a target region."
 params = ["target_region", "reference_scale_or_pill", "stat_value"]
 render_cost = 2
 needs = { min_assets = 1, kinds = ["map", "image"] }
 
 [patterns.causal_barrier]
-purpose = "Show how a mountain range, strait, or geopolitical boundary blocks clouds, roads, or travellers using 3D terrain tilt, directional arrows, and animated counters."
+purpose = "Show how a mountain range, strait, or climate boundary blocks clouds, aircraft, animals, or travellers using 3D terrain tilt, cutout stickers, directional arrows, and animated counters."
 params = ["barrier_feature", "blocked_flow", "resulting_effect"]
 render_cost = 3
 needs = { min_assets = 1, kinds = ["map"], map = true }
+
+[patterns.cross_section_depth]
+purpose = "Transition from a top-down map into a 2D side-view cross-section or 3D horizon profile to compare underwater depth (900 m vs 75 m), soil roots, dust walls, or flight altitude (33,000 ft vs 14,800 ft)."
+params = ["vertical_axis_metric", "layer_or_obstacle", "comparison_benchmark"]
+render_cost = 2
+needs = { min_assets = 1, kinds = ["map", "image", "video"] }
+
+[patterns.historical_flashback]
+purpose = "Roll back from the modern satellite map into a dated historical parchment or blueprint map (e.g. 15th/19th Century, 1809, 1934) with serif titles and animated flag-characters to explain how a border or crisis originated."
+params = ["era_or_year", "historical_actors", "territorial_shift"]
+render_cost = 2
+needs = { min_assets = 1, kinds = ["map", "image"] }

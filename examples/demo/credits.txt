@@ -1,0 +1,12 @@
+Kredit — Demo Surabaya (video-engine example)
+
+Visual
+- clock — Sini Ko — https://www.pexels.com/video/vintage-alarm-clock-ticking-in-darkness-30084927/ — Pexels License
+- map_sby_1942 — United States Army Map Service — https://commons.wikimedia.org/wiki/File:Map_by_the_US_Army_Map_Service_-_Soerabaja_-_java_and_madura_-_txu-pclmaps-oclc-6596455-soerabaja.jpg — Public Domain
+- leaflet_sortie — Daventry B J (Flying Officer), Royal Air Force — https://commons.wikimedia.org/wiki/File:Armstrong_Whitworth_Whitley_Mk_Vs_of_No._102_Squadron_RAF_being_prepared_for_a_leaflet-dropping_sortie_at_Driffield,_Yorkshire,_7_March_1940._C921.jpg — Public Domain
+- mallaby_car — Sgt D Davis and Sgt D MacTavish, No. 9 AFPU — https://commons.wikimedia.org/wiki/File:LaSalle_1940_Series_52_Sedan_of_Brigadier-Mallaby_-_Burnt_Car_-_194511.jpg — Public Domain
+- city_aerial — Septian Dwicahya — https://www.pexels.com/video/aerial-view-of-indonesian-urban-landscape-34438273/ — Pexels License
+- jembatan_merah — Steijlen, Fridus — https://commons.wikimedia.org/wiki/File:Jembatan_Merah_(de_Roode_Brug)_over_de_Kalimas_te_Surabaya,_KITLV_160237.tiff — CC-BY-4.0
+- bgm_pad — generated with ffmpeg lavfi — https://example.invalid/generated/bgm_pad — Own
+
+Narasi: Hypoverum (own)
