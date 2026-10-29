@@ -215,6 +215,7 @@ def render_im(ov: Overlay, H: int = 1920, pr=None):
 
 
 def render_png(ov: Overlay, out: Path, H: int = 1920, pr=None) -> Path:
+    from PIL import Image, ImageDraw
     if ov.kind == "heading":
         return render_heading(ov, out, _print(pr), H)
     k = _scale(H)
