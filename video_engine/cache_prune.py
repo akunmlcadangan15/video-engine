@@ -21,6 +21,7 @@ from .cache import KINDS
 from .sound import cache as sound_cache
 from .timeline import NATIVE
 
+PRUNE_KINDS = ("words", "segments", "maps", "models", "dom")   # the only entry kinds this prune scans
 DOM_REF = "dom:"   # marker in the referenced set: DOM probe entries whose name starts with this segment key are kept
 
 
@@ -65,7 +66,7 @@ def prune(projects: list[Path], cache_dir: Path | None = None, dry_run: bool = F
     root = Path(cache_dir or config.CACHE_DIR)
     keep, problems = referenced(projects, root)
     with cache.locked(root, exclusive=True):
-        entries = [f for k in KINDS if (root / k).is_dir() for f in sorted((root / k).iterdir())
+        entries = [f for k in PRUNE_KINDS if (root / k).is_dir() for f in sorted((root / k).iterdir())
                    if f.is_file() and not f.name.endswith(".tmp")]
         if problems:
             return {"deleted": [], "kept": len(entries), "problems": problems, "bytes": 0, "skipped_leased": [],
