@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video-engine"
+version = "0.1.0"
+description = "Universal hybrid video engine: native Rust/FFmpeg path + HyperFrames motion graphics, zero-render pre-flight gates"
+requires-python = ">=3.10"
+dependencies = ["pydantic>=2", "numpy", "pillow", "blake3", "faster-whisper", "google-genai"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+engine = "video_engine.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["video_engine*"]
+
+[tool.setuptools.package-data]
+video_engine = ["template/*", "hf/*.mjs", "director/*.toml", "director/*.md", "director/NOTICE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"

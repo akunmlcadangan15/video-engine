@@ -1,0 +1,63 @@
+# Compositional patterns for the director storyboard stage (`video_engine/director/`).
+# Original parameterised table authored for this engine; informed by the public REMOTION.md guidance of
+# motif-dev/motif (https://github.com/motif-dev/motif, Apache License 2.0 — see NOTICE in this directory)
+
+[patterns.establish]
+purpose = "Orient the viewer in place and time on a single strong visual before any detail is added."
+params = ["place_or_subject", "time_marker"]
+render_cost = 1
+needs = { min_assets = 1, kinds = ["map", "image", "video"] }
+
+[patterns.progressive_reveal]
+purpose = "Build a complex picture one piece at a time in narration order so the eye never has to parse everything at once."
+params = ["steps", "stagger_s"]
+render_cost = 2
+needs = { min_assets = 1, kinds = ["map", "image"] }
+
+[patterns.comparison]
+purpose = "Hold two places, forces, or states in contrast — side by side or in a quick A-then-B on the same frame."
+params = ["side_a", "side_b", "contrast_point"]
+render_cost = 2
+needs = { min_assets = 2, kinds = ["image", "video", "map"] }
+
+[patterns.tracing]
+purpose = "Follow a route, border, or movement across a map so distance and direction are felt, not just named."
+params = ["from_point", "to_point", "route_or_region"]
+render_cost = 3
+needs = { min_assets = 1, kinds = ["map"], map = true }
+
+[patterns.meaningful_repetition]
+purpose = "Return to an earlier visual or map anchor with one changed element to mark the shift in the story."
+params = ["callback_to_beat", "what_changed"]
+render_cost = 1
+needs = { min_assets = 1, kinds = ["map", "image", "video"] }
+
+[patterns.emphasis_by_pause]
+purpose = "Let a turning point, number, or name land by holding a clean frame with slow drift and one focal element."
+params = ["focal_text_or_figure", "hold_s"]
+render_cost = 1
+needs = { min_assets = 1, kinds = ["image", "map", "video"] }
+
+[patterns.paradox_hook]
+purpose = "Open on a moving map with a stark dividing line, blocked highway, or counter-intuitive proximity that challenges a geographic assumption in the first 3 seconds."
+params = ["assumption_challenged", "visual_split_or_gap", "hero_stat"]
+render_cost = 2
+needs = { min_assets = 1, kinds = ["map"], map = true }
+
+[patterns.border_anomaly_tour]
+purpose = "Fly continuously from one border enclave, disputed island, or micro-territory to the next on the same map, pairing each stop with a flag badge and dashed distance callout."
+params = ["stops", "distance_callouts", "sovereign_entities"]
+render_cost = 3
+needs = { min_assets = 1, kinds = ["map"], map = true }
+
+[patterns.scale_overlay]
+purpose = "Overlay a familiar city silhouette, landmark icon, or high-contrast stat pill onto a map region so abstract population or area numbers become immediately tangible."
+params = ["target_region", "reference_scale_or_pill", "stat_value"]
+render_cost = 2
+needs = { min_assets = 1, kinds = ["map", "image"] }
+
+[patterns.causal_barrier]
+purpose = "Show how a mountain range, strait, or geopolitical boundary blocks clouds, roads, or travellers using 3D terrain tilt, directional arrows, and animated counters."
+params = ["barrier_feature", "blocked_flow", "resulting_effect"]
+render_cost = 3
+needs = { min_assets = 1, kinds = ["map"], map = true }

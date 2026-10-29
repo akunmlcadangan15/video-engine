@@ -1,0 +1,742 @@
+"""master_timeline.json data contract. All times are integer frames; sec_to_frame() is the ONLY seconds->frames
+conversion in the engine (delegates to the Rust crate so Python and Rust can never disagree)."""
+from __future__ import annotations
+
+import json
+import math
+import os
+import tempfile
+from pathlib import Path
+from typing import Literal, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+import hypoverum_core_rs as core
+
+from . import config
+from .grade import Grade
+
+NATIVE = "NATIVE_RUST_FFMPEG"
+HYPERFRAMES = "HYPERFRAMES_GSAP"
+IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"}
+VisualType = Literal["map", "photo", "video", "diagram", "archive", "illustration"]
+
+
+def sec_to_frame(seconds: float, fps: int) -> int:
+    return core.sec_to_frame(float(seconds), int(fps))
+
+
+class Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class Settings(Strict):
+    width: int = Field(1080, gt=0, multiple_of=2)
+    height: int = Field(1920, gt=0, multiple_of=2)
+    fps: int = Field(30, ge=1, le=99)
+    work_dir_shm: Optional[str] = None
+    output_drive_name: Optional[str] = None
+    project_number: Optional[str] = Field(None, pattern=r"^\d{2,3}$")
+    topic: Optional[str] = None
+    date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class Credit(Strict):
+    asset_id: str
+    source_url: str
+    license: str
+    path: Optional[str] = None
+    author: Optional[str] = None
+    watermark_free: Optional[bool] = None
+
+
+class CaptionFix(Strict):
+    """Replace a recognised word sequence (case-insensitive, punctuation kept from the replacement)."""
+    match: str = Field(alias="from")
+    to: str
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+SFX_KINDS = ("pop", "tick", "whoosh", "click", "beep", "counter_tick", "impact", "riser")
+SfxKind = Literal["pop", "tick", "whoosh", "click", "beep", "counter_tick", "impact", "riser"]
+
+
+class SfxCue(Strict):
+    """One sound effect of the mix, generated from a render event (sfx.cues): the sound `asset_id` of `kind` starts
+    at `time_s` (absolute seconds) at `gain_db`. `trim_s` is cut from the file start (cue placed before 0 s);
+    the cue stops at `max_s` with a short fade."""
+    time_s: float = Field(ge=0)
+    kind: SfxKind
+    gain_db: float = Field(ge=-60, le=0)
+    asset_id: str = Field(min_length=1)   # source asset id of the resolved file (provenance `id`)
+    event: str                            # render event: pin, region, route, whip, label, title, figure, counter_tick
+    frame: int = Field(ge=0)              # absolute frame of the render event
+    trim_s: float = Field(0.0, ge=0)
+    max_s: float = Field(2.0, gt=0, le=10)
+
+
+class MusicBrief(Strict):
+    """What the background music should be; the sound resolver picks the file."""
+    mood: str = Field(min_length=1, max_length=60)          # e.g. "tense", "playful", "folk"
+    energy: Literal["low", "medium", "high"]
+    bpm_min: int = Field(ge=30, le=240)
+    bpm_max: int = Field(ge=30, le=240)
+    duration_s: float = Field(gt=0, le=600)                  # music length to cover (normally the video length)
+
+    @model_validator(mode="after")
+    def _bpm(self):
+        if self.bpm_max < self.bpm_min:
+            raise ValueError(f"music_brief: bpm_max {self.bpm_max} < bpm_min {self.bpm_min}")
+        return self
+
+
+class AudioChain(Strict):
+    voiceover_path: Optional[str] = None
+    bgm_path: Optional[str] = None
+    bgm_asset_id: Optional[str] = None
+    music_brief: Optional[MusicBrief] = None   # profile [sound]: music from the sound resolver (else bgm_path)
+    target_lufs: Optional[float] = None   # None = profile value (profiles.loudness)
+    true_peak: Optional[float] = None
+    lra: Optional[float] = Field(None, gt=0)
+    auto_ducking: bool = True
+    bgm_gain_db: float = -10.0
+    language: str = "id"
+    whisper_model: str = "small"
+    initial_prompt: Optional[str] = None
+    auto_captions: bool = True
+    caption_fixes: list[CaptionFix] = []
+
+
+class CameraMove(Strict):
+    preset: str = "ken_burns_zoom_in"
+    intensity: float = Field(1.0, ge=0.0, le=6.0)
+    focus_box: Optional[list[float]] = Field(None, min_length=4, max_length=4)   # [ymin, xmin, ymax, xmax] 0..1000 (Gemini box order)
+    auto_intensity: bool = True
+
+    @model_validator(mode="after")
+    def _focus(self):
+        b = self.focus_box
+        if b is not None:
+            if not all(math.isfinite(v) and 0 <= v <= 1000 for v in b):
+                raise ValueError(f"focus_box {b}: values must be finite and within 0..1000")
+            if not (b[0] < b[2] and b[1] < b[3]):
+                raise ValueError(f"focus_box {b}: need [ymin, xmin, ymax, xmax] with ymin < ymax and xmin < xmax")
+        return self
+
+
+class Pin(Strict):
+    label: str
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    x: Optional[float] = Field(None, ge=0, le=1)   # normalised map position (alternative to lat/lng)
+    y: Optional[float] = Field(None, ge=0, le=1)
+    at_frame: Optional[int] = Field(None, ge=0)     # relative to segment start
+    label_side: Optional[Literal["left", "right"]] = None   # teardrop pins: label beside the head (None = right)
+
+    @model_validator(mode="after")
+    def _pos(self):
+        if (self.lat is None or self.lng is None) and (self.x is None or self.y is None):
+            raise ValueError(f"pin '{self.label}' needs lat+lng or x+y")
+        return self
+
+
+class Card(Strict):
+    title: str
+    subtitle: Optional[str] = None
+    asset_ref: Optional[str] = None   # credits asset_id of an image shown in the card
+    at_frame: Optional[int] = Field(None, ge=0)
+    position: Literal["top", "bottom"] = "top"
+
+
+class Region(Strict):
+    """Highlighted map area of one entity (country, army, kingdom...): semi-transparent fill in the entity colour with
+    a white or same-colour glow edge, appearing at `at_frame` (relative to the segment start)."""
+    entity: str = Field(min_length=1, max_length=60)
+    polygon: list[list[float]] = Field(min_length=3)   # normalised [x, y] map points
+    at_frame: int = Field(0, ge=0)
+    edge: Optional[Literal["white", "glow"]] = None    # None = profile theme.region_edge
+
+    @model_validator(mode="after")
+    def _poly(self):
+        for pt in self.polygon:
+            if len(pt) != 2 or not all(0.0 <= v <= 1.0 for v in pt):
+                raise ValueError(f"region '{self.entity}': polygon point {pt} must be [x, y] within 0..1")
+        return self
+
+
+class Route(Strict):
+    """Movement on the map (army, ship, flight...): a dashed line that draws itself along `points` from `at_frame`
+    (relative to the segment start) over `draw_s` seconds, with an arrowhead riding the drawing tip."""
+    points: list[list[float]] = Field(min_length=2)    # normalised [x, y] map points, start to end
+    at_frame: int = Field(0, ge=0)
+    draw_s: Optional[float] = Field(None, ge=0.2, le=8.0)   # None = profile theme.route_draw_s
+    to_pin: Optional[int] = Field(None, ge=0)          # beats scenes: the route ends layout route_pin_gap_px short of this pin
+
+    @model_validator(mode="after")
+    def _pts(self):
+        for pt in self.points:
+            if len(pt) != 2 or not all(0.0 <= v <= 1.0 for v in pt):
+                raise ValueError(f"route at_frame {self.at_frame}: point {pt} must be [x, y] within 0..1")
+        if all(pt == self.points[0] for pt in self.points):
+            raise ValueError(f"route at_frame {self.at_frame}: points must not all be the same")
+        return self
+
+
+class Figure(Strict):
+    """A big year or number over the map at a screen position, from `at_frame` (relative to the segment start) to the
+    segment end. motion "bounce": elastic scale-in; "counter": counts from `count_from` to `value` over `count_s`."""
+    kind: Literal["year", "number"]
+    value: float
+    decimals: int = Field(0, ge=0, le=3)          # numbers only
+    prefix: str = Field("", max_length=12)
+    suffix: str = Field("", max_length=12)
+    motion: Literal["bounce", "counter"] = "bounce"
+    count_from: float = 0.0
+    count_s: Optional[float] = Field(None, ge=0.3, le=6.0)   # None = profile theme.counter_s
+    at_frame: int = Field(0, ge=0)
+    position: list[float] = Field([0.5, 0.3], min_length=2, max_length=2)   # normalised [x, y] of the frame (centre)
+    entity: Optional[str] = Field(None, min_length=1, max_length=60)        # colour = entity colour (default white)
+
+    @model_validator(mode="after")
+    def _fig(self):
+        if not all(0.0 <= v <= 1.0 for v in self.position):
+            raise ValueError(f"figure {self.value:g}: position {self.position} must be within 0..1")
+        if self.kind == "year" and (self.value != int(self.value) or not 1 <= self.value <= 9999 or self.decimals):
+            raise ValueError(f"figure year {self.value:g}: a year is a whole number 1-9999 without decimals")
+        if self.motion == "bounce" and (self.count_from or self.count_s is not None):
+            raise ValueError(f"figure {self.value:g}: count_from and count_s apply to motion 'counter' only")
+        return self
+
+
+ZOOM_MAX = 4.0     # default profile [camera] max_zoom: largest camera zoom over the cover fit (CameraKey.zoom, layout fit)
+ZOOM_LIMIT = 64.0  # largest [camera] max_zoom any profile may set
+TILT_MAX = 60.0    # largest camera tilt (deg)
+
+
+class CameraKey(Strict):
+    """One view of a HyperFrames camera path: the camera reaches it at `at_frame` (relative to the segment start)."""
+    at_frame: int = Field(ge=0)
+    focus: list[float] = Field(min_length=2, max_length=2)   # normalised [x, y] map point at the frame centre
+    zoom: float = Field(1.0, ge=1.0, le=ZOOM_LIMIT)          # scale over the cover fit, <= profile [camera] max_zoom
+    move: Literal["glide", "whip", "settle"] = "glide"       # move from the previous key into this one
+    move_s: Optional[float] = Field(None, ge=0.1, le=3.0)    # "settle" length (None = theme whip_s)
+    pulse: Optional[float | list[float]] = None   # ln zoom of the pulses while the camera waits on this view:
+                                                  # one size or one per away pulse, last repeats (None = profile
+                                                  # [camera] pulse_zoom, 0 = drift only)
+    drift_max: Optional[float] = Field(None, ge=0.01, le=2.0)   # ln zoom bound of the drift while the camera waits
+                                                                # on this view: it turns at 0 and drift_max (None =
+                                                                # pushes in for the whole wait)
+    tilt: float = Field(0.0, ge=0.0, le=TILT_MAX)   # perspective tilt (deg) of the map plane at this view (camera3d)
+
+    @model_validator(mode="after")
+    def _focus(self):
+        if not all(0.0 <= v <= 1.0 for v in self.focus):
+            raise ValueError(f"camera key at_frame {self.at_frame}: focus {self.focus} must be within 0..1")
+        if self.move_s is not None and self.move != "settle":
+            raise ValueError(f"camera key at_frame {self.at_frame}: move_s applies to move 'settle' only")
+        sizes = self.pulse if isinstance(self.pulse, list) else [] if self.pulse is None else [self.pulse]
+        if (isinstance(self.pulse, list) and not sizes) or not all(0.0 <= v <= 1.0 for v in sizes):
+            raise ValueError(f"camera key at_frame {self.at_frame}: pulse {self.pulse} must be sizes within 0..1")
+        return self
+
+
+class AreaLabel(Strict):
+    """Name of a region, set inside its polygon by the layout (beats scenes)."""
+    text: str = Field(min_length=1, max_length=40)
+    region: int = Field(ge=0)                        # index into gsap_scene_config.regions
+    water: bool = False                              # a sea, strait or river name: blue italic (legibility profiles)
+
+
+class Note(Strict):
+    """Hand annotation of a beat (profile [print]): short handwritten text at a map point with an optional arrow to
+    another map point; written on over print.note_write_s."""
+    text: str = Field(min_length=1, max_length=40)
+    at: list[float] = Field(min_length=2, max_length=2)          # normalised [x, y] map point under the text centre
+    arrow_to: Optional[list[float]] = Field(None, min_length=2, max_length=2)   # normalised map point of the arrow tip
+    rotation: float = Field(-6.0, ge=-8.0, le=-4.0)               # deg
+
+    @model_validator(mode="after")
+    def _pts(self):
+        for pt in [self.at] + ([self.arrow_to] if self.arrow_to else []):
+            if not all(0.0 <= v <= 1.0 for v in pt):
+                raise ValueError(f"note '{self.text}': point {pt} must be within 0..1")
+        return self
+
+
+PROP_EXT = {".png", ".webp"}
+MODEL_EXT = {".glb", ".gltf", ".obj"}  # 3D model props (video_engine/models.py renders them to sprites)
+PROP_DEPTH_MAX = 2.0   # largest Prop.depth
+
+
+class PropMotion(Strict):
+    """Enter or exit animation of a prop. fade: opacity; pop: size from 0 (enter) or to 0 (exit); slide: moves
+    `distance_px` frame px along `dir` with a fade. `ease` is a camera ease name (layout.EASES)."""
+    kind: Literal["fade", "pop", "slide"]
+    s: float = Field(0.4, ge=0.05, le=3.0)                 # length in seconds
+    ease: Literal["glide", "drift", "whip"] = "glide"
+    dir: Optional[Literal["left", "right", "up", "down"]] = None   # slide only (None = "up")
+    distance_px: Optional[float] = Field(None, gt=0, le=600)        # slide only (None = 80)
+
+    @model_validator(mode="after")
+    def _slide(self):
+        if self.kind != "slide" and (self.dir is not None or self.distance_px is not None):
+            raise ValueError(f"prop {self.kind}: dir and distance_px apply to kind 'slide' only")
+        return self
+
+
+class PropIdle(Strict):
+    """Looping motion of a visible prop: bob = vertical sine of `amplitude` frame px; rotate = rotation sine of
+    `amplitude` degrees; one cycle per `period_s` seconds, phase 0 at the prop's first frame."""
+    kind: Literal["bob", "rotate"]
+    amplitude: float = Field(gt=0, le=200)
+    period_s: float = Field(ge=0.2, le=30.0)
+
+
+class PropShadow(Strict):
+    """Drop shadow under a prop, in frame px (black at `alpha`)."""
+    dx: float = Field(0.0, ge=-60, le=60)
+    dy: float = Field(8.0, ge=-60, le=60)
+    blur: float = Field(10.0, ge=0, le=60)
+    alpha: float = Field(0.45, gt=0, le=1.0)
+
+
+class PropModel(Strict):
+    """How a 3D model prop (asset .glb, .gltf or .obj) is rendered to its sprite (video_engine/models.py): the model
+    turned `yaw` degrees about its vertical axis, seen from `pitch` degrees above the horizon, orthographic (`fov` 0) or
+    perspective of `fov` degrees, into a square sprite of `size_px` px. `turntable_s`: the model turns `turn_deg`
+    degrees every `turntable_s` seconds, looping (None = a still)."""
+    yaw: float = Field(30.0, ge=-360, le=360)
+    pitch: float = Field(20.0, ge=-89, le=89)
+    fov: float = Field(0.0, ge=0, le=90)
+    size_px: int = Field(512, ge=64, le=2048)
+    turntable_s: Optional[float] = Field(None, ge=0.5, le=60.0)
+    turn_deg: float = Field(360.0, ge=-360, le=360)
+
+
+class Prop(Strict):
+    """A free-positioned image (PNG or WebP with alpha, or a 3D model rendered to one, see PropModel) over a HyperFrames map segment, from `t_in` to `t_out`
+    (frames, relative to the segment start, or to the beat start for beat props; `t_out` exclusive).
+    anchor "map": the centre sits on map point (`x`, `y`) normalised 0..1 or (`lat`, `lng`) via map_bounds and moves
+    with the camera; `depth` > 0 lifts the prop towards the camera (props.py: scale and parallax). anchor "screen": the
+    centre sits at frame px (`x`, `y`) and ignores the camera. Size: `width_px` frame px (map props: at the prop's first
+    frame) or `width_map` (map props: fraction of the map width)."""
+    asset: str = Field(min_length=1)                 # project-relative PNG or WebP with alpha, or a .glb/.gltf/.obj model
+    model: Optional[PropModel] = None                # model assets: the render (None = PropModel defaults)
+    asset_id: Optional[str] = None                   # credits manifest id (None = matched by path)
+    anchor: Literal["map", "screen"] = "map"
+    x: Optional[float] = None
+    y: Optional[float] = None
+    lat: Optional[float] = Field(None, ge=-90, le=90)
+    lng: Optional[float] = Field(None, ge=-180, le=180)
+    width_px: Optional[float] = Field(None, gt=0, le=4000)
+    width_map: Optional[float] = Field(None, gt=0, le=1.0)
+    rotation: float = Field(0.0, ge=-360, le=360)    # degrees, clockwise
+    opacity: float = Field(1.0, gt=0, le=1.0)
+    t_in: int = Field(0, ge=0)
+    t_out: Optional[int] = Field(None, gt=0)         # None = segment end (beat props: next beat or segment end)
+    enter: Optional[PropMotion] = None
+    exit: Optional[PropMotion] = None
+    idle: Optional[PropIdle] = None
+    depth: float = Field(0.0, ge=0.0, le=PROP_DEPTH_MAX)   # 0 = on the map plane; map props only
+    z: int = Field(0, ge=-100, le=100)               # stacking among props of the same anchor (higher on top)
+    shadow: Optional[PropShadow] = None
+
+    @model_validator(mode="after")
+    def _prop(self):
+        tag = f"prop '{self.asset}'"
+        ext = Path(self.asset).suffix.lower()
+        if ext in MODEL_EXT:
+            if self.model is None:
+                self.model = PropModel()
+        elif ext not in PROP_EXT:
+            raise ValueError(f"{tag}: asset must be a .png or .webp image with alpha, or a .glb, .gltf or .obj model")
+        elif self.model is not None:
+            raise ValueError(f"{tag}: model applies to .glb, .gltf and .obj assets only")
+        if (self.width_px is None) == (self.width_map is None):
+            raise ValueError(f"{tag}: set exactly one of width_px and width_map")
+        geo = self.lat is not None or self.lng is not None
+        xy = self.x is not None or self.y is not None
+        if self.anchor == "screen":
+            if geo or self.x is None or self.y is None:
+                raise ValueError(f"{tag}: anchor 'screen' needs x and y in frame px (no lat/lng)")
+            if self.width_map is not None or self.depth:
+                raise ValueError(f"{tag}: width_map and depth apply to anchor 'map' only")
+        else:
+            if geo == xy or (geo and (self.lat is None or self.lng is None)) or (xy and (self.x is None or self.y is None)):
+                raise ValueError(f"{tag}: anchor 'map' needs x and y (normalised 0..1) or lat and lng")
+            if xy and not (0.0 <= self.x <= 1.0 and 0.0 <= self.y <= 1.0):
+                raise ValueError(f"{tag}: map x and y must be within 0..1")
+        if self.t_out is not None and self.t_out <= self.t_in:
+            raise ValueError(f"{tag}: t_out {self.t_out} must be > t_in {self.t_in}")
+        return self
+
+
+LAYER_EXT = {".png", ".webp", ".jpg", ".jpeg"}
+LAYER_DEPTH_MIN = -0.9  # farthest parallax layer (moves at 0.1 x the map)
+
+
+class ParallaxLayer(Strict):
+    """A repeating full-frame image over the map that moves with the camera at its own depth (video_engine/parallax.py)."""
+    asset: str = Field(min_length=1)                     # project-relative .png/.webp (alpha) or .jpg, tiled
+    asset_id: Optional[str] = None                       # credits manifest id (None = matched by path)
+    depth: float = Field(0.5, ge=LAYER_DEPTH_MIN, le=PROP_DEPTH_MAX)   # 0 = moves with the map, > 0 nearer, < 0 farther
+    tile_px: Optional[float] = Field(None, gt=0, le=8000) # on-screen width of one tile at frame 0 (None = image width)
+    opacity: float = Field(1.0, gt=0, le=1.0)
+    blend: Literal["normal", "screen", "multiply", "overlay", "soft-light"] = "normal"
+    drift: list[float] = Field([0.0, 0.0], min_length=2, max_length=2)  # px / s at frame 0 scale (wind)
+
+    @model_validator(mode="after")
+    def _layer(self):
+        if Path(self.asset).suffix.lower() not in LAYER_EXT:
+            raise ValueError(f"layer '{self.asset}': asset must be a .png, .webp or .jpg image")
+        if not all(-2000 <= v <= 2000 for v in self.drift):
+            raise ValueError(f"layer '{self.asset}': drift {self.drift} must be within -2000..2000 px/s")
+        return self
+
+
+class Beat(Strict):
+    """One beat of a beats map scene (profile [layout]): what is on screen from `at_frame` (relative to the segment
+    start) to the next beat or the segment end. video_engine/layout.py derives the camera_path, the entry and exit
+    times and every position from the beats. Indices point into the scene's pins, routes, figures and regions."""
+    at_frame: int = Field(ge=0)
+    region: Optional[int] = Field(None, ge=0)        # active region; every other region shows at layout dim_alpha
+    pins: list[int] = []                             # pins with their label
+    markers: list[int] = []                          # pins without their label
+    routes: list[int] = []
+    title: bool = False                              # the scene title in Z1
+    card: list[int] = []                             # Z1 data card: [year figure] or [year figure, time figure]
+    area_labels: list[AreaLabel] = []
+    camera: bool = True                              # True: the camera fits this beat into Z2; False: keeps its view
+    heading: Optional[str] = Field(None, min_length=1, max_length=32)   # profile [print]: date heading near the top
+    notes: list[Note] = Field([], max_length=1)      # profile [print]: at most one hand annotation per beat
+    props: Optional[list[Prop]] = None               # props timed from this beat's start
+    grade: Optional[Grade] = None                    # full-frame grade from this beat to the next (None: the segment's)
+    hold: Optional[Literal["read"]] = None           # intent: the viewer reads; no camera pulses on this beat's wait
+    goal: Optional[str] = Field(None, max_length=200)   # what the viewer must understand or feel (information)
+
+    @model_validator(mode="after")
+    def _beat(self):
+        if set(self.pins) & set(self.markers):
+            raise ValueError(f"beat at_frame {self.at_frame}: a pin is in both pins and markers")
+        if self.title and self.card:
+            raise ValueError(f"beat at_frame {self.at_frame}: Z1 holds the title or the data card, not both")
+        if self.heading is not None and self.title:
+            raise ValueError(f"beat at_frame {self.at_frame}: a heading and the title do not share a beat")
+        if len(self.card) > 2:
+            raise ValueError(f"beat at_frame {self.at_frame}: the data card holds a year and at most one time")
+        return self
+
+
+GLOBE_ALT_MIN = 0.005   # lowest globe camera altitude (earth radii above the surface, ~32 km)
+GLOBE_ALT_MAX = 12.0
+
+
+class GlobeKey(Strict):
+    """One view of a globe camera: it looks at (lat, lng) from `altitude` earth radii above the surface at `at_frame`."""
+    at_frame: int = Field(ge=0)
+    lat: float = Field(ge=-85, le=85)
+    lng: float = Field(ge=-180, le=180)
+    altitude: float = Field(ge=GLOBE_ALT_MIN, le=GLOBE_ALT_MAX)
+    tilt: float = Field(0.0, ge=0.0, le=TILT_MAX)      # deg from straight down, the camera south of the point
+
+
+class Globe(Strict):
+    """Blue Marble globe (three.js, video_engine/globe.py): map_asset is the whole-world equirectangular texture."""
+    keys: list[GlobeKey] = Field(min_length=1)
+    detail_tiles: Optional[str] = None   # project-relative dir of the NASA 8-tile set (*.A1.jpg ... *.D2.jpg, 90 deg each)
+
+    @model_validator(mode="after")
+    def _order(self):
+        if self.keys[0].at_frame != 0:
+            raise ValueError("globe.keys[0].at_frame must be 0")
+        for i in range(1, len(self.keys)):
+            if self.keys[i].at_frame <= self.keys[i - 1].at_frame:
+                raise ValueError(f"globe.keys[{i}].at_frame must be > globe.keys[{i - 1}].at_frame")
+        return self
+
+
+class GsapScene(Strict):
+    template: Literal["map_pins"] = "map_pins"
+    map_region: Optional[str] = None
+    map_asset: str                       # path (project-relative) of the base map image
+    map_asset_id: Optional[str] = None
+    map_bounds: Optional[list[float]] = Field(None, min_length=4, max_length=4)  # [south, west, north, east]
+    title: Optional[str] = None                     # big glow title, from title_at_frame to the segment end
+    title_entity: Optional[str] = Field(None, min_length=1, max_length=60)  # title colour = this entity's colour
+    title_at_frame: Optional[int] = Field(None, ge=0)  # None = 0
+    pins: list[Pin] = []
+    cards: list[Card] = []
+    camera_preset: str = "pan_northeast"
+    camera_intensity: float = Field(1.0, ge=0.0, le=6.0)
+    focus: Optional[list[float]] = Field(None, min_length=2, max_length=2)  # normalised [x, y] the camera centres on
+    camera_path: Optional[list[CameraKey]] = None   # >= 2 keys: replaces camera_preset with key-to-key legs
+    regions: Optional[list[Region]] = None          # entity highlights drawn on the map under the pins
+    routes: Optional[list[Route]] = None            # self-drawing dashed movement lines with an arrowhead
+    figures: Optional[list[Figure]] = None          # big years and numbers
+    beats: Optional[list[Beat]] = None              # layout profiles: beats replace camera_path and element frames
+    props: Optional[list[Prop]] = None              # free-positioned images (map- or screen-anchored)
+    layers: Optional[list[ParallaxLayer]] = None    # repeating depth layers over the map (parallax)
+    globe: Optional[Globe] = None                   # 3D globe instead of the flat map (map_asset = its texture)
+
+    @model_validator(mode="after")
+    def _beats(self):
+        b = self.beats
+        if not b:
+            return self
+        if b[0].at_frame != 0:
+            raise ValueError(f"beats[0].at_frame is {b[0].at_frame}; the first beat starts at frame 0")
+        for i in range(1, len(b)):
+            if b[i].at_frame <= b[i - 1].at_frame:
+                raise ValueError(f"beats[{i}].at_frame {b[i].at_frame} must be > beats[{i - 1}].at_frame {b[i - 1].at_frame}")
+        n = {"pins": len(self.pins), "routes": len(self.routes or []), "figures": len(self.figures or []),
+             "regions": len(self.regions or [])}
+        for i, x in enumerate(b):
+            refs = [("pins", x.pins + x.markers), ("routes", x.routes), ("figures", x.card),
+                    ("regions", ([x.region] if x.region is not None else []) + [a.region for a in x.area_labels])]
+            for what, idx in refs:
+                for j in idx:
+                    if j >= n[what]:
+                        raise ValueError(f"beats[{i}]: {what} index {j} out of range ({n[what]} {what})")
+            if x.title and not self.title:
+                raise ValueError(f"beats[{i}]: title is true but gsap_scene_config.title is empty")
+            if x.card and self.figures[x.card[0]].kind != "year":
+                raise ValueError(f"beats[{i}]: the first data card figure must be a year")
+        for r in self.routes or []:
+            if r.to_pin is not None and r.to_pin >= len(self.pins):
+                raise ValueError(f"route to_pin {r.to_pin} out of range ({len(self.pins)} pins)")
+        return self
+
+    @model_validator(mode="after")
+    def _globe(self):
+        g = self.globe
+        if g is None:
+            return self
+        for f in ("camera_path", "beats", "regions", "routes", "props", "layers", "map_bounds"):
+            if getattr(self, f):
+                raise ValueError(f"globe scenes do not take {f} (the globe camera is globe.keys; pins use lat/lng)")
+        for p in self.pins:
+            if p.lat is None or p.lng is None:
+                raise ValueError(f"globe pin '{p.label}' needs lat and lng")
+        return self
+
+    @model_validator(mode="after")
+    def _path(self):
+        k = self.camera_path
+        if not k:
+            return self
+        if len(k) < 2:
+            raise ValueError("camera_path needs at least 2 keys")
+        if k[0].at_frame != 0:
+            raise ValueError(f"camera_path[0].at_frame is {k[0].at_frame}; the first key is the opening view at frame 0")
+        for i in range(1, len(k)):
+            if k[i].at_frame <= k[i - 1].at_frame:
+                raise ValueError(f"camera_path[{i}].at_frame {k[i].at_frame} must be > camera_path[{i - 1}].at_frame "
+                                 f"{k[i - 1].at_frame}")
+        return self
+
+
+class Overlay(Strict):
+    """On-screen element of a native segment, in output px. `kind` "reserve" only reserves space (caption placement,
+    R63 clearance). "label", "text_card" and "lower_third" are drawn by the engine (Pillow PNG overlaid by ffmpeg)
+    inside `box`; gate O01 checks that the text fits the box and the box sits in the safe area. "heading" (profile
+    [print]) is the printed date heading: one line of caps between two rules, centred in `box` with its baseline
+    overlays.HEADING_PAD px above the box bottom, in heading ink on a light picture (`on` "light") or light with a soft
+    shadow on a photo (`on` "photo")."""
+    id: str
+    box: list[float] = Field(min_length=4, max_length=4)   # [x, y, w, h] output px
+    text: Optional[str] = None
+    subtitle: Optional[str] = None
+    kind: Literal["reserve", "label", "text_card", "lower_third", "heading"] = "reserve"
+    on: Optional[Literal["light", "photo"]] = None           # heading only: the picture tone under it
+    start_frame: Optional[int] = Field(None, ge=0)          # relative to segment start; default 0
+    end_frame: Optional[int] = Field(None, gt=0)            # relative, exclusive; default segment length
+
+    @model_validator(mode="after")
+    def _shape(self):
+        x, y, w, h = self.box
+        if not all(math.isfinite(v) for v in self.box) or w <= 0 or h <= 0 or x < 0 or y < 0:
+            raise ValueError(f"overlay '{self.id}': box {self.box} needs finite x, y >= 0 and w, h > 0")
+        if self.kind != "reserve" and not (self.text and self.text.strip()):
+            raise ValueError(f"overlay '{self.id}': kind '{self.kind}' is drawn and needs text")
+        if (self.kind == "heading") != (self.on is not None):
+            raise ValueError(f"overlay '{self.id}': `on` (light | photo) is required for kind 'heading' and only for it")
+        if self.kind == "heading" and (self.subtitle or len(self.text or "") > 32):
+            raise ValueError(f"overlay '{self.id}': a heading is one line of at most 32 characters, no subtitle")
+        if self.start_frame is not None and self.end_frame is not None and self.end_frame <= self.start_frame:
+            raise ValueError(f"overlay '{self.id}': end_frame {self.end_frame} must be > start_frame {self.start_frame}")
+        return self
+
+    @property
+    def drawn(self) -> bool:
+        return self.kind != "reserve"
+
+
+class Segment(Strict):
+    seg_index: int = Field(ge=0)
+    engine_type: Literal["NATIVE_RUST_FFMPEG", "HYPERFRAMES_GSAP"]
+    start_frame: int = Field(ge=0)
+    end_frame: int = Field(gt=0)
+    source_video: Optional[str] = None
+    source_image: Optional[str] = None
+    asset_id: Optional[str] = None
+    source_in_frame: int = Field(0, ge=0)   # in TIMELINE fps frames
+    camera_move: Optional[CameraMove] = None
+    overlays: list[Overlay] = []
+    gsap_scene_config: Optional[GsapScene] = None
+    visual_type: Optional[VisualType] = None   # None = inferred: HyperFrames map, native still photo, native video
+    grade: Optional[Grade] = None              # full-frame grade (video_engine/grade.py); None = profile [grade]
+    hold: Optional[Literal["read"]] = None     # intent: the viewer reads over the whole segment (gates/severity.py)
+    goal: Optional[str] = Field(None, max_length=200)   # what the viewer must understand or feel (information)
+
+    @property
+    def kind(self) -> str:
+        """Visual type: declared visual_type, else map (HyperFrames), photo (native still) or video (native video)."""
+        if self.visual_type:
+            return self.visual_type
+        if self.engine_type == HYPERFRAMES:
+            return "map"
+        return "photo" if self.is_still else "video"
+
+    @property
+    def n_frames(self) -> int:
+        return self.end_frame - self.start_frame
+
+    @property
+    def source(self) -> Optional[str]:
+        return self.source_video or self.source_image
+
+    @property
+    def is_still(self) -> bool:
+        return self.source is not None and Path(self.source).suffix.lower() in IMAGE_EXT
+
+    @model_validator(mode="after")
+    def _shape(self):
+        if self.end_frame <= self.start_frame:
+            raise ValueError(f"segment {self.seg_index}: end_frame {self.end_frame} <= start_frame {self.start_frame}")
+        if self.engine_type == NATIVE:
+            if bool(self.source_video) == bool(self.source_image):
+                raise ValueError(f"segment {self.seg_index}: native segment needs exactly one of source_video/source_image")
+            if self.gsap_scene_config is not None:
+                raise ValueError(f"segment {self.seg_index}: gsap_scene_config on a native segment")
+        else:
+            if self.gsap_scene_config is None:
+                raise ValueError(f"segment {self.seg_index}: HYPERFRAMES_GSAP segment needs gsap_scene_config")
+        return self
+
+
+MAX_FRAME = 1 << 40   # = Rust num::MAX_FRAME; frames are 0 <= frame < 2**40
+
+
+class CaptionWord(Strict):
+    word: str
+    start_frame: int = Field(ge=0, lt=MAX_FRAME)
+    end_frame: int = Field(gt=0, lt=MAX_FRAME)
+    highlight: bool = False
+
+    @model_validator(mode="after")
+    def _order(self):
+        if self.end_frame <= self.start_frame:
+            raise ValueError(f"caption word {self.word!r}: end_frame {self.end_frame} must be > start_frame "
+                             f"{self.start_frame}")
+        return self
+
+
+class CaptionsMeta(Strict):
+    """Provenance of pinned `captions` (written by `engine words` / the build). Gate W01 compares it with the
+    current voiceover, caption_fixes and fps; any mismatch means the pinned words are stale."""
+    source: Literal["whisper"] = "whisper"
+    voiceover_blake3: str
+    whisper_model: str
+    language: str
+    prompt: Optional[str] = None
+    fixes_blake3: str
+    fps: int = Field(ge=1, le=99)
+    total_frames: int = Field(gt=0, lt=MAX_FRAME)
+    clipped_words: int = Field(ge=0, default=0)   # transcribed words dropped or cut at total_frames
+    words_cache_hit: bool = False
+
+
+class ProjectGates(Strict):
+    """Project gate requests (gates/severity.py). `require` adds style gates to the channel's required set; `waive`
+    lowers findings of style gates the channel does not require to info. Neither can lower a channel-required gate
+    or any technical gate."""
+    require: list[str] = []
+    waive: list[str] = []
+
+    @model_validator(mode="after")
+    def _ids(self):
+        from .profiles import STYLE_GATE_IDS
+        bad = [g for g in self.require if g not in STYLE_GATE_IDS]
+        if bad:
+            raise ValueError(f"gates.require: unknown style gate(s) {bad} (known: {', '.join(STYLE_GATE_IDS)})")
+        return self
+
+
+class Timeline(Strict):
+    project_id: str = Field(pattern=config.PROJECT_ID_PATTERN)
+    profile: Optional[str] = None          # channel style profile (profiles/<name>.toml); None = default profile
+    settings: Settings = Settings()
+    credits_manifest: list[Credit] = []
+    audio_chain: AudioChain = AudioChain()
+    segments: list[Segment] = Field(min_length=1)
+    captions: list[CaptionWord] = []
+    captions_meta: Optional[CaptionsMeta] = None
+    caption_style: dict = {}
+    gates: Optional[ProjectGates] = None   # project gate requests (None = channel rules as they are)
+
+    @model_validator(mode="after")
+    def _profile_exists(self):
+        from . import profiles
+        from .util import EngineError
+        try:
+            mz = profiles.load(self.profile).camera.max_zoom
+        except EngineError as e:
+            raise ValueError(str(e)) from e
+        for s in self.segments:
+            for i, k in enumerate((s.gsap_scene_config.camera_path or []) if s.gsap_scene_config else []):
+                if k.zoom > mz + 1e-9:
+                    raise ValueError(f"segment {s.seg_index} camera_path[{i}]: zoom {k.zoom:g} exceeds the profile "
+                                     f"[camera] max_zoom {mz:g}")
+        return self
+
+    @model_validator(mode="after")
+    def _captions_sorted(self):
+        for i in range(1, len(self.captions)):
+            if self.captions[i].start_frame < self.captions[i - 1].start_frame:
+                raise ValueError(f"captions[{i}] ({self.captions[i].word!r}) starts before captions[{i - 1}]: "
+                                 "captions must be sorted by start_frame")
+        return self
+
+    @property
+    def total_frames(self) -> int:
+        return max(s.end_frame for s in self.segments)
+
+    def credit_for(self, ref: Optional[str] = None, path: Optional[str] = None) -> Optional[Credit]:
+        for c in self.credits_manifest:
+            if (ref and c.asset_id == ref) or (path and c.path and Path(c.path) == Path(path)):
+                return c
+        return None
+
+
+def load(path: str | Path) -> Timeline:
+    p = Path(path)
+    if p.is_dir():
+        p = p / "master_timeline.json"
+    return Timeline.model_validate_json(p.read_text())
+
+
+def save(tl: Timeline, path: str | Path) -> None:
+    p = Path(path)
+    if p.is_dir():
+        p = p / "master_timeline.json"
+    data = tl.model_dump(mode="json", by_alias=True, exclude_none=True)
+    fd, name = tempfile.mkstemp(dir=p.parent, prefix=f".{p.name}.", suffix=".part")   # unique per writer
+    tmp = Path(name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+        os.chmod(tmp, p.stat().st_mode & 0o777 if p.exists() else 0o644)
+        os.replace(tmp, p)   # atomic: a reader sees one whole version of the file, never a half-written one
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise

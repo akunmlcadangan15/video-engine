@@ -1,0 +1,80 @@
+"""Gate severity: technical rules block a build, style rules only warn unless the channel requires them.
+
+Classes:
+  technical  every gate not in profiles.STYLE_GATE_IDS (missing or invalid assets, broken output, decode errors,
+             loudness, licence and credits, caption bounds and legibility, factual pins). Levels unchanged; fail
+             blocks the build.
+  style      H01, C01, V01, N01, P01, P02, K01, D01, S01. Required set = profile `[gates] require` + timeline
+             `gates.require`. Required: levels unchanged (fail blocks). Not required: fail -> warn.
+Intent and waivers (only for style gates outside the required set):
+  - a P01 hold or N01 gap finding whose frame range starts inside a beat or segment marked `hold: "read"` -> info;
+  - a finding of a gate listed in timeline `gates.waive` -> info.
+A waive or a hold intent on a required gate changes nothing; a waive naming a required or technical gate adds one
+warn finding (gate GW01) saying it was ignored. Lowered findings keep their original level in `waived`.
+"""
+from __future__ import annotations
+
+from .. import profiles
+from ..timeline import HYPERFRAMES, Timeline
+from .core import Finding
+
+HOLD_GATES = ("P01", "N01")   # style gates whose frame-ranged findings a hold:"read" intent lowers
+
+
+def is_style(gate: str) -> bool:
+    return gate in profiles.STYLE_GATE_IDS
+
+
+def required(tl: Timeline) -> set[str]:
+    """Channel-required style gates plus the project's additions (a project can add, never remove)."""
+    return set(profiles.of(tl).gates.require) | set(tl.gates.require if tl.gates else ())
+
+
+def hold_ranges(tl: Timeline) -> list[tuple[int, int]]:
+    """Absolute half-open frame ranges of every beat and segment marked hold: "read"."""
+    out = []
+    for s in tl.segments:
+        if s.hold == "read":
+            out.append((s.start_frame, s.end_frame))
+        sc = s.gsap_scene_config if s.engine_type == HYPERFRAMES else None
+        beats = (sc.beats or []) if sc else []
+        for k, b in enumerate(beats):
+            if b.hold == "read":
+                end = beats[k + 1].at_frame if k + 1 < len(beats) else s.n_frames
+                out.append((s.start_frame + b.at_frame, s.start_frame + end))
+    return out
+
+
+def apply(findings: list[Finding], tl: Timeline) -> list[Finding]:
+    """Findings with the severity rules applied (new list; Finding objects are updated in place)."""
+    req = required(tl)
+    holds = hold_ranges(tl)
+    waive = set(tl.gates.waive if tl.gates else ())
+    out = list(findings)
+    for g in sorted(waive):
+        if g in req or not is_style(g):
+            why = "required by the channel" if g in req else "a technical gate"
+            out.append(Finding("GW01", "warn", f"project waive of {g} ignored: {g} is {why}"))
+    for f in findings:
+        if not is_style(f.gate) or f.gate in req or f.level not in ("fail", "warn"):
+            continue
+        orig = f.level
+        if f.gate in waive:
+            f.level, f.waived = "info", f"{orig}: waived by the project (gates.waive)"
+        elif f.gate in HOLD_GATES and f.frames and any(a <= f.frames[0] < b for a, b in holds):
+            f.level, f.waived = "info", f"{orig}: hold \"read\" intent at frame {f.frames[0]}"
+        elif orig == "fail":
+            f.level, f.waived = "warn", "fail: style gate not required by the channel"
+    return out
+
+
+def summary(findings: list[Finding], tl: Timeline) -> dict:
+    """build_report.json `gates`: fails, warns and waived (lowered) findings listed separately."""
+    def row(f: Finding) -> dict:
+        return {"gate": f.gate, "class": "style" if is_style(f.gate) else "technical", "level": f.level,
+                "message": f.message, **({"seg": f.seg} if f.seg is not None else {}),
+                **({"frames": list(f.frames)} if f.frames else {}), **({"waived": f.waived} if f.waived else {})}
+    return {"required": sorted(required(tl)),
+            "fails": [row(f) for f in findings if f.level == "fail"],
+            "warns": [row(f) for f in findings if f.level == "warn"],
+            "waived": [row(f) for f in findings if f.waived]}

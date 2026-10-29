@@ -1,0 +1,121 @@
+"""Delivery plan (naming, splitting, Drive layout). Milestone 1 is dry-run only: nothing is uploaded or copied.
+
+Build check (check_build, before any plan): the final must come from the last build. Refused when, next to the
+final, build_report.failed.json exists, build_report.json is missing or not ok, its build_id differs from
+build_manifest.json (a later build started and did not publish), or the final's sha256 differs from the report's
+final_sha256.
+
+Naming (NN = settings.project_number, Topik = settings.topic, date = settings.date):
+  Drive folder  "NN - YYYY-MM-DD - Topik/05 Final"   final video (+ parts) and JOIN.txt
+                "NN - YYYY-MM-DD - Topik/03 Aset"    credits
+  files         "NN - Topik - final.mp4"             when size <= PART_MAX_BYTES
+                "NN - Topik - final.mp4.partN"       byte-split parts, N = 1.., each <= PART_MAX_BYTES
+                "NN - JOIN.txt"                      join instructions (always written)
+                "NN - credits.txt"                   copy of <project>/credits.txt
+"""
+from __future__ import annotations
+
+import json
+import math
+import re
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+
+from .timeline import Timeline
+from .util import EngineError
+
+PART_MAX_BYTES = 95 * 1000 * 1000
+BAD_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+
+
+@dataclass
+class DeliveryPlan:
+    drive_root: str
+    final_dir: str
+    assets_dir: str
+    files: list[dict] = field(default_factory=list)   # {"name", "dir", "bytes", "source", "range": [a, b] | None}
+    join_txt: str = ""
+    dry_run: bool = True
+
+    def to_json(self) -> str:
+        return json.dumps(asdict(self), indent=2, ensure_ascii=False)
+
+
+def clean(s: str) -> str:
+    return re.sub(r"\s+", " ", BAD_CHARS.sub("", s)).strip()
+
+
+def names(tl: Timeline) -> dict:
+    S = tl.settings
+    missing = [k for k in ("project_number", "topic", "date") if not getattr(S, k)]
+    if missing:
+        raise EngineError(f"settings.{', settings.'.join(missing)} required for delivery naming")
+    nn, topic = S.project_number, clean(S.topic)
+    root = f"{nn} - {S.date} - {topic}"
+    return {"root": root, "final_dir": f"{root}/05 Final", "assets_dir": f"{root}/03 Aset",
+            "final": f"{nn} - {topic} - final.mp4", "credits": f"{nn} - credits.txt", "join": f"{nn} - JOIN.txt"}
+
+
+def split_ranges(size: int, part_max: int = PART_MAX_BYTES) -> list[tuple[int, int]]:
+    """Byte ranges [a, b) of the parts; one range when size <= part_max."""
+    if size <= 0:
+        raise EngineError("final file is empty")
+    n = math.ceil(size / part_max)
+    step = math.ceil(size / n)
+    return [(i * step, min(size, (i + 1) * step)) for i in range(n)]
+
+
+def join_text(final_name: str, parts: list[str]) -> str:
+    if len(parts) <= 1:
+        return f"File: {final_name}\nNo join needed (single file).\n"
+    q = " ".join(f'"{p}"' for p in parts)
+    return (f"File: {final_name} ({len(parts)} parts)\n"
+            f"Linux/macOS: cat {q} > \"{final_name}\"\n"
+            f"Windows: copy /b {'+'.join(chr(34) + p + chr(34) for p in parts)} \"{final_name}\"\n")
+
+
+def check_build(final: Path) -> dict:
+    """Raise EngineError unless `final` is the published output of the last build; returns its build report."""
+    from .manifest import MANIFEST, sha256
+    d = Path(final).parent
+    if not Path(final).is_file():
+        raise EngineError(f"final video not found: {final} (run `engine build` first)")
+    if (d / "build_report.failed.json").is_file():
+        raise EngineError(f"last build failed ({d / 'build_report.failed.json'}): {Path(final).name} is stale; "
+                          f"fix it and rebuild before delivering")
+    try:
+        rep = json.loads((d / "build_report.json").read_text())
+        man = json.loads((d / MANIFEST).read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        raise EngineError(f"no build report/manifest next to {final}: {e}") from None
+    if not rep.get("ok") or not rep.get("build_id"):
+        raise EngineError("build_report.json is not a successful build with a build_id; rebuild before delivering")
+    if rep["build_id"] != man.get("build_id"):
+        raise EngineError(f"build_report.json is build {rep['build_id']} but the last build is {man.get('build_id')}: "
+                          f"{Path(final).name} is stale; rebuild before delivering")
+    if rep.get("final_sha256") != sha256(final, fresh=True):
+        raise EngineError(f"{final} differs from the file build {rep['build_id']} published")
+    return rep
+
+
+def plan(tl: Timeline, project_dir: Path, final: Path, part_max: int = PART_MAX_BYTES) -> DeliveryPlan:
+    n = names(tl)
+    if not final.is_file():
+        raise EngineError(f"final video not found: {final} (run `engine build` first)")
+    size = final.stat().st_size
+    ranges = split_ranges(size, part_max)
+    files = []
+    if len(ranges) == 1:
+        files.append({"name": n["final"], "dir": n["final_dir"], "bytes": size, "source": str(final), "range": None})
+        parts = [n["final"]]
+    else:
+        parts = [f"{n['final']}.part{i + 1}" for i in range(len(ranges))]
+        for p, (a, b) in zip(parts, ranges):
+            files.append({"name": p, "dir": n["final_dir"], "bytes": b - a, "source": str(final), "range": [a, b]})
+    jt = join_text(n["final"], parts)
+    files.append({"name": n["join"], "dir": n["final_dir"], "bytes": len(jt.encode()), "source": "generated", "range": None})
+    credits = project_dir / "credits.txt"
+    if not credits.is_file():
+        raise EngineError("credits.txt missing in project dir")
+    files.append({"name": n["credits"], "dir": n["assets_dir"], "bytes": credits.stat().st_size, "source": str(credits), "range": None})
+    return DeliveryPlan(n["root"], n["final_dir"], n["assets_dir"], files, jt, True)

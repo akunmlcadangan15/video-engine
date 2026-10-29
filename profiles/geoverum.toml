@@ -1,0 +1,417 @@
+# Geoverum channel profile. Spec: Style Lab brand profile (brand/geoverum/brand-profile.md).
+description = "Geoverum: map-led geography shorts"
+
+[caption_style]
+font = "Inter SemiBold"
+bold = false
+size = 72                     # ASS units at 1920 height: cap height 37 px, x-height 25 px (reference 37 / 26 px)
+outline = 2.5                 # thin black outline (outline_colour default 000000)
+soft_shadow = true            # drop shadow 0 3 px, blur, black at .55 (layer 0, no backing box)
+shadow_dx = 0
+shadow_dy = 3
+shadow_blur = 4               # libass \blur (gaussian); about a CSS 8 px blur
+shadow_alpha = 115            # ASS alpha 0x73 = 55 % opaque
+active_word_highlight = false
+emphasis_scale = 1.0
+max_words = 2
+fixed_y = 1190                # caption centre, px at 1920 height (box bottom 1244, rendered ink bottom 1239)
+max_bottom_y = 1250           # Z01: caption box bottom (glyphs + shadow) at or above 1250 px (Shorts safe zone)
+auto_place = false            # captions are never moved for clearance
+clearance = 0                 # captions must still not intersect any element box (R63)
+
+[audio]
+target_lufs = -14.0
+true_peak = -1.5
+lra = 11.0
+tolerance_lu = 0.2
+require_source = "epidemic"   # A02: music and SFX from Epidemic Sound only (docs/SOUND.md)
+
+[draft]
+min_seg_s = 6.5
+max_seg_s = 30.0
+map_path = true               # map segments may carry a multi-key camera path
+rules = [
+  "Open on a moving map (kind map, camera zoom_in or a pan) with a geographical paradox, stark dividing line, or extreme claim and the first pin, route, or card within 1.5 s; narration and the first caption start at 0.0-0.2 s.",
+  "Hard cuts only where the visual type changes (map to photo, video, diagram, archive, 3D globe, or illustration). Moving between places on one map stays inside one long map segment with a map_path (one key per place, 2-5 s apart, zooming up to 16x for enclaves/straits), never a cut between two segments of the same map.",
+  "At most 0.41 hard cuts per 10 s; the first hard cut at 21 s or later.",
+  "Something new on screen every 1-3 s: a pin with dot-and-leader label, a glowing region fill, a route or dashed distance line (km / mi), an animated counter or stat pill, a scale comparison overlay, or a new shot.",
+  "Use clear typographic hierarchy on maps: ALL CAPS for country and mountain names, Title Case for cities, enclaves, islands, and straits, and one dominant hero number or percentage per beat before supporting labels appear.",
+  "The last 5 s show a keyword or the title of the hook again on screen (pin label, card, 3D globe summary, or overlay text).",
+  "No call to action and no end card.",
+]
+
+[theme]
+camera_drift_per_s = 0.06     # scale growth / s of the drift between camera pulses: 0.06 ln/s at the start of a wait,
+                              # above [gates.camera] still_zoom_ln_s (moving), below it after 3.3 s
+region_edge = "glow"          # same-colour edge; [legibility] sets fill alpha and a 3-4 px outline, no blur
+pin_style = "teardrop"        # red teardrop with a white dot, paper outline and shadow, bounce drop-in, label beside
+pin_colour = "#c4302a"
+label_font = "inter"          # map labels; [print] sets the printed roles per surface
+title_font = "inter"          # titles and numbers; [print] sets the printed roles per surface
+title_px = 112
+# region colours, muted OKLCH (L 0.40-0.82, C <= 0.12); entities missing from [theme.entities] take the free ones in
+# this order; teal and indigo never adjacent
+palette = [
+  "#136868",                  # teal    oklch(0.47 0.075 195)  free
+  "#5F4025",                  # umber   oklch(0.40 0.059 61)   free
+  "#74364B",                  # wine    oklch(0.42 0.09 0)     free
+  "#796394",                  # mauve   oklch(0.54 0.08 305)   free
+  "#75A58B",                  # jade    oklch(0.68 0.065 160)  free
+  "#6A662B",                  # olive   oklch(0.50 0.08 105)   free
+  "#B56A95",                  # plum    oklch(0.62 0.11 345)
+  "#4B4D8B",                  # indigo  oklch(0.45 0.10 280)
+  "#C99D4E",                  # ochre   oklch(0.72 0.11 80)
+  "#6B8B5A",                  # moss    oklch(0.60 0.08 135)
+  "#437AA6",                  # steel   oklch(0.56 0.09 245)
+  "#9C443B",                  # brick   oklch(0.50 0.12 28)
+  "#A7693C",                  # sienna  oklch(0.58 0.10 55)
+  "#A19073",                  # taupe   oklch(0.66 0.045 80)
+  "#549CC0",                  # sky     oklch(0.66 0.09 232)
+  "#70B8C6",                  # lagoon  oklch(0.74 0.075 212)
+  "#AEC8DC",                  # mist    oklch(0.82 0.04 240)
+]
+
+[theme.entities]
+Indonesia = "#B56A95"         # plum
+Sekutu = "#4B4D8B"            # indigo
+Belanda = "#C99D4E"           # ochre (never as text)
+Jepang = "#6B8B5A"            # moss
+"Caspian Sea" = "#437AA6"     # steel
+Russia = "#9C443B"            # brick
+Kazakhstan = "#A7693C"        # sienna
+Turkmenistan = "#C99D4E"      # ochre (never as text)
+Iran = "#6B8B5A"              # moss
+Azerbaijan = "#A19073"        # taupe
+"Black Sea" = "#549CC0"       # sky
+Mediterranean = "#70B8C6"     # lagoon
+Paratethys = "#AEC8DC"        # mist
+Atlantic = "#4B4D8B"          # indigo
+Spain = "#A7693C"             # sienna
+France = "#437AA6"            # steel
+Portugal = "#6B8B5A"          # moss
+"United Kingdom" = "#9C443B"  # brick
+Morocco = "#B56A95"           # plum
+Andorra = "#C99D4E"           # ochre (never as text)
+USA = "#437AA6"               # steel
+Colombia = "#C99D4E"          # ochre (never as text)
+Panama = "#549CC0"            # sky
+Chile = "#9C443B"             # brick
+
+[camera]                      # every camera wait: pulses away and back, drift between them
+pulse_zoom = 0.3              # ln zoom per pulse, peak speed 1.06 ln/s; the layout planner shrinks a pulse whose
+                              # frames break a layout rule (0.75, 0.5, 0.25, 0 of this size)
+pulse_s = 0.8                 # pulse length
+pulse_gap_s = 0.3             # minimum drift before, between and after pulses
+pulse_pan = 0.04              # frame-centre shift per pulse, frame widths (sides alternate)
+pulse_ease = [0.3, 0.0, 0.15, 1.0]
+pulse_anchor = [0.44, 0.41]   # screen point that stays put: centre of [layout.zones] z2
+pulse_direction = "in"        # push in, then back
+max_zoom = 16                 # deepest camera zoom: country-scale close-ups from a whole-map source
+
+[transitions]                 # every segment boundary; page turn when either side is a map or archive segment
+kind = "zoom_whip"            # 0.1 s push-in with radial blur, then the incoming shot settles 1.3x -> 1 over 0.4 s
+by_type = { map = "page_turn", archive = "page_turn" }   # 0.4 s page turn
+whip_out_s = 0.1
+whip_blur_in_s = 0.1          # radial blur covers 0.2 s around the boundary
+whip_in_s = 0.4
+whip_scale = 1.3
+whip_blur = 0.12
+page_s = 0.4
+
+[gates]                       # style gates whose fails block a build; every other style gate only warns
+require = ["P01", "P02", "H01"]   # the camera always moves: no hold over 3 s, drift >= 0.06 ln/s, frame 0 a moving map
+
+[gates.hook]
+vo_warn_s = 0.2
+vo_fail_s = 0.8
+caption_warn_s = 0.2
+caption_fail_s = 1.0
+graphic_warn_s = 1.5
+graphic_fail_s = 3.0
+open_on_moving_map = true
+
+[gates.cuts]
+warn_per_10s = 0.41
+fail_per_10s = 1.65
+first_warn_s = 21.0
+first_fail_s = 6.5
+
+[gates.camera]                # P01: planned camera motion
+hold_warn_s = 1.7
+hold_fail_s = 3.0
+moving_warn = 0.8
+still_zoom_ln_s = 0.05        # zoom speed below this is still; the 0.06 ln/s drift is moving
+still_pan_w_s = 0.02
+min_drift_per_s = 0.06        # P02: the drift between camera moves stays >= 0.06 ln/s (theme camera_drift_per_s)
+
+[gates.visual_type]
+
+[gates.novelty]
+max_gap_s = 3.0
+
+[gates.silence]
+max_gap_s = 0.65
+threshold_db = -40.0
+
+[gates.keyword_return]
+hook_s = 3.0
+end_s = 5.0
+min_chars = 4
+
+[gates.duration]
+min_s = 45.0
+max_s = 90.0
+
+[legibility]                  # adaptive map text; R64 on (keys: docs/SPEC.md, section F)
+samples = 12                  # background samples per element life
+measure_scale = 0.25          # labels, years, counters measured at 1/4 resolution; titles at full
+dark_percentile = 10          # hard case for dark ink
+light_percentile = 90         # hard case for light text
+adjacent_px = 2
+adjacent_percentile = 1
+light_p50_max = 0.18          # light text only on backgrounds with p50 Y below this
+lc_title = 60
+lc_title_aim = 75
+lc_figure = 60                # years and counters
+lc_label = 75                 # pin labels
+lc_area = 60                  # area labels (region and water names)
+lc_floor = 15
+lc_fail_margin = 5
+wcag_label = 4.5
+wcag_title = 3.0
+ink_l = 0.26                  # oklch(0.26 0.03 60): warm sepia ink
+ink_c = 0.03
+ink_hue = 60
+ink_l_min = 0.18
+ink_l_step = 0.04
+entity_text_l_min = 0.32       # entity-coloured text (place names): OKLCH L 0.32-0.36, chroma x 0.8
+entity_text_l_max = 0.36
+entity_text_c_scale = 0.8
+text_fallback = "#5F4025"     # umber
+never_text = ["#C99D4E"]      # ochre
+light_l = 0.95
+light_c = 0.02
+light_hue = 85
+water_ink_l = 0.34            # oklch(0.34 0.07 235) = #033D57: water labels, blue italic
+water_ink_c = 0.07
+water_ink_hue = 235
+halo_width_em = 0.07
+label_halo_width_em = 0.06
+halo_l_min = 0.90
+halo_l_max = 0.97
+halo_c_scale = 0.5
+halo_alpha = 0                 # printed ink: no glyph halo
+halo_alpha_max = 0             # printed ink: no glyph halo at any step
+halo_width_min_em = 0.06
+halo_width_max_em = 0.10
+halo_blur_ratio = 0.25        # blur sd = 0.25 x halo width
+halo_blur_max_ratio = 0.5
+counter_min_px = 6            # enclosed loops (a, e, o, B, 0 ...) of >= 6 px after a 1 px erosion
+counter_diff_max = 16
+counter_open_min = 0.9
+glow_px = 4
+glow_alpha = 0.25             # light text on imagery: glow in the entity colour only
+glow_colour = "entity"
+ladder_order = "ink_first"    # escalation: darker ink to ink_l_min, then the paper knock-back vignette
+polarity_fallback = false     # paper keeps dark ink, imagery keeps light text
+lc_heading = 60
+lc_note = 75
+shadow_dy_px = 2
+shadow_blur_px = 4
+shadow_alpha = 0.35
+shadow_colour = "#2a1c12"
+vignette_scale = 1.4
+vignette_feather = 0.6         # knock-back vignette (paper colour) behind ink that misses its target
+vignette_alpha_min = 0.10
+vignette_alpha_max = 0.22
+vignette_steps = 3
+hold_frames = 8
+crossfade_ms = 150
+ema_tau_ms = 250
+basemap_chroma = 0.88         # imagery maps; paper maps take [print] grade_saturate
+entity_fill_alpha = 0.20       # region fill (multiplied into paper maps; brand .20-.35, analysis .20-.24)
+entity_outline_px = 2.25
+pin_outline_px = 2.5
+paper_colour = "#f1e8d4"
+route_casing_px = 1.75
+route_casing_colour = "#2a1c12"
+region_casing_px = 0          # no casing: a solid edge at region_edge_alpha only
+leader_casing_px = 0
+lc_line = 30                  # pins, routes, region outlines, leaders
+lc_line_fail = 25
+line_ring_px = 3
+line_percentile = 10
+line_mask_diff = 24
+
+[print]                       # printed typography and map grade (video_engine/printstyle.py; keys: docs/SPEC.md, section F2)
+paper_min_y = 0.30            # map p50 APCA Y >= this: paper surface (dark ink, multiply); else dark imagery (light text)
+max_typefaces = 2             # T01, caption and watermark excluded
+watermark_clear_px = 32       # B01
+ink = "#2A231D"
+vignette_alpha = 0.10
+grade_saturate = 0.88
+grade_contrast = 0.8
+paper_texture = "paper-F1E8D4.jpg"
+paper_alpha = 0.35
+grain = "grain-512.png"
+grain_alpha = 1.0
+region_multiply = true
+region_edge_l = 0.35
+region_edge_l_dark = 0.75
+region_edge_alpha = 0.85
+title_px = 88
+title_px_min = 64
+title_width_max = 0.55
+title_rot_max = 8
+title_tracking = 0.12
+title_tracking_in = 0.30
+title_weight = 600
+title_in_s = 0.35
+dark_tracking = 0.04
+emboss_colour = "#FAF5E8"
+emboss_alpha = 0.40
+emboss_dy = 2
+year_cx = 540
+year_cy = 560
+year_width = 0.38
+year_px_min = 220
+year_px_max = 250
+year_weight = 450
+year_dark_weight = 700
+year_dark_colour = "#F7F2E6"
+time_px = 36
+time_tracking = 0.14
+time_alpha = 0.75
+time_gap = 24
+heading_px = 42
+heading_tracking = 0.14
+heading_weight = 600
+heading_baseline_y = 384
+heading_ink = "#5B3A23"
+heading_light = "#F3EAD8"
+heading_shadow_alpha = 0.40
+rule_px = 1.5
+rule_len = 120
+rule_gap = 16
+diamond_px = 7
+heading_fade_s = 0.3
+rule_draw_s = 0.4
+label_px = 54
+label_weight = 600
+label_dark_px = 48
+leader_len = 48
+leader_gap = 12
+note_px = 56
+note_ink = "#2E4E7A"
+note_light = "#FFFFFF"
+note_write_s = 0.5
+
+[watermark]
+text = "Geoverum"             # channel mark, top right inside the safe area (burned in by the final mux)
+font = "inter"
+px = 40
+colour = "#ffffff"
+opacity = 0.85
+shadow = true
+
+[sound]                       # SFX cues from render events + music ducked under the voiceover
+duck_db = -12.0               # music under speech (word timestamps of the voiceover)
+duck_attack_s = 0.15
+duck_release_s = 0.4
+duck_merge_s = 0.5            # word gaps up to 0.5 s stay ducked
+fade_in_s = 0.3
+fade_out_s = 1.0
+
+[sound.events]                # render event -> SFX kind (clicks and beeps allowed for this channel)
+pin = "pop"
+figure = "pop"
+label = "tick"
+region = "tick"
+route = "whoosh"
+whip = "whoosh"
+counter_tick = "counter_tick"
+title = "impact"
+
+[sound.kinds.pop]
+gain_db = -14.0
+max_s = 0.6
+
+[sound.kinds.tick]
+gain_db = -16.0
+max_s = 0.4
+
+[sound.kinds.whoosh]
+gain_db = -12.0
+align = "peak"                # whoosh peak on the middle of the move
+max_s = 1.5
+
+[sound.kinds.counter_tick]
+gain_db = -20.0
+max_s = 0.08
+
+[sound.kinds.impact]
+gain_db = -10.0
+max_s = 2.0
+
+# beats layout of map scenes (video_engine/layout.py, gates L01-L10); positions, sizes, zones and timing only.
+# Lengths are px at 1080 x 1920.
+[layout.grid]
+x0 = 64                       # 6 columns of 104 px with 40 px gutters: left edges 64, 208, 352, 496, 640, 784
+columns = 6
+col_w = 104
+gutter = 40
+unit = 8
+
+[layout.zones]
+safe = [48, 288, 888, 1248]   # text safe area x0, y0, x1, y1
+z1 = [64, 304, 888, 440]      # top slot: title or data card, left-aligned
+z2 = [64, 488, 888, 1100]     # map focus: active region, pins, map labels, routes
+z2_pad = 48
+group_gap = 48            # between groups (area label to pins, routes, other text)
+
+[layout.sizes]
+title = 112
+year = 128
+time = 56
+pin_label = 52
+pin_label_min = 44
+area_label = 44
+area_tracking = 0.08
+hero_ratio = 1.5
+
+[layout.budget]
+texts = 4
+labelled_pins = 2
+routes = 1
+animating = 2
+
+[layout.timing]
+enter_s = 0.35                 # fly-through scale time ([layout.fly])
+exit_s = 0.3                   # fly-through exit time
+exit_max_s = 0.3
+stagger_s = 0.2
+settle_s = 0.8
+min_hold_s = 1.0
+chars_per_s = 20
+
+[layout.labels]
+offset = 16
+edge_clear = 24
+text_clear = 16
+route_clear = 24
+area_inset = 24
+leader_max = 120
+route_pin_gap = 24
+card_gap = 32
+dim_alpha = 0.10
+caption_ground = 0.10
+
+[layout.fly]                   # texts scale in through the frame and out past it
+title_in = 2.6
+figure_in = 2.2
+label_in = 3.0
+out = 2.6
+title_opacity_in_s = 0.15
+figure_opacity_in_s = 0.40
+ease_in = "expo.out"
+ease_out = "power2.in"         # cubic ease-in

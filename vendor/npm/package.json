@@ -1,0 +1,10 @@
+{
+  "name": "video-engine-vendor",
+  "private": true,
+  "description": "Pinned HyperFrames toolchain for video-engine. Install with `engine doctor --install` (npm ci).",
+  "dependencies": {
+    "hyperframes": "0.8.214",
+    "puppeteer-core": "25.16.0",
+    "three": "0.186.1"
+  }
+}

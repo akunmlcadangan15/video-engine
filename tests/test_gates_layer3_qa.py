@@ -1,0 +1,114 @@
+"""Layer 3 R38 snapshot gate and post-render pixel QA: GOOD and BAD cases on synthetic frames."""
+import subprocess
+
+import numpy as np
+
+import hypoverum_core_rs as core
+from video_engine import qa
+from video_engine.gates import layer3
+
+W, H = 270, 480
+
+
+def stats(arr):
+    return core.frame_stats([arr.astype(np.uint8).tobytes()], W, H)[0]
+
+
+def noise(seed=0):
+    return np.random.default_rng(seed).integers(0, 256, (H, W, 3))
+
+
+def test_R38_good_detailed_frame():
+    assert not layer3.r38_check(stats(noise()), 0, "t")
+
+
+def test_R38_bad_black_frame():
+    fs = layer3.r38_check(stats(np.zeros((H, W, 3))), 0, "t")
+    assert "black frame" in fs[0].message
+
+
+def test_R38_bad_empty_top_third():
+    a = noise()
+    a[: H // 3] = 128
+    fs = layer3.r38_check(stats(a), 0, "t")
+    assert len(fs) == 1 and "top third empty" in fs[0].message
+
+
+def test_R38_good_dark_but_detailed():
+    a = noise() // 4 + 10       # dark night scene with texture
+    assert not layer3.r38_check(stats(a), 0, "t")
+
+
+def test_R38_snapshots_on_project(project):
+    p, tl = project()
+    fs, _ = layer3.r38_snapshots(tl, p, {})
+    assert not [f for f in fs if f.level == "fail"]
+
+
+def _video(path, src):
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", src, "-frames:v", "60", "-c:v", "libx264",
+                    "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(path)], check=True)
+
+
+def test_QA_good_moving_video(project, tmp_path):
+    _, tl = project(lambda d: d.update(segments=d["segments"][:1]))
+    tl.segments[0].end_frame = 60
+    v = tmp_path / "moving.mp4"
+    _video(v, "testsrc2=size=1080x1920:rate=30")
+    fs, info = qa.pixel_gates(v, tl)
+    assert not [f for f in fs if f.level == "fail"], fs
+
+
+def test_QA_bad_frozen_video(project, tmp_path):
+    _, tl = project(lambda d: d.update(segments=d["segments"][:1]))
+    tl.segments[0].end_frame = 60
+    v = tmp_path / "frozen.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1080x1920:rate=30", "-vf",
+                    "trim=end_frame=1,tpad=stop_mode=clone:stop=-1", "-frames:v", "60", "-c:v", "libx264",
+                    "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(v)], check=True)
+    fs, info = qa.pixel_gates(v, tl)
+    assert any(f.gate == "R56px" for f in fs)
+
+
+def test_QA_bad_black_video(project, tmp_path):
+    _, tl = project(lambda d: d.update(segments=d["segments"][:1]))
+    tl.segments[0].end_frame = 60
+    v = tmp_path / "black.mp4"
+    _video(v, "color=c=black:size=1080x1920:rate=30")
+    fs, _ = qa.pixel_gates(v, tl)
+    assert any("black frame" in f.message for f in fs)
+
+
+# Audit 2026-10-25 item 9: the kit's empty_runs tracked only the blankest third, so two empty thirds that took turns
+# being the blankest were missed. R38 judges every third of every sample on its own.
+def _alternating(k):
+    """Top and middle thirds both empty (luma std < 6); which of them is the blankest alternates with k."""
+    a = noise(k)
+    flat, faint = slice(0, H // 3), slice(H // 3, 2 * H // 3)
+    if k % 2:
+        flat, faint = faint, flat
+    a[flat] = 128
+    a[faint] = (124 + np.arange(W) * 8 // W)[None, :, None]      # faint smooth gradient: std ~2, no edges
+    return a
+
+
+def test_R38_bad_two_empty_thirds_alternating_blankest_both_flagged_every_sample():
+    for k in range(4):
+        fs = layer3.r38_check(stats(_alternating(k)), 0, f"frame {k}")
+        assert sorted(f.message.split(": ")[1].split(" third")[0] for f in fs) == ["middle", "top"], fs
+
+
+def test_R38_bad_alternating_empty_thirds_fail_post_render_qa(project, monkeypatch):
+    _, tl = project(lambda d: d.update(segments=d["segments"][:1]))
+    frames = [_alternating(k).astype(np.uint8).tobytes() for k in range(6)]
+    monkeypatch.setattr(qa, "sample_frames", lambda v, w, h, step=5: (frames, W, H))
+    fs, _ = qa.pixel_gates(None, tl)
+    r38 = [f.message for f in fs if f.gate == "R38"]
+    assert any("top third empty" in m for m in r38) and any("middle third empty" in m for m in r38)
+
+
+def test_R38_good_alternating_faint_texture_with_detail_passes():
+    for k in range(4):
+        a = noise(k)
+        a[: H // 3] = a[: H // 3] // 2 + 64     # lower contrast, still detailed
+        assert not layer3.r38_check(stats(a), 0, "t")

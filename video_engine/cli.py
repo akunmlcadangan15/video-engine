@@ -1,0 +1,456 @@
+"""`engine` command line. PROJECT is a project directory holding master_timeline.json, credits.txt and assets/.
+Exit codes: 0 ok, 1 gate failure or engine error, 2 usage error, 3 waiting for an agent response (agent provider:
+a request bundle was written; answer it and rerun with --resume)."""
+from __future__ import annotations
+
+import argparse
+import json
+import shlex
+import shutil
+import sys
+from pathlib import Path
+
+from . import config
+from .util import EngineError
+
+
+def _load(project: str):
+    from . import timeline
+    p = Path(project).resolve()
+    return p, timeline.load(p)
+
+
+EXIT_AWAITING = 3
+AI_REQUEST_DIR = "ai_request"
+
+
+def _provider(a, root: Path):
+    """Provider from --provider / env / AI config; agent bundles go under `root`."""
+    from . import ai
+    argv = [x for x in a.argv if x != "--resume"]
+    return ai.get(a.provider, root=root, resume=a.resume, resume_cmd=shlex.join(["engine", *argv, "--resume"]))
+
+
+def _ai_qa(a, p: Path):
+    if not a.ai_qa:
+        return None
+    prov = _provider(a, p / AI_REQUEST_DIR)
+    if hasattr(prov, "reset"):
+        prov.reset("aiqa")
+    return prov
+
+
+def cmd_validate(a) -> int:
+    from pydantic import ValidationError
+    try:
+        p, tl = _load(a.project)
+    except ValidationError as e:
+        print(f"invalid master_timeline.json:\n{e}")
+        return 1
+    print(f"valid: {tl.project_id} {len(tl.segments)} segments, {tl.total_frames} frames "
+          f"({tl.total_frames / tl.settings.fps:.2f} s at {tl.settings.fps} fps)")
+    return 0
+
+
+def cmd_preflight(a) -> int:
+    from . import audio, gates, timeline
+    p, tl = _load(a.project)
+    words = None
+    if tl.captions:
+        words = tl.captions
+    elif a.captions:
+        words, _ = audio.captions_for(tl, p)
+    rep = gates.run_preflight(tl, p, words, dom=not a.no_dom, ai_qa=_ai_qa(a, p))
+    print(rep.summary())
+    if a.write_fixes and (rep.fixes):
+        if rep.caption_y_overrides:
+            tl.caption_style["y_overrides"] = [list(o) for o in rep.caption_y_overrides]
+        timeline.save(tl, p)
+        print(f"wrote {len(rep.fixes)} fixes to {p / 'master_timeline.json'}")
+    return 0 if rep.ok else 1
+
+
+def cmd_build(a) -> int:
+    from . import build
+    p = Path(a.project).resolve()
+    if a.no_cache:
+        from . import cache
+        c = cache.clear()
+        if c["skipped_leased"]:
+            print(f"cache: kept {len(c['skipped_leased'])} files leased by a running build")
+    argv = [x for x in a.argv if x != "--resume"]
+    r = build.build(p, use_cache=True, run_label=a.label, ai_qa=_ai_qa(a, p), keep_workdir=a.keep_workdir,
+                    resume=a.resume, resume_cmd=shlex.join(["engine", *argv, "--resume"]), raise_on_fail=False,
+                    relock=a.relock)
+    for row in r.timer.rows:
+        print("\t".join(str(x) for x in row))
+    if a.timing_tsv:
+        r.timer.write_tsv(Path(a.timing_tsv))
+    print(r.preflight)
+    print("\n".join(r.qa))
+    if not r.ok:
+        print(f"error: build failed, nothing published ({len(r.failed)} gate fail(s)); report: {r.report}", file=sys.stderr)
+        return 1
+    print(f"final: {r.final} frames={r.frames}/{r.expected_frames} I={r.loudness.get('I')} TP={r.loudness.get('TP')}")
+    _print_cache(r.cache)
+    return 0
+
+
+def _print_cache(c: dict) -> None:
+    """One line when this build's cache evictions deleted or skipped anything (skipped = leased by a running build)."""
+    if c.get("evicted") or c.get("skipped_leased") or c.get("reclaimed_leases"):
+        print(f"cache: evicted {len(c['evicted'])}, skipped {len(c['skipped_leased'])} leased"
+              + "".join(f"\n  skipped (leased): {x}" for x in c["skipped_leased"])
+              + (f"\n  reclaimed stale leases: {', '.join(c['reclaimed_leases'])}" if c["reclaimed_leases"] else ""))
+
+
+def cmd_preview(a) -> int:
+    from . import hyperframes, native
+    p, tl = _load(a.project)
+    if not 0 <= a.seg < len(tl.segments):
+        raise EngineError(f"--seg must be 0..{len(tl.segments) - 1}")
+    s = tl.segments[a.seg]
+    out = Path(a.out or config.SHM_ROOT / "preview" / f"{tl.project_id}_seg{a.seg:03d}_{a.time:.2f}.png")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fi = round(a.time * tl.settings.fps)
+    if s.engine_type == "NATIVE_RUST_FFMPEG":
+        native.preview_frame(native.plan(s, tl, p), tl, fi, out)
+    else:
+        wd = config.workdir(f"preview_{tl.project_id}")
+        try:
+            d, _ = hyperframes.build_dir(s, tl, p, wd / "hf")
+            res = hyperframes.probe_dom(d, [min(a.time, (s.n_frames - 1) / tl.settings.fps)], tl.settings.width,
+                                        tl.settings.height, wd / "snaps")
+            shutil.move(res["times"][0]["png"], out)
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+    print(out)
+    return 0
+
+
+def cmd_audio(a) -> int:
+    from . import audio
+    p, tl = _load(a.project)
+    words, src = audio.captions_for(tl, p, use_cache=not a.no_cache)
+    print(f"{len(words)} caption words from {src}")
+    for w in words:
+        print(f"{w.start_frame:6d} {w.end_frame:6d} {w.word.strip()}")
+    return 0
+
+
+def cmd_words(a) -> int:
+    from . import audio
+    p, tl = _load(a.project)
+    old = [(w.word, w.start_frame, w.end_frame) for w in tl.captions]
+    fresh, meta = audio.pin_captions(p, use_cache=not a.retranscribe)
+    new = [(w.word, w.start_frame, w.end_frame) for w in fresh.captions]
+    changed = sum(1 for x, y in zip(old, new) if x != y) + abs(len(old) - len(new))
+    print(f"pinned {len(new)} words into {p / 'master_timeline.json'} "
+          f"({'whisper cache' if meta.words_cache_hit else 'fresh transcription'}; {changed} differ from the previous pin; "
+          f"{meta.clipped_words} cut at frame {meta.total_frames})")
+    if a.print:
+        for w in fresh.captions:
+            print(f"{w.start_frame:6d} {w.end_frame:6d} {w.word}")
+    return 0
+
+
+def cmd_deliver(a) -> int:
+    from . import deliver
+    p, tl = _load(a.project)
+    if not a.dry_run:
+        raise EngineError("upload is not available in this milestone; use --dry-run")
+    final = Path(a.final) if a.final else p / "out" / "final.mp4"
+    deliver.check_build(final)
+    print(deliver.plan(tl, p, final).to_json())
+    return 0
+
+
+def cmd_director(a) -> int:
+    from .ai import tasks
+    src = Path(a.src)
+    prov = _provider(a, Path(a.bundle_root) if a.bundle_root else config.SHM_ROOT / AI_REQUEST_DIR)
+    if hasattr(prov, "reset"):
+        prov.reset(tasks.director_request_id(src, a.start))
+    wd = config.workdir("director")
+    try:
+        r = tasks.analyze_footage(src, wd, prov, a.start, a.seconds)
+    finally:
+        shutil.rmtree(wd, ignore_errors=True)
+    print(json.dumps({"provider": r.provider, "model": r.model, "tried": r.tried, "seconds": r.seconds,
+                      "usage": r.usage, "data": r.data}, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_pauses(a) -> int:
+    from . import pauses
+    p, tl = _load(a.project)
+    if not tl.audio_chain.voiceover_path:
+        raise EngineError("audio_chain.voiceover_path is empty")
+    r = pauses.analyze(p / tl.audio_chain.voiceover_path, tl.settings.fps, threshold_db=a.threshold_db,
+                       min_pause_s=a.min_pause, min_seg_s=a.min_seg, max_seg_s=a.max_seg)
+    if a.json:
+        print(json.dumps(r.to_dict(), indent=1))
+        return 0
+    fps = r.fps
+    print(f"{len(r.pauses)} pauses (threshold {r.threshold_db} dBFS), {r.total_frames} frames")
+    for x in r.pauses:
+        print(f"  pause {x.start_frame:6d}-{x.end_frame:6d}  {x.start_frame / fps:7.2f}-{x.end_frame / fps:7.2f} s  {x.mean_db} dB")
+    print(f"{len(r.segments)} suggested segments:")
+    for s, e in r.segments:
+        print(f"  {s:6d}-{e:6d}  {(e - s) / fps:5.2f} s")
+    return 0
+
+
+def cmd_draft(a) -> int:
+    from . import draft
+    p = Path(a.project).resolve()
+    out = Path(a.out) if a.out else (p / "master_timeline.json" if a.force else None)
+    if out is not None and out.name == "master_timeline.json" and out.exists() and not a.force:
+        raise EngineError(f"{out} exists; pass --force to overwrite it")
+    r = draft.draft(p, out=out, provider=_provider(a, p / AI_REQUEST_DIR), max_repairs=a.max_repairs,
+                    video_proxies=a.video_proxies, voiceover=a.voiceover, script=a.script, dom=not a.no_dom,
+                    profile=a.profile, director=not a.no_director, review=a.review, review_rounds=a.review_rounds)
+    rep = r.report
+    for w in rep.get("warnings", []):
+        print(f"warning: {w}", file=sys.stderr)
+    print(f"provider {rep['provider']} model {rep['model']} retries {rep['retries_total']} repairs {rep['repair_rounds']} "
+          f"fallback {rep['fallback']} uploads deleted+verified "
+          f"{sum(d['verified_gone'] for d in rep['file_deletions'])}/{len(rep['file_deletions'])}")
+    sb = rep.get("storyboard")
+    if sb:
+        print(f"storyboard: concept {sb['chosen']} ({sb['direction']}) -> {sb['path']}"
+              + (f"\nwarning: {sb['warning']}" if sb.get("warning") else ""))
+    for x in rep.get("review", []):
+        if not x.get("revision"):
+            print(f"review {x['round']} ({x['version']}): {x['verdict']}, {len(x['findings'])} finding(s)")
+            for f in x["findings"]:
+                print(f"  t={float(f['t_s']):.2f}s seg {f['seg']} [{f['severity']}] {f['issue']} -> {f['fix']}")
+        elif x["errors"]:
+            print(f"revision {x['round']} failed the gates; kept {x.get('kept')}")
+    if r.ok:
+        print(f"draft OK -> {r.timeline_path}")
+    else:
+        print("draft REJECTED after repairs:\n" + "\n".join(rep["rounds"][-1]["errors"]))
+    print(f"report -> {r.report_path}")
+    return 0 if r.ok else 1
+
+
+def cmd_taste(a) -> int:
+    from . import director
+    if bool(a.like) + bool(a.reject) > 1:
+        raise EngineError("pass one of --like / --reject")
+    if a.like or a.reject:
+        if not a.why:
+            raise EngineError("--why is required with --like / --reject")
+        d = director.record_feedback(a.channel, "liked" if a.like else "rejected", a.like or a.reject, a.why)
+    else:
+        d = director.load_taste(a.channel)
+    print(director.taste_text(d))
+    print(f"store -> {director.taste_dir() / (a.channel + '.json')}")
+    return 0
+
+
+def cmd_import_shots(a) -> int:
+    from . import importer
+    subs = dict(x.split("=", 1) for x in a.substitute)
+    settings = {k: v for k, v in {"project_number": a.project_number, "topic": a.topic, "date": a.date}.items() if v}
+    r = importer.import_shots(Path(a.csv), Path(a.dst), [Path(d) for d in a.search], credits_txt=Path(a.credits),
+                              voiceover=Path(a.voiceover), manifest=Path(a.manifest) if a.manifest else None,
+                              substitute=subs, exclude=set(a.exclude), watermark_checked=a.watermark_checked,
+                              settings=settings, force=a.force)
+    print(json.dumps(r, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_sheet(a) -> int:
+    from . import sheet, timeline
+    p = Path(a.project)
+    out = sheet.make(timeline.load(p), Path(a.video) if a.video else p / "out" / "final.mp4",
+                     Path(a.out) if a.out else p / "out" / "sheet.png", cols=a.cols)
+    print(out)
+    return 0
+
+
+def cmd_cache(a) -> int:
+    from . import cache_prune
+    projects = [Path(x) for x in a.project] or cache_prune.default_projects()
+    r = cache_prune.prune(projects, dry_run=a.dry_run)
+    print(json.dumps(r, indent=2))
+    return 1 if r["problems"] else 0
+
+
+def cmd_doctor(a) -> int:
+    from . import doctor
+    res = doctor.install() if a.install else doctor.check()
+    for c in res:
+        print(c.line())
+    ok = all(c.ok for c in res)
+    if not ok and not a.install:
+        print("run `engine doctor --install` to install the missing components into vendor/")
+    return 0 if ok else 1
+
+
+def cmd_clean(a) -> int:
+    shutil.rmtree(config.SHM_ROOT, ignore_errors=True)
+    removed = [str(config.SHM_ROOT)]
+    for pr in a.project:
+        d = Path(pr).resolve() / AI_REQUEST_DIR
+        if d.is_dir():
+            shutil.rmtree(d)
+            removed.append(str(d))
+    kept = []
+    if a.cache:
+        from . import cache
+        kept = cache.clear()["skipped_leased"]
+    print(f"removed {', '.join(removed)}" + (f" and the cache entries in {config.CACHE_DIR}" if a.cache else "")
+          + "".join(f"\nkept (leased by a running build): {x}" for x in kept))
+    return 0
+
+
+def parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(prog="engine", description="Hybrid video engine: master_timeline.json -> final mp4.")
+    sp = ap.add_subparsers(dest="cmd", required=True)
+
+    def add(name, fn, help_, aliases=()):
+        x = sp.add_parser(name, help=help_, description=help_, aliases=list(aliases))
+        x.set_defaults(fn=fn)
+        return x
+
+    def ai_args(x, what: str, resume_also: str = ""):
+        x.add_argument("--provider", help=f"AI provider for {what}: gemini, agent or a name from the AI config file "
+                                          "(default: env VIDEO_ENGINE_AI_PROVIDER, config `default`, gemini)")
+        x.add_argument("--resume", action="store_true", help="agent provider: read response.json of the pending "
+                                                             "request bundle(s) instead of starting over" + resume_also)
+    x = add("validate", cmd_validate, "Schema check of master_timeline.json.")
+    x.add_argument("project")
+    x = add("preflight", cmd_preflight, "Run all pre-flight gates (target < 5 s). Exit 1 on any fail.")
+    x.add_argument("project")
+    x.add_argument("--captions", action="store_true", help="transcribe (or read cached) narration for caption gates")
+    x.add_argument("--no-dom", action="store_true", help="skip the HyperFrames DOM probe (R63 element checks)")
+    x.add_argument("--ai-qa", action="store_true", help="send gate snapshots to the AI provider's QA models")
+    ai_args(x, "--ai-qa")
+    x.add_argument("--write-fixes", action="store_true", help="persist automatic fixes (R56 intensity, caption y) to the timeline")
+    x = add("build", cmd_build, "Captions, pre-flight, segment render, caption burn, mux, QA. Output <project>/out/final.mp4, "
+            "published only when every gate passes; a failed build writes out/build_report.failed.json and exits 1.",
+            aliases=["render"])
+    x.add_argument("project")
+    x.add_argument("--no-cache", action="store_true", help="delete the cache entries (words/, segments/, maps/) first (cold run); the build repopulates them")
+    x.add_argument("--label", default="build", help="run label in timing rows")
+    x.add_argument("--timing-tsv", help="append stage timings to this TSV")
+    x.add_argument("--ai-qa", action="store_true", help="send gate snapshots to the AI provider's QA models")
+    ai_args(x, "--ai-qa", "; also (without --ai-qa) import the answer of the pending sound request out/sound_request/")
+    x.add_argument("--keep-workdir", action="store_true", help="keep the scratch dir of this build (path in build_report.json)")
+    x.add_argument("--relock", action="store_true", help="resolve music/SFX again instead of the files locked in "
+                                                         "out/build_manifest.json")
+    x = add("preview", cmd_preview, "Render one frame of one segment to PNG without rendering the segment.")
+    x.add_argument("project")
+    x.add_argument("--seg", type=int, required=True)
+    x.add_argument("--time", type=float, required=True, help="seconds from segment start")
+    x.add_argument("--out")
+    x = add("audio", cmd_audio, "Print caption words (pinned timeline words, else cached or transcribed; writes nothing).")
+    x.add_argument("project")
+    x.add_argument("--no-cache", action="store_true")
+    x = add("words", cmd_words, "Transcribe (whisper cache unless --retranscribe) + caption_fixes and pin the words into "
+                                  "master_timeline.json `captions` + `captions_meta`.")
+    x.add_argument("project")
+    x.add_argument("--retranscribe", action="store_true", help="ignore the words cache and run faster-whisper again")
+    x.add_argument("--print", action="store_true")
+    x = add("deliver", cmd_deliver, "Print the delivery plan (names, parts <= 95 MB, Drive folders). --dry-run only.")
+    x.add_argument("project")
+    x.add_argument("--dry-run", action="store_true", required=True)
+    x.add_argument("--final")
+    x = add("director", cmd_director, "Footage analysis of a 360p proxy by the AI provider (planning models).")
+    x.add_argument("src")
+    ai_args(x, "the analysis")
+    x.add_argument("--bundle-root", help="agent provider: bundle root (default /dev/shm/video_engine/ai_request)")
+    x.add_argument("--start", type=float, default=0.0)
+    x.add_argument("--seconds", type=float, default=5.0)
+    x = add("pauses", cmd_pauses, "Narration pauses (Rust energy detector) and suggested segment boundaries in frames.")
+    x.add_argument("project")
+    x.add_argument("--threshold-db", type=float, help="silence level in dBFS (default: adaptive)")
+    x.add_argument("--min-pause", type=float, default=0.20, help="shortest pause in seconds")
+    x.add_argument("--min-seg", type=float, default=2.0)
+    x.add_argument("--max-seg", type=float, default=6.0)
+    x.add_argument("--json", action="store_true")
+    x = add("draft", cmd_draft, "The AI provider drafts a timeline from narration, script, credits.txt and assets/; validated, "
+                                  "pre-flight checked, repaired from gate errors. Writes master_timeline.draft.json + "
+                                  "draft_report.json.")
+    x.add_argument("project")
+    x.add_argument("--out", help="timeline output path (default <project>/master_timeline.draft.json)")
+    x.add_argument("--force", action="store_true", help="write <project>/master_timeline.json (overwrites)")
+    x.add_argument("--max-repairs", type=int, default=2, help="repair rounds fed with gate errors (0-2)", choices=[0, 1, 2])
+    x.add_argument("--video-proxies", type=int, help="videos sent as 360p proxies (rest: thumbnails; default 2, agent 0)")
+    x.add_argument("--profile", help="channel profile (profiles/<name>.toml); default: the existing timeline's, else default")
+    ai_args(x, "the draft")
+    x.add_argument("--voiceover", help="project-relative narration audio (default: audio_chain or narasi/vo file)")
+    x.add_argument("--script", help="script text file (default script.txt / narasi.txt)")
+    x.add_argument("--no-dom", action="store_true", help="skip the HyperFrames DOM probe in the draft pre-flight")
+    x.add_argument("--no-director", action="store_true", help="skip the storyboard stage (3 concepts, one chosen)")
+    x.add_argument("--review", action="store_true", help="after the draft passes: sample frames, AI review with "
+                                                         "timestamped findings, revise (versions in <project>/draft/)")
+    x.add_argument("--review-rounds", type=int, default=1, choices=[1, 2], help="review/revision rounds (default 1)")
+    x = add("taste", cmd_taste, "Show or edit a channel taste store (liked/rejected with reasons, recent openers and "
+                                "transitions) read by the draft director.")
+    x.add_argument("channel")
+    x.add_argument("--like", help="what was liked")
+    x.add_argument("--reject", help="what was rejected")
+    x.add_argument("--why", help="the reason (required with --like / --reject)")
+    x = add("import-shots", cmd_import_shots, "Build a project (master_timeline.json, credits.txt, assets/) from a "
+                                                "shot-list CSV of an existing edit. Sources are only read.")
+    x.add_argument("csv")
+    x.add_argument("dst")
+    x.add_argument("--search", action="append", required=True, help="directory searched for shot files (repeatable)")
+    x.add_argument("--credits", required=True, help="credits.txt copied into the project")
+    x.add_argument("--voiceover", required=True)
+    x.add_argument("--manifest", help="manifest.csv with credits for substitute files")
+    x.add_argument("--substitute", action="append", default=[], metavar="OLD=NEW")
+    x.add_argument("--exclude", action="append", default=[], metavar="SHOT")
+    x.add_argument("--watermark-checked", action="store_true", help="declare every imported asset watermark-free")
+    x.add_argument("--project-number")
+    x.add_argument("--topic")
+    x.add_argument("--date")
+    x.add_argument("--force", action="store_true")
+    x = add("sheet", cmd_sheet, "Contact sheet of out/final.mp4: one labelled tile per segment (middle frame).")
+    x.add_argument("project")
+    x.add_argument("--video")
+    x.add_argument("--out", help="default <project>/out/sheet.png")
+    x.add_argument("--cols", type=int, default=7)
+    x = add("cache", cmd_cache, "Cache maintenance. --prune deletes words/segments/maps entries not referenced by "
+                                  "the current keys of the projects (default: every examples/*/ project) and broken "
+                                  "entries of the sound cache (sound/). Files leased by a running build are kept and "
+                                  "listed under skipped_leased; leases of dead processes are reclaimed.")
+    x.add_argument("--prune", action="store_true", required=True)
+    x.add_argument("--project", action="append", default=[], help="project dir whose keys are kept (repeatable)")
+    x.add_argument("--dry-run", action="store_true", help="list what would be deleted")
+    x = add("doctor", cmd_doctor, "Check the pinned HyperFrames toolchain in vendor/ (node, hyperframes, puppeteer-core, "
+                                    "chrome-headless-shell; pins in vendor/VERSIONS.json).")
+    x.add_argument("--install", action="store_true", help="download and install missing or mismatched components")
+    x = add("clean", cmd_clean, "Remove the scratch root, the agent request bundles <project>/ai_request/ of the given "
+                                  "projects, and with --cache the cache entries words/, segments/, maps/.")
+    x.add_argument("project", nargs="*")
+    x.add_argument("--cache", action="store_true")
+    return ap
+
+
+def main(argv: list[str] | None = None) -> int:
+    from pydantic import ValidationError
+
+    from .ai import AwaitingAgent
+    argv = sys.argv[1:] if argv is None else list(argv)
+    a = parser().parse_args(argv)
+    a.argv = argv
+    from . import cache
+    try:
+        with cache.session():     # cache files this command resolves stay leased until it returns or raises
+            return a.fn(a)
+    except AwaitingAgent as e:
+        print(f"waiting for agent response: {e.bundle}\n  answer: {e.bundle / 'response.json'} "
+              f"(schema: {e.bundle / 'schema.json'})\n  resume: {e.resume}")
+        return EXIT_AWAITING
+    except (EngineError, ValidationError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,16 @@
+# AI provider registry for engine draft / director / --ai-qa.
+# Selection: --provider NAME > env VIDEO_ENGINE_AI_PROVIDER > `default` below > gemini.
+# Built-in names: gemini, agent. Every [providers.NAME] table is an OpenAI-compatible endpoint.
+default = "gemini"
+
+[agent]
+model_label = "grok-bot"   # recorded as `model` in reports for answers written through the agent handoff
+
+# [providers.example]
+# base_url = "https://api.example.com/v1"          # POST {base_url}/chat/completions
+# models = ["example-large", "example-medium"]      # primary first, then fallbacks (draft, director)
+# qa_models = ["example-small"]                     # optional, --ai-qa; default = models
+# api_key_env = "EXAMPLE_API_KEY"                   # name of the env var holding the key; the key is never stored here
+# capabilities = ["image"]                          # image | audio | video input; missing ones are degraded
+# json_mode = "json_schema"                         # json_schema | json_object
+# timeout_s = 300

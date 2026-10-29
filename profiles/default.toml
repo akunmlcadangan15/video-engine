@@ -1,0 +1,62 @@
+# Engine default profile. Every timeline without a `profile` field uses these values; a channel profile
+# (profiles/<name>.toml) overrides single keys on top of this file. Precedence: default < channel profile < project.
+description = "Engine defaults"
+
+[caption_style]
+# Python-side caption keys. Rust Style fields not listed use the compiler defaults
+# (rust/hypoverum_core_rs/src/ass.rs, Style::default).
+auto_place = true    # pre-flight moves captions that violate the clearance (R63 fix)
+clearance = 160      # px at 1920 height between a caption box and an element box; 0 = must not intersect
+
+[audio]
+target_lufs = -14.0  # loudnorm target and A01 target
+true_peak = -1.5     # dBTP; global safety limit, a profile may only lower it
+lra = 11.0           # loudnorm LRA parameter
+tolerance_lu = 0.2   # A01 tolerance; global safety limit, a profile may only lower it
+
+[draft]
+min_seg_s = 1.5      # segment length range given to the drafting model and the pause segmenter
+max_seg_s = 7.0
+rules = []           # extra numbered rules appended to the draft prompt
+
+[theme]
+# Renderer values: HyperFrames scene `theme` (in the HyperFrames segment cache key).
+camera_drift_per_s = 0.012   # camera_path: zoom growth per second after the last key and while waiting for a whip
+whip_s = 0.5                 # camera_path move "whip": fast in-out move of this length ending on its key
+whip_blur_px = 14            # whip: peak directional motion blur (px) at mid-move
+region_fill_opacity = 0.35   # region highlight fill opacity
+region_edge = "white"        # region edge when the region sets none: "white" line or same-colour "glow"
+region_edge_px = 5           # region edge width on screen (px)
+region_glow_px = 18          # glow radius of a "glow" edge (px)
+region_glow_alpha = 1.0      # glow strength of a "glow" edge (1 = full entity colour)
+route_colour = "#ffffff"     # route line and arrowhead colour
+route_width_px = 7           # route line width on screen (px)
+route_dash_px = 22           # route dash length on screen (px)
+route_gap_px = 16            # route gap length on screen (px)
+route_arrow_px = 36          # route arrowhead length on screen (px)
+route_draw_s = 1.5           # route draw duration when the route sets none (s)
+title_font = "inter"         # big title and number font: "inter" or "title" (Archivo Black); years use Playfair Display
+title_px = 96                # big title size (px)
+title_glow_px = 28           # big title glow radius in the entity colour (px)
+title_tint = 0.0             # big title colour = entity colour mixed this far toward white (0-0.6)
+text_outline_px = 0          # outline of teardrop labels and titles (px); 0 = no outline and the plain dark shadow
+text_outline_colour = "#1a1410"
+text_outline_alpha = 0.7
+text_shadow_dy_px = 2        # drop shadow under outlined text: offset down, blur, alpha
+text_shadow_blur_px = 8
+text_shadow_alpha = 0.55
+figure_px = 150              # year / number size (px)
+counter_s = 1.5              # counter duration when the figure sets none (s)
+number_group = "."           # thousands separator
+number_decimal = ","         # decimal separator
+pin_style = "dot"            # "dot" (dot, pulse ring, boxed label above) or "teardrop" (drops in, label beside)
+pin_colour = "#ffd84a"       # pin colour (dot, ring, teardrop)
+label_font = "inter"         # teardrop label font: "inter" or "script" (Kaushan Script)
+pin_label_px = 52            # teardrop label size (px)
+# Entity colours: one colour per entity for the whole video (regions; titles use the colour of their entity).
+# Entities missing from [theme.entities] take the next unused palette colour in order of first appearance.
+palette = ["#ff4d4d", "#3d9bff", "#ffc533", "#3ddc84", "#b87cff", "#ff8a3d", "#2fd6d6", "#ff5fb0"]
+
+[theme.entities]
+
+# [gates.*] channel style gates are off in the default profile (see README, Profiles).

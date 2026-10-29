@@ -1,0 +1,297 @@
+"""Content-addressed BLAKE3 cache on disk (survives /dev/shm cleanup). Keys are hashes of the full input config.
+
+Leases: inside `session()` (every CLI command and `build.build`) each cache file the process resolves or is about
+to write is leased before its existence is checked, under a shared lock of the cache root. Eviction (`prune`, LRU),
+`clear`, `engine cache --prune` and the sound cache prune hold the exclusive lock while they scan and delete, skip
+every leased file and report it. A lease lives in <root>/.leases/<pid>-<start>.json
+({"pid", "start", "paths": [paths relative to the root]}), start = field 22 of /proc/<pid>/stat (process start
+time in clock ticks); the session removes its file on exit (success, failure, exception, AwaitingAgent). A pruner
+reclaims (deletes) a lease file whose pid is gone or runs a different process (other start time).
+"""
+from __future__ import annotations
+
+import contextlib
+import fcntl
+import json
+import os
+import shutil
+import threading
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from . import config
+
+
+KINDS = ("words", "pauses", "segments", "maps", "models", "dom", "composite", "audio", "toolchain", "local_test_sfx")   # entry directories directly under the cache root
+LEASES = ".leases"                      # lease files: <root>/.leases/<pid>-<start>.json
+LOCK = ".lock"                          # flock: shared while leasing, exclusive while evicting
+
+
+# ---------------------------------------------------------------------------------------------------- leases
+
+def proc_start(pid: int) -> str | None:
+    """Start time of process pid (field 22 of /proc/<pid>/stat), None when no such process."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except (FileNotFoundError, ProcessLookupError, PermissionError):
+        return None
+    return stat[stat.rindex(")") + 2:].split()[19]
+
+
+def holder_alive(pid: int, start: str) -> bool:
+    """The process that wrote a lease (pid, start) still runs: same pid with the same start time (without /proc:
+    the pid exists)."""
+    if not Path("/proc/self/stat").exists():
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+    return proc_start(pid) == str(start)
+
+
+_held = threading.local()   # per thread: {root: depth} of the flocks it holds
+
+
+@contextlib.contextmanager
+def locked(root: Path, exclusive: bool):
+    """flock on <root>/.lock (re-entrant within a thread)."""
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    depth = getattr(_held, "d", None)
+    if depth is None:
+        depth = _held.d = {}
+    key = str(root.resolve())
+    if depth.get(key):
+        depth[key] += 1
+        try:
+            yield
+        finally:
+            depth[key] -= 1
+        return
+    with open(root / LOCK, "a+") as fd:
+        fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        depth[key] = 1
+        try:
+            yield
+        finally:
+            depth[key] = 0
+            fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+@dataclass
+class Session:
+    """This process's leases and the evictions it ran, for the build report."""
+    depth: int = 0
+    paths: dict[str, set[str]] = field(default_factory=dict)        # root -> leased paths relative to it
+    evicted: dict[str, None] = field(default_factory=dict)          # ordered sets of <root>/<rel> strings
+    skipped: dict[str, None] = field(default_factory=dict)
+    reclaimed: dict[str, None] = field(default_factory=dict)
+
+    def report(self) -> dict:
+        return {"leased": sum(len(v) for v in self.paths.values()), "evicted": list(self.evicted),
+                "skipped_leased": list(self.skipped), "reclaimed_leases": list(self.reclaimed)}
+
+
+_mu = threading.RLock()
+_session = Session()
+
+
+def _lease_file(root: Path) -> Path:
+    pid = os.getpid()
+    return root / LEASES / f"{pid}-{proc_start(pid)}.json"
+
+
+@contextlib.contextmanager
+def session():
+    """Lease scope of a build or command; the outermost exit releases every lease of this process."""
+    with _mu:
+        _session.depth += 1
+    try:
+        yield _session
+    finally:
+        with _mu:
+            _session.depth -= 1
+            if _session.depth == 0:
+                for r in list(_session.paths):
+                    _lease_file(Path(r)).unlink(missing_ok=True)
+                _session.paths.clear()
+                for d in (_session.evicted, _session.skipped, _session.reclaimed):
+                    d.clear()
+
+
+def acquire(path: Path, root: Path | None = None) -> Path:
+    """Lease `path` (a file under the cache root) for the session, before the caller checks or uses it. Outside a
+    session this does nothing."""
+    root = Path(root or config.CACHE_DIR)
+    with _mu:
+        if _session.depth == 0:
+            return path
+        try:
+            rel = str(Path(path).relative_to(root))
+        except ValueError:
+            return path
+        with locked(root, exclusive=False):
+            have = _session.paths.setdefault(str(root), set())
+            if rel not in have:
+                have.add(rel)
+                f = _lease_file(root)
+                f.parent.mkdir(parents=True, exist_ok=True)
+                pid = os.getpid()
+                tmp = tmp_name(f)
+                tmp.write_text(json.dumps({"pid": pid, "start": proc_start(pid), "paths": sorted(have)}))
+                os.replace(tmp, f)
+    return path
+
+
+def leased(root: Path) -> tuple[set[str], list[str]]:
+    """(paths leased by running processes, reclaimed lease files). Call under the exclusive lock: lease files of
+    dead holders (pid gone or reused) are deleted."""
+    d = Path(root) / LEASES
+    paths, reclaimed = set(), []
+    for f in sorted(d.glob("*.json")) if d.is_dir() else []:
+        try:
+            pid_s, start = f.stem.split("-", 1)
+            pid = int(pid_s)
+        except ValueError:
+            continue
+        if not holder_alive(pid, start):
+            f.unlink(missing_ok=True)
+            reclaimed.append(f.name)
+            continue
+        try:
+            paths |= set(json.loads(f.read_text())["paths"])
+        except (FileNotFoundError, json.JSONDecodeError, KeyError, TypeError):
+            continue
+    return paths, reclaimed
+
+
+def _note(root: Path, evicted=(), skipped=(), reclaimed=()) -> None:
+    with _mu:
+        if _session.depth:
+            for src, dst in ((evicted, _session.evicted), (skipped, _session.skipped), (reclaimed, _session.reclaimed)):
+                for x in src:
+                    dst[f"{root}/{x}"] = None
+
+
+def _is_entry(rel: Path) -> bool:
+    """A cache file eviction may consider: not lease bookkeeping, not a writer's temp file."""
+    return rel.parts[0] not in (LEASES, LOCK) and not rel.name.endswith(".tmp")
+
+
+# ---------------------------------------------------------------------------------------------------- store
+
+def clear(root: Path | None = None) -> dict:
+    """Delete the files of the entry directories (KINDS) under the cache root, except leased ones; other directories
+    under it are kept. Returns {"deleted", "skipped_leased", "reclaimed_leases"} (paths relative to the root)."""
+    root = Path(root or config.CACHE_DIR)
+    out = {"deleted": [], "skipped_leased": [], "reclaimed_leases": []}
+    if not root.is_dir():
+        return out
+    with locked(root, exclusive=True):
+        keep, out["reclaimed_leases"] = leased(root)
+        for k in KINDS:
+            d = root / k
+            if not d.is_dir():
+                continue
+            for f in sorted(p for p in d.rglob("*") if p.is_file()):
+                rel = str(f.relative_to(root))
+                if rel in keep:
+                    out["skipped_leased"].append(rel)
+                else:
+                    f.unlink(missing_ok=True)
+                    out["deleted"].append(rel)
+            if not any(d.rglob("*")):
+                shutil.rmtree(d, ignore_errors=True)
+    return out
+
+
+def tmp_name(dst: Path) -> Path:
+    """Writer-unique temp path next to dst (concurrent writers of the same key never share a temp file)."""
+    return dst.with_name(f"{dst.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+
+
+def _p(kind: str, key: str, ext: str) -> Path:
+    d = config.CACHE_DIR / kind
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{key}{ext}"
+
+
+def get_file(kind: str, key: str, ext: str = ".mp4") -> Path | None:
+    p = acquire(_p(kind, key, ext))
+    try:
+        if p.stat().st_size > 0:
+            os.utime(p)  # LRU touch
+            return p
+    except FileNotFoundError:
+        pass
+    return None
+
+
+def put_file(kind: str, key: str, src: Path, ext: str = ".mp4") -> Path:
+    dst = acquire(_p(kind, key, ext))
+    tmp = acquire(tmp_name(dst))
+    shutil.copyfile(src, tmp)
+    os.replace(tmp, dst)  # atomic: a crash never leaves a half file under a valid key
+    prune(protect=(dst,))
+    return dst
+
+
+def get_json(kind: str, key: str):
+    p = acquire(_p(kind, key, ".json"))
+    try:
+        return json.loads(p.read_text())
+    except FileNotFoundError:
+        return None
+
+
+def put_json(kind: str, key: str, obj) -> None:
+    p = acquire(_p(kind, key, ".json"))
+    tmp = acquire(tmp_name(p))
+    tmp.write_text(json.dumps(obj, ensure_ascii=False))
+    os.replace(tmp, p)
+
+
+@dataclass
+class Pruned:
+    bytes: int = 0
+    deleted: list[str] = field(default_factory=list)          # paths relative to the cache root
+    skipped_leased: list[str] = field(default_factory=list)
+    reclaimed_leases: list[str] = field(default_factory=list)
+
+
+def prune(max_bytes: int | None = None, protect=(), root: Path | None = None) -> Pruned:
+    """Drop least-recently-used files until the cache fits, skipping leased files and `protect` (the entry being
+    stored). Returns what was deleted, skipped and reclaimed."""
+    max_bytes = config.CACHE_MAX_BYTES if max_bytes is None else max_bytes
+    root = Path(root or config.CACHE_DIR)
+    res = Pruned()
+    if not root.is_dir():
+        return res
+    with locked(root, exclusive=True):
+        keep, res.reclaimed_leases = leased(root)
+        keep |= {str(Path(p).relative_to(root)) for p in protect}
+        files = []
+        for p in root.rglob("*"):
+            try:  # concurrent writers rename/remove temp files while we scan
+                rel = p.relative_to(root)
+                if _is_entry(rel) and p.is_file():
+                    st = p.stat()
+                    files.append((st.st_mtime, st.st_size, p, str(rel)))
+            except FileNotFoundError:
+                continue
+        total = sum(f[1] for f in files)
+        for _, s, p, rel in sorted(files, key=lambda f: f[0]):
+            if total <= max_bytes:
+                break
+            if rel in keep:
+                res.skipped_leased.append(rel)
+                continue
+            p.unlink(missing_ok=True)
+            total -= s
+            res.bytes += s
+            res.deleted.append(rel)
+    _note(root, res.deleted, res.skipped_leased, res.reclaimed_leases)
+    return res

@@ -1,0 +1,61 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:transparent}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"./three/build/three.module.js","three/addons/":"./three/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+// Model sprite renderer (video_engine/models.py): one owned glTF/GLB/OBJ model, fitted into a square canvas by its
+// bounding sphere (any rotation fits), lit by a fixed ambient + key light, rendered with alpha on SwiftShader.
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {OBJLoader} from 'three/addons/loaders/OBJLoader.js';
+import {MTLLoader} from 'three/addons/loaders/MTLLoader.js';
+// Every loader shares one manager; the render waits until it is idle so MTL textures (which load asynchronously after
+// the OBJ resolves) are always in the frame.
+const mgr = new THREE.LoadingManager();
+let busy = 0, wake = null;
+mgr.onStart = () => {}; mgr.itemStart = ((f) => (u) => { busy++; f(u); })(mgr.itemStart.bind(mgr));
+mgr.itemEnd = ((f) => (u) => { busy--; f(u); if (busy === 0 && wake) { const w = wake; wake = null; w(); } })(mgr.itemEnd.bind(mgr));
+const idle = () => busy === 0 ? Promise.resolve() : new Promise((res) => { wake = res; });
+const load = async (file) => {
+  const ext = file.split('.').pop().toLowerCase(), url = './model/' + file.split('/').map(encodeURIComponent).join('/');
+  let root;
+  if (ext === 'gltf' || ext === 'glb') root = (await new GLTFLoader(mgr).loadAsync(url)).scene;
+  else {
+    const mtl = url.replace(/\.obj$/i, '.mtl'), obj = new OBJLoader(mgr);
+    try { const m = await new MTLLoader(mgr).setPath(url.slice(0, url.lastIndexOf('/') + 1)).loadAsync(mtl.slice(mtl.lastIndexOf('/') + 1));
+          m.preload(); obj.setMaterials(m); } catch (e) { /* no .mtl: default material */ }
+    root = await obj.loadAsync(url);
+  }
+  await idle();
+  return root;
+};
+window.__render = async (P) => {
+  const S = P.size * P.ss;
+  const renderer = new THREE.WebGLRenderer({antialias: false, alpha: true, preserveDrawingBuffer: true, premultipliedAlpha: false});
+  renderer.setPixelRatio(1); renderer.setSize(S, S); renderer.setClearColor(0x000000, 0);
+  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
+  document.body.appendChild(renderer.domElement);
+  const scene = new THREE.Scene(), root = await load(P.file), pivot = new THREE.Group();
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root), c = box.getCenter(new THREE.Vector3());
+  if (box.isEmpty()) throw new Error('empty model');
+  root.position.sub(c); pivot.add(root); scene.add(pivot);
+  const r = box.getSize(new THREE.Vector3()).length() / 2 * P.margin;
+  const cam = P.fov > 0 ? new THREE.PerspectiveCamera(P.fov, 1, r * 0.01, r * 100) : new THREE.OrthographicCamera(-r, r, r, -r, r * 0.01, r * 100);
+  const dist = P.fov > 0 ? r / Math.sin(THREE.MathUtils.degToRad(P.fov / 2)) : r * 4;
+  const pitch = THREE.MathUtils.degToRad(P.pitch);
+  cam.position.set(0, Math.sin(pitch) * dist, Math.cos(pitch) * dist); cam.lookAt(0, 0, 0);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x50505a, P.ambient));
+  const key = new THREE.DirectionalLight(0xffffff, P.key);
+  key.position.set(dist, dist * 1.6, dist * 1.2); scene.add(key);
+  const out = [];
+  for (let k = 0; k < P.frames; k++) {
+    pivot.rotation.y = THREE.MathUtils.degToRad(P.yaw + P.turn * k / P.frames);
+    renderer.render(scene, cam);
+    out.push(renderer.domElement.toDataURL('image/png'));
+  }
+  return out;
+};
+window.__ready = true;
+</script></body></html>
