@@ -72,11 +72,11 @@ def test_bad_changed_hf_identity_misses(project, tmp_path, monkeypatch):
 
 def test_bad_evicted_screenshot_is_a_miss_and_reprobes(project, tmp_path):
     _, _, d = _built(project, tmp_path)
-    hyperframes.probe_dom(d, [1.0], 1080, 1920, tmp_path / "s1", ref="k")
-    shots = [f for f in (config.CACHE_DIR / "dom").iterdir() if f.name.startswith("k.") and f.suffix == ".png"]
+    hyperframes.probe_dom(d, [1.0], 1080, 1920, tmp_path / "s1", ref="evict")
+    shots = [f for f in (config.CACHE_DIR / "dom").iterdir() if f.name.startswith("evict.") and f.suffix == ".png"]
     assert shots
     shots[0].unlink()                      # LRU eviction of one member of the entry
-    again = hyperframes.probe_dom(d, [1.0], 1080, 1920, tmp_path / "s2", ref="k")
+    again = hyperframes.probe_dom(d, [1.0], 1080, 1920, tmp_path / "s2", ref="evict")
     assert again["cached"] is False and Path(again["times"][0]["png"]).is_file()
 
 
