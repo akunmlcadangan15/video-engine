@@ -73,3 +73,9 @@ purpose = "Roll back from the modern satellite map into a dated historical parch
 params = ["era_or_year", "historical_actors", "territorial_shift"]
 render_cost = 2
 needs = { min_assets = 1, kinds = ["map", "image"] }
+
+[patterns.footage_beat]
+purpose = "Let an archival clip or real-world footage carry the action while captions and a brief label anchor context."
+params = ["subject_or_action", "source_in_s"]
+render_cost = 1
+needs = { min_assets = 1, kinds = ["video"] }

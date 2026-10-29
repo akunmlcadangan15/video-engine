@@ -4,8 +4,6 @@ import pytest
 from video_engine import captions, profiles, timeline
 from video_engine.gates import layer2, run_preflight
 
-from conftest import DEMO
-
 CLEAR = profiles.load().caption_style["clearance"]   # default profile caption clearance (px at 1920)
 
 
@@ -97,13 +95,29 @@ def test_R63_good_invisible_elements_ignored():
     assert not layer2.check_rects([rect("pin:0", 900, 500, 300, 66, opacity=0.0)], 1080, 1920, 1.0, 1)
 
 
-# R63 caption vs elements: the 'habis tepat' / 'Pusat Kota' case from the first demo render ----------------------------
+# R63 caption vs elements: pin clearance and auto-placement on synthetic project ---------------------------------------
 PUSAT_KOTA = [rect("pin:1", 565, 1088, 271, 66, "Pusat Kota"), rect("pin:0", 380, 646, 403, 66, "Jembatan Merah"),
               rect("card:0", 259, 230, 563, 176, "Surabaya, 1945")]
 
 
-def demo_case(W):
-    tl = timeline.load(DEMO)
+def _pin_doc(d):
+    d["segments"] = [
+        {"seg_index": 0, "engine_type": "NATIVE_RUST_FFMPEG", "start_frame": 0, "end_frame": 120,
+         "source_image": "assets/still.jpg", "asset_id": "still",
+         "camera_move": {"preset": "ken_burns_zoom_in", "intensity": 1.2}},
+        {"seg_index": 1, "engine_type": "HYPERFRAMES_GSAP", "start_frame": 120, "end_frame": 255,
+         "gsap_scene_config": {
+             "template": "map_pins", "map_region": "Surabaya_1942",
+             "map_asset": "assets/map.jpg", "map_asset_id": "map",
+             "pins": [{"label": "Jembatan Merah", "x": 0.62, "y": 0.33},
+                      {"label": "Pusat Kota", "x": 0.678, "y": 0.525}],
+             "cards": [{"title": "Surabaya, 1945", "subtitle": "Batas ultimatum 06.00", "position": "top"}],
+             "camera_preset": "zoom_in", "camera_intensity": 1.0, "focus": [0.6, 0.36]}},
+    ]
+
+
+def pin_case(project, W):
+    _, tl = project(_pin_doc)
     tl.caption_style = {}
     ws = W(("habis", 150, 160), ("tepat", 160, 175))
     events = captions.compile_ass(ws, tl)[1]
@@ -111,15 +125,15 @@ def demo_case(W):
     return tl, ws, events, boxes
 
 
-def test_R63_bad_caption_too_close_to_pusat_kota_pin(W):
-    tl, _, events, boxes = demo_case(W)
+def test_R63_bad_caption_too_close_to_pusat_kota_pin(project, W):
+    tl, _, events, boxes = pin_case(project, W)
     assert events[0][6] == 1344          # default lower slot
     fs = layer2.r63_caption_clearance(tl, events, boxes)
     assert fs and "Pusat Kota" in fs[0].message and fs[0].seg == 1
 
 
-def test_R63_good_caption_auto_placed_away_from_pin(W):
-    tl, ws, events, boxes = demo_case(W)
+def test_R63_good_caption_auto_placed_away_from_pin(project, W):
+    tl, ws, events, boxes = pin_case(project, W)
     ovs, fs = layer2.place_captions(tl, events, boxes)
     assert ovs == [(120, 255, ovs[0][2])] and ovs[0][2] > 1344 and fs[0].level == "fix"
     moved = captions.compile_ass(ws, tl, ovs)[1]
@@ -129,8 +143,8 @@ def test_R63_good_caption_auto_placed_away_from_pin(W):
     assert box[1] - (1088 + 66) >= CLEAR and box[3] <= 1920 - layer2.SAFE_BOTTOM
 
 
-def test_R63_bad_no_free_position(W):
-    tl, _, events, _ = demo_case(W)
+def test_R63_bad_no_free_position(project, W):
+    tl, _, events, _ = pin_case(project, W)
     wall = [dict(rect(f"pin:{i}", 100, 120 + i * 200, 880, 60, "x"), clear=CLEAR) for i in range(9)]
     ovs, fs = layer2.place_captions(tl, events, {1: wall})
     assert not ovs and fs[0].level == "fail"
@@ -155,12 +169,12 @@ def test_R63_focus_box_projected(project):
     assert len(fr) == 2 and all(r["clear"] == 0 for r in fr) and all(r["y"] > 900 for r in fr)
 
 
-# end-to-end on the demo project: DOM probe in headless Chrome ------------------------------------------------------
+# end-to-end on synthetic project: DOM probe in headless Chrome -----------------------------------------------------
 @pytest.mark.parametrize("auto_place", [False, True], ids=["BAD-no-autoplace", "GOOD-autoplace"])
-def test_R63_dom_demo_end_to_end(W, auto_place):
-    tl = timeline.load(DEMO)
+def test_R63_dom_demo_end_to_end(project, W, auto_place):
+    p, tl = project(_pin_doc)
     tl.caption_style = {"auto_place": auto_place}
-    rep = run_preflight(tl, DEMO, W(("habis", 150, 160), ("tepat", 160, 175)), snapshots=False)
+    rep = run_preflight(tl, p, W(("habis", 150, 160), ("tepat", 160, 175)), snapshots=False)
     r63 = [f for f in rep.findings if f.gate == "R63"]
     if auto_place:
         assert rep.ok and any(f.level == "fix" and f.seg == 1 for f in r63)

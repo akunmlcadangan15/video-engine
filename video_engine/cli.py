@@ -416,7 +416,7 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--out", help="default <project>/out/sheet.png")
     x.add_argument("--cols", type=int, default=7)
     x = add("cache", cmd_cache, "Cache maintenance. --prune deletes words/segments/maps entries not referenced by "
-                                  "the current keys of the projects (default: every examples/*/ project) and broken "
+                                  "the current keys of the projects (default: every project passed via --project) and broken "
                                   "entries of the sound cache (sound/). Files leased by a running build are kept and "
                                   "listed under skipped_leased; leases of dead processes are reclaimed.")
     x.add_argument("--prune", action="store_true", required=True)

@@ -7,8 +7,6 @@ from pydantic import ValidationError
 from video_engine import audio, captions, config, hyperframes, native, profiles, timeline
 from video_engine.util import EngineError
 
-from conftest import DEMO
-
 DEFAULT_TOML = (config.PROFILES_DIR / "default.toml").read_text()
 
 
@@ -40,11 +38,13 @@ def test_good_timeline_without_profile_uses_default(project):
     assert profiles.loudness(tl) == profiles.Loudness(-14.0, -1.5, 11.0, 0.2)
 
 
-def test_good_old_timeline_round_trips_unchanged(tmp_path):
-    raw = json.loads((DEMO / "master_timeline.json").read_text())
-    tl = timeline.load(DEMO)
-    timeline.save(tl, tmp_path / "t.json")
-    assert json.loads((tmp_path / "t.json").read_text()) == raw and "profile" not in raw
+def test_good_old_timeline_round_trips_unchanged(project, tmp_path):
+    _, tl = project()
+    timeline.save(tl, tmp_path / "a.json")
+    raw = json.loads((tmp_path / "a.json").read_text())
+    tl2 = timeline.load(tmp_path / "a.json")
+    timeline.save(tl2, tmp_path / "b.json")
+    assert json.loads((tmp_path / "b.json").read_text()) == raw and "profile" not in raw
 
 
 def test_good_unset_loudness_is_not_written(project, tmp_path):

@@ -12,7 +12,7 @@ import pytest
 
 # All test scratch lives under one per-process root that the session removes at exit. The parent scratch dir is
 # removed only when this session created it and it is empty afterwards (a real build's scratch is never touched).
-SHM_PARENT = Path("/dev/shm/video_engine")
+SHM_PARENT = Path(os.environ.get("VIDEO_ENGINE_SHM_TEST", "/tmp/video_engine_test_shm"))
 TEST_ROOT = SHM_PARENT / f"pytest-{os.getpid()}"
 _PARENT_PREEXISTED = SHM_PARENT.exists()
 TEST_ROOT.mkdir(parents=True, exist_ok=True)
@@ -51,7 +51,6 @@ def pytest_configure(config):
 
 def pytest_unconfigure(config):
     cleanup_scratch(TEST_ROOT, SHM_PARENT, _PARENT_PREEXISTED)
-DEMO = Path(__file__).resolve().parent.parent / "examples" / "demo"
 
 
 def ff(*args):

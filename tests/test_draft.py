@@ -29,7 +29,7 @@ def storyboards(**over):
         return {"name": name, "direction": direction, "opener": f"{name} opener", "hero_moment": "Mallaby",
                 "beats": [{"from_word": 0, "to_word": 0, "goal": "where: Surabaya", "pattern": pattern,
                            "assets": ["still"], "on_screen_text": text, "transition": "continuous zoom"},
-                          {"from_word": 1, "to_word": 3, "goal": "what happened to Mallaby", "pattern": "emphasis_by_pause",
+                          {"from_word": 1, "to_word": 3, "goal": "what happened to Mallaby", "pattern": "footage_beat",
                            "assets": ["clip_1080x1920_30"], "transition": "whip"}],
                 "self_scores": {"narration_fit": fit, "clarity": clar}}
     cs = [concept("lurus", "grounded", 8, 9), concept("banding", "contrast", 7, 7, "comparison"),

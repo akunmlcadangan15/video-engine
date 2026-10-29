@@ -16,7 +16,7 @@ def test_good_8_worker_budget_renders_two_hf_segments_when_no_native_competes(mo
     _clean(monkeypatch)
     b = resources.plan(8, cpus=8, gb=15.6)
     assert (b.hf_segments, b.hf_workers, b.native_workers) == (2, 2, 2)
-    assert b.hf_parallel(0) == 2                        # an all-HyperFrames timeline (Caspian): 2 x 2 Chrome workers
+    assert b.hf_parallel(0) == 2                        # an all-HyperFrames timeline: 2 x 2 Chrome workers
 
 
 def test_bad_8_worker_budget_with_natives_keeps_one_hf_segment(monkeypatch):

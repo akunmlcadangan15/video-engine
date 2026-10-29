@@ -26,7 +26,7 @@ PATH_IDS = ["a/b", "../x", "/abs", "a\\b", "", "-x"]
 
 
 # ------------------------------------------------------------------------------------------------- project ids
-@pytest.mark.parametrize("pid", ["demo_surabaya", "geoverum-v3", "a.b", "_x", "7"])
+@pytest.mark.parametrize("pid", ["demo_surabaya", "geoverum-short", "a.b", "_x", "7"])
 def test_good_project_id_names_a_dir_inside_shm_root(shm, pid):
     d = config.workdir(pid)
     assert d.is_dir() and d.parent == shm.resolve() and d.name.startswith(f"{pid}-{os.getpid()}-")

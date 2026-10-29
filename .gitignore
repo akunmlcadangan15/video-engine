@@ -3,13 +3,10 @@ rust/hypoverum_core_rs/target/
 __pycache__/
 *.egg-info/
 *.so
-examples/*/out/*.mp4
 .pytest_cache/
 vendor/node/
 vendor/chrome/
 vendor/npm/node_modules/
 **/ai_request/
-examples/geoverum-demo/out/
-examples/geoverum-v3/out/
 **/out/sound_request/
-examples/geoverum-caspian/out/
+**/out/*.mp4

@@ -1,5 +1,5 @@
 """Geoverum profile values: the camera drift counts as motion in P01; the region palette leaves six free muted
-colours after the pinned entities; the Caspian entities take distinct colours near the reference blocking colours."""
+colours after the pinned entities; pinned Eurasian/maritime entities take distinct colours near their target reference hues."""
 import itertools
 import math
 
@@ -10,10 +10,9 @@ from video_engine.gates import layer2, style
 
 GEO = profiles.load("geoverum")
 SQ = [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]]
-CASPIAN = ["Caspian Sea", "Kazakhstan", "Russia", "Turkmenistan", "Iran", "Azerbaijan", "Paratethys", "Black Sea",
+PINNED_EURASIA = ["Caspian Sea", "Kazakhstan", "Russia", "Turkmenistan", "Iran", "Azerbaijan", "Paratethys", "Black Sea",
            "Mediterranean", "Atlantic"]
-# blocking colours sampled from the reference Short (examples/geoverum-caspian/reference_frames.json region_fills);
-# Paratethys (sample hit land, described "pale blue") and Atlantic (no fill) take the described hue
+# target blocking colours for pinned Eurasian and maritime entities in the Geoverum palette
 REFERENCE = {"Caspian Sea": "#2779b4", "Russia": "#bf1a0e", "Kazakhstan": "#984a16", "Turkmenistan": "#dea427",
              "Iran": "#5a9e1b", "Azerbaijan": "#958060", "Black Sea": "#0588ed", "Mediterranean": "#34afdb",
              "Paratethys": "#a4c2d8", "Atlantic": "#2c3e7a"}
@@ -107,13 +106,13 @@ def test_good_six_unpinned_entities_take_six_distinct_free_colours_E01_clean(pro
     assert not [f for f in layer2.e01_entity_colours(tl, {}) if f.level != "pass"]
 
 
-def test_good_caspian_entities_distinct_near_reference_E01_clean(project):
-    _, tl = project(_regions(CASPIAN))
+def test_good_pinned_entities_distinct_near_reference_E01_clean(project):
+    _, tl = project(_regions(PINNED_EURASIA))
     col = entities.colours(tl)
-    assert set(col) == set(CASPIAN) and len(set(col.values())) == len(CASPIAN)
+    assert set(col) == set(PINNED_EURASIA) and len(set(col.values())) == len(PINNED_EURASIA)
     assert not [f for f in layer2.e01_entity_colours(tl, {}) if f.level != "pass"]
     pal = [c.lower() for c in GEO.theme.palette]
-    for e in CASPIAN:
+    for e in PINNED_EURASIA:
         ref = REFERENCE[e]
         assert col[e] in pal
         assert _hue_diff(col[e], ref) <= 25, e
@@ -137,7 +136,7 @@ def test_bad_old_palette_six_unpinned_entities_share_colours_warn_E01(project, m
     assert any(f.level == "warn" and "share colour" in f.message for f in layer2.e01_entity_colours(tl, {}))
 
 
-def test_bad_caspian_entities_on_old_palette_share_colours_warn_E01(project, monkeypatch):
+def test_bad_pinned_entities_on_old_palette_share_colours_warn_E01(project, monkeypatch):
     _geo(monkeypatch, palette=OLD_PALETTE, entities=OLD_ENTITIES)
-    _, tl = project(_regions(CASPIAN))
+    _, tl = project(_regions(PINNED_EURASIA))
     assert any(f.level == "warn" and "share colour" in f.message for f in layer2.e01_entity_colours(tl, {}))

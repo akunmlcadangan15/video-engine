@@ -1,6 +1,6 @@
 """`engine cache --prune`: delete cache entries that no current project references.
 
-Referenced keys are recomputed from each project's master_timeline.json (default: every examples/*/ project):
+Referenced keys are recomputed from each project's master_timeline.json (default: every project under examples/ if present):
 words (voiceover transcription), segments (native and HyperFrames, and the graded file of a graded segment whose
 rendered file is cached), maps (downscaled map copies and deep tiles), models (model prop sprites), dom (DOM probe
 results and screenshots named <segment key>.<probe key>[.<file>]: kept while their HyperFrames segment key is
@@ -92,4 +92,5 @@ def prune(projects: list[Path], cache_dir: Path | None = None, dry_run: bool = F
 
 
 def default_projects() -> list[Path]:
-    return sorted(d for d in (config.ENGINE_ROOT / "examples").iterdir() if (d / "master_timeline.json").is_file())
+    ex = config.ENGINE_ROOT / "examples"
+    return sorted(d for d in ex.iterdir() if (d / "master_timeline.json").is_file()) if ex.is_dir() else []
