@@ -31,6 +31,17 @@ def _cased(p):
     return profiles.Profile(p.name, p.data.model_copy(update={"legibility": lg}), p.blake3 + "-cased")
 
 
+def _plain_labels(monkeypatch):
+    """Geoverum with label_style "plain": pin labels, title and figures take the adaptive ink instead of a box."""
+    real = profiles.of
+
+    def of(tl):
+        p = real(tl)
+        th = p.data.theme.model_copy(update={"label_style": "plain"})
+        return profiles.Profile(p.name, p.data.model_copy(update={"theme": th}), p.blake3 + "-plain")
+    monkeypatch.setattr(profiles, "of", of)
+
+
 def _halo_first(monkeypatch):
     """Geoverum timelines render with the halo-first chooser and without [print] (the halo and counter machinery)."""
     real = profiles.of
@@ -307,13 +318,13 @@ def test_bad_R64_ignores_a_declared_but_unpainted_stroke():
 # GOOD: end to end (Geoverum profile, real render) ---------------------------------------------------------------------
 def test_good_geoverum_scene_paints_adaptive_ink_and_passes_R64(project, tmp_path, monkeypatch):
     _halo_first(monkeypatch)
+    _plain_labels(monkeypatch)
     real = profiles.of
     monkeypatch.setattr(profiles, "of", lambda tl: _cased(real(tl)))
     p, tl = project(_geo(title="SEKUTU", title_entity="Sekutu", camera_preset="static",
                          regions=[{"entity": "Sekutu", "polygon": SQ}]))
     d, sc = hyperframes.build_dir(tl.segments[2], tl, p, tmp_path / "hf")
-    # geoverum boxes pin labels (label_style "box"): fixed white on the box, not adaptive
-    assert sc["legibility"]["v"] == L.code_hash() and "title" in sc["inks"] and "pin:0" not in sc["inks"]
+    assert sc["legibility"]["v"] == L.code_hash() and "title" in sc["inks"] and "pin:0" in sc["inks"]
     times = L.all_times(sc, sc["legibility"])
     res = hyperframes.probe_dom(d, times, 1080, 1920, tmp_path / "snaps", bg="bg")
     res["legibility"] = {"lg": sc["legibility"], "elements": L.elements(sc), "times": res["times"]}

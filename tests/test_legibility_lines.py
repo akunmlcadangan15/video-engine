@@ -10,7 +10,7 @@ from PIL import Image
 from video_engine import hyperframes, legibility as L, profiles, timeline
 from video_engine.gates import layer2
 from tests.test_layout import beats_doc
-from tests.test_legibility import GEO, LG, PAPER, DARK_MAP, _geo, _geo_tl, _halo_first, _r64_dom
+from tests.test_legibility import GEO, LG, PAPER, DARK_MAP, _geo, _geo_tl, _halo_first, _plain_labels, _r64_dom
 
 WATER = "#033d57"
 
@@ -285,6 +285,7 @@ def test_good_figure_counters_open_with_lining_digits(project, tmp_path, monkeyp
     """Playfair's default digits are old-style; the figure shows lining tabular digits. The halo mask draws the same
     glyphs (feature twin faces), so its counters match the DOM glyph mask and stay open."""
     _halo_first(monkeypatch)
+    _plain_labels(monkeypatch)
     p, tl = project(_geo(camera_preset="static", figures=[{"kind": "year", "value": 1945, "at_frame": 0,
                                                             "position": [0.5, 0.4]}]))
     d, sc = hyperframes.build_dir(tl.segments[2], tl, p, tmp_path / "hf")

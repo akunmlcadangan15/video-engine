@@ -9,6 +9,7 @@ import pytest
 
 from video_engine import cache, cache_prune, config, hyperframes, toolchain
 from video_engine.gates import layer2
+from tests.test_legibility import _plain_labels
 
 
 def _built(project, tmp_path, title="Surabaya", profile=None):
@@ -29,6 +30,7 @@ def _no_browser(monkeypatch):
 
 # GOOD: unchanged segment -> hit, no browser, identical rects and screenshot bytes ----------------------------------------
 def test_good_unchanged_segment_hits_without_browser(project, tmp_path, monkeypatch):
+    _plain_labels(monkeypatch)
     _, _, d = _built(project, tmp_path, profile="geoverum")
     first = hyperframes.probe_dom(d, [0.5, 1.5], 1080, 1920, tmp_path / "s1", bg="bg", ref="k")
     assert first["cached"] is False and first["timing"]["load"] > 0
