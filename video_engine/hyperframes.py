@@ -476,14 +476,17 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
             if t:
                 t["entity_colour"] = col.get(t["entity"]) if t.get("entity") else None
         for r in out.get("regions", []):
-            r["casing"] = legibility.line_casing(r["edge_colour"] if r["style"] == "block" else r["colour"], out["legibility"])
+            for x in (r, *r["changes"]):
+                x["casing"] = legibility.line_casing(r["edge_colour"] if r["style"] == "block" else x["colour"],
+                                                     out["legibility"])
         for b in out.get("borders", []):
             b["casing"] = legibility.line_casing(b["colour"], out["legibility"])
     if prof.print:
         surf = printstyle.surface(project_dir / sc.map_asset, prof.print)
         out["print"] = printstyle.scene_block(prof.print, surf)
         for r in out.get("regions", []):
-            r["edge_ink"] = printstyle.edge_ink(r["colour"], prof.print, surf)
+            for x in (r, *r["changes"]):
+                x["edge_ink"] = printstyle.edge_ink(x["colour"], prof.print, surf)
     if sc.routes:
         out["routes"] = [{"points": [[round(x * mw, 2), round(y * mh, 2)] for x, y in r.points], "at_frame": r.at_frame,
                           "draw_s": r.draw_s or theme["route_draw_s"]} for r in sc.routes]

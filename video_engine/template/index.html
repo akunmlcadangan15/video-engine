@@ -236,7 +236,7 @@ if(S.regions&&S.regions.length){
     if(r.edge==='glow'&&T.region_glow_px>0&&!soft)pg.style.filter='drop-shadow(0 0 '+T.region_glow_px+'px '+r.colour+') drop-shadow(0 0 '+(T.region_glow_px/3)+'px '+r.colour+')';
     pg.setAttribute('data-entity',r.entity);pg.setAttribute('data-paint','fill');pg.setAttribute('data-region',i);
     const cased=LG&&LG.region_casing_px>0, ink=c=>P?rgba(c.edge_ink,P.region_edge_alpha):c.colour,
-      inks=c=>{const e=P?c.edge_ink:c.colour;return cased?[e,r.casing]:[e];};
+      inks=c=>{const e=P?c.edge_ink:c.colour;return cased?[e,c.casing]:[e];};
     // [print]: solid edge in the entity's ink, fill multiplied into a paper surface
     if(P){pg.setAttribute('stroke',ink(r));if(paper&&P.region_multiply)svg.style.mixBlendMode='multiply';}
     if(LG){pg.setAttribute('data-line','region:'+i);lineInk(pg,inks(r));}
@@ -260,6 +260,7 @@ if(S.regions&&S.regions.length){
     R.changes.forEach(c=>{const t=f2t(c.at_frame);
       chg(R,pg,{attr:{fill:prev.colour}},{attr:{fill:c.colour,...(P?{}:{stroke:r.edge==='glow'?c.colour:'#ffffff'})}},t);
       if(P)chg(R,pg,{stroke:ink(prev)},{stroke:ink(c)},t);
+      if(cased)chg(R,cg,{attr:{stroke:prev.casing}},{attr:{stroke:c.casing}},t);
       tl.set(pg,{attr:{'data-entity':c.entity,...(LG?{'data-line-ink':JSON.stringify(inks(c))}:{})}},t);prev=c;});
     }
     // region label: a solid box (owner's box colour) anchored on the map, counter-scaled, popping in

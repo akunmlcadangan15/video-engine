@@ -182,8 +182,9 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   `theme.region_style`; beats scenes default to `tint`): `tint` = fill + white or glow edge; `block` = a raised slab in
   `entities.block_colour` (entity colour, OKLCH L clamped to `block_l_min..block_l_max`, chroma >= `block_chroma`) with
   an extruded side `block_side_dl` darker, a drop shadow, an inner bevel and a neon edge (`edge_colour`, `dashed`)
-  drawn on over `draw_s`. `changes` `[{at_frame, entity}]`: the region takes the next owner's colours (fill, side,
-  label box) over `block_change_s`; each change is a `region` SFX and style event. `label` (`label_at` map point,
+  drawn on over `draw_s`. `changes` `[{at_frame, entity}]`: the region takes the next owner's colours (block: face,
+  side, bevel; tint: fill, edge, `[print]` edge ink, `[legibility]` casing; label box) over `block_change_s`; each
+  change is a `region` SFX and style event. `label` (`label_at` map point,
   default the polygon centroid; `label_at_frame`): a solid box label in `entities.box_colour` (block colour darkened
   until white text reaches APCA `label_box_lc`), counter-scaled, with an elastic pop. Globe scenes accept regions
   (polygons in whole-world normalised x, y; projected every frame by hf/globe.js, hidden while any vertex faces away).

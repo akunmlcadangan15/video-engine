@@ -1,4 +1,6 @@
 """Block regions, solid box labels, neon borders, region changes, path props, map morph and globe regions."""
+import json
+
 import pytest
 from PIL import Image
 from pydantic import ValidationError
@@ -268,3 +270,22 @@ def test_bad_globe_rejects_borders_and_morph(project, extra):
         sc.update(globe={"keys": KEYS}, pins=[], **extra)
     with pytest.raises(Exception, match="globe"):
         project(mut)
+
+
+@pytest.mark.parametrize("profile", ["default", "geoverum"])
+def test_good_tint_region_change_repaints_fill_and_edge_and_keeps_later_overlays(project, tmp_path, profile):
+    def mut(d):
+        d["profile"] = profile
+        _sc(regions=[{"entity": "A", "polygon": SQ, "style": "tint", "changes": [{"at_frame": 15, "entity": "B"}]},
+                     {"entity": "C", "polygon": [[0.1, 0.1], [0.2, 0.1], [0.2, 0.2]], "style": "tint"}],
+            borders=[{"points": [[0.1, 0.8], [0.9, 0.8]], "at_frame": 0, "draw_s": 0.2, "colour": "#E8352C"}])(d)
+    p, tl = project(mut)
+    res, sc = _probe(tl, p, tmp_path, (0.3, 1.8))
+    r = sc["regions"][0]
+    c = sc["regions"][1]["colour"]
+    fills = [{q["entity"]: layer2._rgb_hex(q["color"]) for q in i["paints"] if q["kind"] == "fill"} for i in res["times"]]
+    assert fills == [{"A": r["colour"], "C": c}, {"B": r["changes"][0]["colour"], "C": c}]
+    if profile == "geoverum":
+        inks = [next(json.loads(x["ink"]) for x in i["lines"] if x["id"] == "region:0") for i in res["times"]]
+        assert inks == [[r["edge_ink"]], [r["changes"][0]["edge_ink"]]] and inks[0] != inks[1]
+        assert all(any(x["id"] == "border:0" for x in i["lines"]) for i in res["times"])
