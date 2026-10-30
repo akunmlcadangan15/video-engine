@@ -45,6 +45,9 @@ def referenced(projects: list[Path], root: Path | None = None) -> tuple[set[str]
                     names.add(DOM_REF + sk)
                     scene = hyperframes.scene_data(s, tl, p)
                     names |= {Path(e["img"]).name for e in scene.get("deep", [])}
+                    if m := scene.get("morph"):
+                        names |= {hyperframes.map_key(p / m["asset"], hyperframes._need_w(scene)) + ".jpg",
+                                  *(Path(e["img"]).name for e in m["deep"])}
                     if "globe" in scene:
                         names |= globe.cache_names(s, tl, p, scene["globe"])
                     names |= props.model_cache_names(s, p, tl.settings.fps)

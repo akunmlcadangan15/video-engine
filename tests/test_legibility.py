@@ -312,7 +312,8 @@ def test_good_geoverum_scene_paints_adaptive_ink_and_passes_R64(project, tmp_pat
     p, tl = project(_geo(title="SEKUTU", title_entity="Sekutu", camera_preset="static",
                          regions=[{"entity": "Sekutu", "polygon": SQ}]))
     d, sc = hyperframes.build_dir(tl.segments[2], tl, p, tmp_path / "hf")
-    assert sc["legibility"]["v"] == L.code_hash() and set(sc["inks"]) >= {"title", "pin:0"}
+    # geoverum boxes pin labels (label_style "box"): fixed white on the box, not adaptive
+    assert sc["legibility"]["v"] == L.code_hash() and "title" in sc["inks"] and "pin:0" not in sc["inks"]
     times = L.all_times(sc, sc["legibility"])
     res = hyperframes.probe_dom(d, times, 1080, 1920, tmp_path / "snaps", bg="bg")
     res["legibility"] = {"lg": sc["legibility"], "elements": L.elements(sc), "times": res["times"]}

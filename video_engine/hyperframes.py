@@ -72,6 +72,7 @@ DEEP_TILE = 1024        # deep tile side (deep raster px)
 DEEP_PAD = 2            # deep raster px each tile reaches into its right and bottom neighbours (no seams)
 DEEP_MARGIN = 0.05      # viewport growth (fraction of its size) when picking the tiles a frame needs
 DEEP_VERSION = "deep-1" # bump when deep tile output changes
+MORPH_PAPER, MORPH_GRAIN = "paper-F1E8D4.jpg", "grain-512.png"   # vendor/textures of a map morph
 # HyperFrames capture/encode profile for the intermediate segment file (re-encoded once more by the build).
 # "draft" = JPEG q80 screenshot + x264 ultrafast; CRF 14 keeps the intermediate close to lossless.
 HF_QUALITY = "draft"
@@ -377,16 +378,21 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
             img = cr.path
         cards.append({"title": c.title, "subtitle": c.subtitle, "img": img, "top": round(CARD_TOP[c.position] * S.height),
                       "at_frame": card_frame(c, n, S.fps)})
+    ecol = entities.colours(tl)
+    if theme["label_style"] == "box":
+        for c, cd in zip(sc.cards, cards):
+            cd["box"] = entities.box_colour(ecol[c.entity], theme) if c.entity else theme["label_box_colour"]
     out = {"fps": S.fps, "n_frames": n, "width": S.width, "height": S.height, "map": sc.map_asset,
            "map_size": [round(mw, 2), round(mh, 2)], "camera": {"start": cam["start"], "end": cam["end"], "legs": cam["legs"],
                                                                **({"tilt": {"p": camera3d.perspective_px(S.height)}}
                                                                   if "t" in cam["start"] else {})},
            "motion_px": round(motion, 2), "pins": pins, "cards": cards, "theme": theme}
     if sc.regions:
-        col = entities.colours(tl)
-        out["regions"] = [{"entity": r.entity, "colour": col[r.entity], "edge": r.edge or theme["region_edge"],
-                           "points": [[round(x * mw, 2), round(y * mh, 2)] for x, y in r.polygon], "at_frame": r.at_frame}
-                          for r in sc.regions]
+        out["regions"] = [region_data(r, ecol, theme, mw, mh, G, S, lay is not None) for r in sc.regions]
+    if sc.borders:
+        out["borders"] = [{"points": [[round(x * mw, 2), round(y * mh, 2)] for x, y in b.points], "at_frame": b.at_frame,
+                           "draw_s": theme["border_draw_s"] if b.draw_s is None else b.draw_s, "colour": b.colour.lower(),
+                           "dashed": b.dashed, "closed": b.closed} for b in sc.borders]
     if sc.title or sc.figures:
         col = entities.colours(tl)
     if sc.title:
@@ -399,13 +405,19 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
                            "count_s": f.count_s or theme["counter_s"], "at_frame": f.at_frame,
                            "x": round(f.position[0] * S.width, 2), "y": round(f.position[1] * S.height, 2),
                            "entity": f.entity, "colour": col.get(f.entity, "#ffffff")} for f in sc.figures]
+    if theme["label_style"] == "box" and lay is None:
+        for t in [out.get("title"), *out.get("figures", [])]:
+            if t:
+                t["box"] = entities.box_colour(col[t["entity"]], theme) if t["entity"] else theme["label_box_colour"]
     if prof.legibility:
         out["legibility"] = {**prof.legibility.model_dump(), "v": legibility.code_hash()}
         for t in [out.get("title"), *out.get("figures", [])]:
             if t:
                 t["entity_colour"] = col.get(t["entity"]) if t.get("entity") else None
         for r in out.get("regions", []):
-            r["casing"] = legibility.line_casing(r["colour"], out["legibility"])
+            r["casing"] = legibility.line_casing(r["edge_colour"] if r["style"] == "block" else r["colour"], out["legibility"])
+        for b in out.get("borders", []):
+            b["casing"] = legibility.line_casing(b["colour"], out["legibility"])
     if prof.print:
         surf = printstyle.surface(project_dir / sc.map_asset, prof.print)
         out["print"] = printstyle.scene_block(prof.print, surf)
@@ -426,7 +438,77 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
         out["globe"] = G
     elif (dp := deep_plan(out, (iw, ih))) is not None:
         out["deep"] = deep_entries(project_dir / sc.map_asset, dp)
+    if sc.morph:
+        out["morph"] = morph_data(sc.morph, out, project_dir, (iw, ih))
     return out
+
+
+def _centroid(poly: list[list[float]]) -> tuple[float, float]:
+    """Area centroid of a polygon (vertex mean when its area is 0)."""
+    a = cx = cy = 0.0
+    for (x0, y0), (x1, y1) in zip(poly, poly[1:] + poly[:1]):
+        k = x0 * y1 - x1 * y0
+        a, cx, cy = a + k, cx + (x0 + x1) * k, cy + (y0 + y1) * k
+    if abs(a) < 1e-12:
+        return sum(p[0] for p in poly) / len(poly), sum(p[1] for p in poly) / len(poly)
+    return cx / (3 * a), cy / (3 * a)
+
+
+def region_data(r, col: dict, theme: dict, mw: float, mh: float, G: dict | None, S, beats: bool) -> dict:
+    """Scene entry of a region: points in map px (globe scenes: `ll` lat/lng per point and the points projected at
+    the region's first frame), style colours of every owner (`changes`) and its box label. The theme region_style
+    applies outside beats scenes; their regions stay "tint" unless the region sets a style."""
+    style = r.style or ("tint" if beats else theme["region_style"])
+
+    def paint(e: str) -> dict:
+        c = col[e]
+        out = {"entity": e, "colour": c}
+        if style == "block":
+            b = entities.block_colour(c, theme)
+            L, C, h = legibility.rgb_oklch(legibility.hex_rgb(b))
+            out.update(block=b, side=legibility.oklch_hex(max(0.0, L - theme["block_side_dl"]), C, h),
+                       bevel=tint(b, theme["block_bevel_tint"]))
+        if r.label:
+            out["box"] = entities.box_colour(c, theme)
+        return out
+
+    def xy(pts: list[list[float]], f: int) -> tuple[list, list | None]:
+        if not G:
+            return [[round(x * mw, 2), round(y * mh, 2)] for x, y in pts], None
+        ll = [[round(90 - y * 180, 5), round(x * 360 - 180, 5)] for x, y in pts]
+        v = globe.camera_at(G, f, S.fps)
+        return [list(globe.project(v, a, b, S.width, S.height) or (-1000.0, -1000.0)) for a, b in ll], ll
+    pts, ll = xy(r.polygon, r.at_frame)
+    out = {**paint(r.entity), "edge": r.edge or theme["region_edge"], "style": style, "points": pts,
+           "at_frame": r.at_frame, "changes": [{**paint(c.entity), "at_frame": c.at_frame} for c in r.changes]}
+    if ll:
+        out["ll"] = ll
+    if style == "block":
+        out.update(edge_colour=(r.edge_colour or theme["block_edge_colour"]).lower(), dashed=r.dashed,
+                   draw_s=theme["block_draw_s"] if r.draw_s is None else r.draw_s)
+    if r.label:
+        f = r.at_frame if r.label_at_frame is None else r.label_at_frame
+        (lp,), lll = xy([list(r.label_at or _centroid(r.polygon))], f)
+        out["label"] = {"text": r.label, "x": round(lp[0], 2), "y": round(lp[1], 2), "at_frame": f,
+                        **({"ll": lll[0]} if lll else {})}
+    return out
+
+
+def morph_data(m, scene: dict, project_dir: Path, base_size: tuple[int, int]) -> dict:
+    """Scene block of a map morph: its whole-map derivative and deep tiles (the base map's camera), times and tones.
+    The morph map must have the base map's aspect ratio (same extent and projection)."""
+    src = project_dir / m.asset
+    if not src.is_file():
+        raise EngineError(f"morph asset {m.asset} not found")
+    w, h = map_image_size(src)
+    if abs(w / h - base_size[0] / base_size[1]) > 0.005 * base_size[0] / base_size[1]:
+        raise EngineError(f"morph asset {m.asset} is {w}x{h}; it must have the aspect ratio of map_asset "
+                          f"({base_size[0]}x{base_size[1]}): same extent and projection")
+    dp = deep_plan(scene, (w, h))
+    return {"img": f"assets/morph_{map_key(src, _need_w(scene))[:32]}.jpg", "asset": m.asset,
+            "deep": deep_entries(src, dp) if dp else [], "at_frame": m.at_frame, "s": m.s,
+            "back_at_frame": m.back_at_frame, "sepia": m.sepia, "paper": m.paper, "grain": m.grain,
+            "paper_texture": MORPH_PAPER, "grain_texture": MORPH_GRAIN}
 
 
 def deep_plan(scene: dict, src_size: tuple[int, int]) -> dict | None:
@@ -611,11 +693,13 @@ def _map_copy(src: Path, need_w: float) -> Path:
 
 
 def textures(scene: dict) -> list[str]:
-    """vendor/textures files of a scene: the paper texture and grain of a [print] paper surface."""
-    pr = scene.get("print")
-    if not pr or pr["surface"] != "paper":
-        return []
-    return [f for f, a in ((pr["paper_texture"], pr["paper_alpha"]), (pr["grain"], pr["grain_alpha"])) if a > 0]
+    """vendor/textures files of a scene: the paper texture and grain of a [print] paper surface and of a map morph."""
+    pr, m, out = scene.get("print"), scene.get("morph"), []
+    if pr and pr["surface"] == "paper":
+        out += [f for f, a in ((pr["paper_texture"], pr["paper_alpha"]), (pr["grain"], pr["grain_alpha"])) if a > 0]
+    if m:
+        out += [f for f, a in ((m["paper_texture"], m["paper"]), (m["grain_texture"], m["grain"])) if a > 0 and f not in out]
+    return out
 
 
 PROPS_JS = config.PKG / "hf" / "props.js"   # props layer script; in the build dir and the key of prop segments only
@@ -660,6 +744,11 @@ def build_dir(seg: Segment, tl: Timeline, project_dir: Path, out_dir: Path) -> t
         shutil.copyfile(mp, out_dir / "assets" / "map.jpg")
         for name, f in deep_tiles(project_dir / scene["map"], scene).items():
             shutil.copyfile(f, out_dir / "assets" / name)
+        if m := scene.get("morph"):
+            src = project_dir / m["asset"]
+            shutil.copyfile(_map_copy(src, _need_w(scene)), out_dir / m["img"])
+            for name, f in deep_tiles(src, {"deep": m["deep"]}).items():
+                shutil.copyfile(f, out_dir / "assets" / name)
     for c in scene["cards"]:
         if c["img"]:
             dst = out_dir / "assets" / _card_name(project_dir / c["img"])

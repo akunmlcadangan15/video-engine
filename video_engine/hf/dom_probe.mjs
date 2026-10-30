@@ -48,7 +48,7 @@ try {
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       const paints = [...document.querySelectorAll('[data-entity]')].map(el => {
         const cs = getComputedStyle(el), kind = el.getAttribute('data-paint');
-        return { entity: el.getAttribute('data-entity'), kind, color: kind === 'fill' ? cs.fill : cs.color };
+        return { entity: el.getAttribute('data-entity'), kind, color: kind === 'fill' || kind === 'block' ? cs.fill : cs.color };
       });
       const rects = [...document.querySelectorAll('[data-qa]')].map(el => {
         const r = el.getBoundingClientRect();
@@ -63,7 +63,8 @@ try {
                  stroke: getComputedStyle(el).webkitTextStrokeColor, paint_order: getComputedStyle(el).paintOrder,
                  ink_state: el.getAttribute('data-ink-state'), halo: el.getAttribute('data-halo'),
                  halo_color: getComputedStyle(el, '::after').backgroundColor, font_style: getComputedStyle(el).fontStyle,
-                 font_family: getComputedStyle(el).fontFamily };
+                 font_family: getComputedStyle(el).fontFamily, bg: getComputedStyle(el).backgroundColor,
+                 box: el.getAttribute('data-box') };
       });
       const lines = [...document.querySelectorAll('[data-line]')].map(el => {
         const r = el.getBoundingClientRect();

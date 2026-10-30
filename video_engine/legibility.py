@@ -111,19 +111,26 @@ def mix(a: str, b: str, k: float) -> str:
 LAYOUT_SETTLE_S = 0.1   # after a beats element's entry tween
 
 
+def boxed(scene: dict) -> bool:
+    """Pin labels, title and figures in solid boxes (theme label_style "box", scenes without a layout): fixed white on
+    the box colour, not adaptive."""
+    return scene["theme"].get("label_style") == "box" and not scene.get("layout")
+
+
 def elements(scene: dict) -> list[dict]:
     """Adaptive text elements of a scene with their visible (settled) interval in seconds and their font size."""
     fps, th = scene["fps"], scene["theme"]
     end = (scene["n_frames"] - 1) / fps
     out = []
     pr = scene.get("print")        # profile [print]: fixed inks per text kind (el "ink" dark, "light" light)
-    if th["pin_style"] == "teardrop":
+    box = boxed(scene)
+    if th["pin_style"] == "teardrop" and not box:
         out += [{"id": f"pin:{i}", "kind": "label", "start": p["at_frame"] / fps + 0.7, "end": end, "entity": None,
                  "px": th["pin_label_px"], **({"ink": pr["ink"]} if pr else {})} for i, p in enumerate(scene["pins"])]
-    if t := scene.get("title"):
+    if (t := scene.get("title")) and not box:
         out.append({"id": "title", "kind": "title", "start": t["at_frame"] / fps + 0.5, "end": end,
                     "entity": t.get("entity"), "colour": t.get("entity_colour"), "px": th["title_px"]})
-    for i, f in enumerate(scene.get("figures") or []):
+    for i, f in enumerate([] if box else scene.get("figures") or []):
         settle = 0.9 if f["motion"] == "bounce" else 0.2
         out.append({"id": f"figure:{i}", "kind": "figure", "start": f["at_frame"] / fps + settle, "end": end,
                     "entity": f.get("entity"), "colour": f.get("entity_colour"), "px": th["figure_px"]})

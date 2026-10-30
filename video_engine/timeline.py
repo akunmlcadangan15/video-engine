@@ -18,6 +18,7 @@ from .grade import Grade
 
 NATIVE = "NATIVE_RUST_FFMPEG"
 HYPERFRAMES = "HYPERFRAMES_GSAP"
+HEX_RE = r"#[0-9a-fA-F]{6}"
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"}
 VisualType = Literal["map", "photo", "video", "diagram", "archive", "illustration"]
 
@@ -144,23 +145,89 @@ class Card(Strict):
     title: str
     subtitle: Optional[str] = None
     asset_ref: Optional[str] = None   # credits asset_id of an image shown in the card
+    entity: Optional[str] = Field(None, min_length=1, max_length=60)   # theme.label_style "box": box in this entity's colour
     at_frame: Optional[int] = Field(None, ge=0)
     position: Literal["top", "bottom"] = "top"
 
 
+class RegionChange(Strict):
+    """Territory changing hands: from `at_frame` (relative to the segment start) the region takes `entity`'s colour,
+    crossfading over theme.block_change_s."""
+    at_frame: int = Field(ge=0)
+    entity: str = Field(min_length=1, max_length=60)
+
+
 class Region(Strict):
-    """Highlighted map area of one entity (country, army, kingdom...): semi-transparent fill in the entity colour with
-    a white or same-colour glow edge, appearing at `at_frame` (relative to the segment start)."""
+    """Highlighted map area of one entity (country, army, kingdom...), appearing at `at_frame` (relative to the segment
+    start). style "tint": semi-transparent fill in the entity colour with a white or same-colour glow edge. style
+    "block": a raised slab in the saturated entity colour (entities.block_colour) with an extruded side, a soft drop
+    shadow, an inner bevel and a neon edge that draws itself on. Globe scenes: polygon points are normalised
+    [x, y] of the whole-world texture (x = (lng + 180) / 360, y = (90 - lat) / 180)."""
     entity: str = Field(min_length=1, max_length=60)
     polygon: list[list[float]] = Field(min_length=3)   # normalised [x, y] map points
     at_frame: int = Field(0, ge=0)
     edge: Optional[Literal["white", "glow"]] = None    # None = profile theme.region_edge
+    style: Optional[Literal["tint", "block"]] = None   # None = profile theme.region_style
+    edge_colour: Optional[str] = Field(None, pattern=HEX_RE)   # block edge (None = theme.block_edge_colour)
+    dashed: bool = False                               # block edge dashed (sea border)
+    draw_s: Optional[float] = Field(None, ge=0, le=8.0)   # block edge draw-on (None = theme.block_draw_s; 0 = at once)
+    label: Optional[str] = Field(None, min_length=1, max_length=40)   # box label in the region colour
+    label_at: Optional[list[float]] = Field(None, min_length=2, max_length=2)   # normalised map point (None = centroid)
+    label_at_frame: Optional[int] = Field(None, ge=0)  # None = at_frame
+    changes: list[RegionChange] = []                   # later owners, in frame order
 
     @model_validator(mode="after")
     def _poly(self):
-        for pt in self.polygon:
+        for pt in [*self.polygon, *([self.label_at] if self.label_at else [])]:
             if len(pt) != 2 or not all(0.0 <= v <= 1.0 for v in pt):
-                raise ValueError(f"region '{self.entity}': polygon point {pt} must be [x, y] within 0..1")
+                raise ValueError(f"region '{self.entity}': point {pt} must be [x, y] within 0..1")
+        prev = self.at_frame
+        for c in self.changes:
+            if c.at_frame <= prev:
+                raise ValueError(f"region '{self.entity}': change at_frame {c.at_frame} must be > {prev}")
+            prev = c.at_frame
+        if self.label is None and (self.label_at is not None or self.label_at_frame is not None):
+            raise ValueError(f"region '{self.entity}': label_at and label_at_frame need a label")
+        return self
+
+
+class Border(Strict):
+    """A border line on the map (land, or sea when `dashed`) that draws itself along `points` from `at_frame` (relative
+    to the segment start) over `draw_s` seconds, in `colour` with a neon glow; `closed` joins the last point to the
+    first. Width, glow and dashes keep their on-screen size while the camera zooms."""
+    points: list[list[float]] = Field(min_length=2)    # normalised [x, y] map points
+    at_frame: int = Field(0, ge=0)
+    draw_s: Optional[float] = Field(None, ge=0, le=8.0)   # None = profile theme.border_draw_s; 0 = at once
+    colour: str = Field("#ffffff", pattern=HEX_RE)
+    dashed: bool = False
+    closed: bool = False
+
+    @model_validator(mode="after")
+    def _pts(self):
+        for pt in self.points:
+            if len(pt) != 2 or not all(0.0 <= v <= 1.0 for v in pt):
+                raise ValueError(f"border at_frame {self.at_frame}: point {pt} must be [x, y] within 0..1")
+        return self
+
+
+class MapMorph(Strict):
+    """A second map texture crossfaded over the base map without a cut (satellite <-> old paper): `asset` covers the
+    extent and projection of map_asset (same aspect ratio). It fades in from `at_frame` (relative to the segment
+    start; 0 = shown from the first frame) over `s` seconds and out again from `back_at_frame` (None = stays), toned
+    by `sepia`, with an aged-paper texture multiplied over it at `paper` and screen grain at `grain` while it shows."""
+    asset: str = Field(min_length=1)
+    asset_id: Optional[str] = None
+    at_frame: int = Field(0, ge=0)
+    s: float = Field(1.2, ge=0.1, le=6.0)
+    back_at_frame: Optional[int] = Field(None, ge=0)
+    sepia: float = Field(0.5, ge=0, le=1)
+    paper: float = Field(0.5, ge=0, le=1)
+    grain: float = Field(0.0, ge=0, le=0.5)
+
+    @model_validator(mode="after")
+    def _back(self):
+        if self.back_at_frame is not None and self.back_at_frame <= self.at_frame:
+            raise ValueError(f"morph back_at_frame {self.back_at_frame} must be > at_frame {self.at_frame}")
         return self
 
 
@@ -340,6 +407,10 @@ class Prop(Strict):
     depth: float = Field(0.0, ge=0.0, le=PROP_DEPTH_MAX)   # 0 = on the map plane; map props only
     z: int = Field(0, ge=-100, le=100)               # stacking among props of the same anchor (higher on top)
     shadow: Optional[PropShadow] = None
+    path: Optional[list[list[float]]] = Field(None, min_length=2)   # map props: normalised map points the centre
+                                                                     # travels along from t_in (replaces x/y)
+    path_s: Optional[float] = Field(None, gt=0, le=120)  # travel time (None = t_in to t_out)
+    heading: bool = False                            # path props: rotation follows the path direction (+ rotation)
 
     @model_validator(mode="after")
     def _prop(self):
@@ -359,8 +430,15 @@ class Prop(Strict):
         if self.anchor == "screen":
             if geo or self.x is None or self.y is None:
                 raise ValueError(f"{tag}: anchor 'screen' needs x and y in frame px (no lat/lng)")
-            if self.width_map is not None or self.depth:
-                raise ValueError(f"{tag}: width_map and depth apply to anchor 'map' only")
+            if self.width_map is not None or self.depth or self.path is not None:
+                raise ValueError(f"{tag}: width_map, depth and path apply to anchor 'map' only")
+        elif self.path is not None:
+            if geo or xy:
+                raise ValueError(f"{tag}: a path replaces x, y, lat and lng")
+            if not all(len(pt) == 2 and 0.0 <= pt[0] <= 1.0 and 0.0 <= pt[1] <= 1.0 for pt in self.path):
+                raise ValueError(f"{tag}: path points must be [x, y] within 0..1")
+            if all(pt == self.path[0] for pt in self.path):
+                raise ValueError(f"{tag}: path points must not all be the same")
         else:
             if geo == xy or (geo and (self.lat is None or self.lng is None)) or (xy and (self.x is None or self.y is None)):
                 raise ValueError(f"{tag}: anchor 'map' needs x and y (normalised 0..1) or lat and lng")
@@ -368,6 +446,8 @@ class Prop(Strict):
                 raise ValueError(f"{tag}: map x and y must be within 0..1")
         if self.t_out is not None and self.t_out <= self.t_in:
             raise ValueError(f"{tag}: t_out {self.t_out} must be > t_in {self.t_in}")
+        if self.path is None and (self.path_s is not None or self.heading):
+            raise ValueError(f"{tag}: path_s and heading need a path")
         return self
 
 
@@ -471,6 +551,8 @@ class GsapScene(Strict):
     focus: Optional[list[float]] = Field(None, min_length=2, max_length=2)  # normalised [x, y] the camera centres on
     camera_path: Optional[list[CameraKey]] = None   # >= 2 keys: replaces camera_preset with key-to-key legs
     regions: Optional[list[Region]] = None          # entity highlights drawn on the map under the pins
+    borders: Optional[list[Border]] = None          # self-drawing neon border lines (dashed: sea borders)
+    morph: Optional[MapMorph] = None                # second map texture crossfaded over the map
     routes: Optional[list[Route]] = None            # self-drawing dashed movement lines with an arrowhead
     figures: Optional[list[Figure]] = None          # big years and numbers
     beats: Optional[list[Beat]] = None              # layout profiles: beats replace camera_path and element frames
@@ -511,7 +593,7 @@ class GsapScene(Strict):
         g = self.globe
         if g is None:
             return self
-        for f in ("camera_path", "beats", "regions", "routes", "props", "layers", "map_bounds"):
+        for f in ("camera_path", "beats", "routes", "borders", "morph", "props", "layers", "map_bounds"):
             if getattr(self, f):
                 raise ValueError(f"globe scenes do not take {f} (the globe camera is globe.keys; pins use lat/lng)")
         for p in self.pins:

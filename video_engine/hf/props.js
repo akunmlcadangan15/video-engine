@@ -25,6 +25,14 @@ const camAt=t=>{let prev=C.start;
   for(const g of LG){if(t<g.t0+g.d){if(t<=g.t0)return prev;const e=g.ease((t-g.t0)/g.d),a=g.from,b=g.L.to;
     return {x:a.x+(b.x-a.x)*e,y:a.y+(b.y-a.y)*e,s:a.s+(b.s-a.s)*e};}prev=g.L.to;}
   return prev;};
+// path props: map point and direction (deg) u frames in, arc length share glide(u / f) (props.py `path_at`)
+const pathAt=(pa,u)=>{const q=pa.pts, L=q.slice(1).map((b,j)=>Math.hypot(b[0]-q[j][0],b[1]-q[j][1]));
+  let d=EASE.glide(cl(u/pa.f))*L.reduce((a,b)=>a+b,0);
+  for(let j=0;j<L.length;j++){const a=q[j],b=q[j+1];
+    if(L[j]>0&&d<=L[j])return [a[0]+(b[0]-a[0])*d/L[j],a[1]+(b[1]-a[1])*d/L[j],Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI];
+    d-=L[j];}
+  let j=L.length-1;while(j>0&&L[j]===0)j--;
+  return [q[q.length-1][0],q[q.length-1][1],Math.atan2(q[j+1][1]-q[j][1],q[j+1][0]-q[j][0])*180/Math.PI];};
 const sheets=[];
 const els=P.map((e,i)=>{let im;
   if(e.seq){im=document.createElement('div');const sh=document.createElement('img');sh.src=e.img;
@@ -45,7 +53,9 @@ const up=t=>{const f=t*FPS, c=camAt(t);
     let x,y,w;
     if(e.anchor==='map'){const r=camAt(e.f_in/FPS), d=e.d, kk=Math.pow(c.s/r.s,1+d);
       const cx=(W/2-c.x)/c.s, cy=(H/2-c.y)/c.s, rx=(W/2-r.x)/r.s, ry=(H/2-r.y)/r.s, sg=r.s*kk;
-      x=W/2+sg*((e.m[0]-rx)-(1+d)*(cx-rx));y=H/2+sg*((e.m[1]-ry)-(1+d)*(cy-ry));w=e.w*kk;}
+      let mx=e.m[0],my=e.m[1];
+      if(e.path){const pa=pathAt(e.path,u);mx=pa[0];my=pa[1];if(e.path.heading)rot+=pa[2];}
+      x=W/2+sg*((mx-rx)-(1+d)*(cx-rx));y=H/2+sg*((my-ry)-(1+d)*(cy-ry));w=e.w*kk;}
     else{x=e.p[0];y=e.p[1];w=e.w;}
     if(e.idle){const sn=Math.sin(2*Math.PI*u/e.idle.period);if(e.idle.kind==='bob')oy+=e.idle.a*sn;else rot+=e.idle.a*sn;}
     w*=size;const h=w*e.size[1]/e.size[0];

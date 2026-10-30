@@ -602,9 +602,10 @@ def _rgb_hex(css: str) -> str | None:
 
 
 def e01_entity_colours(tl: Timeline, dom: dict[int, dict]) -> list[Finding]:
-    """E01: every region fill the DOM probe painted shows its entity's one colour (entities.colours) exactly; two
-    entities never share a colour. Text colour is not checked (R64 owns it). No finding when no region is painted."""
-    col = entities.colours(tl)
+    """E01: every region fill the DOM probe painted shows its entity's one colour (entities.colours; a block face its
+    entities.block_colour) exactly; two entities never share a colour. Text colour is not checked (R64 owns it). No
+    finding when no region is painted."""
+    col, theme = entities.colours(tl), profiles.of(tl).render_values("hf")
     out = []
     shared: dict[str, list[str]] = {}
     for e, c in col.items():
@@ -616,7 +617,7 @@ def e01_entity_colours(tl: Timeline, dom: dict[int, dict]) -> list[Finding]:
         seen = set()
         for item in res.get("times", [])[:1]:
             for p in item.get("paints", []):
-                if p["kind"] != "fill":
+                if p["kind"] not in ("fill", "block"):
                     continue
                 key = (p["entity"], p["kind"])
                 if key in seen:
@@ -624,6 +625,8 @@ def e01_entity_colours(tl: Timeline, dom: dict[int, dict]) -> list[Finding]:
                 seen.add(key)
                 n += 1
                 want, got = col.get(p["entity"]), _rgb_hex(p["color"])
+                if want and p["kind"] == "block":
+                    want = entities.block_colour(want, theme)
                 if got != want:
                     out.append(Finding("E01", "fail", f"fill of entity '{p['entity']}' painted {got or p['color']}, "
                                                       f"entity colour {want}", seg))
@@ -766,6 +769,26 @@ def r64_line_rows(dom: dict[int, dict]) -> list[dict]:
     return rows
 
 
+def r64_box_rows(dom: dict[int, dict]) -> list[dict]:
+    """R64 box labels: one row per visible ([data-box], opacity >= 0.9) solid-box label per probed time: APCA |Lc| of
+    its text colour on its opaque box background, target the element's data-box."""
+    rows = []
+    for seg, res in sorted(dom.items()):
+        for item in res.get("times", []):
+            for r in item.get("rects", []):
+                if not r.get("box") or r.get("opacity", 0) < 0.9:
+                    continue
+                m = re.fullmatch(r"rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)", (r.get("bg") or "").strip())
+                ink = _rgb_hex(r["color"])
+                if not m or float(m.group(4) or 1) < 0.99 or ink is None:
+                    continue
+                bg = [int(v) for v in m.groups()[:3]]
+                lc = float(legibility.apca_lc(legibility.apca_y(legibility.hex_rgb(ink)), legibility.apca_y(bg)))
+                rows.append({"seg": seg, "id": r["id"], "text": r.get("text", ""), "t": item["t"], "ink": ink,
+                             "bg": legibility.rgb_hex(bg), "lc": round(abs(lc), 1), "target": float(r["box"])})
+    return rows
+
+
 def _stroke(r: dict) -> tuple[list[int], float]:
     """(stroke RGB, alpha) of a probed text element: its text stroke when painted under the fill, else alpha 0."""
     m = re.fullmatch(r"rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)", (r.get("stroke") or "").strip())
@@ -782,7 +805,8 @@ def r64_legibility(tl: Timeline, dom: dict[int, dict]) -> list[Finding]:
     the chooser flagged. Targets: lc_title, lc_figure, lc_label, lc_area (r64_rows). Dark ink also fails on a painted
     halo outside halo_width_min_em..halo_width_max_em, blur > halo_blur_max_ratio x width, alpha outside
     halo_alpha..halo_alpha_max, or counters less than counter_open_min open. Lines (pins, routes, region outlines,
-    leaders; r64_line_rows): fail below lc_line_fail, warn below lc_line."""
+    leaders; r64_line_rows): fail below lc_line_fail, warn below lc_line. Solid-box labels (r64_box_rows): fail when
+    the text on its box is below the box target (theme label_box_lc)."""
     if profiles.of(tl).legibility is None:
         return []
     rows = r64_rows(dom)
@@ -811,6 +835,11 @@ def r64_legibility(tl: Timeline, dom: dict[int, dict]) -> list[Finding]:
             out.append(Finding("R64", "fail", f"{txt} < line Lc {w['fail_below']}", w["seg"]))
         elif w["lc"] < w["target"]:
             out.append(Finding("R64", "warn", f"{txt} below line target {w['target']}", w["seg"]))
+    boxes = r64_box_rows(dom)
+    for w in boxes:
+        if w["lc"] < w["target"]:
+            out.append(Finding("R64", "fail", f"t={w['t']:.2f}s {w['id']} '{w['text'][:24]}' {w['ink']} on box "
+                               f"{w['bg']} Lc {w['lc']} < {w['target']:g}", w["seg"]))
     for w in rows:
         txt = (f"t={w['t']:.2f}s {w['id']} '{w['text'][:24]}' {w['polarity']} ink {w['ink']} Lc {w['lc']} "
                f"(adjacent {w['lc_adjacent']}, WCAG {w['wcag']}, step {w['step']})")
@@ -833,10 +862,13 @@ def r64_legibility(tl: Timeline, dom: dict[int, dict]) -> list[Finding]:
             if miss:
                 out.append(Finding("R64", "fail", f"{el['id']}: not measured at {len(miss)} of {len(want)} sample "
                                    f"times (first t={miss[0]:.2f}s): no adaptive ink state, no glyphs or hidden", seg))
-    if worst and not any(f.level == "fail" for f in out):
+    if (worst or boxes) and not any(f.level == "fail" for f in out):
         nc = sum(1 for w in rows if w["counters"])
         lw = min(lines, key=lambda w: w["lc"], default=None)
-        out.append(Finding("R64", "pass", f"{len(rows)} element samples >= target - margin ({nc} with open counters); "
-                           f"lowest vs target: {worst[1]}" + (f"; {len(lines)} line samples, lowest {lw['id']} Lc "
-                                                              f"{lw['lc']}" if lw else ""), worst[2]))
+        bw = min(boxes, key=lambda w: w["lc"], default=None)
+        out.append(Finding("R64", "pass", (f"{len(rows)} element samples >= target - margin ({nc} with open counters); "
+                           f"lowest vs target: {worst[1]}" if worst else "no adaptive text") +
+                           (f"; {len(lines)} line samples, lowest {lw['id']} Lc {lw['lc']}" if lw else "") +
+                           (f"; {len(boxes)} box label samples, lowest {bw['id']} Lc {bw['lc']}" if bw else ""),
+                           worst[2] if worst else bw["seg"]))
     return out

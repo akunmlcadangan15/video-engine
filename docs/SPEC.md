@@ -154,7 +154,7 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   altitude, tilt}, glide legs, drift after the last key; globe.py mirrors hf/globe.js (camera, projection, pins).
   T02 checks the tile set, M04 the texel density, R56 and P01 measure the globe legs; the probe browser runs
   SwiftShader WebGL for globe scenes.
-- Props (`props` on a map scene or a beat): PNG or WebP images with alpha, or owned glTF / GLB / OBJ models rendered by `models.py` (three.js, pinned in vendor/npm, on SwiftShader in the vendored Chrome) to a deterministic RGBA sprite at a given yaw, pitch and fov, or to a looping turntable sprite sheet, cached by content hash (kind `models`), map-anchored (map point or lat/lng, moves and scales with the camera; `depth` 0-2 adds scale (s / s_in)^(1+depth) and parallax) or screen-anchored (frame px), with fade, pop or slide enter and exit, bob or rotate idle, z order and drop shadow. `hf/props.js` positions them every frame from the shared camera legs; `props.state` is the same math in Python (DOM within 1 px). Gates F01 alpha, F02 resolution (fail < 1.0x, warn < 1.5x of the largest on-screen width), F03 clear of texts, pins, cards and captions, F04 safe area; R07 credits, T02 timing; props join the caption avoid-list for their frames.
+- Props (`props` on a map scene or a beat): PNG or WebP images with alpha, or owned glTF / GLB / OBJ models rendered by `models.py` (three.js, pinned in vendor/npm, on SwiftShader in the vendored Chrome) to a deterministic RGBA sprite at a given yaw, pitch and fov, or to a looping turntable sprite sheet, cached by content hash (kind `models`), map-anchored (map point or lat/lng, moves and scales with the camera; `depth` 0-2 adds scale (s / s_in)^(1+depth) and parallax) or screen-anchored (frame px), with fade, pop or slide enter and exit, bob or rotate idle, z order and drop shadow. Map props may travel a `path` of normalised map points from `t_in` over `path_s` (default to `t_out`): glide eased arc length (`props.path_at`, mirrored by `pathAt` in hf/props.js); `heading` adds the segment direction to `rotation`. `hf/props.js` positions them every frame from the shared camera legs; `props.state` is the same math in Python (DOM within 1 px). Gates F01 alpha, F02 resolution (fail < 1.0x, warn < 1.5x of the largest on-screen width), F03 clear of texts, pins, cards and captions, F04 safe area; R07 credits, T02 timing; props join the caption avoid-list for their frames.
 - Counter-scale under the camera: pin labels and heads, area labels, hand notes, region edges and casings, and route
   lines, casings, dashes and arrowheads scale by v / (camera scale of the same frame) on every frame of every camera
   leg (drift, glide, whip, pulse), so the camera adds nothing to their on-screen size (DOM size within 1 % of plan
@@ -165,8 +165,27 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   as lossless clips from the segment files (`video_engine/transitions.py`) and overlaid frame-exactly in the final
   mux under captions and watermark; without transitions the mux command is unchanged. C01 grades hard cuts (warn
   levels) and shot changes (fail levels).
-- HyperFrames `regions`: entity highlights (fill + white or glow edge); one colour per entity from profile
-  `[theme.entities]` then `theme.palette`; E01 checks the painted region fill colours in the DOM probe.
+- HyperFrames `regions`: entity highlights; one colour per entity from profile `[theme.entities]` then
+  `theme.palette`; E01 checks the painted region fill colours in the DOM probe. Region `style` (default
+  `theme.region_style`; beats scenes default to `tint`): `tint` = fill + white or glow edge; `block` = a raised slab in
+  `entities.block_colour` (entity colour, OKLCH L clamped to `block_l_min..block_l_max`, chroma >= `block_chroma`) with
+  an extruded side `block_side_dl` darker, a drop shadow, an inner bevel and a neon edge (`edge_colour`, `dashed`)
+  drawn on over `draw_s`. `changes` `[{at_frame, entity}]`: the region takes the next owner's colours (fill, side,
+  label box) over `block_change_s`; each change is a `region` SFX and style event. `label` (`label_at` map point,
+  default the polygon centroid; `label_at_frame`): a solid box label in `entities.box_colour` (block colour darkened
+  until white text reaches APCA `label_box_lc`), counter-scaled, with an elastic pop. Globe scenes accept regions
+  (polygons in whole-world normalised x, y; projected every frame by hf/globe.js, hidden while any vertex faces away).
+- HyperFrames `borders` `[{points, at_frame, draw_s, colour, dashed, closed}]` (flat maps only): neon lines (casing
+  from `legibility.line_casing`, glow `block_glow_px`) drawn on along their length; width, dash and gap
+  (`border_px`, `border_dash_px`, `border_gap_px`) keep their on-screen size. T02 checks their frames; R64 line rows.
+- HyperFrames `morph` `{asset, at_frame, s, back_at_frame, sepia, paper, grain}` (flat maps only): a second map of the
+  same extent and aspect ratio (within 0.5 %) crossfaded over the base map (satellite <-> old paper) with its own
+  deep tiles, sepia tone, the vendor paper texture multiplied at `paper` and grain at `grain`; at_frame 0 = shown from
+  the first frame. T02 checks its frames and file.
+- `theme.label_style` `box` (scenes without a layout): pin labels, region labels, cards, title and figures sit in solid
+  boxes (`label_box_colour` or the entity's box colour) with fixed white text, `label_box_px`, `label_box_radius_px`,
+  elastic pop `label_pop_s`; they leave the adaptive ink set, and R64 checks each visible box (`data-box`) text against
+  its box at the box target instead.
 - HyperFrames `routes`: dashed self-drawing movement lines with an arrowhead riding the tip; style from `[theme]`.
 - HyperFrames `title` (entity colour + glow) and `figures` (years in bold serif, numbers with an elastic bounce
   or a counter); counters emit `counter_tick` events into build_report.json `sfx_events`.

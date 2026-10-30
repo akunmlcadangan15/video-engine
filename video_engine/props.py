@@ -159,6 +159,8 @@ def _motion(m, fps: int) -> dict | None:
 
 
 def map_point(p: Prop, sc, mw: float, mh: float) -> tuple[float, float]:
+    if p.path is not None:
+        return p.path[0][0] * mw, p.path[0][1] * mh
     if p.x is not None:
         return p.x * mw, p.y * mh
     if not sc.map_bounds:
@@ -187,6 +189,9 @@ def scene_props(seg: Segment, tl: Timeline, project_dir: Path, cam: dict, mw: fl
             r = layout.camera_at(cam, f_in)
             e.update(m=[round(mx, 3), round(my, 3)], d=p.depth,
                      w=round(p.width_px if p.width_px is not None else p.width_map * mw * r["s"], 3))
+            if p.path is not None:
+                e["path"] = {"pts": [[round(x * mw, 3), round(y * mh, 3)] for x, y in p.path], "heading": p.heading,
+                             "f": max(1, sec_to_frame(p.path_s, fps) if p.path_s else f_out - f_in - 1)}
         else:
             e.update(p=[p.x, p.y], d=0.0, w=p.width_px)
         for k in ("enter", "exit"):
@@ -202,6 +207,21 @@ def scene_props(seg: Segment, tl: Timeline, project_dir: Path, cam: dict, mw: fl
 
 def _clamp(v: float) -> float:
     return min(1.0, max(0.0, v))
+
+
+def path_at(path: dict, u: float) -> tuple[float, float, float]:
+    """Map point (x, y) and direction (deg, clockwise from +x) of a path prop u frames after its first frame: arc
+    length share glide(u / f) of the polyline; the direction is the segment's under that point."""
+    from . import layout
+    pts = path["pts"]
+    segs = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts, pts[1:])]
+    d = layout.EASES["glide"](_clamp(u / path["f"])) * sum(segs)
+    for (a, b), L in zip(zip(pts, pts[1:]), segs):
+        if L > 0 and d <= L:
+            return a[0] + (b[0] - a[0]) * d / L, a[1] + (b[1] - a[1]) * d / L, math.degrees(math.atan2(b[1] - a[1], b[0] - a[0]))
+        d -= L
+    a, b = next((q, r) for q, r in reversed(list(zip(pts, pts[1:]))) if q != r)
+    return pts[-1][0], pts[-1][1], math.degrees(math.atan2(b[1] - a[1], b[0] - a[0]))
 
 
 def state(e: dict, cam: dict, f: float, W: int, H: int) -> dict | None:
@@ -234,8 +254,12 @@ def state(e: dict, cam: dict, f: float, W: int, H: int) -> dict | None:
         cx, cy = (W / 2 - c["x"]) / c["s"], (H / 2 - c["y"]) / c["s"]
         rx, ry = (W / 2 - r["x"]) / r["s"], (H / 2 - r["y"]) / r["s"]
         sig = r["s"] * k
-        x = W / 2 + sig * ((e["m"][0] - rx) - (1 + d) * (cx - rx))
-        y = H / 2 + sig * ((e["m"][1] - ry) - (1 + d) * (cy - ry))
+        mx, my = e["m"]
+        if (pa := e.get("path")):
+            mx, my, ang = path_at(pa, u)
+            rot += ang if pa["heading"] else 0.0
+        x = W / 2 + sig * ((mx - rx) - (1 + d) * (cx - rx))
+        y = H / 2 + sig * ((my - ry) - (1 + d) * (cy - ry))
         w = e["w"] * k
         tilt = c.get("t", 0.0)
     else:

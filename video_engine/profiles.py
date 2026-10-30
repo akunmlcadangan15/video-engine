@@ -196,12 +196,43 @@ class Theme(_Strict):
     pin_colour: str                                   # dot / teardrop / ring colour (CSS variable --pin)
     label_font: Literal["inter", "script"]            # teardrop pin label font (script = Kaushan Script)
     pin_label_px: float = Field(ge=20, le=120)        # teardrop pin label size (px, constant on screen)
+    region_style: Literal["tint", "block"] = "tint"   # region style when the region sets none
+    block_l_min: float = Field(0.55, ge=0.3, le=0.9)  # block colour: entity colour with OKLCH L clamped to these
+    block_l_max: float = Field(0.74, ge=0.3, le=0.9)
+    block_chroma: float = Field(0.15, ge=0, le=0.3)   # ... and chroma raised to at least this (gamut-mapped)
+    block_fill_alpha: float = Field(0.9, gt=0, le=1)  # block face opacity
+    block_side_dl: float = Field(0.18, ge=0, le=0.5)  # extruded side = block colour this much darker (OKLCH L)
+    block_depth_px: float = Field(7.0, ge=0, le=40)   # side offset below the face (on-screen px, map-plane down)
+    block_shadow_px: float = Field(14.0, ge=0, le=60)  # drop shadow offset (down) and blur, on-screen px
+    block_shadow_blur_px: float = Field(10.0, ge=0, le=60)
+    block_shadow_alpha: float = Field(0.5, ge=0, le=1)
+    block_bevel_px: float = Field(3.0, ge=0, le=20)   # inner highlight band along the edge
+    block_bevel_tint: float = Field(0.4, ge=0, le=1)  # highlight = block colour mixed this far toward white
+    block_edge_colour: str = "#ffffff"                # neon edge when the region sets none
+    block_edge_px: float = Field(3.0, gt=0, le=20)
+    block_glow_px: float = Field(9.0, ge=0, le=60)    # neon glow radius of block edges and borders
+    block_casing_px: float = Field(1.25, ge=0, le=6)  # dark casing per side under the neon edge (legibility.line_casing)
+    block_draw_s: float = Field(0.9, ge=0, le=8)      # edge draw-on length when the region sets none
+    block_change_s: float = Field(0.7, ge=0.05, le=4)  # colour crossfade of a region change
+    border_px: float = Field(4.0, gt=0, le=20)        # border line width, dash and gap (on-screen px)
+    border_dash_px: float = Field(18.0, gt=0, le=120)
+    border_gap_px: float = Field(12.0, gt=0, le=120)
+    border_draw_s: float = Field(1.2, ge=0, le=8)     # border draw-on length when the border sets none
+    label_style: Literal["plain", "box"] = "plain"   # box: solid box labels (cards, region labels, pin labels)
+    label_box_colour: str = "#15181d"                 # box of labels without an entity
+    label_box_px: float = Field(44.0, ge=20, le=120)  # region and pin box label size
+    label_box_radius_px: float = Field(3.0, ge=0, le=12)   # at 1080 px frame width
+    label_box_lc: float = Field(60.0, ge=30, le=108)  # entity boxes darken until white text reaches this APCA |Lc|
+    label_pop_s: float = Field(0.6, ge=0.1, le=2)     # elastic pop-in of box labels
     entities: dict[str, str] = {}                     # entity -> "#rrggbb" (resolved into the scene, not in `theme`)
     palette: list[str] = Field(min_length=1)          # colours for entities missing from `entities`, in order
 
     @model_validator(mode="after")
     def _hex(self):
-        for c in [*self.entities.values(), *self.palette, self.pin_colour, self.route_colour, self.text_outline_colour]:
+        if self.block_l_min > self.block_l_max:
+            raise ValueError("theme block_l_min must be <= block_l_max")
+        for c in [*self.entities.values(), *self.palette, self.pin_colour, self.route_colour, self.text_outline_colour,
+                  self.block_edge_colour, self.label_box_colour]:
             if not re.fullmatch(r"#[0-9a-fA-F]{6}", c):
                 raise ValueError(f"theme colour {c!r} must be #rrggbb")
         return self

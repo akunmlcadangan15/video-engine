@@ -121,7 +121,7 @@ def test_bad_p02_drift_below_floor_fails(project, monkeypatch):
 
 def test_good_default_profile_hash_unchanged_by_empty_require():
     assert not profiles.load().gates.require
-    assert profiles.load().blake3 == "6fe7651ea499dec57b761ef46e4b70157db0ff2299d60085c8e083bb5090371c"
+    assert profiles.load().blake3 == "58e83562ef3b229dc6b930ee608b877013a49766bc2b0c892b29671d91ae00f7"
 
 
 def test_good_summary_lists_fails_warns_and_waived_separately(project, tmp_path, monkeypatch):

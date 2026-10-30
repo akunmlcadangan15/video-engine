@@ -38,6 +38,10 @@ def element_events(s: Segment, fps: int) -> list[tuple[int, str]]:
         out += [(s.start_frame + hyperframes.card_frame(c, s.n_frames, fps), " ".join(filter(None, [c.title, c.subtitle])))
                 for c in sc.cards]
         out += [(s.start_frame + r.at_frame, "") for r in sc.regions or []]   # a highlight shows no text
+        out += [(s.start_frame + (r.at_frame if r.label_at_frame is None else r.label_at_frame), r.label)
+                for r in sc.regions or [] if r.label]
+        out += [(s.start_frame + c.at_frame, "") for r in sc.regions or [] for c in r.changes]
+        out += [(s.start_frame + b.at_frame, "") for b in sc.borders or []]
         out += [(s.start_frame + r.at_frame, "") for r in sc.routes or []]    # a route shows no text
         if sc.title:
             out.append((s.start_frame + (sc.title_at_frame or 0), sc.title))

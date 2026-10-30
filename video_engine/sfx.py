@@ -33,6 +33,8 @@ def events(tl: Timeline) -> list[dict]:
                 add("label", s, hyperframes.card_frame(c, n, fps))
             for r in sc.regions or []:
                 add("region", s, r.at_frame)
+                for c in r.changes:
+                    add("region", s, c.at_frame)
             for r in sc.routes or []:
                 add("route", s, (r.at_frame + hyperframes.route_end_frame(r, fps, th["route_draw_s"])) / 2)
             f0 = 0

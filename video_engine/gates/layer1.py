@@ -91,8 +91,19 @@ def t02_integrity(tl: Timeline, project_dir: Path) -> list[Finding]:
                 if p.at_frame is not None and p.at_frame >= s.n_frames:
                     out.append(Finding("T02", "fail", f"pin '{p.label}' at_frame {p.at_frame} >= segment length {s.n_frames}", s.seg_index))
             for r in sc.regions or []:
-                if r.at_frame >= s.n_frames:
-                    out.append(Finding("T02", "fail", f"region '{r.entity}' at_frame {r.at_frame} >= segment length {s.n_frames}", s.seg_index))
+                for what, f in [("at_frame", r.at_frame), ("label_at_frame", r.label_at_frame),
+                                *((f"change to '{c.entity}' at_frame", c.at_frame) for c in r.changes)]:
+                    if f is not None and f >= s.n_frames:
+                        out.append(Finding("T02", "fail", f"region '{r.entity}' {what} {f} >= segment length {s.n_frames}", s.seg_index))
+            for i, b in enumerate(sc.borders or []):
+                if b.at_frame >= s.n_frames:
+                    out.append(Finding("T02", "fail", f"border {i} at_frame {b.at_frame} >= segment length {s.n_frames}", s.seg_index))
+            if sc.morph:
+                for what, f in (("at_frame", sc.morph.at_frame), ("back_at_frame", sc.morph.back_at_frame)):
+                    if f is not None and f >= s.n_frames:
+                        out.append(Finding("T02", "fail", f"morph {what} {f} >= segment length {s.n_frames}", s.seg_index))
+                if not (project_dir / sc.morph.asset).is_file():
+                    out.append(Finding("T02", "fail", f"morph asset not found: {sc.morph.asset}", s.seg_index))
             if sc.title and (sc.title_at_frame or 0) >= s.n_frames:
                 out.append(Finding("T02", "fail", f"title at_frame {sc.title_at_frame} >= segment length {s.n_frames}", s.seg_index))
             if sc.title_entity and not sc.title:
