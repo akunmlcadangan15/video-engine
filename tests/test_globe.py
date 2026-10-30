@@ -110,7 +110,8 @@ def test_good_globe_start_moves_and_ends_without_hold():
     G = _camera()
     zoom = [v[0] for v in globe.motion(G, 331, 30, W, H)]
     assert zoom[0] >= 0.25 * max(zoom)
-    assert min(zoom[320:330]) >= 0.9 * sum(zoom[150:330]) / 180
+    last = zoom[150:330]
+    assert all(b <= a + 1e-12 for a, b in zip(last, last[1:])) and last[-1] >= 0.5 * sum(last) / len(last)
 
 
 def test_good_globe_wraps_longitude_and_flows_into_drift():

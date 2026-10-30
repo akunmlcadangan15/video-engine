@@ -79,7 +79,7 @@ def camera_at(G: dict, f: float, fps: int) -> dict:
     lengths = [b["f"] - a["f"] - a.get("hold", 0) for a, b in zip(K, K[1:])]
     slopes = [[(q - p) / h for p, q in zip(x, y)] for x, y, h in zip(points, points[1:], lengths)]
 
-    def tangent(j, c):
+    def base(j, c):
         if K[j].get("hold", 0):
             return 0.0
         if j == 0:
@@ -95,6 +95,13 @@ def camera_at(G: dict, f: float, fps: int) -> dict:
         h0, h1 = lengths[j - 1], lengths[j]
         w1, w2 = 2 * h1 + h0, h1 + 2 * h0
         return (w1 + w2) / (w1 / x + w2 / y)
+
+    def tangent(j, c):   # an end key's speed is capped so that the speed of its leg has no minimum inside the leg
+        m = base(j, c)
+        if 0 < j < len(K) - 1 or m == 0:
+            return m
+        s = slopes[0 if j == 0 else -1][c]
+        return s * min(m / s, max(0.0, (3 - base(1 if j == 0 else len(K) - 2, c) / s) / 2))
 
     h = lengths[i]
     t = (f - a["f"] - a.get("hold", 0)) / h
