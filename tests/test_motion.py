@@ -524,6 +524,20 @@ def test_good_legs_carry_the_camera_ease_and_timing():
     assert out == pytest.approx([0.3, 0.3, 0.03125, 1.0, 0.5, 2.0])          # flat leg: inv = the camera ease
 
 
+def test_good_legs_endpoint_speed_ease_matches_engine():
+    from video_engine import hyperframes
+    legs = [{"f0": 0, "f1": 30, "to": {"s": 2.0}, "ease": "glide", "v": [0.75, 1.2]},
+            {"f0": 30, "f1": 50, "to": {"s": 2.5}, "ease": "glide", "v": [0.0, 2.6]}]
+    out = _node("const C=" + json.dumps({"start": {"s": 1.0}, "legs": legs}) + """;
+      console.log(JSON.stringify(window.__legs(C,30).map(g=>[0,0.1,0.3,0.5,0.7,0.9,1].map(p=>[g.ease(p),g.inv(p)]))));""")
+    for L, s0, got in zip(legs, (1.0, 2.0), out):
+        e = hyperframes.leg_ease(L, s0)
+        for p, (ge, gi) in zip((0, 0.1, 0.3, 0.5, 0.7, 0.9, 1), got):
+            z = s0 + (L["to"]["s"] - s0) * ge
+            assert ge == pytest.approx(e(p), abs=1e-12) and z * (1 / s0 + (1 / L["to"]["s"] - 1 / s0) * gi) == pytest.approx(1)
+    assert [e(0.0), e(1.0)] == [0.0, 1.0] and (e(1e-6) - e(0)) / 1e-6 == pytest.approx(0.0, abs=1e-5)
+
+
 @pytest.mark.parametrize("ease", ["glide", "whip"])   # drift is exponential: its reciprocal is exact
 def test_bad_camera_ease_on_reciprocal_endpoints_oversizes_a_1_to_4_zoom(ease):
     # 1/a -> 1/z with the camera ease: at the middle of a 1 -> 4 leg camera 2.5 x label 0.625 = 1.5625

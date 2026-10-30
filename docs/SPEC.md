@@ -131,7 +131,8 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 - Segment field `visual_type` (map / photo / video / diagram / archive / illustration; inferred when absent).
 - Renderer theme (`[theme]`): values the HyperFrames template reads from the scene; part of the HyperFrames segment
   cache key. Default theme values reproduce the engine look.
-- HyperFrames `camera_path`: several camera keys in one map segment (legs tweened key to key, drift after the last key);
+- HyperFrames `camera_path`: several camera keys in one map segment (legs tweened key to key, glide end speeds continuous
+  across keys, optional key holds, drift after the last key);
   key move `glide` or `whip` (drift, then a fast in-out move with directional motion blur); R56 per leg; DOM probe also at every key frame; drafts may return `map_path` when the profile enables it.
 - Camera pulses (`[camera]`, off by default): every HyperFrames drift holds evenly spaced cubic-bezier pulses away
   from the drift and back (push in or pull out about `pulse_anchor`, optional alternating pan); camera key `pulse`

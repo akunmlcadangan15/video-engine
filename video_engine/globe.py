@@ -343,8 +343,8 @@ def scene_block(seg: Segment, tl: Timeline, project_dir: Path, theme: dict) -> d
         iw, ih = im.size
     if abs(iw / ih - 2.0) > 0.02:
         raise EngineError(f"globe map_asset '{sc.map_asset}' is {iw}x{ih}; a whole-world equirectangular image is 2:1")
-    G = {"fov": FOV, "drift": theme["camera_drift_per_s"], "start": theme["globe_start_speed"],
-         "end": theme["globe_end_speed"], "n": seg.n_frames, "alt_min": GLOBE_ALT_MIN, "tex_ppd": round(base_ppd(iw), 3),
+    G = {"fov": FOV, "drift": theme["camera_drift_per_s"], "start": theme["camera_start_speed"],
+         "end": theme["camera_end_speed"], "n": seg.n_frames, "alt_min": GLOBE_ALT_MIN, "tex_ppd": round(base_ppd(iw), 3),
          "keys": [{"f": k.at_frame, "lat": k.lat, "lng": k.lng, "alt": k.altitude, "tilt": k.tilt, "hold": k.hold} for k in g.keys],
          "tex": f"assets/globe_{tex_key(src)[:32]}.jpg"}
     G["views"] = [[round(v["lat"], 7), round(v["lng"], 7), round(v["alt"], 9), round(v["tilt"], 7)]

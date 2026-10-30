@@ -3,7 +3,9 @@ draft map_path, renderer profile values in cache keys)."""
 import pytest
 from pydantic import ValidationError
 
-from video_engine import draft, hyperframes, native, profiles
+import math
+
+from video_engine import draft, hyperframes, layout, native, profiles
 from video_engine.gates import layer1, layer2, style
 
 PATH = [{"at_frame": 0, "focus": [0.3, 0.3], "zoom": 1.2},
@@ -124,6 +126,55 @@ def test_good_renderer_profile_values_in_hf_key_not_in_native_key(project, monke
     assert [native.plan(s, tl, p).key for s in tl.segments[:2]] == k_nat
 
 
+STRAIGHT = [{"at_frame": 0, "focus": [0.3, 0.3], "zoom": 1.2},       # one direction through the inner key
+            {"at_frame": 20, "focus": [0.42, 0.4], "zoom": 1.6},
+            {"at_frame": 50, "focus": [0.58, 0.52], "zoom": 2.4}]
+
+
+def _speeds(sc, n=60):
+    """Screen speed (glide_speeds metric, px / frame) over every frame step."""
+    W, H, cam = sc["width"], sc["height"], sc["camera"]
+    R, st = math.hypot(W, H) / 2, [layout.camera_at(cam, f + 1e-7) for f in range(n)]
+    c = lambda a: ((W / 2 - a["x"]) / a["s"], (H / 2 - a["y"]) / a["s"])
+    return [math.hypot(R * math.log(b["s"] / a["s"]), math.dist(c(a), c(b)) * (a["s"] + b["s"]) / 2)
+            for a, b in zip(st, st[1:])]
+
+
+def test_good_path_speed_continuous_without_dip_at_inner_key(project):
+    p, tl = project(_path(STRAIGHT))
+    v = _speeds(_scene(tl, p))
+    assert v[19] == pytest.approx(v[20], rel=0.1)                        # no speed step at the key
+    assert min(v[10:30]) >= 0.9 * min(max(v[:20]), max(v[20:50]))         # and no dip around it
+
+
+def test_good_path_frame_1_already_moving_and_glide_lands_into_the_drift(project):
+    p, tl = project(_path(STRAIGHT))
+    sc = _scene(tl, p)
+    v = _speeds(sc)
+    assert v[0] >= 0.25 * max(v)
+    drift = math.hypot(sc["width"], sc["height"]) / 2 * sc["theme"]["camera_drift_per_s"] / 30
+    assert v[49] < 0.1 * max(v) and v[50] == pytest.approx(drift, rel=0.05)   # the glide lands into the drift
+
+
+def test_good_key_hold_stops_the_camera(project):
+    keys = [STRAIGHT[0], {**STRAIGHT[1], "hold": 10}, {**STRAIGHT[2], "at_frame": 59}]
+    p, tl = project(_path(keys))
+    sc = _scene(tl, p)
+    legs, v = sc["camera"]["legs"], _speeds(sc)
+    assert (legs[1]["f0"], legs[1]["f1"], legs[1]["to"]) == (20, 30, legs[0]["to"])
+    assert max(v[20:30]) < 1e-6 and v[19] < 0.1 * max(v) and v[30] < 0.1 * max(v)
+    assert legs[0]["v"][1] == legs[2]["v"][0] == 0.0
+
+
+def test_good_turn_back_stops_and_shot_end_keeps_moving(project):
+    keys = [STRAIGHT[0], STRAIGHT[1], {"at_frame": 59, "focus": [0.3, 0.3], "zoom": 1.2}]
+    p, tl = project(_path(keys))
+    sc = _scene(tl, p)
+    v = _speeds(sc)
+    assert sc["camera"]["legs"][1]["v"] == [0.0, pytest.approx(sc["theme"]["camera_end_speed"], rel=0.2)]
+    assert v[19] < 0.1 * max(v) and v[57] > 0.5 * sum(v[20:58]) / 38
+
+
 # bad ----------------------------------------------------------------------------------------------------------------
 @pytest.mark.parametrize("keys, msg", [
     (PATH[:1], "at least 2 keys"),
@@ -131,7 +182,9 @@ def test_good_renderer_profile_values_in_hf_key_not_in_native_key(project, monke
     ([PATH[0], PATH[2], PATH[1]], "must be >"),
     ([PATH[0], {"at_frame": 20, "focus": [1.2, 0.5]}], "within 0..1"),
     ([PATH[0], {"at_frame": 20, "focus": [0.5, 0.5], "zoom": 0.5}], "greater than or equal to 1"),
-], ids=["BAD-one-key", "BAD-first-not-0", "BAD-not-increasing", "BAD-focus-range", "BAD-zoom-below-cover"])
+    ([PATH[0], {**PATH[1], "hold": 15}, PATH[2]], "hold 15"),
+], ids=["BAD-one-key", "BAD-first-not-0", "BAD-not-increasing", "BAD-focus-range", "BAD-zoom-below-cover",
+        "BAD-hold-into-next-key"])
 def test_bad_path_schema(project, keys, msg):
     with pytest.raises(ValidationError, match=msg):
         project(_path(keys))

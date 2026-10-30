@@ -78,13 +78,15 @@ window.__ease=function(E){return typeof E==='function'?E:gsap.parseEase(E);};
 window.__inv=function(a,z,E){const e=window.__ease(E);if(Math.abs(z-a)<1e-9)return e;
   return function(p){return (1/(a+(z-a)*e(p))-1/a)/(1/z-1/a);};};
 // camera legs, one definition for every block: leg k tweens the camera from the previous leg's end over frames
-// [f0, f1) under `ease` (glide, whip = power3.inOut, drift = constant ln-rate zoom (rho^t-1)/(rho-1), pulse = base
-// drift `lr` plus the cubic-bezier share; hyperframes.leg_ease is the same math); `inv` as above
+// [f0, f1) under `ease` (`v` [a, b] = the cubic with those end slopes, glide, whip = power3.inOut, drift = constant
+// ln-rate zoom (rho^t-1)/(rho-1), pulse = base drift `lr` plus the cubic-bezier share; hyperframes.leg_ease is the
+// same math); `inv` as above
 window.__legs=function(C,FPS){
   const glide=t=>{t=Math.min(Math.max(t,0),1);return 0.35*t+0.65*(1-Math.cos(Math.PI*t))/2;};
   const quart=t=>t<0.5?8*t*t*t*t:1-Math.pow(-2*t+2,4)/2;   // GSAP power3.inOut
   const EASE={glide:glide,whip:quart};
-  const legEase=(L,s0)=>{const rho=L.to.s/s0, flat=Math.abs(rho-1)<1e-9;
+  const legEase=(L,s0)=>{if(L.v){const a=L.v[0],b=L.v[1];return t=>((a+b-2)*t+3-2*a-b)*t*t+a*t;}
+    const rho=L.to.s/s0, flat=Math.abs(rho-1)<1e-9;
     if(!L.bez&&L.ease==='drift')return flat?(t=>t):(t=>(Math.pow(rho,t)-1)/(rho-1));
     const B=L.bez?window.__bez(L.bez):EASE[L.ease];
     if(flat||L.lr===undefined)return B;

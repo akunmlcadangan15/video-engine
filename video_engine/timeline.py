@@ -294,6 +294,7 @@ class CameraKey(Strict):
                                                                 # on this view: it turns at 0 and drift_max (None =
                                                                 # pushes in for the whole wait)
     tilt: float = Field(0.0, ge=0.0, le=TILT_MAX)   # perspective tilt (deg) of the map plane at this view (camera3d)
+    hold: int = Field(0, ge=0, le=90)               # frames the camera stays still on this view after at_frame
 
     @model_validator(mode="after")
     def _focus(self):
@@ -614,9 +615,9 @@ class GsapScene(Strict):
         if k[0].at_frame != 0:
             raise ValueError(f"camera_path[0].at_frame is {k[0].at_frame}; the first key is the opening view at frame 0")
         for i in range(1, len(k)):
-            if k[i].at_frame <= k[i - 1].at_frame:
+            if k[i].at_frame <= k[i - 1].at_frame + k[i - 1].hold:
                 raise ValueError(f"camera_path[{i}].at_frame {k[i].at_frame} must be > camera_path[{i - 1}].at_frame "
-                                 f"{k[i - 1].at_frame}")
+                                 f"{k[i - 1].at_frame} + hold {k[i - 1].hold}")
         return self
 
 

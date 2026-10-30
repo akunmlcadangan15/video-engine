@@ -145,7 +145,8 @@ def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, them
     key's move_s, without blur. leg_motion = the visible motion of each key's move (checked by R56). After the last key
     a drift runs to the segment end so the camera never stops. With theme `camera_pulse` (profile [camera]) every
     drift is split by `drift_legs` into drifts and pulses; a key's `pulse` sets the pulse sizes of the wait on its view
-    (0 = drift only) and its `drift_max` bounds the drift of that wait."""
+    (0 = drift only) and its `drift_max` bounds the drift of that wait. A key's `hold` adds a still leg on its view
+    after it. Glide legs carry endpoint speeds `v` (glide_speeds)."""
     if not sc.camera_path:
         a, b, _ = camera_states(sc, W, H, mw, mh)
         return {"start": a, "end": b, "legs": [{"f0": 0, "f1": n, "to": b, "ease": "glide"}], "leg_motion": []}
@@ -164,6 +165,8 @@ def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, them
 
     start = _state(*views[0], W, H, mw, mh)
     legs, motion, prev = [], [], start
+    if keys[0].hold:
+        legs.append({"f0": 0, "f1": keys[0].hold, "to": start, "ease": "drift"})
     for i, (k, (c, s)) in enumerate(zip(keys[1:], views[1:])):
         to = _state(c, s, W, H, mw, mh)
         f0 = legs[-1]["f1"] if legs else 0
@@ -179,14 +182,61 @@ def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, them
             legs.append({"f0": f0, "f1": k.at_frame, "to": to, "ease": "glide"})
         motion.append(round(motion_px(prev, to, W, H), 2))
         prev = to
-    last = keys[-1].at_frame
+        if k.hold:
+            legs.append({"f0": k.at_frame, "f1": min(n, k.at_frame + k.hold), "to": to, "ease": "drift"})
+    last = min(n, keys[-1].at_frame + keys[-1].hold)
     if last < n:
         legs += drifts(len(keys) - 1, last, n)
     if any(k.tilt for k in keys):   # tilt `t` (deg) of every transform: a leg ending at a key frame moves to its tilt
         tilt = lambda f: next(k.tilt for k in reversed(keys) if k.at_frame <= f)
         start = {**start, "t": keys[0].tilt}
         legs = [{**L, "to": {**L["to"], "t": tilt(L["f1"])}} for L in legs]
+    glide_speeds(legs, start, W, H, n, theme["camera_start_speed"], theme["camera_end_speed"])
     return {"start": start, "end": legs[-1]["to"], "legs": legs, "leg_motion": motion}
+
+
+def glide_speeds(legs: list[dict], start: dict, W: int, H: int, n: int, first: float, last: float) -> None:
+    """Set `v` [a, b] (ease slope at progress 0 and 1, leg_ease) on every glide leg of a camera path so that the screen
+    speed (ln zoom x half the frame diagonal, centre shift in px) is continuous at its ends: next to a glide leg the
+    slower leg's mean, next to another leg that leg's speed there, 0 where the motion turns by 90 deg or more;
+    `first` / `last` x the leg's mean at the segment start / end (a leg from the last frame on is never shown)."""
+    R = math.hypot(W, H) / 2
+    froms = [start] + [L["to"] for L in legs[:-1]]
+
+    def state(i, p):
+        L, a = legs[i], froms[i]
+        e = p if L["ease"] == "glide" else leg_ease(L, a["s"])(p)
+        return {k: a[k] + (L["to"][k] - a[k]) * e for k in "xys"}
+
+    def step(a, b):   # screen motion from transform a to b
+        m = (a["s"] + b["s"]) / 2
+        return (R * math.log(b["s"] / a["s"]), ((b["x"] - W / 2) / b["s"] - (a["x"] - W / 2) / a["s"]) * -m,
+                ((b["y"] - H / 2) / b["s"] - (a["y"] - H / 2) / a["s"]) * -m)
+
+    def vel(i, end):  # per unit of tween fraction on a glide leg, per frame on any other leg
+        d = 1e-4
+        u = step(state(i, 1 - d if end else 0.0), state(i, 1.0 if end else d))
+        k = d if legs[i]["ease"] == "glide" else d * (legs[i]["f1"] - legs[i]["f0"])
+        return [c / k for c in u]
+
+    def mean(i):
+        return sum(math.hypot(*step(state(i, j / 16), state(i, (j + 1) / 16))) for j in range(16)) / (
+            legs[i]["f1"] - legs[i]["f0"])
+
+    for i, L in enumerate(legs):
+        if L["ease"] != "glide":
+            continue
+        own, m, v = (vel(i, 0), vel(i, 1)), mean(i), []
+        for end, j in ((0, i - 1), (1, i + 1)):
+            if not 0 <= j < len(legs) or legs[j]["f0"] >= n - 1:
+                speed = (last if end else first) * m
+            else:
+                other = vel(j, 1 - end)
+                ahead = sum(a * b for a, b in zip(other, own[end])) > 0
+                speed = ahead * (min(m, mean(j)) if legs[j]["ease"] == "glide" else math.hypot(*other))
+            g = math.hypot(*own[end])
+            v.append(round(min(3.0, speed * (L["f1"] - L["f0"]) / g) if g > 1e-9 else 1.0, 4))
+        L["v"] = v
 
 
 def drift_base(skeleton: list[dict], rate: float, bound: float | None) -> list[dict]:
@@ -287,13 +337,17 @@ def drift_legs(view, f0: int, f1: int, drift: float, pulse: dict | None, W: int,
 
 def leg_ease(L: dict, s_from: float):
     """Ease of a camera leg (progress 0..1 -> tween fraction of x, y and s; hf template window.__legs is the same
-    math). Shape B: glide 0.35 t + 0.65 (1 - cos pi t) / 2, whip power3.inOut, a pulse leg's cubic-bezier `bez`.
+    math). A leg with `v` [a, b]: the cubic with slopes a and b at 0 and 1 (glide_speeds). Shape B: glide
+    0.35 t + 0.65 (1 - cos pi t) / 2, whip power3.inOut, a pulse leg's cubic-bezier `bez`.
     drift: constant ln-rate zoom (rho^t - 1) / (rho - 1), rho = to.s / from.s (linear when rho = 1). A leg with `lr`
     (pulse legs: the base drift's ln change) moves its ln zoom at a
     constant rate r plus the B share of the rest, (exp(r t + (ln rho - r) B(t)) - 1) / (rho - 1), with
     r = sign(ln rho) min(|lr|, |ln rho|): the zoom keeps moving at both ends and never reverses inside the leg."""
     from .layout import EASES, cubic_bezier
     rho = L["to"]["s"] / s_from
+    if "v" in L:
+        a, b = L["v"]
+        return lambda t: ((a + b - 2) * t + 3 - 2 * a - b) * t * t + a * t
     if "bez" in L:
         b = L["bez"]
         shape = lambda t: cubic_bezier(*b, t)

@@ -165,8 +165,8 @@ class DraftProfile(_Strict):
 class Theme(_Strict):
     """Renderer values (HyperFrames scene `theme`; part of the HyperFrames segment cache key)."""
     camera_drift_per_s: float = Field(ge=0, le=0.1)   # zoom growth per second after the last camera_path key
-    globe_start_speed: float = Field(ge=0, le=1)      # globe: first-key speed as a share of the first leg's mean
-    globe_end_speed: float = Field(ge=0, le=1)        # globe: last-key speed as a share of the last leg's mean
+    camera_start_speed: float = Field(ge=0, le=1)      # globe and camera_path: first-key speed as a share of the first leg's mean
+    camera_end_speed: float = Field(ge=0, le=1)        # globe and camera_path: last-key speed as a share of the last leg's mean
     whip_s: float = Field(ge=0.1, le=1.5)             # length of a whip move (ends on its key)
     whip_blur_px: float = Field(ge=0, le=40)          # peak motion blur (Gaussian deviation, px) at mid-whip
     region_fill_opacity: float = Field(gt=0, le=1)    # region highlight fill opacity
