@@ -64,7 +64,7 @@ try {
                  ink_state: el.getAttribute('data-ink-state'), halo: el.getAttribute('data-halo'),
                  halo_color: getComputedStyle(el, '::after').backgroundColor, font_style: getComputedStyle(el).fontStyle,
                  font_family: getComputedStyle(el).fontFamily, bg: getComputedStyle(el).backgroundColor,
-                 box: el.getAttribute('data-box') };
+                 box: el.getAttribute('data-box'), box_dim: el.getAttribute('data-box-dim') };
       });
       const lines = [...document.querySelectorAll('[data-line]')].map(el => {
         const r = el.getBoundingClientRect();

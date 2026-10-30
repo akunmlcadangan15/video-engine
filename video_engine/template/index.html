@@ -173,7 +173,7 @@ const pop=(el,t0)=>{tl.fromTo(el,{opacity:0},{opacity:1,duration:0.12,ease:'none
 const boxify=(el,col,px)=>{el.classList.add('box');el.style.background=col;el.style.borderRadius=BOXR+'px';
   if(px)el.style.fontSize=px+'px';el.setAttribute('data-box',TH.label_box_lc);return el;};
 // title and figures in a box: white text without their glow, shadow or outline
-const unbox=el=>{el.style.color='#fff';el.style.textShadow='none';el.style.webkitTextStroke='0';};
+const unbox=(el,ink)=>{el.style.color=ink||'#fff';el.style.textShadow='none';el.style.webkitTextStroke='0';};
 // neon line (block edges, borders): dark casing under a glowing stroke, drawn on along its length by a mask stroke
 // (pathLength 1); widths, dashes and glow keep their on-screen size; data-line for R64 on legibility profiles
 function neon(par,tag,at,col,cas,w,dashed,t0,ds,id,geo){
@@ -470,10 +470,12 @@ const figText=(F,v)=>{
 };
 (S.figures||[]).forEach((F,i)=>{
   const el=document.createElement('div');el.className='fig';el.setAttribute('data-qa','figure:'+i);if(!F.box)paint(el,F.entity);
-  el.style.cssText+=';left:'+F.x+'px;top:'+F.y+'px;color:'+F.colour+';font-size:'+TH.figure_px+'px;'+
+  el.style.cssText+=';left:'+F.x+'px;top:'+F.y+'px;color:'+F.colour+';font-size:'+(F.px||TH.figure_px)+'px;'+
     (F.kind==='year'?"font-family:'EngSerif',serif;font-weight:800;":'font-family:'+FONT.f+';font-weight:'+FONT.w+';')+
     'text-shadow:0 5px 14px rgba(0,0,0,.8),0 0 4px rgba(0,0,0,.9)';
-  if(F.box)unbox(boxify(el,F.box));else if(LG)adapt(el,'figure:'+i,LG.halo_width_em);
+  if(F.box)unbox(boxify(el,F.box),F.ink);else if(LG)adapt(el,'figure:'+i,LG.halo_width_em);
+  if(F.texture){el.style.backgroundImage='url("assets/'+F.texture+'")';el.style.backgroundBlendMode='multiply';
+    el.style.backgroundSize='512px auto';el.setAttribute('data-box-dim',F.dim);}
   ui.appendChild(el);gsap.set(el,{xPercent:-50,yPercent:-50});const t0=f2t(F.at_frame);
   tl.set(el,{visibility:'visible'},t0);
   if(F.motion==='counter'){

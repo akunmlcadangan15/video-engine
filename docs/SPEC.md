@@ -165,6 +165,8 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   as lossless clips from the segment files (`video_engine/transitions.py`) and overlaid frame-exactly in the final
   mux under captions and watermark; without transitions the mux command is unchanged. C01 grades hard cuts (warn
   levels) and shot changes (fail levels).
+  `same_type` `{visual type: kind}` takes precedence when both sides of a boundary share that type (`geoverum`:
+  map to map = zoom whip, never a page turn).
 - HyperFrames `regions`: entity highlights; one colour per entity from profile `[theme.entities]` then
   `theme.palette`; E01 checks the painted region fill colours in the DOM probe. Region `style` (default
   `theme.region_style`; beats scenes default to `tint`): `tint` = fill + white or glow edge; `block` = a raised slab in
@@ -186,6 +188,9 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   boxes (`label_box_colour` or the entity's box colour) with fixed white text, `label_box_px`, `label_box_radius_px`,
   elastic pop `label_pop_s`; they leave the adaptive ink set, and R64 checks each visible box (`data-box`) text against
   its box at the box target instead.
+  `year_box_colour` (with `year_box_ink`, `year_box_px`, optional `year_box_texture` from vendor/textures, multiplied
+  over the box): year figures on that box instead of the figure box; R64 checks the year ink against the box colour
+  times the texture's darkest factor (0.5th percentile luminance, `data-box-dim`).
 - HyperFrames `routes`: dashed self-drawing movement lines with an arrowhead riding the tip; style from `[theme]`.
 - HyperFrames `title` (entity colour + glow) and `figures` (years in bold serif, numbers with an elastic bounce
   or a counter); counters emit `counter_tick` events into build_report.json `sfx_events`.

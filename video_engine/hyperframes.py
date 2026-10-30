@@ -409,6 +409,10 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
         for t in [out.get("title"), *out.get("figures", [])]:
             if t:
                 t["box"] = entities.box_colour(col[t["entity"]], theme) if t["entity"] else theme["label_box_colour"]
+        for f in out.get("figures", []):
+            if f["kind"] == "year" and theme["year_box_colour"]:
+                f.update(box=theme["year_box_colour"], ink=theme["year_box_ink"], px=theme["year_box_px"],
+                         texture=theme["year_box_texture"], dim=texture_dim(theme["year_box_texture"]))
     if prof.legibility:
         out["legibility"] = {**prof.legibility.model_dump(), "v": legibility.code_hash()}
         for t in [out.get("title"), *out.get("figures", [])]:
@@ -692,13 +696,28 @@ def _map_copy(src: Path, need_w: float) -> Path:
     return out
 
 
+def texture_dim(name: str | None) -> float | None:
+    """Darkest multiply factor of a vendor/textures file (0.5th percentile of its luminance, 0-1): R64 checks box text
+    against the box colour times this factor. None without a texture."""
+    if name is None:
+        return None
+    src = config.TEXTURES_DIR / name
+    if not src.is_file():
+        raise EngineError(f"texture {name} not found in vendor/textures")
+    from PIL import Image
+    import numpy as np
+    return round(float(np.percentile(np.asarray(Image.open(src).convert("L"), dtype=np.float64), 0.5)) / 255, 3)
+
+
 def textures(scene: dict) -> list[str]:
-    """vendor/textures files of a scene: the paper texture and grain of a [print] paper surface and of a map morph."""
+    """vendor/textures files of a scene: the paper texture and grain of a [print] paper surface and of a map morph,
+    and the year box texture."""
     pr, m, out = scene.get("print"), scene.get("morph"), []
     if pr and pr["surface"] == "paper":
         out += [f for f, a in ((pr["paper_texture"], pr["paper_alpha"]), (pr["grain"], pr["grain_alpha"])) if a > 0]
     if m:
         out += [f for f, a in ((m["paper_texture"], m["paper"]), (m["grain_texture"], m["grain"])) if a > 0 and f not in out]
+    out += sorted({f["texture"] for f in scene.get("figures", []) if f.get("texture")} - set(out))
     return out
 
 

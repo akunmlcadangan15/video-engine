@@ -46,6 +46,10 @@ camera_drift_per_s = 0.06     # scale growth / s of the drift between camera pul
 region_edge = "glow"          # same-colour edge; [legibility] sets fill alpha and a 3-4 px outline, no blur
 region_style = "block"        # saturated raised blocks: bevel, side, drop shadow, neon edge drawn on
 label_style = "box"           # solid label boxes (entity red / blue, near-black), white caps, elastic pop-in
+year_box_colour = "#f6efe0"   # years on a bright cream box with paper grain, dark serif digits, about label size
+year_box_ink = "#2a231d"
+year_box_px = 88
+year_box_texture = "grain-paper002.jpg"
 pin_style = "teardrop"        # red teardrop with a white dot, paper outline and shadow, bounce drop-in, label beside
 pin_colour = "#c4302a"
 label_font = "inter"          # map labels; [print] sets the printed roles per surface
@@ -124,6 +128,7 @@ max_zoom = 16                 # deepest camera zoom: country-scale close-ups fro
 [transitions]                 # every segment boundary; page turn when either side is a map or archive segment
 kind = "zoom_whip"            # 0.1 s push-in with radial blur, then the incoming shot settles 1.3x -> 1 over 0.4 s
 by_type = { map = "page_turn", archive = "page_turn" }   # 0.4 s page turn
+same_type = { map = "zoom_whip" }   # map to map stays on the map: a whip, never a page turn
 whip_out_s = 0.1
 whip_blur_in_s = 0.1          # radial blur covers 0.2 s around the boundary
 whip_in_s = 0.4

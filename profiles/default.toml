@@ -82,6 +82,10 @@ label_box_px = 44            # region label size (px)
 label_box_radius_px = 3      # box corner radius at 1080 px frame width
 label_box_lc = 60            # entity boxes darken until white text reaches APCA |Lc| >= this (R64 fails below)
 label_pop_s = 0.6            # elastic pop-in duration (s)
+# year_box_colour = "#f6efe0"  # label_style box: year figures on this box instead of the figure box (off by default)
+year_box_ink = "#ffffff"     # year text on year_box_colour
+# year_box_px = 88             # year size on year_box_colour (absent = figure_px)
+# year_box_texture = "grain-paper002.jpg"   # vendor/textures file multiplied over year_box_colour (needs the colour)
 # Entity colours: one colour per entity for the whole video (regions; titles use the colour of their entity).
 # Entities missing from [theme.entities] take the next unused palette colour in order of first appearance.
 palette = ["#ff4d4d", "#3d9bff", "#ffc533", "#3ddc84", "#b87cff", "#ff8a3d", "#2fd6d6", "#ff5fb0"]

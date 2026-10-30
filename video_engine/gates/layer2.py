@@ -771,7 +771,8 @@ def r64_line_rows(dom: dict[int, dict]) -> list[dict]:
 
 def r64_box_rows(dom: dict[int, dict]) -> list[dict]:
     """R64 box labels: one row per visible ([data-box], opacity >= 0.9) solid-box label per probed time: APCA |Lc| of
-    its text colour on its opaque box background, target the element's data-box."""
+    its text colour on its opaque box background (times data-box-dim, the darkest factor of a box texture), target the
+    element's data-box."""
     rows = []
     for seg, res in sorted(dom.items()):
         for item in res.get("times", []):
@@ -782,7 +783,8 @@ def r64_box_rows(dom: dict[int, dict]) -> list[dict]:
                 ink = _rgb_hex(r["color"])
                 if not m or float(m.group(4) or 1) < 0.99 or ink is None:
                     continue
-                bg = [int(v) for v in m.groups()[:3]]
+                k = float(r.get("box_dim") or 1)
+                bg = [round(int(v) * k) for v in m.groups()[:3]]
                 lc = float(legibility.apca_lc(legibility.apca_y(legibility.hex_rgb(ink)), legibility.apca_y(bg)))
                 rows.append({"seg": seg, "id": r["id"], "text": r.get("text", ""), "t": item["t"], "ink": ink,
                              "bg": legibility.rgb_hex(bg), "lc": round(abs(lc), 1), "target": float(r["box"])})

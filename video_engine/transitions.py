@@ -42,9 +42,12 @@ class Window:
 
 
 def kind_at(tl: Timeline, i: int) -> str:
-    """Transition into segment i (i >= 1): by_type[incoming kind], else by_type[outgoing kind], else kind."""
+    """Transition into segment i (i >= 1): same_type[kind] when both sides share it, else by_type[incoming kind], else
+    by_type[outgoing kind], else kind."""
     T = profiles.of(tl).transitions
     a, b = tl.segments[i - 1], tl.segments[i]
+    if a.kind == b.kind and a.kind in T.same_type:
+        return T.same_type[a.kind]
     return T.by_type.get(b.kind) or T.by_type.get(a.kind) or T.kind
 
 

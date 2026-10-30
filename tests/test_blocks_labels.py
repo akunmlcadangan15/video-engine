@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from video_engine import entities, hyperframes, legibility as L, profiles, props
 from video_engine.gates import layer1, layer2, style
+from video_engine.util import EngineError
 
 SQ = [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]]
 TH = profiles.load().render_values("hf")
@@ -162,6 +163,43 @@ def test_good_block_and_box_label_render_and_pass_E01_and_R64(project, monkeypat
     assert rows["title"]["bg"] == TH["label_box_colour"] and rows["title"]["lc"] >= rows["title"]["target"]
 
 
+YEAR_BOX = dict(year_box_colour="#f6efe0", year_box_ink="#2a231d", year_box_px=88, year_box_texture="grain-paper002.jpg")
+
+
+def test_good_year_box_is_textured_light_with_dark_ink_and_passes_R64(project, monkeypatch, tmp_path):
+    _theme(monkeypatch, label_style="box", **YEAR_BOX)
+    p, tl = project(_sc(figures=[{"kind": "year", "value": 1893, "at_frame": 0, "position": [0.5, 0.3]},
+                                 {"kind": "number", "value": 7, "at_frame": 0, "position": [0.5, 0.6]}]))
+    res, sc = _probe(tl, p, tmp_path, (1.5,))
+    year, num = sc["figures"]
+    assert year["box"] == "#f6efe0" and year["texture"] == "grain-paper002.jpg" and 0.5 < year["dim"] < 1
+    assert num["box"] == TH["label_box_colour"] and not num.get("texture")
+    assert (tmp_path / "hf" / "assets" / "grain-paper002.jpg").is_file()
+    rects = {r["id"]: r for r in res["times"][0]["rects"]}
+    assert rects["figure:0"]["h"] < rects["figure:1"]["h"] * 0.75     # 88 px against figure_px
+    rows = {r["id"]: r for r in layer2.r64_box_rows({2: res})}
+    dim = round(0xf6 * year["dim"])
+    assert rows["figure:0"]["ink"] == "#2a231d" and rows["figure:0"]["bg"].lower().startswith(f"#{dim:02x}")
+    assert rows["figure:0"]["lc"] >= rows["figure:0"]["target"]
+
+
+def test_bad_R64_counts_the_darkest_grain_of_a_box_texture():
+    rect = {"id": "figure:0", "text": "1893", "opacity": 1, "color": "rgb(140, 140, 140)", "bg": "rgb(246, 239, 224)",
+            "box": "60"}
+    (clean,) = layer2.r64_box_rows({2: {"times": [{"t": 1.0, "rects": [rect]}]}})
+    (grainy,) = layer2.r64_box_rows({2: {"times": [{"t": 1.0, "rects": [{**rect, "box_dim": "0.8"}]}]}})
+    assert grainy["lc"] < clean["lc"] and grainy["lc"] < 60
+
+
+def test_bad_year_box_texture_without_colour_or_file_rejected(project, monkeypatch):
+    with pytest.raises(ValidationError, match="year_box_texture"):
+        profiles.load().theme.model_validate({**profiles.load().theme.model_dump(), "year_box_texture": "x.jpg"})
+    _theme(monkeypatch, label_style="box", **{**YEAR_BOX, "year_box_texture": "missing.jpg"})
+    p, tl = project(_sc(figures=[{"kind": "year", "value": 1893, "at_frame": 0, "position": [0.5, 0.3]}]))
+    with pytest.raises(EngineError, match="missing.jpg"):
+        hyperframes.scene_data(tl.segments[2], tl, p)
+
+
 def test_bad_R64_fails_a_box_below_its_lc():
     rect = {"id": "region:0", "text": "A", "opacity": 1, "color": "rgb(255, 255, 255)", "bg": "rgb(250, 220, 120)",
             "box": "60"}
@@ -195,7 +233,6 @@ def test_good_morph_crossfades_a_second_map_in(project, tmp_path):
 
 
 def test_bad_morph_with_another_aspect_ratio_is_rejected(project, tmp_path):
-    from video_engine.util import EngineError
     d, _ = project()
     Image.new("RGB", (800, 400), (0, 0, 0)).save(d / "assets" / "wide.jpg")
     p, tl = project(_sc(morph={"asset": "assets/wide.jpg"}))

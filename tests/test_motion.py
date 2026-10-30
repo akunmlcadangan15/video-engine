@@ -322,6 +322,13 @@ def test_good_transition_windows_and_kind_by_visual_type(project, monkeypatch):
     assert [(w.kind, w.f0, w.f1) for w in ws] == [("page_turn", 300, 312), ("zoom_whip", 597, 612)]
 
 
+def test_good_same_type_map_to_map_whips_instead_of_the_page_turn(project, monkeypatch):
+    _, tl = project(tl_layout(("map", 10, None), ("map", 10, None), ("photo", 10, None)))
+    _profile(monkeypatch, transitions=profiles.TransitionsProfile(**GEO_T, same_type={"map": "zoom_whip"}))
+    assert [transitions.kind_at(tl, i) for i in (1, 2)] == ["zoom_whip", "page_turn"]
+    assert profiles.TransitionsProfile(same_type={"map": "zoom_whip"}).active()
+
+
 def test_bad_transition_window_longer_than_a_segment_fails_c01(project, monkeypatch):
     _, tl = project(tl_layout(("photo", 10, None), ("photo", 0.3, None), ("photo", 10, None)))
     _profile(monkeypatch, transitions=profiles.TransitionsProfile(kind="zoom_whip"))
@@ -334,6 +341,8 @@ def test_bad_transition_window_longer_than_a_segment_fails_c01(project, monkeypa
 def test_bad_transitions_profile_values_rejected():
     with pytest.raises(ValidationError):
         profiles.TransitionsProfile(by_type={"cartoon": "page_turn"})
+    with pytest.raises(ValidationError):
+        profiles.TransitionsProfile(same_type={"cartoon": "zoom_whip"})
     with pytest.raises(ValidationError):
         profiles.TransitionsProfile(whip_blur_in_s=0.5, whip_in_s=0.2)
 

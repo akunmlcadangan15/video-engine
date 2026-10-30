@@ -224,6 +224,10 @@ class Theme(_Strict):
     label_box_radius_px: float = Field(3.0, ge=0, le=12)   # at 1080 px frame width
     label_box_lc: float = Field(60.0, ge=30, le=108)  # entity boxes darken until white text reaches this APCA |Lc|
     label_pop_s: float = Field(0.6, ge=0.1, le=2)     # elastic pop-in of box labels
+    year_box_colour: str | None = None                # label_style box: year figures on this box (None = like figures)
+    year_box_ink: str = "#ffffff"                     # year text on year_box_colour
+    year_box_px: float | None = Field(None, ge=20, le=320)   # year size on year_box_colour (None = figure_px)
+    year_box_texture: str | None = None               # vendor/textures file multiplied over year_box_colour
     entities: dict[str, str] = {}                     # entity -> "#rrggbb" (resolved into the scene, not in `theme`)
     palette: list[str] = Field(min_length=1)          # colours for entities missing from `entities`, in order
 
@@ -232,9 +236,12 @@ class Theme(_Strict):
         if self.block_l_min > self.block_l_max:
             raise ValueError("theme block_l_min must be <= block_l_max")
         for c in [*self.entities.values(), *self.palette, self.pin_colour, self.route_colour, self.text_outline_colour,
-                  self.block_edge_colour, self.label_box_colour]:
+                  self.block_edge_colour, self.label_box_colour, self.year_box_ink,
+                  *([self.year_box_colour] if self.year_box_colour else [])]:
             if not re.fullmatch(r"#[0-9a-fA-F]{6}", c):
                 raise ValueError(f"theme colour {c!r} must be #rrggbb")
+        if self.year_box_texture and not self.year_box_colour:
+            raise ValueError("theme year_box_texture needs year_box_colour")
         return self
 
 
@@ -278,9 +285,11 @@ TRANSITION_KINDS = ("cut", "zoom_whip", "page_turn")
 
 class TransitionsProfile(_Strict):
     """Segment-boundary transitions drawn by the final mux (video_engine/transitions.py). A boundary takes
-    by_type[incoming visual type], else by_type[outgoing visual type], else `kind`."""
+    same_type[type] when both sides share that visual type, else by_type[incoming visual type], else
+    by_type[outgoing visual type], else `kind`."""
     kind: Literal["cut", "zoom_whip", "page_turn"] = "cut"
     by_type: dict[str, Literal["cut", "zoom_whip", "page_turn"]] = {}
+    same_type: dict[str, Literal["cut", "zoom_whip", "page_turn"]] = {}   # both sides this visual type: before by_type
     whip_out_s: float = Field(0.1, ge=0.03, le=1.0)     # zoom_whip: outgoing last frames push in to whip_scale, blur rising
     whip_blur_in_s: float = Field(0.1, ge=0.0, le=1.0)  # zoom_whip: radial blur fading out on the incoming first frames
     whip_in_s: float = Field(0.4, ge=0.05, le=1.5)      # zoom_whip: incoming shot settles from whip_scale to 1
@@ -293,15 +302,15 @@ class TransitionsProfile(_Strict):
         from typing import get_args
         from .timeline import VisualType
         known = get_args(VisualType)
-        bad = sorted(set(self.by_type) - set(known))
+        bad = sorted((set(self.by_type) | set(self.same_type)) - set(known))
         if bad:
-            raise ValueError(f"transitions.by_type: unknown visual type(s) {', '.join(bad)} (known: {', '.join(known)})")
+            raise ValueError(f"transitions.by_type / same_type: unknown visual type(s) {', '.join(bad)} (known: {', '.join(known)})")
         if self.whip_blur_in_s > self.whip_in_s:
             raise ValueError("transitions.whip_blur_in_s must be <= whip_in_s")
         return self
 
     def active(self) -> bool:
-        return self.kind != "cut" or any(v != "cut" for v in self.by_type.values())
+        return self.kind != "cut" or any(v != "cut" for v in [*self.by_type.values(), *self.same_type.values()])
 
 
 class Legibility(_Strict):
