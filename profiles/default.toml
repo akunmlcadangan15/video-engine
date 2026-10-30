@@ -22,6 +22,8 @@ rules = []           # extra numbered rules appended to the draft prompt
 [theme]
 # Renderer values: HyperFrames scene `theme` (in the HyperFrames segment cache key).
 camera_drift_per_s = 0.012   # camera_path: zoom growth per second after the last key and while waiting for a whip
+globe_start_speed = 0.75     # globe: initial speed as a share of the first leg's mean
+globe_end_speed = 1.0        # globe: final speed as a share of the last leg's mean when the shot ends there
 whip_s = 0.5                 # camera_path move "whip": fast in-out move of this length ending on its key
 whip_blur_px = 14            # whip: peak directional motion blur (px) at mid-move
 region_fill_opacity = 0.35   # region highlight fill opacity

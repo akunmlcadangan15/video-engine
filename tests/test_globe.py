@@ -14,6 +14,14 @@ W, H = 1080, 1920
 KEYS = [{"at_frame": 0, "lat": 20, "lng": 30, "altitude": 3.0}, {"at_frame": 40, "lat": 40, "lng": 50, "altitude": 0.8, "tilt": 20}]
 PINS = [{"label": "Near", "lat": 40, "lng": 50}, {"label": "Far", "lat": -40, "lng": -130}]
 FORBIDDEN = ("camera_path", "beats", "regions", "routes", "props", "layers", "map_bounds")
+SIAM = [{"f": 0, "lat": 20, "lng": 75, "alt": 5.0, "tilt": 0},
+        {"f": 80, "lat": 17.5, "lng": 89, "alt": 3.0, "tilt": 4},
+        {"f": 150, "lat": 15, "lng": 100.5, "alt": 1.7, "tilt": 10},
+        {"f": 330, "lat": 13, "lng": 100.8, "alt": 1.3, "tilt": 25}]
+
+
+def _camera(keys=SIAM, n=331):
+    return {"keys": [k.copy() for k in keys], "n": n, "start": 0.75, "end": 1.0, "drift": 0.06, "alt_min": 0.005}
 
 
 def _noise(path, w=2048, h=1024, block=16, seed=3):
@@ -59,11 +67,62 @@ def test_good_ray_hit_inverts_project_under_tilt():
 
 def test_good_camera_eases_between_keys_and_drifts_after_the_last():
     G = {"keys": [{"f": k["at_frame"], "lat": k["lat"], "lng": k["lng"], "alt": k["altitude"], "tilt": k.get("tilt", 0)}
-                  for k in KEYS], "drift": 0.1, "alt_min": 0.005}
+                  for k in KEYS], "drift": 0.1, "alt_min": 0.005, "start": 0.75, "end": 1.0}
     a, m, b = (globe.camera_at(G, f, 30) for f in (0, 20, 40))
     assert (a["lat"], a["alt"]) == pytest.approx((20, 3.0)) and (b["lat"], b["alt"], b["tilt"]) == pytest.approx((40, 0.8, 20))
     assert 0.8 < m["alt"] < 3.0 and 20 < m["lat"] < 40
     assert globe.camera_at(G, 70, 30)["alt"] == pytest.approx(0.8 * math.exp(-0.1))
+
+
+def test_good_globe_speed_is_continuous_through_intermediate_keys():
+    G = _camera()
+    speeds = globe.motion(G, 331, 30, W, H)
+    for k in G["keys"]:
+        v = globe.camera_at(G, k["f"], 30)
+        assert v == pytest.approx({c: k[c] for c in ("lat", "lng", "alt", "tilt")}, abs=1e-10)
+    for c in (0, 1):
+        s = [v[c] for v in speeds]
+        for k in (80, 150):
+            before, after = sum(s[k-10:k-2]) / 8, sum(s[k+3:k+11]) / 8
+            assert min(s[k-1:k+2]) >= 0.7 * min(before, after)
+    zoom = [v[0] for v in speeds[:330]]
+    peaks = [0] + [i for i in range(1, 329) if zoom[i] >= zoom[i-1] and zoom[i] > zoom[i+1]] + [329]
+    for i in range(1, 329):
+        if zoom[i] < zoom[i-1] and zoom[i] < zoom[i+1]:
+            left, right = max(p for p in peaks if p < i), min(p for p in peaks if p > i)
+            assert zoom[i] >= 0.7 * min(zoom[left], zoom[right])
+
+
+def test_good_globe_key_hold_stops_the_camera():
+    G = _camera()
+    G["keys"][1]["hold"] = 10
+    v = globe.camera_at(G, 80, 30)
+    assert all(globe.camera_at(G, f, 30) == pytest.approx(v, abs=1e-9) for f in range(80, 91))
+    assert globe.camera_at(G, 85, 30) == pytest.approx({c: G["keys"][1][c] for c in ("lat", "lng", "alt", "tilt")})
+    zoom = [v[0] for v in globe.motion(G, 331, 30, W, H)]
+    assert max(zoom[80:90]) < 1e-9
+    assert max(zoom[78], zoom[91]) < 0.1 * max(zoom)
+    with pytest.raises(ValidationError, match="hold"):
+        timeline.Globe(keys=[{**KEYS[0], "hold": 40}, KEYS[1]])
+
+
+def test_good_globe_start_moves_and_ends_without_hold():
+    G = _camera()
+    zoom = [v[0] for v in globe.motion(G, 331, 30, W, H)]
+    assert zoom[0] >= 0.25 * max(zoom)
+    assert min(zoom[320:330]) >= 0.9 * sum(zoom[150:330]) / 180
+
+
+def test_good_globe_wraps_longitude_and_flows_into_drift():
+    keys = [{"f": 0, "lat": 0, "lng": 170, "alt": 2, "tilt": 0},
+            {"f": 30, "lat": 10, "lng": -170, "alt": 1, "tilt": 5}]
+    G = _camera(keys, 60)
+    assert globe.camera_at(G, 15, 30)["lng"] == pytest.approx(-180, abs=2)
+    before, at, after = (math.log(globe.camera_at(G, f, 30)["alt"]) for f in (29.999, 30, 30.001))
+    assert (at - before) / 0.001 == pytest.approx((after - at) / 0.001, rel=0.001)
+    G["keys"][-1]["hold"] = 10
+    assert globe.camera_at(G, 40, 30)["alt"] == pytest.approx(1)
+    assert globe.camera_at(G, 70, 30)["alt"] == pytest.approx(math.exp(-0.06))
 
 
 @pytest.mark.parametrize("bad", [{"camera_path": [{"at_frame": 0, "focus": [0.5, 0.5], "zoom": 1}]},
@@ -131,7 +190,7 @@ def test_good_deep_views_get_a_detail_patch_cut_at_the_right_place(project):
 
 def test_good_a_zoom_from_space_gets_finer_patches_over_smaller_areas():
     G = {"keys": [{"f": 0, "lat": 0, "lng": 20, "alt": 3.0, "tilt": 0}, {"f": 90, "lat": 41, "lng": 50, "alt": 0.01, "tilt": 25}],
-         "drift": 0.0, "alt_min": 0.005, "tex_ppd": globe.TEX_W / 360}
+         "drift": 0.0, "alt_min": 0.005, "start": 0.75, "end": 1.0, "tex_ppd": globe.TEX_W / 360}
     ps = globe.patch_plan(G, 120, 30, W, H, 21600, True)
     assert [p["level"] for p in ps] == sorted(p["level"] for p in ps) and len(ps) >= 4
     assert all(p["w"] <= globe.PATCH_MAX and p["h"] <= globe.PATCH_MAX for p in ps)
@@ -166,10 +225,12 @@ def test_bad_incomplete_detail_tiles_fail_t02(project, tmp_path):
 
 # Chrome ---------------------------------------------------------------------------------------------------------------
 def test_good_chrome_draws_the_globe_and_pins_where_the_projection_says(project, tmp_path):
-    d, tl = _globe_proj(project)
+    pins = PINS + [{"label": "West", "lat": 25, "lng": 35}, {"label": "East", "lat": 35, "lng": 45}]
+    d, tl = _globe_proj(project, pins=pins)
     out, sc = hyperframes.build_dir(tl.segments[2], tl, d, tmp_path / "b")
     f = 25
-    dom = hyperframes.probe_dom(out, [f / 30], W, H, snap_dir=tmp_path / "s")
+    frames = [f, 10.5, 30, 39.5, 50.25]
+    dom = hyperframes.probe_dom(out, [f / 30 for f in frames], W, H, snap_dir=tmp_path / "s")
     shot = np.asarray(Image.open(tmp_path / "s" / "snap_0.png").convert("L"), dtype=float)
     src = np.asarray(Image.open(d / "assets" / "globe.jpg").convert("L"), dtype=float)
     v = globe.camera_at(sc["globe"], f, 30)
@@ -191,6 +252,18 @@ def test_good_chrome_draws_the_globe_and_pins_where_the_projection_says(project,
     x, y = globe.project(v, 40, 50, W, H)
     assert (rects["anchor:pin:0"]["x"], rects["anchor:pin:0"]["y"]) == pytest.approx((x, y), abs=2)
     assert rects["anchor:pin:1"]["opacity"] == 0 and not dom.get("errors")
+    G = sc["globe"]
+    for frame, values in enumerate(G["views"]):
+        view = globe.camera_at(G, frame, 30)
+        assert values == pytest.approx([view[c] for c in ("lat", "lng", "alt", "tilt")], abs=1e-6)
+    for frame, item in zip(frames, dom["times"]):
+        v = globe.camera_at(G, round(frame / 30, 4) * 30, 30)
+        rects = {r["id"]: r for r in item["rects"]}
+        for i in (0, 2, 3):
+            p = pins[i]
+            xy = globe.project(v, p["lat"], p["lng"], W, H)
+            assert xy is not None
+            assert (rects[f"anchor:pin:{i}"]["x"], rects[f"anchor:pin:{i}"]["y"]) == pytest.approx(xy, abs=1.5)
 
 
 # gates ----------------------------------------------------------------------------------------------------------------

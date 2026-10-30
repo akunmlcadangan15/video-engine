@@ -4,9 +4,9 @@ map_asset, rendered by hf/globe.js in the HyperFrames page; `camera_at`, `pose` 
 Unit sphere, texture u = (lng + 180) / 360, v = (90 - lat) / 180 (three.js SphereGeometry), so the surface point is
 dir(lat, lng) = (cos lat cos lng, sin lat, -cos lat sin lng). A view {lat, lng, alt, tilt} puts the camera at
 P + alt (cos tilt n - sin tilt u) (P = dir(lat, lng), n = P, u = local north, east = u x n), looking at P with up u,
-vertical field of view FOV. Keys are reached by glide legs (layout ease `glide`) over the key-to-key frames: the view
-direction moves along the great circle, ln altitude and tilt linearly. After the last key the altitude keeps dropping
-at the profile drift rate (theme camera_drift_per_s, ln / s), floored at GLOBE_ALT_MIN.
+vertical field of view FOV. A C1 monotone cubic moves through the keys in lat, lng, ln altitude and tilt; a key hold
+stops it, and the profile sets its start and end speed. Per-frame views go to hf/globe.js; after the last key and hold,
+altitude drops at the profile drift rate (theme camera_drift_per_s, ln / s), floored at GLOBE_ALT_MIN.
 
 Texture: the map_asset downscaled to TEX_W x TEX_W/2 (cache kind maps). Detail patch: when some frame needs more
 texels per degree than that texture has, patches are cut from the detail tiles (NASA 86400 x 43200 set, 240 px / deg)
@@ -55,37 +55,53 @@ def _norm(a):
     return (a[0] / n, a[1] / n, a[2] / n)
 
 
-def _slerp(a, b, t):
-    c = max(-1.0, min(1.0, _dot(a, b)))
-    w = math.acos(c)
-    if w < 1e-9:
-        return a
-    s = math.sin(w)
-    return _add(_mul(a, math.sin((1 - t) * w) / s), _mul(b, math.sin(t * w) / s))
-
-
-def _glide(t):
-    t = min(max(t, 0.0), 1.0)
-    return 0.35 * t + 0.65 * (1 - math.cos(math.pi * t)) / 2
-
-
 def camera_at(G: dict, f: float, fps: int) -> dict:
     """Globe view {lat, lng, alt, tilt} at frame f of scene globe block G."""
     K = G["keys"]
-    for a, b in zip(K, K[1:]):
+    def view(k, alt):
+        return {"lat": k["lat"], "lng": (k["lng"] + 180) % 360 - 180, "alt": alt, "tilt": k["tilt"]}
+
+    if f <= 0:
+        return view(K[0], K[0]["alt"])
+    last = K[-1]
+    if f >= last["f"]:
+        elapsed = max(0.0, f - last["f"] - last.get("hold", 0))
+        return view(last, max(G["alt_min"], last["alt"] * math.exp(-G["drift"] * elapsed / fps)))
+    for i, (a, b) in enumerate(zip(K, K[1:])):
+        if f <= a["f"] + a.get("hold", 0):
+            return view(a, a["alt"])
         if f < b["f"]:
-            if f <= a["f"]:
-                break
-            e = _glide((f - a["f"]) / (b["f"] - a["f"]))
-            lat, lng = _ll(_slerp(_v(a["lat"], a["lng"]), _v(b["lat"], b["lng"]), e))
-            return {"lat": lat, "lng": lng, "alt": math.exp(math.log(a["alt"]) + (math.log(b["alt"]) - math.log(a["alt"])) * e),
-                    "tilt": a["tilt"] + (b["tilt"] - a["tilt"]) * e}
-    else:
-        k = K[-1]
-        return {"lat": k["lat"], "lng": k["lng"], "tilt": k["tilt"],
-                "alt": max(G["alt_min"], k["alt"] * math.exp(-G["drift"] * max(0.0, f - k["f"]) / fps))}
-    k = K[0]
-    return {"lat": k["lat"], "lng": k["lng"], "alt": k["alt"], "tilt": k["tilt"]}
+            break
+    points = []
+    for k in K:
+        lng = k["lng"] if not points else points[-1][1] + (k["lng"] - points[-1][1] + 180) % 360 - 180
+        points.append((k["lat"], lng, math.log(k["alt"]), k["tilt"]))
+    lengths = [b["f"] - a["f"] - a.get("hold", 0) for a, b in zip(K, K[1:])]
+    slopes = [[(q - p) / h for p, q in zip(x, y)] for x, y, h in zip(points, points[1:], lengths)]
+
+    def tangent(j, c):
+        if K[j].get("hold", 0):
+            return 0.0
+        if j == 0:
+            return G["start"] * slopes[0][c]
+        if j == len(K) - 1:
+            s = slopes[-1][c]
+            if G.get("n") is None or last["f"] >= G["n"] - 1:
+                return G["end"] * s
+            return -G["drift"] / fps if c == 2 and s < 0 else 0.0
+        x, y = slopes[j - 1][c], slopes[j][c]
+        if x * y <= 0:
+            return 0.0
+        h0, h1 = lengths[j - 1], lengths[j]
+        w1, w2 = 2 * h1 + h0, h1 + 2 * h0
+        return (w1 + w2) / (w1 / x + w2 / y)
+
+    h = lengths[i]
+    t = (f - a["f"] - a.get("hold", 0)) / h
+    h00, h10, h01, h11 = 2*t**3 - 3*t**2 + 1, t**3 - 2*t**2 + t, -2*t**3 + 3*t**2, t**3 - t**2
+    p = [h00 * points[i][c] + h10 * h * tangent(i, c) + h01 * points[i + 1][c] + h11 * h * tangent(i + 1, c)
+         for c in range(4)]
+    return {"lat": p[0], "lng": (p[1] + 180) % 360 - 180, "alt": math.exp(p[2]), "tilt": p[3]}
 
 
 def pose(v: dict) -> tuple[tuple, tuple, tuple, tuple]:
@@ -319,7 +335,7 @@ def patch(pp: dict, src: Path, tiles_dir: Path | None) -> Path:
 
 
 # scene -----------------------------------------------------------------------------------------------------------------
-def scene_block(seg: Segment, tl: Timeline, project_dir: Path, drift: float) -> dict:
+def scene_block(seg: Segment, tl: Timeline, project_dir: Path, theme: dict) -> dict:
     """Scene globe block: keys, drift, fov, texture and patches with their image names (content keys; files by
     `files`)."""
     from PIL import Image
@@ -331,9 +347,12 @@ def scene_block(seg: Segment, tl: Timeline, project_dir: Path, drift: float) -> 
         iw, ih = im.size
     if abs(iw / ih - 2.0) > 0.02:
         raise EngineError(f"globe map_asset '{sc.map_asset}' is {iw}x{ih}; a whole-world equirectangular image is 2:1")
-    G = {"fov": FOV, "drift": drift, "alt_min": GLOBE_ALT_MIN, "tex_ppd": round(base_ppd(iw), 3),
-         "keys": [{"f": k.at_frame, "lat": k.lat, "lng": k.lng, "alt": k.altitude, "tilt": k.tilt} for k in g.keys],
+    G = {"fov": FOV, "drift": theme["camera_drift_per_s"], "start": theme["globe_start_speed"],
+         "end": theme["globe_end_speed"], "n": seg.n_frames, "alt_min": GLOBE_ALT_MIN, "tex_ppd": round(base_ppd(iw), 3),
+         "keys": [{"f": k.at_frame, "lat": k.lat, "lng": k.lng, "alt": k.altitude, "tilt": k.tilt, "hold": k.hold} for k in g.keys],
          "tex": f"assets/globe_{tex_key(src)[:32]}.jpg"}
+    G["views"] = [[round(v["lat"], 7), round(v["lng"], 7), round(v["alt"], 9), round(v["tilt"], 7)]
+                  for f in range(seg.n_frames + 1) for v in [camera_at(G, f, S.fps)]]
     tiles_dir = project_dir / g.detail_tiles if g.detail_tiles else None
     if tiles_dir is not None:
         tile_files(tiles_dir)

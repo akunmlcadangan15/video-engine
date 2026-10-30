@@ -1,6 +1,6 @@
 // Blue Marble globe (gsap_scene_config.globe): a three.js unit sphere textured with the whole-world map (#map, hidden)
-// and the detail patches (coarse to fine), drawn into a canvas under the ui every time the timeline updates. The camera math is
-// video_engine/globe.py `camera_at` / `pose` (same formulas); pins (.pin in #cam, which stays at identity) are placed
+// and the detail patches (coarse to fine), drawn into a canvas under the ui every time the timeline updates. Camera views
+// come from video_engine/globe.py `camera_at` (scene globe.views); pins (.pin in #cam, which stays at identity) are placed
 // at their three.js screen projection and hidden while their point faces away; region shapes ([data-geo] = region
 // index, vertices `ll`) and region labels ([data-ll]) likewise, a region hidden while any vertex faces away; the
 // map's filter (legibility basemap saturation) is copied onto the canvas. Loaded as a module after the template
@@ -25,16 +25,9 @@ scene.add(new THREE.Mesh(new THREE.SphereGeometry(1,192,96),new THREE.MeshBasicM
     new THREE.MeshBasicMaterial({map:tex(im),depthTest:false,depthWrite:false}));
   m.renderOrder=1+i;scene.add(m);});   // coarse to fine; a convex sphere's front faces never hide each other
 const V=(lat,lng)=>{const a=lat*Math.PI/180,b=lng*Math.PI/180;return new THREE.Vector3(Math.cos(a)*Math.cos(b),Math.sin(a),-Math.cos(a)*Math.sin(b));};
-const glide=t=>{t=Math.min(Math.max(t,0),1);return 0.35*t+0.65*(1-Math.cos(Math.PI*t))/2;};
-const slerp=(a,b,t)=>{const c=Math.min(1,Math.max(-1,a.dot(b))),w=Math.acos(c);if(w<1e-9)return a.clone();const s=Math.sin(w);
-  return a.clone().multiplyScalar(Math.sin((1-t)*w)/s).add(b.clone().multiplyScalar(Math.sin(t*w)/s));};
-const view=f=>{const K=G.keys;
-  for(let i=0;i+1<K.length;i++){const a=K[i],b=K[i+1];if(f<b.f){if(f<=a.f)break;const e=glide((f-a.f)/(b.f-a.f));
-    const v=slerp(V(a.lat,a.lng),V(b.lat,b.lng),e);
-    return {lat:Math.asin(Math.min(1,Math.max(-1,v.y)))*180/Math.PI,lng:Math.atan2(-v.z,v.x)*180/Math.PI,
-      alt:Math.exp(Math.log(a.alt)+(Math.log(b.alt)-Math.log(a.alt))*e),tilt:a.tilt+(b.tilt-a.tilt)*e};}}
-  const k=f<=K[0].f?K[0]:K[K.length-1];
-  return {lat:k.lat,lng:k.lng,tilt:k.tilt,alt:Math.max(G.alt_min,k.alt*Math.exp(-G.drift*Math.max(0,f-k.f)/FPS))};};
+const view=f=>{f=Math.min(Math.max(f,0),G.views.length-1);const i=Math.floor(f),t=f-i,a=G.views[i],b=G.views[Math.min(i+1,G.views.length-1)];
+  return {lat:a[0]+(b[0]-a[0])*t,lng:((a[1]+((b[1]-a[1]+540)%360-180)*t+180)%360+360)%360-180,
+    alt:a[2]+(b[2]-a[2])*t,tilt:a[3]+(b[3]-a[3])*t};};
 const pins=[...document.querySelectorAll('#cam .pin')], geo=[...document.querySelectorAll('[data-geo]')],
   lls=[...document.querySelectorAll('[data-ll]')];
 const scr=(lat,lng)=>{const X=V(lat,lng), q=X.clone().project(cam);

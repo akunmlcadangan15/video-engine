@@ -237,7 +237,7 @@ def test_good_default_profile_has_no_layout_and_keeps_its_hash():
     assert dump["gates"].pop("camera") is None
     assert dump["gates"].pop("require") == []   # an empty required list adds nothing either
     assert p.blake3 == blake3_json(dump)
-    assert p.blake3.startswith("2193c8736479")
+    assert p.blake3.startswith("0aa286200acf")
     assert profiles.load("geoverum").layout is not None
 
 

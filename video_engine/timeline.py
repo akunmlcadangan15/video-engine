@@ -518,6 +518,7 @@ class GlobeKey(Strict):
     lng: float = Field(ge=-180, le=180)
     altitude: float = Field(ge=GLOBE_ALT_MIN, le=GLOBE_ALT_MAX)
     tilt: float = Field(0.0, ge=0.0, le=TILT_MAX)      # deg from straight down, the camera south of the point
+    hold: int = Field(0, ge=0, le=90)                  # frames still on this key
 
 
 class Globe(Strict):
@@ -532,6 +533,8 @@ class Globe(Strict):
         for i in range(1, len(self.keys)):
             if self.keys[i].at_frame <= self.keys[i - 1].at_frame:
                 raise ValueError(f"globe.keys[{i}].at_frame must be > globe.keys[{i - 1}].at_frame")
+            if self.keys[i - 1].at_frame + self.keys[i - 1].hold >= self.keys[i].at_frame:
+                raise ValueError(f"globe.keys[{i - 1}].at_frame + hold must be < globe.keys[{i}].at_frame")
         return self
 
 

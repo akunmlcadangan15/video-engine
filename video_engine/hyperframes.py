@@ -346,7 +346,7 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     theme = prof.render_values("hf")
     G = None
     if sc.globe:   # the 2D camera stays at identity over a frame-sized #cam; hf/globe.js draws the globe and moves pins
-        G = globe.scene_block(seg, tl, project_dir, theme["camera_drift_per_s"])
+        G = globe.scene_block(seg, tl, project_dir, theme)
         mw, mh = float(S.width), float(S.height)
         still = {"x": 0.0, "y": 0.0, "s": 1.0}
         cam = {"start": still, "end": still, "legs": [{"f0": 0, "f1": n, "to": still, "ease": "glide"}], "leg_motion": []}
