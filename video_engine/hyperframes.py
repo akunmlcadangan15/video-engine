@@ -21,7 +21,8 @@ from .util import EngineError, blake3_files, blake3_json, code_hash, run
 CODE = (Path(__file__),)   # writes the build dir (html, scene.js); legibility.py is keyed in the scene (legibility.code_hash)
 HF_VERSION = "hf-2"   # hf-2: capture/encode profile HF_QUALITY + HF_CRF
 MAP_VERSION = "map-1"   # bump when _map_copy output changes
-MAP_JPEG_QUALITY = 90
+MAP_JPEG_QUALITY = 90   # default; profile [render] map_jpeg_quality overrides it (scene map_q)
+_DECODE = threading.Lock()   # whole-map JPEG decodes (deep tiles, derivatives) run one at a time
 HF_FONTS = ("Inter-Bold.otf", "Inter-SemiBold.otf")   # copied into every HF build dir; hashed into the cache key
 # Theme fonts (vendor/fonts/README.md): role -> (CSS family, file, weight range). Copied and hashed only when the scene
 # theme uses the role, so a scene that uses none builds exactly as with HF_FONTS alone.
@@ -75,7 +76,7 @@ DEEP_VERSION = "deep-1" # bump when deep tile output changes
 MORPH_PAPER, MORPH_GRAIN = "paper-F1E8D4.jpg", "grain-512.png"   # vendor/textures of a map morph
 # HyperFrames capture/encode profile for the intermediate segment file (re-encoded once more by the build).
 # "draft" = JPEG q80 screenshot + x264 ultrafast; CRF 14 keeps the intermediate close to lossless.
-HF_QUALITY = "draft"
+HF_QUALITY = "draft"     # defaults; profile [render] hf_quality / hf_crf override them (encode_settings)
 HF_CRF = 14
 CARD_TOP = {"top": 0.12, "bottom": 0.77}
 TITLE_TOP = 0.11                       # big title top edge (fraction of the frame height)
@@ -387,6 +388,8 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
                                                                **({"tilt": {"p": camera3d.perspective_px(S.height)}}
                                                                   if "t" in cam["start"] else {})},
            "motion_px": round(motion, 2), "pins": pins, "cards": cards, "theme": theme}
+    if (mq := prof.render.map_jpeg_quality) and mq != MAP_JPEG_QUALITY:
+        out["map_q"] = mq
     if sc.regions:
         out["regions"] = [region_data(r, ecol, theme, mw, mh, G, S, lay is not None) for r in sc.regions]
     if sc.borders:
@@ -441,10 +444,16 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     if G:
         out["globe"] = G
     elif (dp := deep_plan(out, (iw, ih))) is not None:
-        out["deep"] = deep_entries(project_dir / sc.map_asset, dp)
+        out["deep"] = deep_entries(project_dir / sc.map_asset, dp, _q(out))
     if sc.morph:
         out["morph"] = morph_data(sc.morph, out, project_dir, (iw, ih))
     return out
+
+
+def _q(scene: dict) -> int:
+    """JPEG quality of a scene's map derivative and deep tiles: profile [render] map_jpeg_quality (scene map_q),
+    else MAP_JPEG_QUALITY."""
+    return scene.get("map_q") or MAP_JPEG_QUALITY
 
 
 def _centroid(poly: list[list[float]]) -> tuple[float, float]:
@@ -509,8 +518,8 @@ def morph_data(m, scene: dict, project_dir: Path, base_size: tuple[int, int]) ->
         raise EngineError(f"morph asset {m.asset} is {w}x{h}; it must have the aspect ratio of map_asset "
                           f"({base_size[0]}x{base_size[1]}): same extent and projection")
     dp = deep_plan(scene, (w, h))
-    return {"img": f"assets/morph_{map_key(src, _need_w(scene))[:32]}.jpg", "asset": m.asset,
-            "deep": deep_entries(src, dp) if dp else [], "at_frame": m.at_frame, "s": m.s,
+    return {"img": f"assets/morph_{map_key(src, _need_w(scene), _q(scene))[:32]}.jpg", "asset": m.asset,
+            "deep": deep_entries(src, dp, _q(scene)) if dp else [], "at_frame": m.at_frame, "s": m.s,
             "back_at_frame": m.back_at_frame, "sepia": m.sepia, "paper": m.paper, "grain": m.grain,
             "paper_texture": MORPH_PAPER, "grain_texture": MORPH_GRAIN}
 
@@ -560,18 +569,18 @@ def _deep_box(dp: dict, i: int, j: int) -> tuple[int, int, int, int]:
             min(dp["h"], (j + 1) * DEEP_TILE + DEEP_PAD))
 
 
-def deep_key(src_hash: str, dp: dict, i: int, j: int) -> str:
+def deep_key(src_hash: str, dp: dict, i: int, j: int, q: int | None = None) -> str:
     import PIL
     return blake3_json({"v": DEEP_VERSION, "src": src_hash, "w": dp["w"], "h": dp["h"], "box": _deep_box(dp, i, j),
-                        "resample": "lanczos", "q": MAP_JPEG_QUALITY, "pil": PIL.__version__})
+                        "resample": "lanczos", "q": q or MAP_JPEG_QUALITY, "pil": PIL.__version__})
 
 
-def deep_entries(src: Path, dp: dict) -> list[dict]:
+def deep_entries(src: Path, dp: dict, q: int | None = None) -> list[dict]:
     """Scene block of the deep tiles: image name (its content key), raster box (x0, y0, x1, y1) and raster size; the
     template places a tile at box x map size / raster size in map px."""
     h = blake3_files([src])[0]
-    return [{"img": f"assets/deep_{deep_key(h, dp, i, j)[:32]}.jpg", "box": list(_deep_box(dp, i, j)),
-             "raster": [dp["w"], dp["h"]]} for i, j in dp["tiles"]]
+    return [{"img": f"assets/deep_{deep_key(h, dp, i, j, q)[:32]}.jpg", "box": list(_deep_box(dp, i, j)),
+             "raster": [dp["w"], dp["h"]], **({"q": q} if q and q != MAP_JPEG_QUALITY else {})} for i, j in dp["tiles"]]
 
 
 def deep_tiles(src: Path, scene: dict) -> dict[str, Path]:
@@ -587,19 +596,19 @@ def deep_tiles(src: Path, scene: dict) -> dict[str, Path]:
             todo.append(e)
     if not todo:
         return out
-    with Image.open(src) as im:
+    with _DECODE, Image.open(src) as im:   # one whole-map decode at a time: a 43200 px map is 2.8 GB of RGB
         dw, dh = todo[0]["raster"]
         if dw * 2 <= im.width:
             im.draft("RGB", (dw, dh))                      # JPEG: decode at a reduced scale when that is enough
         sx, sy = im.width / dw, im.height / dh
-        im = im.convert("RGB")
+        im = im if im.mode == "RGB" else im.convert("RGB")
         for e in todo:
             x0, y0, x1, y1 = e["box"]
             t = im.resize((x1 - x0, y1 - y0), Image.LANCZOS, box=(x0 * sx, y0 * sy, x1 * sx, y1 * sy))
             name = Path(e["img"]).name
             tmp = cache.acquire(cache.tmp_name(config.CACHE_DIR / "maps" / f"{Path(name).stem}.part.jpg").with_suffix(".jpg"))
             tmp.parent.mkdir(parents=True, exist_ok=True)
-            t.save(tmp, format="JPEG", quality=MAP_JPEG_QUALITY)
+            t.save(tmp, format="JPEG", quality=e.get("q") or MAP_JPEG_QUALITY)
             out[name] = cache.put_file("maps", Path(name).stem, tmp, ".jpg")
             tmp.unlink(missing_ok=True)
     return out
@@ -658,12 +667,12 @@ def _map_width(need_w: float) -> int:
     return int(min(MAP_MAX_SIDE, math.ceil(need_w)))
 
 
-def map_key(src: Path, need_w: float) -> str:
+def map_key(src: Path, need_w: float, q: int | None = None) -> str:
     """Key of the map derivative: its full recipe (version, width after the MAP_MAX_SIDE cap, LANCZOS resize and
     JPEG quality, Pillow version) and the source content hash."""
     import PIL
     return blake3_json({"v": MAP_VERSION, "algo": core.ALGO_VERSION, "src": blake3_files([src])[0],
-                        "w": _map_width(need_w), "max": MAP_MAX_SIDE, "resample": "lanczos", "q": MAP_JPEG_QUALITY,
+                        "w": _map_width(need_w), "max": MAP_MAX_SIDE, "resample": "lanczos", "q": q or MAP_JPEG_QUALITY,
                         "pil": PIL.__version__})
 
 
@@ -676,21 +685,21 @@ def _need_w(scene: dict) -> float:
     return scene["map_size"][0] * max(x["s"] * (camera3d.max_mag(x["t"], W, H) if x.get("t") else 1.0) for x in st)
 
 
-def _map_copy(src: Path, need_w: float) -> Path:
+def _map_copy(src: Path, need_w: float, q: int | None = None) -> Path:
     """Downscaled JPEG of the map (content cache), never larger than needed for the max zoom."""
     from PIL import Image
     Image.MAX_IMAGE_PIXELS = None
     tw = _map_width(need_w)
-    key = map_key(src, need_w)
+    key = map_key(src, need_w, q)
     if hit := cache.get_file("maps", key, ".jpg"):
         return hit
     tmp = cache.acquire(cache.tmp_name(config.CACHE_DIR / "maps" / f"{key}.part.jpg").with_suffix(".jpg"))
     tmp.parent.mkdir(parents=True, exist_ok=True)
-    with Image.open(src) as im:
-        im = im.convert("RGB")
+    with _DECODE, Image.open(src) as im:
+        im = im if im.mode == "RGB" else im.convert("RGB")
         if im.width > tw:
             im = im.resize((tw, round(im.height * tw / im.width)), Image.LANCZOS)
-        im.save(tmp, quality=MAP_JPEG_QUALITY)
+        im.save(tmp, quality=q or MAP_JPEG_QUALITY)
     out = cache.put_file("maps", key, tmp, ".jpg")
     tmp.unlink(missing_ok=True)
     return out
@@ -738,11 +747,11 @@ def _card_name(src: Path) -> str:
 def keys(seg: Segment, tl: Timeline, project_dir: Path) -> tuple[str, str]:
     """(segment cache key, map cache key) without writing files; equal to the keys `render` uses."""
     scene = scene_data(seg, tl, project_dir)
-    mk = globe.tex_key(project_dir / scene["map"]) if "globe" in scene else map_key(project_dir / scene["map"], _need_w(scene))
+    mk = globe.tex_key(project_dir / scene["map"]) if "globe" in scene else map_key(project_dir / scene["map"], _need_w(scene), _q(scene))
     for c in scene["cards"]:
         if c["img"]:
             c["img"] = "assets/" + _card_name(project_dir / c["img"])
-    return _key(scene, [config.TEXTURES_DIR / f for f in textures(scene)] + script_files(scene), mk), mk
+    return _key(scene, [config.TEXTURES_DIR / f for f in textures(scene)] + script_files(scene), mk, tl), mk
 
 
 def build_dir(seg: Segment, tl: Timeline, project_dir: Path, out_dir: Path) -> tuple[Path, dict]:
@@ -759,13 +768,13 @@ def build_dir(seg: Segment, tl: Timeline, project_dir: Path, out_dir: Path) -> t
         for f in globe.THREE_FILES:
             shutil.copyfile(f, out_dir / "assets" / "three" / f.name)
     else:
-        mp = _map_copy(project_dir / scene["map"], _need_w(scene))
+        mp = _map_copy(project_dir / scene["map"], _need_w(scene), _q(scene))
         shutil.copyfile(mp, out_dir / "assets" / "map.jpg")
         for name, f in deep_tiles(project_dir / scene["map"], scene).items():
             shutil.copyfile(f, out_dir / "assets" / name)
         if m := scene.get("morph"):
             src = project_dir / m["asset"]
-            shutil.copyfile(_map_copy(src, _need_w(scene)), out_dir / m["img"])
+            shutil.copyfile(_map_copy(src, _need_w(scene), _q(scene)), out_dir / m["img"])
             for name, f in deep_tiles(src, {"deep": m["deep"]}).items():
                 shutil.copyfile(f, out_dir / "assets" / name)
     for c in scene["cards"]:
@@ -832,12 +841,20 @@ def cache_key(seg: Segment, tl: Timeline, project_dir: Path, scene: dict | None 
     return keys(seg, tl, project_dir)[0]
 
 
-def _key(scene: dict, files: list[Path], mk: str) -> str:
+def encode_settings(tl: Timeline) -> tuple[str, int, list[str]]:
+    """(capture quality, HyperFrames CRF, normalising x264 args) of a timeline: profile [render], else HF_QUALITY,
+    HF_CRF and config.X264."""
+    r = profiles.of(tl).render
+    return r.hf_quality or HF_QUALITY, HF_CRF if r.hf_crf is None else r.hf_crf, r.x264("segment")
+
+
+def _key(scene: dict, files: list[Path], mk: str, tl: Timeline) -> str:
     """Segment key: engine render version, capture/encode settings, the scene (every profile value that reaches the
     template, card and prop images by content-hash name), the map derivative key, content hashes of the textures,
     the scripts the scene adds (script_files) and the fonts copied into the build dir, and the toolchain identity
     (toolchain.hf_identity), and the engine source that writes the build dir (CODE)."""
-    return blake3_json({"v": HF_VERSION, "code": code_hash(CODE), "enc": [HF_QUALITY, HF_CRF], "x264": config.X264, "algo": core.ALGO_VERSION,
+    q, crf, x264 = encode_settings(tl)
+    return blake3_json({"v": HF_VERSION, "code": code_hash(CODE), "enc": [q, crf], "x264": x264, "algo": core.ALGO_VERSION,
                         "scene": scene, "map": mk, "files": blake3_files(files),
                         "fonts": blake3_files([config.FONTS_DIR / f for f in font_files(scene)]),
                         "toolchain": toolchain.hf_identity()})
@@ -858,7 +875,8 @@ def render(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, workers
     out = workdir / "seg" / f"seg{seg.seg_index:03d}_hf.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)
     raw = out.with_suffix(".raw.mp4")
-    run([config.NODE, config.HF_CLI, "render", d, "--fps", str(tl.settings.fps), "--sdr", "-q", HF_QUALITY, "--crf", str(HF_CRF),
+    q, crf, x264 = encode_settings(tl)
+    run([config.NODE, config.HF_CLI, "render", d, "--fps", str(tl.settings.fps), "--sdr", "-q", q, "--crf", str(crf),
          "--workers", str(workers), "-o", raw], env=config.hf_env(), timeout=900)
     n = seg.n_frames
     if _is_engine_format(raw, tl, n):
@@ -866,7 +884,7 @@ def render(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, workers
     else:
         # normalise to the engine's stream format with the exact frame count (pad by cloning / trim)
         run([config.FFMPEG, "-v", "error", "-y", "-i", raw, "-an", "-vf",
-             f"fps={tl.settings.fps},tpad=stop_mode=clone:stop=-1,setsar=1", *config.X264, "-frames:v", str(n), out])
+             f"fps={tl.settings.fps},tpad=stop_mode=clone:stop=-1,setsar=1", *x264, "-frames:v", str(n), out])
         raw.unlink(missing_ok=True)
     streams.verify(out, n, tl.settings.fps, f"segment {seg.seg_index} (HyperFrames)")
     return (cache.put_file("segments", key, out) if use_cache else out), False

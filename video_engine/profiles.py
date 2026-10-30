@@ -280,22 +280,27 @@ class CameraProfile(_Strict):
                 "dir": 1 if self.pulse_direction == "in" else -1}
 
 
-TRANSITION_KINDS = ("cut", "zoom_whip", "page_turn")
+TRANSITION_KINDS = ("cut", "crossfade", "zoom_whip", "page_turn")
+TransitionKind = Literal["cut", "crossfade", "zoom_whip", "page_turn"]
 
 
 class TransitionsProfile(_Strict):
     """Segment-boundary transitions drawn by the final mux (video_engine/transitions.py). A boundary takes
     same_type[type] when both sides share that visual type, else by_type[incoming visual type], else
-    by_type[outgoing visual type], else `kind`."""
-    kind: Literal["cut", "zoom_whip", "page_turn"] = "cut"
-    by_type: dict[str, Literal["cut", "zoom_whip", "page_turn"]] = {}
-    same_type: dict[str, Literal["cut", "zoom_whip", "page_turn"]] = {}   # both sides this visual type: before by_type
+    by_type[outgoing visual type], else `kind`. `page_turn` false: no boundary may take page_turn. `map_morph`
+    false: no map segment may carry a morph (T02 fail)."""
+    kind: TransitionKind = "cut"
+    by_type: dict[str, TransitionKind] = {}
+    same_type: dict[str, TransitionKind] = {}   # both sides this visual type: before by_type
+    fade_s: float = Field(0.4, ge=0.1, le=1.0)          # crossfade: dissolve length, centred on the boundary
     whip_out_s: float = Field(0.1, ge=0.03, le=1.0)     # zoom_whip: outgoing last frames push in to whip_scale, blur rising
     whip_blur_in_s: float = Field(0.1, ge=0.0, le=1.0)  # zoom_whip: radial blur fading out on the incoming first frames
     whip_in_s: float = Field(0.4, ge=0.05, le=1.5)      # zoom_whip: incoming shot settles from whip_scale to 1
     whip_scale: float = Field(1.3, ge=1.0, le=2.0)      # zoom_whip: outgoing end scale and incoming start scale
     whip_blur: float = Field(0.12, ge=0.0, le=0.5)      # zoom_whip: peak radial blur length (fraction of the scale)
     page_s: float = Field(0.4, ge=0.1, le=1.5)          # page_turn: the outgoing last frame folds away over the incoming
+    page_turn: bool = True                              # false: page_turn is not allowed anywhere in this profile
+    map_morph: bool = True                              # false: map segments may not morph to a second (paper) map
 
     @model_validator(mode="after")
     def _t(self):
@@ -307,10 +312,48 @@ class TransitionsProfile(_Strict):
             raise ValueError(f"transitions.by_type / same_type: unknown visual type(s) {', '.join(bad)} (known: {', '.join(known)})")
         if self.whip_blur_in_s > self.whip_in_s:
             raise ValueError("transitions.whip_blur_in_s must be <= whip_in_s")
+        if not self.page_turn and "page_turn" in self._kinds():
+            raise ValueError("transitions: page_turn = false, but kind / by_type / same_type use page_turn")
         return self
 
+    def _kinds(self) -> list[str]:
+        return [self.kind, *self.by_type.values(), *self.same_type.values()]
+
     def active(self) -> bool:
-        return self.kind != "cut" or any(v != "cut" for v in [*self.by_type.values(), *self.same_type.values()])
+        return any(v != "cut" for v in self._kinds())
+
+
+X264_TUNES = Literal["none", "fastdecode", "film", "animation", "grain", "stillimage"]   # none = no -tune
+X264_PRESETS = Literal["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"]
+
+
+class RenderProfile(_Strict):
+    """Encode and capture quality; every key absent (None) = the engine default. Intermediates (`segment_*`) = every
+    segment file (native renders, grades, HyperFrames normalisation); `final_*` = the one composite pass (x264 CRF,
+    preset, tune "none" = no -tune, optional VBV cap); `hf_*` = the HyperFrames capture and its own encode
+    (hyperframes.HF_QUALITY / HF_CRF; draft: JPEG q80 screenshots + x264 ultrafast, standard: q100 + medium, high:
+    q100 + slow); `map_jpeg_quality` = whole-map derivatives and deep tiles (hyperframes.MAP_JPEG_QUALITY)."""
+    hf_quality: Literal["draft", "standard", "high"] | None = None
+    hf_crf: int | None = Field(None, ge=0, le=51)
+    segment_crf: int | None = Field(None, ge=0, le=51)
+    segment_preset: X264_PRESETS | None = None
+    segment_tune: X264_TUNES | None = None
+    final_crf: int | None = Field(None, ge=0, le=51)
+    final_preset: X264_PRESETS | None = None
+    final_tune: X264_TUNES | None = None
+    final_maxrate_kbps: int | None = Field(None, ge=1000, le=200000)
+    map_jpeg_quality: int | None = Field(None, ge=50, le=100)
+
+    def x264(self, stage: Literal["segment", "final"]) -> list[str]:
+        """Encoder arguments of a stage: config.X264 when the stage sets nothing, else config.x264 with the stage's
+        values over the config.x264 defaults."""
+        from . import config
+        crf, preset, tune, cap = ((self.segment_crf, self.segment_preset, self.segment_tune, None) if stage == "segment"
+                                  else (self.final_crf, self.final_preset, self.final_tune, self.final_maxrate_kbps))
+        if (crf, preset, tune, cap) == (None, None, None, None):
+            return list(config.X264)
+        return config.x264(20 if crf is None else crf, preset or "veryfast",
+                           "fastdecode" if tune is None else (None if tune == "none" else tune), cap)
 
 
 class Legibility(_Strict):
@@ -583,6 +626,7 @@ class ProfileData(_Strict):
     print: PrintStyle | None = None         # printed typography (PrintStyle); None = theme typography
     camera: CameraProfile = CameraProfile()
     transitions: TransitionsProfile = TransitionsProfile()
+    render: RenderProfile = RenderProfile()   # encode / capture quality
     grade: Grade | None = None              # full-frame grade of every segment without its own (lut: profiles-relative)
     resources: Resources = Resources()
 
@@ -644,6 +688,10 @@ class Profile:
     @property
     def transitions(self) -> TransitionsProfile:
         return self.data.transitions
+
+    @property
+    def render(self) -> RenderProfile:
+        return self.data.render
 
     def render_values(self, renderer: str) -> dict:
         """Profile values that reach a segment renderer ("hf" or "native"); a segment cache key includes them."""
@@ -729,9 +777,9 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
         dump.pop("layout", None)   # profiles without [layout] keep their hash
     elif dump["layout"].get("fly") is None:
         dump["layout"].pop("fly", None)   # [layout] without [layout.fly] keeps its hash
-    for k, cls in (("camera", CameraProfile), ("transitions", TransitionsProfile)):
+    for k, cls in (("camera", CameraProfile), ("transitions", TransitionsProfile), ("render", RenderProfile)):
         if dump.get(k) == json.loads(cls().model_dump_json()):
-            dump.pop(k)            # profiles without [camera] / [transitions] values keep their hash
+            dump.pop(k)            # profiles without [camera] / [transitions] / [render] values keep their hash
     if dump.get("grade") is None:
         dump.pop("grade", None)    # profiles without [grade] keep their hash
     if dump["gates"].get("camera") is None:

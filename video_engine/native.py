@@ -58,10 +58,15 @@ def _keyframe_at(src: Path, t: float, fps: float) -> bool:
     return any(abs(float(x.strip().rstrip(",")) - t) < 0.5 / fps for x in out.split() if x.strip())
 
 
-def copy_eligible(src: Path, W: int, H: int, fps: int) -> bool:
-    """True when the first video stream of `src` has exactly the engine segment format (streams.engine_format),
-    every streams.VIDEO_KEYS parameter, time base included."""
-    return not streams.mismatch(streams.params(src, "v:0"), streams.engine_format(W, H, fps))
+def seg_x264(tl: Timeline | None) -> list[str]:
+    """Segment (intermediate) encoder arguments of the timeline's profile ([render]); config.X264 without one."""
+    return profiles.of(tl).render.x264("segment") if tl is not None else config.X264
+
+
+def copy_eligible(src: Path, W: int, H: int, fps: int, x264: list[str] | None = None) -> bool:
+    """True when the first video stream of `src` has exactly the engine segment format (streams.engine_format of the
+    segment encoder `x264`), every streams.VIDEO_KEYS parameter, time base included."""
+    return not streams.mismatch(streams.params(src, "v:0"), streams.engine_format(W, H, fps, x264))
 
 
 def plan(seg: Segment, tl: Timeline, project_dir: Path) -> NativeJob:
@@ -77,7 +82,7 @@ def plan(seg: Segment, tl: Timeline, project_dir: Path) -> NativeJob:
             raise EngineError(f"segment {seg.seg_index}: still image needs a camera_move")
         job.mode = "camera"
         job.start_win, job.end_win, job.motion_px = camera_endpoints(seg, tl, sw, sh)
-    elif copy_eligible(src, S.width, S.height, S.fps) and _keyframe_at(src, seg.source_in_frame / S.fps, S.fps):
+    elif copy_eligible(src, S.width, S.height, S.fps, seg_x264(tl)) and _keyframe_at(src, seg.source_in_frame / S.fps, S.fps):
         job.mode = "copy"
     if overlays.drawn(seg) and job.mode == "copy":
         job.mode = "encode"   # drawn overlays need a re-encode
@@ -85,7 +90,7 @@ def plan(seg: Segment, tl: Timeline, project_dir: Path) -> NativeJob:
     job.key = blake3_json({
         "v": NATIVE_VERSION, "src": src_hash, "mode": job.mode, "in": seg.source_in_frame, "n": seg.n_frames,
         "cam": seg.camera_move.model_dump() if seg.camera_move else None, "W": S.width, "H": S.height, "fps": S.fps,
-        "x264": config.X264, "threads": resources.X264_THREADS, "ffmpeg": toolchain.ffmpeg_version(config.FFMPEG),
+        "x264": seg_x264(tl), "threads": resources.X264_THREADS, "ffmpeg": toolchain.ffmpeg_version(config.FFMPEG),
         "code": code_hash(CODE), "algo": core.ALGO_VERSION, **({"copy": COPY_FORMAT} if job.mode == "copy" else {}),
         **({"ov": ov} if (ov := overlays.key_part(seg, profiles.of(tl).print)) else {}),
         **({"profile": pv} if (pv := profiles.of(tl).render_values("native")) else {}),
@@ -105,7 +110,7 @@ def _encoder(out: Path, W: int, H: int, fps: int, n: int, threads: int, seg: Seg
              tl: Timeline | None = None) -> subprocess.Popen:
     inputs, filt = _overlay_args(seg, tl, "", out.parent / "ov") if seg is not None else ([], [])
     cmd = [config.FFMPEG, "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(fps),
-           "-i", "-", *inputs, *filt, *config.X264, "-threads", str(threads), "-frames:v", str(n), "-an",
+           "-i", "-", *inputs, *filt, *seg_x264(tl), "-threads", str(threads), "-frames:v", str(n), "-an",
            "-movflags", "+faststart", str(out)]
     return subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -177,7 +182,7 @@ def render_encode(job: NativeJob, tl: Timeline, out: Path, threads: int) -> None
           f"crop={S.width}:{S.height},setsar=1,tpad=stop_mode=clone:stop=-1")
     inputs, filt = _overlay_args(job.seg, tl, vf, out.parent / "ov")
     run([config.FFMPEG, "-v", "error", "-y", "-ss", f"{t_in:.6f}", "-i", job.src, *inputs, "-an", *filt,
-         *config.X264, "-threads", str(threads), "-frames:v", str(job.seg.n_frames), "-movflags", "+faststart", out])
+         *seg_x264(tl), "-threads", str(threads), "-frames:v", str(job.seg.n_frames), "-movflags", "+faststart", out])
 
 
 def render_copy(job: NativeJob, tl: Timeline, out: Path) -> None:
@@ -190,7 +195,7 @@ def render_copy(job: NativeJob, tl: Timeline, out: Path) -> None:
 def _copy_ok(out: Path, job: NativeJob, tl: Timeline) -> bool:
     """A copied segment is kept when it still has the engine format, n frames from 0 and lasts n / fps."""
     S = tl.settings
-    if not copy_eligible(out, S.width, S.height, S.fps):
+    if not copy_eligible(out, S.width, S.height, S.fps, seg_x264(tl)):
         return False
     try:
         streams.verify(out, job.seg.n_frames, S.fps, "copy")

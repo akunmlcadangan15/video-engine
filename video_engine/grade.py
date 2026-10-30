@@ -189,16 +189,21 @@ def check(seg: "Segment", tl: "Timeline", project_dir: Path) -> list[str]:
     return errs
 
 
-def _key(seg: "Segment", rs: list, cubes: list[str], src: Path) -> str:
+def _x264(tl: "Timeline") -> list[str]:
+    from . import profiles
+    return profiles.of(tl).render.x264("segment")
+
+
+def _key(seg: "Segment", rs: list, cubes: list[str], src: Path, x264: list[str] | None = None) -> str:
     return blake3_json({"v": GRADE_VERSION, "code": code_hash([__file__]), "src": blake3_files([src])[0], "n": seg.n_frames,
                         "ranges": [[a, e, blake3_json(c)] for (a, e, _, _), c in zip(rs, cubes)],
-                        "x264": config.X264, "threads": X264_THREADS, "ffmpeg": toolchain.ffmpeg_version(config.FFMPEG)})
+                        "x264": x264 or config.X264, "threads": X264_THREADS, "ffmpeg": toolchain.ffmpeg_version(config.FFMPEG)})
 
 
 def key(seg: "Segment", tl: "Timeline", project_dir: Path, src: Path) -> str | None:
     """Cache key of the graded file of rendered segment file src; None when seg has no grade."""
     rs = ranges(seg, tl, project_dir)
-    return _key(seg, rs, [cube_text(g, root) for _, _, g, root in rs], src) if rs else None
+    return _key(seg, rs, [cube_text(g, root) for _, _, g, root in rs], src, _x264(tl)) if rs else None
 
 
 def apply(seg: "Segment", tl: "Timeline", project_dir: Path, src: Path, workdir: Path,
@@ -208,7 +213,7 @@ def apply(seg: "Segment", tl: "Timeline", project_dir: Path, src: Path, workdir:
     if not rs:
         return Path(src), False
     cubes = [cube_text(g, root) for _, _, g, root in rs]
-    key = _key(seg, rs, cubes, src)
+    key = _key(seg, rs, cubes, src, _x264(tl))
     if use_cache and (hit := cache.get_file("segments", key)):
         return hit, True
     wd = Path(workdir) / f"grade_{seg.seg_index}"
@@ -224,7 +229,7 @@ def apply(seg: "Segment", tl: "Timeline", project_dir: Path, src: Path, workdir:
         vf = ("scale=in_color_matrix=bt709:in_range=tv:flags=neighbor+accurate_rnd,format=gbrp16le,"
               + ",".join(chain) + ",scale=out_color_matrix=bt709:out_range=tv:flags=area+accurate_rnd,format=yuv420p")
         out = wd / "graded.mp4"
-        run([config.FFMPEG, "-v", "error", "-y", "-i", src, "-an", "-vf", vf, *config.X264, "-threads",
+        run([config.FFMPEG, "-v", "error", "-y", "-i", src, "-an", "-vf", vf, *_x264(tl), "-threads",
              str(X264_THREADS), "-frames:v", str(seg.n_frames), "-movflags", "+faststart", out])
         if use_cache:
             return cache.put_file("segments", key, out), False

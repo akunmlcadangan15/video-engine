@@ -125,16 +125,23 @@ pulse_anchor = [0.44, 0.41]   # screen point that stays put: centre of [layout.z
 pulse_direction = "in"        # push in, then back
 max_zoom = 16                 # deepest camera zoom: country-scale close-ups from a whole-map source
 
-[transitions]                 # every segment boundary; page turn when either side is a map or archive segment
-kind = "zoom_whip"            # 0.1 s push-in with radial blur, then the incoming shot settles 1.3x -> 1 over 0.4 s
-by_type = { map = "page_turn", archive = "page_turn" }   # 0.4 s page turn
-same_type = { map = "zoom_whip" }   # map to map stays on the map: a whip, never a page turn
-whip_out_s = 0.1
-whip_blur_in_s = 0.1          # radial blur covers 0.2 s around the boundary
-whip_in_s = 0.4
-whip_scale = 1.3
-whip_blur = 0.12
-page_s = 0.4
+[transitions]                 # every segment boundary: a short dissolve; never a page turn or a paper morph
+kind = "crossfade"            # 0.4 s crossfade centred on the boundary (map <-> photo, map <-> map alike)
+fade_s = 0.4
+page_turn = false             # Arundaya rejects page-turn / paper transitions (Siam revision 2)
+map_morph = false             # map segments stay on their satellite base (no satellite -> paper morph)
+
+[render]                      # best practical quality, under ~300 MB for a 90 s Short
+hf_quality = "high"           # HyperFrames: JPEG q100 screenshots + x264 slow
+hf_crf = 8
+segment_crf = 8               # intermediates: near-lossless, no fastdecode tune (keeps CABAC and deblocking)
+segment_preset = "medium"
+segment_tune = "none"
+final_crf = 12                # upload file: x264 slower, CRF 12, capped at 25 Mb/s
+final_preset = "slower"
+final_tune = "none"
+final_maxrate_kbps = 25000
+map_jpeg_quality = 95         # map derivatives and deep tiles
 
 [gates]                       # style gates whose fails block a build; every other style gate only warns
 require = ["P01", "P02", "H01"]   # the camera always moves: no hold over 3 s, drift >= 0.06 ln/s, frame 0 a moving map

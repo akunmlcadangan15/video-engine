@@ -41,8 +41,15 @@ CHROME = VENDOR / "chrome" / _CH["product"] / f"linux-{_CH['version']}" / f"{_CH
 FFMPEG = os.environ.get("VIDEO_ENGINE_FFMPEG", "ffmpeg")
 FFPROBE = os.environ.get("VIDEO_ENGINE_FFPROBE", "ffprobe")
 
-X264 = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-tune", "fastdecode", "-pix_fmt", "yuv420p",
-        "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]
+def x264(crf: int = 20, preset: str = "veryfast", tune: str | None = "fastdecode",
+         maxrate_kbps: int | None = None) -> list[str]:
+    """libx264 encoder arguments (yuv420p, bt709 tags); maxrate_kbps caps the CRF rate (VBV, bufsize 2x)."""
+    return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf), *(["-tune", tune] if tune else []),
+            *(["-maxrate", f"{maxrate_kbps}k", "-bufsize", f"{2 * maxrate_kbps}k"] if maxrate_kbps else []),
+            "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]
+
+
+X264 = x264()   # default encoder (profile [render] absent): intermediates and the final mux
 
 
 def hf_env() -> dict:

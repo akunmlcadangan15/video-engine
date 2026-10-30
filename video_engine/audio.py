@@ -316,7 +316,7 @@ def composite_cmd(tl: Timeline, segments: list[Path], ass: Path | None, out: Pat
         for clip, _ in transitions:
             cmd += ["-i", clip.resolve()]
         fv = chain + ";" + lab + fv[len(vsrc):]
-    cmd += ["-filter_complex", vpre + fv, "-map", "[v]", *config.X264, "-threads", str(threads),
+    cmd += ["-filter_complex", vpre + fv, "-map", "[v]", *profiles.of(tl).render.x264("final"), "-threads", str(threads),
             "-r", str(S.fps), "-frames:v", str(n), "-an", "-movflags", "+faststart", "-t", f"{dur:.6f}", out]
     return cmd, cwd, extra, [wm_png, concat_list]
 

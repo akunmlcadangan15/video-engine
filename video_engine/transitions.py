@@ -2,6 +2,9 @@
 short RGB clip drawn from the decoded segment files and laid over the concatenated segments by the final mux at its
 first frame, under the captions and the watermark.
 
+crossfade at boundary b: frames [b - n // 2, b - n // 2 + n), n = fade_s x fps. A dissolve from the outgoing to the
+incoming shot (smoothstep weights (k + 1) / (n + 1)); segments do not overlap in time, so before b the incoming shot
+is its first frame and from b the outgoing shot is its last frame (both segments keep their own timing).
 zoom_whip at boundary b: frames [b - whip_out_s, b + whip_in_s). The outgoing shot pushes in from 1 to whip_scale
 (ease in) with a radial blur rising to whip_blur; the incoming shot settles from whip_scale to 1 (ease out cubic,
 1 on the window's last frame) with the blur fading over its first whip_blur_in_s.
@@ -36,7 +39,7 @@ PAGE_DIR = (-0.94, -0.34)   # fold travel: from the bottom-right corner towards 
 class Window:
     boundary: int     # first frame of the incoming segment
     seg: int          # incoming segment index
-    kind: str         # zoom_whip | page_turn
+    kind: str         # crossfade | zoom_whip | page_turn
     f0: int           # first frame drawn by the transition
     f1: int           # end frame (exclusive)
 
@@ -64,7 +67,10 @@ def windows(tl: Timeline) -> list[Window]:
     for i in range(1, len(tl.segments)):
         k = kind_at(tl, i)
         b = tl.segments[i].start_frame
-        if k == "zoom_whip":
+        if k == "crossfade":
+            n = _frames(T.fade_s, fps)
+            out.append(Window(b, i, k, b - n // 2, b - n // 2 + n))
+        elif k == "zoom_whip":
             out.append(Window(b, i, k, b - _frames(T.whip_out_s, fps), b + _frames(T.whip_in_s, fps)))
         elif k == "page_turn":
             out.append(Window(b, i, k, b, b + _frames(T.page_s, fps)))
@@ -131,6 +137,23 @@ def whip_frames(tail: list[np.ndarray], head: list[np.ndarray], T: "profiles.Tra
         q = _ease_out_cubic((j + 1) / n_in)
         blur = T.whip_blur * (1 - j / nb) if j < nb else 0.0
         out.append(radial_blur(fr, T.whip_scale - (T.whip_scale - 1) * q, blur))
+    return out
+
+
+def _smoothstep(t: float) -> float:
+    return t * t * (3 - 2 * t)
+
+
+def fade_frames(tail: list[np.ndarray], a_last: np.ndarray, b_first: np.ndarray, head: list[np.ndarray]) -> list[np.ndarray]:
+    """crossfade frames: the outgoing `tail` (frames before the boundary) then its last frame held, dissolved into the
+    incoming first frame held, then its `head` (frames from the boundary)."""
+    n = len(tail) + len(head)
+    A = tail + [a_last] * len(head)
+    B = [b_first] * len(tail) + head
+    out = []
+    for k in range(n):
+        w = _smoothstep((k + 1) / (n + 1))
+        out.append(np.clip(A[k].astype(np.float32) * (1 - w) + B[k].astype(np.float32) * w + 0.5, 0, 255).astype(np.uint8))
     return out
 
 
@@ -201,7 +224,13 @@ def render(tl: Timeline, seg_files: list[Path], workdir: Path) -> list[tuple[Pat
     out = []
     for w in windows(tl):
         a, b = tl.segments[w.seg - 1], tl.segments[w.seg]
-        if w.kind == "zoom_whip":
+        if w.kind == "crossfade":
+            n_out, n_in = w.boundary - w.f0, w.f1 - w.boundary
+            tail = decode(seg_files[w.seg - 1], a.n_frames - n_out, n_out, W, H)
+            a_last = decode(seg_files[w.seg - 1], a.n_frames - 1, 1, W, H)[0]
+            head = decode(seg_files[w.seg], 0, n_in, W, H)
+            frames = fade_frames(tail, a_last, head[0], head)
+        elif w.kind == "zoom_whip":
             n_out = w.boundary - w.f0
             tail = decode(seg_files[w.seg - 1], a.n_frames - n_out, n_out, W, H)
             head = decode(seg_files[w.seg], 0, w.f1 - w.boundary, W, H)

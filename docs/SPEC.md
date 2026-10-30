@@ -161,12 +161,20 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   through a 1 -> 4 zoom). On-screen size = planned size x the element's own designed scale: the fly-through entry
   and exit scale applies to the label inside the counter-scaled box, and the boundary transitions (zoom whip, page
   turn) act on the rendered frames, so both keep their designed motion.
-- Transitions (`[transitions]`, off by default): zoom whip or page turn per segment boundary, by visual type; drawn
+- Transitions (`[transitions]`, off by default): crossfade (`fade_s`, centred on the boundary; before it the
+  incoming first frame is held, after it the outgoing last frame), zoom whip or page turn per segment boundary, by
+  visual type; drawn
   as lossless clips from the segment files (`video_engine/transitions.py`) and overlaid frame-exactly in the final
   mux under captions and watermark; without transitions the mux command is unchanged. C01 grades hard cuts (warn
   levels) and shot changes (fail levels).
-  `same_type` `{visual type: kind}` takes precedence when both sides of a boundary share that type (`geoverum`:
-  map to map = zoom whip, never a page turn).
+  `same_type` `{visual type: kind}` takes precedence when both sides of a boundary share that type.
+  `page_turn = false` rejects any page_turn in the profile; `map_morph = false` makes a map `morph` a T02 fail
+  (`geoverum`: every boundary a 0.4 s crossfade, no page turns, no paper morphs).
+- Render quality (`[render]`, every key optional; absent = engine defaults: HyperFrames `draft` + CRF 14,
+  x264 veryfast CRF 20 fastdecode for intermediates and the final mux, map JPEG q90): `hf_quality`
+  (draft | standard | high), `hf_crf`, `segment_crf` / `segment_preset` / `segment_tune`, `final_crf` /
+  `final_preset` / `final_tune` (`none` = no -tune) / `final_maxrate_kbps` (VBV cap, bufsize 2x),
+  `map_jpeg_quality`. Every value is part of the cache key of the stage it reaches.
 - HyperFrames `regions`: entity highlights; one colour per entity from profile `[theme.entities]` then
   `theme.palette`; E01 checks the painted region fill colours in the DOM probe. Region `style` (default
   `theme.region_style`; beats scenes default to `tint`): `tint` = fill + white or glow edge; `block` = a raised slab in

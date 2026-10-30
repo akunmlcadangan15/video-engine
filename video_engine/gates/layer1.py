@@ -62,6 +62,10 @@ def t02_integrity(tl: Timeline, project_dir: Path) -> list[Finding]:
         if i > 0 and s.start_frame != segs[i - 1].end_frame:
             kind = "gap" if s.start_frame > segs[i - 1].end_frame else "overlap"
             out.append(Finding("T02", "fail", f"{kind}: start_frame {s.start_frame} != previous end_frame {segs[i - 1].end_frame}", s.seg_index))
+        if (s.engine_type == HYPERFRAMES and s.gsap_scene_config and s.gsap_scene_config.morph
+                and not profiles.of(tl).transitions.map_morph):
+            out.append(Finding("T02", "fail", "map morph is off in this profile ([transitions] map_morph = false): "
+                               "keep the segment on its base map", s.seg_index))
         if s.engine_type == NATIVE:
             if not (project_dir / s.source).is_file():
                 out.append(Finding("T02", "fail", f"source file not found: {s.source}", s.seg_index))

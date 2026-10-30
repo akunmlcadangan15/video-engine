@@ -97,12 +97,16 @@ def test_good_hash_stable_and_per_profile(pdir):
 
 
 def test_good_segment_cache_keys_follow_renderer_values_only(project):
-    """Native keys are the same under every profile (no profile value reaches the native renderer); HyperFrames keys
-    differ exactly when the profile theme values differ."""
+    """Native keys differ exactly when the profile's segment encoder ([render] segment_*) differs (no other profile
+    value reaches the native renderer); HyperFrames keys differ exactly when the profile theme values differ."""
     p, tl = project()
     _, tg = project(lambda d: d.update(profile="geoverum"))
-    assert [native.plan(s, tl, p).key for s in tl.segments if s.engine_type == "NATIVE_RUST_FFMPEG"] == \
-           [native.plan(s, tg, p).key for s in tg.segments if s.engine_type == "NATIVE_RUST_FFMPEG"]
+    nat = lambda t: [native.plan(s, t, p).key for s in t.segments if s.engine_type == "NATIVE_RUST_FFMPEG"]
+    assert profiles.of(tg).render.x264("segment") != profiles.of(tl).render.x264("segment")
+    assert all(a != b for a, b in zip(nat(tl), nat(tg)))
+    tg.profile = "default"
+    assert nat(tg) == nat(tl)
+    tg.profile = "geoverum"
     same = profiles.of(tl).render_values("hf") == profiles.of(tg).render_values("hf")
     assert (hyperframes.keys(tl.segments[2], tl, p) == hyperframes.keys(tg.segments[2], tg, p)) == same
 

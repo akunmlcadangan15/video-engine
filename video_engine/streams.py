@@ -89,9 +89,10 @@ def _engine_format(W: int, H: int, fps: int, x264: tuple, ffmpeg: str) -> tuple:
         return tuple(tuple(sorted(s.items())) for s in params(out, "v:0"))
 
 
-def engine_format(W: int, H: int, fps: int) -> list[dict]:
-    """Video stream parameters of the engine's segment encoder at W x H, fps (see module docstring)."""
-    return [dict(s) for s in _engine_format(W, H, fps, tuple(config.X264), str(config.FFMPEG))]
+def engine_format(W: int, H: int, fps: int, x264: list[str] | None = None) -> list[dict]:
+    """Video stream parameters of the engine's segment encoder (`x264`, default config.X264) at W x H, fps (see
+    module docstring)."""
+    return [dict(s) for s in _engine_format(W, H, fps, tuple(x264 or config.X264), str(config.FFMPEG))]
 
 
 def verify(path: str | Path, n: int, fps: int, what: str) -> None:
