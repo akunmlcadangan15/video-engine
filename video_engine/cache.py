@@ -3,10 +3,11 @@
 Leases: inside `session()` (every CLI command and `build.build`) each cache file the process resolves or is about
 to write is leased before its existence is checked, under a shared lock of the cache root. Eviction (`prune`, LRU),
 `clear`, `engine cache --prune` and the sound cache prune hold the exclusive lock while they scan and delete, skip
-every leased file and report it. A lease lives in <root>/.leases/<pid>-<start>.json
-({"pid", "start", "paths": [paths relative to the root]}), start = field 22 of /proc/<pid>/stat (process start
-time in clock ticks); the session removes its file on exit (success, failure, exception, AwaitingAgent). A pruner
-reclaims (deletes) a lease file whose pid is gone or runs a different process (other start time).
+every leased file and report it. A lease lives in <root>/.leases/<pid>-<start>.json as JSON lines, one
+{"pid", "start", "paths": [path relative to the root]} per acquired path (append-only, so a store never rewrites
+the whole set); start = field 22 of /proc/<pid>/stat (process start time in clock ticks). The session removes its
+file on exit (success, failure, exception, AwaitingAgent). A pruner reclaims (deletes) a lease file whose pid is
+gone or runs a different process (other start time).
 """
 from __future__ import annotations
 
@@ -146,9 +147,9 @@ def acquire(path: Path, root: Path | None = None) -> Path:
                 f = _lease_file(root)
                 f.parent.mkdir(parents=True, exist_ok=True)
                 pid = os.getpid()
-                tmp = tmp_name(f)
-                tmp.write_text(json.dumps({"pid": pid, "start": proc_start(pid), "paths": sorted(have)}))
-                os.replace(tmp, f)
+                with open(f, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps({"pid": pid, "start": proc_start(pid), "paths": [rel]},
+                                        separators=(",", ":")) + "\n")
     return path
 
 
@@ -168,9 +169,23 @@ def leased(root: Path) -> tuple[set[str], list[str]]:
             reclaimed.append(f.name)
             continue
         try:
-            paths |= set(json.loads(f.read_text())["paths"])
-        except (FileNotFoundError, json.JSONDecodeError, KeyError, TypeError):
+            text = f.read_text()
+        except FileNotFoundError:
             continue
+        try:
+            rows = [json.loads(text)]
+        except json.JSONDecodeError:
+            rows = []
+            for line in text.splitlines():
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+        for row in rows:
+            try:
+                paths |= set(row["paths"])
+            except (KeyError, TypeError):
+                continue
     return paths, reclaimed
 
 

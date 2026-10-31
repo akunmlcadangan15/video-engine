@@ -365,3 +365,19 @@ def test_good_put_file_prunes_at_once_when_the_entry_alone_exceeds_the_budget(ro
     src.write_text("x" * 1000)
     out = cache.put_file("segments", "big", src)
     assert out.exists() and not stale.exists()                           # oversized store triggers the LRU scan
+
+
+def test_good_acquire_appends_one_lease_line_per_path(root):
+    """Each acquire appends its own line under the shared lock; it never rewrites the whole lease file."""
+    a = entry(root, "segments", "a.mp4")
+    b = entry(root, "segments", "b.mp4")
+    with cache.session():
+        cache.get_file("segments", "a")
+        f = root / cache.LEASES / leases(root)[0]
+        ino, before = f.stat().st_ino, f.read_text()
+        cache.get_file("segments", "b")
+        same_inode, after = f.stat().st_ino == ino, f.read_text()
+    assert same_inode and after.startswith(before) and len(after.splitlines()) == 2
+    rows = [json.loads(line) for line in after.splitlines()]
+    assert [{p for p in row["paths"]} for row in rows] == [{"segments/a.mp4"}, {"segments/b.mp4"}]
+    assert a.exists() and b.exists() and leases(root) == []
