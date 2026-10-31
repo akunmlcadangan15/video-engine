@@ -285,6 +285,18 @@ def cmd_sheet(a) -> int:
     return 0
 
 
+def cmd_batch(a) -> int:
+    from . import batch
+    projects = [Path(x) for x in a.project]
+    if a.queue:
+        projects = [*batch.load_queue(Path(a.queue)), *projects]
+    if not projects:
+        raise EngineError("batch needs at least one project or --queue")
+    r = batch.run(projects, fail_fast=a.fail_fast, run_label=a.label, use_cache=not a.no_cache, relock=a.relock)
+    print(json.dumps(r, indent=2, ensure_ascii=False))
+    return 0 if r["ok"] else 1
+
+
 def cmd_cache(a) -> int:
     from . import cache_prune
     projects = [Path(x) for x in a.project] or cache_prune.default_projects()
@@ -456,6 +468,14 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--video")
     x.add_argument("--out", help="default <project>/out/sheet.png")
     x.add_argument("--cols", type=int, default=7)
+    x = add("batch", cmd_batch, "Build several projects in order, with one lock per project and a shared queue. "
+                                  "A failed item does not stop the queue unless --fail-fast.")
+    x.add_argument("project", nargs="*")
+    x.add_argument("--queue", help="JSON array/object with `projects`, or one project path per line")
+    x.add_argument("--fail-fast", action="store_true")
+    x.add_argument("--label", default="batch")
+    x.add_argument("--no-cache", action="store_true")
+    x.add_argument("--relock", action="store_true")
     x = add("cache", cmd_cache, "Cache maintenance. --prune deletes words/segments/maps entries not referenced by "
                                   "the current keys of the projects (default: every project passed via --project) and broken "
                                   "entries of the sound cache (sound/). Files leased by a running build are kept and "
