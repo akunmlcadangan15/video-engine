@@ -48,3 +48,24 @@ def test_good_cli_preview_and_audio(project, tmp_path, capsys):
 def test_good_cli_doctor(monkeypatch):
     monkeypatch.setattr(doctor, "check", lambda: [doctor.Check("node", True, "v1", "v1")])
     assert cli.main(["doctor"]) == 0
+
+
+def test_good_cli_deliver_exports_package(project, tmp_path):
+    import json
+    from conftest import ff
+    from video_engine import manifest
+    p, tl = project()
+    S = tl.settings
+    out = p / "out"
+    out.mkdir()
+    final = out / "final.mp4"
+    ff("-f", "lavfi", "-i", f"testsrc2=size={S.width}x{S.height}:rate={S.fps}", "-frames:v", str(tl.total_frames),
+       "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", final)
+    rep = {"ok": True, "build_id": "b1", "final_sha256": manifest.sha256(final, fresh=True)}
+    (out / "build_report.json").write_text(json.dumps(rep))
+    (out / manifest.MANIFEST).write_text(json.dumps({"build_id": "b1"}))
+    assert cli.main(["deliver", str(p), "--export", str(tmp_path / "pkg")]) == 0
+    final_dir = tmp_path / "pkg" / "07 - 2026-10-28 - Uji Coba" / "05 Final"
+    assert (final_dir / "07 - Uji Coba - final.mp4").is_file()
+    assert (final_dir / "07 - Uji Coba - final.srt").is_file()
+    assert (final_dir / "07 - Uji Coba - metadata.json").is_file()

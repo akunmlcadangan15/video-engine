@@ -166,12 +166,16 @@ def cmd_words(a) -> int:
 
 def cmd_deliver(a) -> int:
     from . import deliver
+    if not a.dry_run and not a.export:
+        print("error: pass --dry-run (print the plan) or --export DIR (write the upload package)", file=sys.stderr)
+        raise SystemExit(2)
     p, tl = _load(a.project)
-    if not a.dry_run:
-        raise EngineError("upload is not available in this milestone; use --dry-run")
     final = Path(a.final) if a.final else p / "out" / "final.mp4"
     deliver.check_build(final)
-    print(deliver.plan(tl, p, final).to_json())
+    if a.dry_run:
+        print(deliver.plan(tl, p, final).to_json())
+    if a.export:
+        print(json.dumps(deliver.export_package(tl, p, final, Path(a.export)), indent=2, ensure_ascii=False))
     return 0
 
 
@@ -390,9 +394,11 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("project")
     x.add_argument("--retranscribe", action="store_true", help="ignore the words cache and run faster-whisper again")
     x.add_argument("--print", action="store_true")
-    x = add("deliver", cmd_deliver, "Print the delivery plan (names, parts <= 95 MB, Drive folders). --dry-run only.")
+    x = add("deliver", cmd_deliver, "Print the delivery plan or write the upload package (video parts <= 95 MB, "
+            "JOIN, credits, SRT, thumbnail, YouTube/Reels metadata). No upload.")
     x.add_argument("project")
-    x.add_argument("--dry-run", action="store_true", required=True)
+    x.add_argument("--dry-run", action="store_true", help="print the delivery plan as JSON")
+    x.add_argument("--export", metavar="DIR", help="write the upload-ready package tree under DIR")
     x.add_argument("--final")
     x = add("director", cmd_director, "Footage analysis of a 360p proxy by the AI provider (planning models).")
     x.add_argument("src")
