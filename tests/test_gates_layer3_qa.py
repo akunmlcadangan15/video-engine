@@ -101,7 +101,7 @@ def test_R38_bad_two_empty_thirds_alternating_blankest_both_flagged_every_sample
 def test_R38_bad_alternating_empty_thirds_fail_post_render_qa(project, monkeypatch):
     _, tl = project(lambda d: d.update(segments=d["segments"][:1]))
     frames = [_alternating(k).astype(np.uint8).tobytes() for k in range(6)]
-    monkeypatch.setattr(qa, "sample_frames", lambda v, w, h, step=5: (frames, W, H))
+    monkeypatch.setattr(qa, "sample_frames", lambda v, w, h, step=5, threads=4: (frames, W, H))
     fs, _ = qa.pixel_gates(None, tl)
     r38 = [f.message for f in fs if f.gate == "R38"]
     assert any("top third empty" in m for m in r38) and any("middle third empty" in m for m in r38)

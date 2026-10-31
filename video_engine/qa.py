@@ -17,9 +17,10 @@ SAMPLE_STEP = 5
 MOTION_MIN = 0.5      # mean abs luma diff per sample pair (0-255 scale); below = frozen segment
 
 
-def sample_frames(video: Path, W: int, H: int, step: int = SAMPLE_STEP) -> tuple[list[bytes], int, int]:
+def sample_frames(video: Path, W: int, H: int, step: int = SAMPLE_STEP,
+                  threads: int = 4) -> tuple[list[bytes], int, int]:
     ow, oh = W // SNAP_DIV, H // SNAP_DIV
-    cmd = [config.FFMPEG, "-v", "error", "-threads", "4", "-i", str(video), "-an", "-vf",
+    cmd = [config.FFMPEG, "-v", "error", "-threads", str(threads), "-i", str(video), "-an", "-vf",
            f"select=not(mod(n\\,{step})),scale={ow}:{oh}:flags=area,format=rgb24", "-fps_mode", "passthrough",
            "-f", "rawvideo", "-"]
     raw = subprocess.run(cmd, capture_output=True, check=True).stdout
@@ -27,9 +28,10 @@ def sample_frames(video: Path, W: int, H: int, step: int = SAMPLE_STEP) -> tuple
     return [raw[i:i + sz] for i in range(0, len(raw) - sz + 1, sz)], ow, oh
 
 
-def pixel_gates(video: Path, tl: Timeline, step: int = SAMPLE_STEP) -> tuple[list[Finding], dict]:
+def pixel_gates(video: Path, tl: Timeline, step: int = SAMPLE_STEP,
+                threads: int = 4) -> tuple[list[Finding], dict]:
     W, H = tl.settings.width, tl.settings.height
-    frames, ow, oh = sample_frames(video, W, H, step)
+    frames, ow, oh = sample_frames(video, W, H, step, threads)
     stats = core.frame_stats(frames, ow, oh)
     motion = core.frame_motion(frames, ow, oh)
     out, per_seg = [], {}

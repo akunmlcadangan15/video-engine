@@ -56,6 +56,10 @@ class Budget:
             return self.hf_segments
         return 1
 
+    def whisper_threads(self) -> int:
+        """Whisper CPU threads: the same worker budget (at most 8, whisper's own practical cap)."""
+        return max(1, min(8, self.workers))
+
     def report(self) -> dict:
         return asdict(self)
 

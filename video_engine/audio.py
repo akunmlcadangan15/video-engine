@@ -112,7 +112,8 @@ def expected_meta(tl: Timeline, project_dir: Path) -> dict:
             "fps": tl.settings.fps}
 
 
-def transcribe_captions(tl: Timeline, project_dir: Path, use_cache: bool = True) -> tuple[list[CaptionWord], CaptionsMeta]:
+def transcribe_captions(tl: Timeline, project_dir: Path, use_cache: bool = True,
+                        threads: int | None = None) -> tuple[list[CaptionWord], CaptionsMeta]:
     """faster-whisper words (BLAKE3 cache) + caption_fixes -> frame captions and their provenance."""
     ac = tl.audio_chain
     if not ac.voiceover_path:
@@ -120,7 +121,8 @@ def transcribe_captions(tl: Timeline, project_dir: Path, use_cache: bool = True)
     vo = project_dir / ac.voiceover_path
     if not vo.is_file():
         raise EngineError(f"voiceover not found: {ac.voiceover_path}")
-    words, hit = transcribe_words(vo, ac.language, ac.whisper_model, ac.initial_prompt, use_cache=use_cache)
+    words, hit = transcribe_words(vo, ac.language, ac.whisper_model, ac.initial_prompt, threads=threads,
+                                  use_cache=use_cache)
     words = apply_fixes(words, ac.caption_fixes)
     total = tl.total_frames
     caps = words_to_captions(words, tl.settings.fps, total)
@@ -130,19 +132,20 @@ def transcribe_captions(tl: Timeline, project_dir: Path, use_cache: bool = True)
     return caps, meta
 
 
-def pin_captions(project_dir: Path, use_cache: bool = True) -> tuple[Timeline, CaptionsMeta]:
+def pin_captions(project_dir: Path, use_cache: bool = True, threads: int | None = None
+                 ) -> tuple[Timeline, CaptionsMeta]:
     """Transcribe + fix once and write `captions` and `captions_meta` into master_timeline.json. Loads a fresh copy
     of the file so in-memory gate fixes are never persisted by this call."""
     from . import timeline
     fresh = timeline.load(project_dir)
-    caps, meta = transcribe_captions(fresh, project_dir, use_cache=use_cache)
+    caps, meta = transcribe_captions(fresh, project_dir, use_cache=use_cache, threads=threads)
     fresh.captions, fresh.captions_meta = caps, meta
     timeline.save(fresh, project_dir)
     return fresh, meta
 
 
-def captions_for(tl: Timeline, project_dir: Path, use_cache: bool = True, pin: bool = False
-                 ) -> tuple[list[CaptionWord], str]:
+def captions_for(tl: Timeline, project_dir: Path, use_cache: bool = True, pin: bool = False,
+                 threads: int | None = None) -> tuple[list[CaptionWord], str]:
     """Pinned timeline captions if present; else (auto_captions) transcribed narration, written into the
     timeline when `pin` is true. Returns (words, source)."""
     if tl.captions:
@@ -151,10 +154,10 @@ def captions_for(tl: Timeline, project_dir: Path, use_cache: bool = True, pin: b
     if not (ac.auto_captions and ac.voiceover_path):
         return [], "none"
     if pin:
-        fresh, meta = pin_captions(project_dir, use_cache=use_cache)
+        fresh, meta = pin_captions(project_dir, use_cache=use_cache, threads=threads)
         tl.captions, tl.captions_meta = fresh.captions, meta
         return tl.captions, ("whisper-cache" if meta.words_cache_hit else "whisper") + "+pinned"
-    caps, meta = transcribe_captions(tl, project_dir, use_cache=use_cache)
+    caps, meta = transcribe_captions(tl, project_dir, use_cache=use_cache, threads=threads)
     return caps, "whisper-cache" if meta.words_cache_hit else "whisper"
 
 
@@ -225,7 +228,7 @@ def _mix_inputs(tl: Timeline, project_dir: Path, mix, first_idx: int, norm: str)
     return args, (None if not args else mixer.graph(tl, mix, vi, mi, si, norm))
 
 
-def measure_mix(tl: Timeline, project_dir: Path, mix=None) -> dict | None:
+def measure_mix(tl: Timeline, project_dir: Path, mix=None, threads: int | None = None) -> dict | None:
     """Loudnorm pass 1 on the audio mix only (no video). Returns loudnorm's measured_* JSON, or None without audio."""
     import json as _json
     import subprocess
@@ -234,8 +237,8 @@ def measure_mix(tl: Timeline, project_dir: Path, mix=None) -> dict | None:
     args, fa = _mix_inputs(tl, project_dir, mix, 0, meas)
     if fa is None:
         return None
-    cmd = [config.FFMPEG, "-hide_banner", "-nostats", *args, "-filter_complex", ";".join(fa),
-           "-map", "[a]", "-f", "null", "-"]
+    cmd = [config.FFMPEG, "-hide_banner", "-nostats", *args, *(["-threads", str(threads)] if threads else []),
+           "-filter_complex", ";".join(fa), "-map", "[a]", "-f", "null", "-"]
     r = subprocess.run([str(c) for c in cmd], capture_output=True, text=True)
     if r.returncode != 0:
         raise EngineError(f"loudness measure failed: {r.stderr[-600:]}")
@@ -370,7 +373,8 @@ def composite(tl: Timeline, segments: list[Path], ass: Path | None, out: Path, t
     return (cache.put_file("composite", key, out) if use_cache else out), False, key
 
 
-def audio_cmd(tl: Timeline, project_dir: Path, out: Path, measured: dict | None, mix=None) -> list:
+def audio_cmd(tl: Timeline, project_dir: Path, out: Path, measured: dict | None, mix=None,
+              threads: int | None = None) -> list:
     """ffmpeg argv of the audio pass: ducked BGM under VO (or the [sound] mix), two-pass loudnorm (pass 1 =
     measure_mix), exact sample count, AAC 192k 48 kHz, cut at the video duration."""
     n, fps = tl.total_frames, tl.settings.fps
@@ -379,6 +383,7 @@ def audio_cmd(tl: Timeline, project_dir: Path, out: Path, measured: dict | None,
     if fa_audio is None:
         fa_audio = _audio_graph(tl, None, None, "")
     return [config.FFMPEG, "-v", "error", "-y", *args, "-filter_complex", ";".join(fa_audio), "-map", "[a]",
+            *(["-threads", str(threads)] if threads else []),
             "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-t", f"{n / fps:.6f}", out.resolve()]
 
 
@@ -392,10 +397,10 @@ def audio_key(tl: Timeline, cmd: list, out: Path, correct: bool) -> str:
                     "code": code_hash([__file__])})
 
 
-def _audio_plan_key(tl: Timeline, project_dir: Path, out: Path, mix, correct: bool) -> str:
+def _audio_plan_key(tl: Timeline, project_dir: Path, out: Path, mix, correct: bool, threads: int | None) -> str:
     """Key of the audio pass before loudnorm pass 1: the command is built with `measured=None`, because the
     measurement is a function of the same inputs (and is stored with the cached loudness history)."""
-    return audio_key(tl, audio_cmd(tl, project_dir, out, None, mix), out, correct)
+    return audio_key(tl, audio_cmd(tl, project_dir, out, None, mix, threads), out, correct)
 
 
 def _cached_master(tl: Timeline, out: Path, key: str, correct: bool):
@@ -413,29 +418,31 @@ def _cached_master(tl: Timeline, out: Path, key: str, correct: bool):
 
 
 def cached_master(tl: Timeline, project_dir: Path, out: Path, mix=None, use_cache: bool = True,
-                  correct: bool = False):
+                  correct: bool = False, threads: int | None = None):
     """The cached audio pass for these inputs (file copied to `out`), or None. Lets a build skip loudnorm pass 1
     when the audio cache can answer."""
     if not use_cache:
         return None
     out = out.resolve()
-    return _cached_master(tl, out, _audio_plan_key(tl, project_dir, out, mix, correct), correct)
+    return _cached_master(tl, out, _audio_plan_key(tl, project_dir, out, mix, correct, threads), correct)
 
 
 def master_audio(tl: Timeline, project_dir: Path, out: Path, measured: dict | None = None, mix=None,
-                 use_cache: bool = True, correct: bool = False) -> tuple[Path, bool, str, list, list[dict]]:
+                 use_cache: bool = True, correct: bool = False,
+                 threads: int | None = None) -> tuple[Path, bool, str, list, list[dict]]:
     """Audio pass (+ with `correct`, the A01 corrective gain passes on the audio file alone) ->
     (file, cache hit, key, A01 findings, loudness history). Cache kind "audio": a visual change never re-runs it and
     a hit does not run loudnorm pass 1."""
     out = out.resolve()
-    key = _audio_plan_key(tl, project_dir, out, mix, correct) if use_cache else ""
+    key = _audio_plan_key(tl, project_dir, out, mix, correct, threads) if use_cache else ""
     if use_cache and (hit := _cached_master(tl, out, key, correct)) is not None:
         return hit
     if measured is None:
-        measured = measure_mix(tl, project_dir, mix)
-    cmd = audio_cmd(tl, project_dir, out, measured, mix)
+        measured = measure_mix(tl, project_dir, mix, threads)
+    cmd = audio_cmd(tl, project_dir, out, measured, mix, threads)
     run(cmd)
-    fs, hist = enforce_loudness(out, tl) if correct else ([], [{"pass": "mux", **loudness(out), "gain_db": 0.0}])
+    fs, hist = (enforce_loudness(out, tl, threads) if correct
+                else ([], [{"pass": "mux", **loudness(out, threads), "gain_db": 0.0}]))
     if use_cache:
         cache.put_file("audio", key, out, ".m4a")
         cache.put_json("audio", key, hist)
@@ -474,11 +481,12 @@ def subtitle_filter(ass: Path) -> tuple[str, Path]:
     return f"subtitles=filename={SUB_NAME}:fontsdir={SUB_FONTS}", d
 
 
-def loudness(path: Path) -> dict:
+def loudness(path: Path, threads: int | None = None) -> dict:
     """Integrated loudness (LUFS), true peak (dBTP) and loudness range (LU) of a file (ebur128)."""
     import subprocess
-    r = subprocess.run([config.FFMPEG, "-hide_banner", "-nostats", "-i", str(path), "-vn", "-af", "ebur128=peak=true",
-                        "-f", "null", "-"], capture_output=True, text=True)
+    r = subprocess.run([config.FFMPEG, "-hide_banner", "-nostats", *(["-threads", str(threads)] if threads else []),
+                        "-i", str(path), "-vn", "-af", "ebur128=peak=true", "-f", "null", "-"],
+                       capture_output=True, text=True)
     txt = r.stderr[r.stderr.rfind("Summary:"):]
     I = re.search(r"I:\s+(-?[\d.]+) LUFS", txt)
     tp = re.search(r"Peak:\s+(-?[\d.]+) dBFS", txt)
@@ -504,16 +512,17 @@ def loudness_findings(m: dict, target_lufs: float, max_tp: float, tol: float) ->
     return out or [Finding("A01", "pass", f"{I:.1f} LUFS, true peak {TP:.1f} dBTP")]
 
 
-def apply_gain(src: Path, dst: Path, gain_db: float, true_peak: float) -> Path:
+def apply_gain(src: Path, dst: Path, gain_db: float, true_peak: float, threads: int | None = None) -> Path:
     """Corrective pass: audio gain + sample-peak limiter 0.5 dB under the true-peak limit; video stream copied.
     The copied stream must keep every streams.VIDEO_KEYS parameter, its frame count and its duration."""
     lim = 10 ** ((true_peak - 0.5) / 20)
     if not any(st.get("codec_type") == "video" for st in probe(src)["streams"]):   # audio-only master
-        run([config.FFMPEG, "-v", "error", "-y", "-i", src, "-map", "0:a:0",
+        run([config.FFMPEG, "-v", "error", "-y", "-i", src, "-map", "0:a:0", *(["-threads", str(threads)] if threads else []),
              "-af", f"volume={gain_db:.2f}dB,alimiter=limit={lim:.4f}:level=false", "-c:a", "aac", "-b:a", "192k",
              "-ar", "48000", dst])
         return dst
     run([config.FFMPEG, "-v", "error", "-y", "-i", src, "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy",
+         *(["-threads", str(threads)] if threads else []),
          "-af", f"volume={gain_db:.2f}dB,alimiter=limit={lim:.4f}:level=false", "-c:a", "aac", "-b:a", "192k",
          "-ar", "48000", "-movflags", "+faststart", dst])
     if diff := streams.mismatch(streams.params(dst, "v:0"), streams.params(src, "v:0")):
@@ -524,11 +533,11 @@ def apply_gain(src: Path, dst: Path, gain_db: float, true_peak: float) -> Path:
     return dst
 
 
-def enforce_loudness(path: Path, tl: Timeline) -> tuple[list, list[dict]]:
+def enforce_loudness(path: Path, tl: Timeline, threads: int | None = None) -> tuple[list, list[dict]]:
     """Measure -> corrective gain pass(es) while outside the profile tolerance -> re-measure. Replaces `path` in place.
     Returns (A01 findings of the last measurement, list of measurements {"pass", "I", "TP", "gain_db"})."""
     L = profiles.loudness(tl)
-    m = loudness(path)
+    m = loudness(path, threads)
     hist = [{"pass": "mux", **m, "gain_db": 0.0}]
     for k in range(MAX_CORRECTIONS):
         fs = loudness_findings(m, L.target_lufs, L.true_peak, L.tolerance_lu)
@@ -536,8 +545,8 @@ def enforce_loudness(path: Path, tl: Timeline) -> tuple[list, list[dict]]:
             return fs, hist
         gain = L.target_lufs - m["I"]
         tmp = path.with_suffix(f".gain{k}{path.suffix}")
-        apply_gain(path, tmp, gain, L.true_peak)
+        apply_gain(path, tmp, gain, L.true_peak, threads)
         tmp.replace(path)
-        m = loudness(path)
+        m = loudness(path, threads)
         hist.append({"pass": f"correct{k + 1}", **m, "gain_db": round(gain, 2)})
     return loudness_findings(m, L.target_lufs, L.true_peak, L.tolerance_lu), hist
