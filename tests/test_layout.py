@@ -287,6 +287,21 @@ def test_good_planner_plan_passes_every_layout_gate(project, monkeypatch):
     assert {f.gate for f in fs if f.level == "pass"} == set(G.GATES)
 
 
+def test_good_layout_grid_and_label_offset_scale_with_width_and_height(project, monkeypatch):
+    """Grid steps, Z1 rounding and label offsets use kx/ky, not raw 1080x1920 px."""
+    no_print(monkeypatch)
+    d1, tl1 = project(beats_doc)
+    d2, tl2 = project(lambda d: (beats_doc(d), d["settings"].update(width=1188, height=2112)))
+    p1 = layout.apply_segment(tl1.segments[2], tl1, d1)
+    p2 = layout.apply_segment(tl2.segments[2], tl2, d2)
+    ky = 2112 / 1920
+    assert p2.title["y"] == pytest.approx(304 * ky)
+    assert abs(p2.title["y"] / (8 * ky) - round(p2.title["y"] / (8 * ky))) < 1e-9
+    c1 = layout._Planner(tl1.segments[2], tl1, d1).candidates("Titik A")[0]
+    c2 = layout._Planner(tl2.segments[2], tl2, d2).candidates("Titik A")[0]
+    assert c2.dx - c1.dx == pytest.approx(L.labels.offset * (1188 / 1080 - 1))
+
+
 def test_good_label_style_box_reaches_layout_titles_and_figures(project, monkeypatch):
     """label_style box is no longer limited to scenes without a layout (print still owns the look when it is on)."""
     no_print(monkeypatch)
