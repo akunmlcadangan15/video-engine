@@ -20,6 +20,16 @@ def _load(project: str):
     return p, timeline.load(p)
 
 
+def _pairs(items: list[str], flag: str) -> dict[str, str]:
+    out = {}
+    for item in items:
+        old, sep, new = item.partition("=")
+        if not sep or not old or not new:
+            raise EngineError(f"{flag} expects OLD=NEW, got {item!r}")
+        out[old] = new
+    return out
+
+
 EXIT_AWAITING = 3
 AI_REQUEST_DIR = "ai_request"
 
@@ -252,7 +262,7 @@ def cmd_taste(a) -> int:
 
 def cmd_import_shots(a) -> int:
     from . import importer
-    subs = dict(x.split("=", 1) for x in a.substitute)
+    subs = _pairs(a.substitute, "--substitute")
     settings = {k: v for k, v in {"project_number": a.project_number, "topic": a.topic, "date": a.date}.items() if v}
     r = importer.import_shots(Path(a.csv), Path(a.dst), [Path(d) for d in a.search], credits_txt=Path(a.credits),
                               voiceover=Path(a.voiceover), manifest=Path(a.manifest) if a.manifest else None,

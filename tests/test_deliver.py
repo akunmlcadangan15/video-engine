@@ -84,3 +84,39 @@ def test_good_default_limit_boundary_95_000_000():
     assert deliver.PART_MAX_BYTES == 95_000_000
     assert deliver.split_ranges(95_000_000) == [(0, 95_000_000)]
     assert deliver.split_ranges(95_000_001) == [(0, 47_500_001), (47_500_001, 95_000_001)]
+
+
+def _built(tmp_path):
+    import json
+    from video_engine import manifest
+    d = tmp_path / "out"
+    d.mkdir()
+    final = d / "final.mp4"
+    final.write_bytes(b"published")
+    rep = {"ok": True, "build_id": "b1", "final_sha256": manifest.sha256(final, fresh=True)}
+    (d / "build_report.json").write_text(json.dumps(rep))
+    (d / manifest.MANIFEST).write_text(json.dumps({"build_id": "b1"}))
+    return d, final, rep
+
+
+def test_good_check_build_accepts_the_last_published_build(tmp_path):
+    _, final, rep = _built(tmp_path)
+    assert deliver.check_build(final)["build_id"] == rep["build_id"]
+
+
+def test_bad_check_build_rejects_stale_or_failed_output(tmp_path):
+    d, final, rep = _built(tmp_path)
+    (d / "build_report.failed.json").write_text("{}")
+    with pytest.raises(EngineError, match="last build failed"):
+        deliver.check_build(final)
+    (d / "build_report.failed.json").unlink()
+    (d / "build_manifest.json").write_text('{"build_id": "later"}')
+    with pytest.raises(EngineError, match="stale"):
+        deliver.check_build(final)
+    (d / "build_manifest.json").write_text('{"build_id": "b1"}')
+    final.write_bytes(b"changed")
+    with pytest.raises(EngineError, match="differs"):
+        deliver.check_build(final)
+    final.unlink()
+    with pytest.raises(EngineError, match="not found"):
+        deliver.check_build(final)

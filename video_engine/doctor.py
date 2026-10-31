@@ -67,8 +67,12 @@ def check(vendor: Path | None = None, run_binaries: bool = True) -> list[Check]:
     nm = vendor / "npm" / "node_modules"
     for name, want in p["npm"].items():
         g = _pkg_version(nm / name)
-        ok = g == want and (name != "hyperframes" or (nm / name / "dist").is_dir())
-        out.append(Check(name, ok, want, g if ok or g == "missing" else f"{g} (dist missing)" if g == want else g))
+        dist_missing = name == "hyperframes" and g == want and not (nm / name / "dist").is_dir()
+        ok = g == want and not dist_missing
+        out.append(Check(name, ok, want, f"{g} (dist missing)" if dist_missing else g))
+    cli = x["hf_cli"]
+    out.append(Check("hyperframes-cli", cli.is_file(), "bin/hyperframes.mjs",
+                     "present" if cli.is_file() else "missing"))
     ch = x["chrome"]
     out.append(Check("chrome", ch.is_file() and bool(ch.stat().st_mode & 0o111), f"{p['chrome']['product']}@{p['chrome']['version']}",
                      "present" if ch.is_file() else "missing"))
@@ -141,7 +145,7 @@ def install(vendor: Path | None = None, tmp: Path | None = None) -> list[Check]:
     status = {c.name: c.ok for c in check(vendor)}
     if not status["node"]:
         install_node(vendor, p, tmp)
-    if not all(status[n] for n in p["npm"]):
+    if not all(status[n] for n in p["npm"]) or not status["hyperframes-cli"]:
         install_npm(vendor, tmp)
     if not status["chrome"]:
         install_chrome(vendor, p, tmp)
