@@ -392,23 +392,48 @@ def audio_key(tl: Timeline, cmd: list, out: Path, correct: bool) -> str:
                     "code": code_hash([__file__])})
 
 
+def _audio_plan_key(tl: Timeline, project_dir: Path, out: Path, mix, correct: bool) -> str:
+    """Key of the audio pass before loudnorm pass 1: the command is built with `measured=None`, because the
+    measurement is a function of the same inputs (and is stored with the cached loudness history)."""
+    return audio_key(tl, audio_cmd(tl, project_dir, out, None, mix), out, correct)
+
+
+def _cached_master(tl: Timeline, out: Path, key: str, correct: bool):
+    """Cached audio pass copied to `out`: (out, True, key, findings, history) or None."""
+    import shutil as _sh
+    if not (hit := cache.get_file("audio", key, ".m4a")):
+        return None
+    meta = cache.get_json("audio", key)
+    if meta is None:
+        return None
+    _sh.copyfile(hit, out)
+    L = profiles.loudness(tl)
+    fs = loudness_findings(meta[-1], L.target_lufs, L.true_peak, L.tolerance_lu) if correct else []
+    return out, True, key, fs, meta
+
+
+def cached_master(tl: Timeline, project_dir: Path, out: Path, mix=None, use_cache: bool = True,
+                  correct: bool = False):
+    """The cached audio pass for these inputs (file copied to `out`), or None. Lets a build skip loudnorm pass 1
+    when the audio cache can answer."""
+    if not use_cache:
+        return None
+    out = out.resolve()
+    return _cached_master(tl, out, _audio_plan_key(tl, project_dir, out, mix, correct), correct)
+
+
 def master_audio(tl: Timeline, project_dir: Path, out: Path, measured: dict | None = None, mix=None,
                  use_cache: bool = True, correct: bool = False) -> tuple[Path, bool, str, list, list[dict]]:
     """Audio pass (+ with `correct`, the A01 corrective gain passes on the audio file alone) ->
-    (file, cache hit, key, A01 findings, loudness history). Cache kind "audio": a visual change never re-runs it."""
-    import shutil as _sh
+    (file, cache hit, key, A01 findings, loudness history). Cache kind "audio": a visual change never re-runs it and
+    a hit does not run loudnorm pass 1."""
     out = out.resolve()
+    key = _audio_plan_key(tl, project_dir, out, mix, correct) if use_cache else ""
+    if use_cache and (hit := _cached_master(tl, out, key, correct)) is not None:
+        return hit
     if measured is None:
         measured = measure_mix(tl, project_dir, mix)
     cmd = audio_cmd(tl, project_dir, out, measured, mix)
-    L = profiles.loudness(tl)
-    key = audio_key(tl, cmd, out, correct) if use_cache else ""
-    if use_cache and (hit := cache.get_file("audio", key, ".m4a")):
-        meta = cache.get_json("audio", key)
-        if meta is not None:
-            _sh.copyfile(hit, out)
-            fs = loudness_findings(meta[-1], L.target_lufs, L.true_peak, L.tolerance_lu) if correct else []
-            return out, True, key, fs, meta
     run(cmd)
     fs, hist = enforce_loudness(out, tl) if correct else ([], [{"pass": "mux", **loudness(out), "gain_db": 0.0}])
     if use_cache:

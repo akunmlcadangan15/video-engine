@@ -194,9 +194,12 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
                                  budget=budget, relock=relock)
             st["note"] = f"build_id={man['build_id']} sounds={'locked' if lock else 'resolved'}"
         with timer.stage("segments") as st, ThreadPoolExecutor(max_workers=1) as aud:
-            measured_f = aud.submit(audio.measure_mix, tl, project_dir, mix)   # loudnorm pass 1, audio only
+            audio_hit = audio.cached_master(tl, project_dir, workdir / "master.m4a", mix=mix,
+                                            use_cache=use_cache, correct=True)
+            measured_f = (None if audio_hit is not None
+                          else aud.submit(audio.measure_mix, tl, project_dir, mix))   # loudnorm pass 1, audio only
             segs = render_segments(tl, project_dir, workdir, use_cache=use_cache, budget=budget)
-            measured = measured_f.result()
+            measured = None if audio_hit is not None else measured_f.result()
             st["note"] = " ".join(f"s{r.seg}:{r.mode}{'(hit)' if r.cache_hit else ''}={r.seconds}s" for r in segs)
         with timer.stage("ass") as st:
             ass, events = None, []
@@ -216,8 +219,12 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
                                                   use_cache=use_cache)
             st["note"] = f"{join['method']}{' (hit)' if v_hit else ''}"
         with timer.stage("audio") as st:
-            master, a_hit, a_key, a01, loud_hist = audio.master_audio(
-                tl, project_dir, workdir / "master.m4a", measured=measured, mix=mix, use_cache=use_cache, correct=True)
+            if audio_hit is not None:
+                master, a_hit, a_key, a01, loud_hist = audio_hit
+            else:
+                master, a_hit, a_key, a01, loud_hist = audio.master_audio(
+                    tl, project_dir, workdir / "master.m4a", measured=measured, mix=mix, use_cache=use_cache,
+                    correct=True)
             st["note"] = f"loudness_passes={len(loud_hist)}{' (hit)' if a_hit else ''}"
         with timer.stage("mux") as st:
             audio.mux(tl, video, master, staged)
