@@ -274,6 +274,9 @@ def cmd_sheet(a) -> int:
 def cmd_cache(a) -> int:
     from . import cache_prune
     projects = [Path(x) for x in a.project] or cache_prune.default_projects()
+    if not projects:
+        print("error: cache --prune needs at least one project (--project P); nothing was deleted", file=sys.stderr)
+        return 1
     r = cache_prune.prune(projects, dry_run=a.dry_run)
     print(json.dumps(r, indent=2))
     return 1 if r["problems"] else 0
@@ -290,9 +293,30 @@ def cmd_doctor(a) -> int:
     return 0 if ok else 1
 
 
+def _clean_project_ids(projects: list[str]) -> set[str]:
+    from . import timeline
+    ids = set()
+    for pr in projects:
+        d = Path(pr).resolve()
+        try:
+            ids.add(timeline.load(d).project_id)
+        except Exception:  # noqa: BLE001  (an unreadable project still names a scratch prefix)
+            ids.add(config.safe_project_id(d.name))
+    return ids
+
+
 def cmd_clean(a) -> int:
-    shutil.rmtree(config.SHM_ROOT, ignore_errors=True)
-    removed = [str(config.SHM_ROOT)]
+    ids = _clean_project_ids(a.project)
+    removed = []
+    if config.SHM_ROOT.is_dir():
+        for entry in sorted(config.SHM_ROOT.iterdir()):
+            if not any(entry.name.startswith(f"{pid}-") for pid in ids):
+                continue
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry, ignore_errors=True)
+            else:
+                entry.unlink(missing_ok=True)
+            removed.append(str(entry))
     for pr in a.project:
         d = Path(pr).resolve() / AI_REQUEST_DIR
         if d.is_dir():
@@ -302,7 +326,8 @@ def cmd_clean(a) -> int:
     if a.cache:
         from . import cache
         kept = cache.clear()["skipped_leased"]
-    print(f"removed {', '.join(removed)}" + (f" and the cache entries in {config.CACHE_DIR}" if a.cache else "")
+    print(("removed " + ", ".join(removed) if removed else "removed nothing")
+          + (f" and the cache entries in {config.CACHE_DIR}" if a.cache else "")
           + "".join(f"\nkept (leased by a running build): {x}" for x in kept))
     return 0
 

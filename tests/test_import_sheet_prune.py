@@ -162,3 +162,12 @@ def test_good_clear_removes_entry_dirs_only(tmp_path):
 def test_bad_clear_on_missing_root_is_noop(tmp_path):
     from video_engine import cache
     assert cache.clear(tmp_path / "absent") == {"deleted": [], "skipped_leased": [], "reclaimed_leases": []}
+
+
+def test_bad_cache_prune_without_any_project_refuses(monkeypatch, capsys, tmp_path):
+    from video_engine import cli, config
+    monkeypatch.setattr(cache_prune, "default_projects", lambda: [])
+    monkeypatch.setattr(config, "CACHE_DIR", tmp_path / "c")
+    assert cli.main(["cache", "--prune"]) == 1
+    assert "needs at least one project" in capsys.readouterr().err
+    assert not (tmp_path / "c").exists()

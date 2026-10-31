@@ -201,3 +201,22 @@ def test_bad_failed_timeline_save_keeps_the_file_and_leaves_no_temp(project, tmp
         timeline.save(tl, dst)
     assert dst.read_text() == before
     assert sorted(x.name for x in tmp_path.iterdir() if x.name != "proj") == ["t.json"]
+
+
+# ------------------------------------------------------------------------------------ clean removes only its scratch
+def test_good_clean_removes_only_the_given_projects_scratch(shm, project):
+    p, tl = project()
+    mine = config.workdir(tl.project_id)
+    (mine / "mine.txt").write_text("m")
+    other = config.workdir("another_project")
+    (other / "theirs.txt").write_text("t")
+    assert cli.main(["clean", str(p)]) == 0
+    assert not mine.exists() and other.exists() and shm.exists()
+    assert (other / "theirs.txt").read_text() == "t"
+
+
+def test_bad_clean_without_a_project_keeps_all_scratch(shm):
+    kept = config.workdir("keepme")
+    (kept / "x.txt").write_text("x")
+    assert cli.main(["clean"]) == 0
+    assert kept.exists() and shm.exists()
