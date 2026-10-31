@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import functools
 import http.server
 import json
@@ -73,6 +74,8 @@ DEEP_TILE = 1024        # deep tile side (deep raster px)
 DEEP_PAD = 2            # deep raster px each tile reaches into its right and bottom neighbours (no seams)
 DEEP_MARGIN = 0.05      # viewport growth (fraction of its size) when picking the tiles a frame needs
 DEEP_VERSION = "deep-1" # bump when deep tile output changes
+SCENE_CACHE_MAX = 64     # memo entries of scene_data() (one build calls it several times per segment)
+INK_CACHE_MAX = 64       # memo entries of the adaptive ink choices
 MORPH_PAPER, MORPH_GRAIN = "paper-F1E8D4.jpg", "grain-512.png"   # vendor/textures of a map morph
 # HyperFrames capture/encode profile for the intermediate segment file (re-encoded once more by the build).
 # "draft" = JPEG q80 screenshot + x264 ultrafast; CRF 14 keeps the intermediate close to lossless.
@@ -390,7 +393,44 @@ def card_frame(c, n: int, fps: int) -> int:
     return c.at_frame if c.at_frame is not None else min(n - 1, round(fps * 0.2))
 
 
+def _bounded_put(memo: dict, key: str, value, limit: int) -> None:
+    """Insert key -> value and evict the oldest entry when the memo is over `limit` (in-process memo, never grows
+    without bound in a long-lived engine process)."""
+    memo.pop(key, None)
+    memo[key] = value
+    while len(memo) > limit:
+        memo.pop(next(iter(memo)))
+
+
+def _scene_key(seg: Segment, tl: Timeline, project_dir: Path) -> str:
+    """Inputs of scene_data that are not layout-derived: the segment scene config (without apply_segment's at_frame
+    and camera_path), the timeline outside the segments (credits, entities, settings), the profile and the map file.
+    Apply_segment only writes derived values into seg, so a later camera change (R56) still changes this key."""
+    sc = seg.gsap_scene_config.model_dump(mode="json", exclude={"camera_path", "title_at_frame"})
+    for k in ("pins", "regions", "routes", "figures", "cards"):
+        for e in sc.get(k) or []:
+            e.pop("at_frame", None)
+    p = project_dir / seg.gsap_scene_config.map_asset
+    try:
+        st = p.stat()
+        src = [str(p.resolve()), st.st_mtime_ns, st.st_size]
+    except OSError:
+        src = [str(p.resolve()), None, None]
+    return blake3_json({"scene": sc, "engine": seg.engine_type, "n": seg.n_frames,
+                        "tl": tl.model_dump(mode="json", exclude={"segments", "captions", "captions_meta"}),
+                        "profile": profiles.of(tl).blake3, "legibility": legibility.code_hash(), "map": src})
+
+
+def clear_scene_cache() -> None:
+    """Drop the in-process scene memo (tests; a caller that mutates a timeline outside apply_segment)."""
+    _SCENES.clear()
+    _INKS.clear()
+
+
 def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
+    key = _scene_key(seg, tl, project_dir)
+    if (hit := _SCENES.get(key)) is not None:
+        return copy.deepcopy(hit)
     from . import layout
     lay = layout.apply_segment(seg, tl, project_dir)   # beats scenes: derived camera_path and frames first
     S = tl.settings
@@ -504,7 +544,11 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
         out["deep"] = deep_entries(project_dir / sc.map_asset, dp, _q(out))
     if sc.morph:
         out["morph"] = morph_data(sc.morph, out, project_dir, (iw, ih))
+    _bounded_put(_SCENES, key, copy.deepcopy(out), SCENE_CACHE_MAX)
     return out
+
+
+_SCENES: dict[str, dict] = {}   # process-local: scene key -> scene_data, bounded by SCENE_CACHE_MAX
 
 
 def _q(scene: dict) -> int:
