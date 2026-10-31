@@ -30,6 +30,7 @@ class NativeJob:
     end_win: tuple | None = None
     motion_px: float = 0.0
     key: str = ""
+    encode_key: str = ""       # the encode-mode key when this job plans a copy that may fall back
 
 
 def image_size(path: Path) -> tuple[int, int]:
@@ -87,15 +88,23 @@ def plan(seg: Segment, tl: Timeline, project_dir: Path) -> NativeJob:
     if overlays.drawn(seg) and job.mode == "copy":
         job.mode = "encode"   # drawn overlays need a re-encode
     src_hash = blake3_files([src])[0]
-    job.key = blake3_json({
-        "v": NATIVE_VERSION, "src": src_hash, "mode": job.mode, "in": seg.source_in_frame, "n": seg.n_frames,
+    job.key = _key(job, tl, job.mode, src_hash)
+    if job.mode == "copy":
+        job.encode_key = _key(job, tl, "encode", src_hash)
+    return job
+
+
+def _key(job: NativeJob, tl: Timeline, mode: str, src_hash: str) -> str:
+    """Cache key of the artifact this job would write in `mode` (the fallback from copy to encode included)."""
+    seg, S = job.seg, tl.settings
+    return blake3_json({
+        "v": NATIVE_VERSION, "src": src_hash, "mode": mode, "in": seg.source_in_frame, "n": seg.n_frames,
         "cam": seg.camera_move.model_dump() if seg.camera_move else None, "W": S.width, "H": S.height, "fps": S.fps,
         "x264": seg_x264(tl), "threads": resources.X264_THREADS, "ffmpeg": toolchain.ffmpeg_version(config.FFMPEG),
-        "code": code_hash(CODE), "algo": core.ALGO_VERSION, **({"copy": COPY_FORMAT} if job.mode == "copy" else {}),
+        "code": code_hash(CODE), "algo": core.ALGO_VERSION, **({"copy": COPY_FORMAT} if mode == "copy" else {}),
         **({"ov": ov} if (ov := overlays.key_part(seg, profiles.of(tl).print)) else {}),
         **({"profile": pv} if (pv := profiles.of(tl).render_values("native")) else {}),
     })
-    return job
 
 
 def _overlay_args(seg: Segment, tl: Timeline, base_filter: str, png_dir: Path) -> tuple[list, list]:
@@ -215,12 +224,15 @@ def render(job: NativeJob, tl: Timeline, workdir: Path, threads: int = 3, use_ca
         render_copy(job, tl, out)
         if not _copy_ok(out, job, tl):
             mode = "encode"   # not frame exact at this keyframe, or the copy changed a parameter: re-encode
+            if use_cache and job.encode_key and (hit := cache.get_file("segments", job.encode_key)):
+                return hit, True, mode
+    key = job.encode_key if (job.mode == "copy" and mode == "encode") else job.key
     if mode == "encode":
         render_encode(job, tl, out, threads)
     elif mode == "camera":
         render_camera(job, tl, out, threads)
     streams.verify(out, job.seg.n_frames, tl.settings.fps, f"segment {job.seg.seg_index}")
-    return (cache.put_file("segments", job.key, out) if use_cache else out), False, mode
+    return (cache.put_file("segments", key, out) if use_cache else out), False, mode
 
 
 def preview_frame(job: NativeJob, tl: Timeline, frame_idx: int, out_png: Path) -> Path:
