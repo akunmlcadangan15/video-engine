@@ -272,3 +272,26 @@ def test_bad_hyperframes_output_with_shifted_start_is_normalised(project, tmp_pa
     late = remux(engine_clip(tmp_path / "hf.mp4", 60), tmp_path / "late.mp4", "-output_ts_offset", "0.5")
     assert not hyperframes._is_engine_format(late, tl, 60)
     assert not hyperframes._is_engine_format(engine_clip(tmp_path / "hf25.mp4", 60, fps=25), tl, 60)
+
+
+def test_good_verify_uses_one_ffprobe_per_artifact(clip, monkeypatch):
+    import os
+    p = clip("verify_cached.mp4", 12)
+    calls = []
+    real = streams.run
+    monkeypatch.setattr(streams, "run", lambda *a, **k: (calls.append(1), real(*a, **k))[1])
+    streams.verify(p, 12, 30, "first")
+    streams.verify(p, 12, 30, "second")
+    assert len(calls) == 1
+    os.utime(p, (p.stat().st_atime, p.stat().st_mtime + 10))
+    streams.verify(p, 12, 30, "after rewrite")
+    assert len(calls) == 2
+
+
+def test_bad_verify_missing_file_and_unusable_ffprobe_json(clip, monkeypatch):
+    with pytest.raises(EngineError, match="cannot stat"):
+        streams.verify(clip("gone.mp4").with_name("missing.mp4"), 12, 30, "missing")
+    p = clip("timing.mp4", n=12)
+    monkeypatch.setattr(streams, "run", lambda *a, **k: "not json")
+    with pytest.raises(EngineError, match="timing .* unusable"):
+        streams.verify(p, 12, 30, "timing")

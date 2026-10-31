@@ -76,7 +76,7 @@ def test_good_default_profile_runs_no_style_gates(project, W):
 def test_good_geoverum_runs_every_style_gate_and_no_caption_cadence_gate(project):
     d, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, None)))
     fs = style.run_style(tl, d, words(("Pagi", 0, 10), ("Titik", 10, 20)))
-    assert {f.gate for f in fs} == {"H01", "C01", "V01", "N01", "K01", "D01", "P01", "P02"}
+    assert {f.gate for f in fs} == {"H01", "C01", "C02", "V01", "N01", "K01", "K02", "D01", "P01", "P02"}
     assert not any("caption" in f.message and "per 10" in f.message for f in fs)
 
 
@@ -218,6 +218,43 @@ def test_bad_k01_no_hook_keyword_at_the_end(project):
     assert levels(fs, "K01") == ["warn"]
 
 
+# K02 ending keyword on the final frame -----------------------------------------------------------------------------------
+def test_good_k02_hook_keyword_still_on_screen_on_the_final_frame(project):
+    _, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, _end_label("Surabaya hari ini"))))
+    fs = style.k02_ending_keyword(tl, words(("Surabaya", 0, 10)), profiles.load("geoverum").gates.ending_keyword)
+    assert levels(fs, "K02") == ["pass"] and "surabaya" in fs[0].message
+
+
+def test_bad_k02_keyword_only_earlier_not_on_the_final_frame(project):
+    gone = {"overlays": [{"id": "end", "kind": "label", "box": [140, 300, 800, 160], "text": "Surabaya",
+                          "start_frame": 0, "end_frame": 20}]}
+    _, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, gone)))
+    fs = style.k02_ending_keyword(tl, words(("Surabaya", 0, 10)), profiles.load("geoverum").gates.ending_keyword)
+    assert levels(fs, "K02") == ["fail"] and "final" in fs[0].message
+
+
+# C02 no CTA / end card ----------------------------------------------------------------------------------------------------
+def test_good_c02_no_cta_phrase(project):
+    _, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, _end_label("Surabaya hari ini"))))
+    fs = style.c02_cta(tl, words(("Surabaya", 0, 10)), profiles.load("geoverum").gates.cta)
+    assert levels(fs, "C02") == ["pass"]
+
+
+def test_bad_c02_cta_in_captions_or_on_screen(project):
+    _, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, _end_label("Jangan lupa subscribe"))))
+    fs = style.c02_cta(tl, words(("Terima", 0, 10), ("kasih", 10, 20)), profiles.load("geoverum").gates.cta)
+    assert levels(fs, "C02") == ["fail"] and "subscribe" in fs[0].message and "terima kasih" in fs[0].message
+
+
+# D02 exact duration -------------------------------------------------------------------------------------------------------
+def test_good_and_bad_d02_exact_duration(project):
+    _, tl = project(layout(("map", 30, None), ("photo", 30, None)))
+    ok = profiles.ExactDurationGate(target_s=60.0, tolerance_s=0.0)
+    bad = profiles.ExactDurationGate(target_s=45.0, tolerance_s=1.0)
+    assert levels(style.d02_duration_exact(tl, ok), "D02") == ["pass"]
+    assert levels(style.d02_duration_exact(tl, bad), "D02") == ["fail"]
+
+
 # D01 duration ------------------------------------------------------------------------------------------------------------
 @pytest.mark.parametrize("sec,lv", [(45, "pass"), (90, "pass"), (30, "warn"), (100, "warn")])
 def test_d01_duration_good_and_bad(project, sec, lv):
@@ -241,6 +278,13 @@ def test_bad_s01_gap_longer_than_0_65_s_fails(project, tmp_path):
 def test_bad_s01_trailing_gap_without_silence_end_is_counted(tmp_path):
     gaps = style.silence_gaps(tone(tmp_path / "a.wav", gap_at=2.0, gap_s=2.0), -40.0, 0.65)
     assert len(gaps) == 1 and gaps[0][1] == pytest.approx(1.0, abs=0.05)
+
+
+def test_bad_s01_ffmpeg_failure_is_a_gate_error(tmp_path):
+    broken = tmp_path / "broken.wav"
+    broken.write_bytes(b"not audio")
+    with pytest.raises(EngineError, match="S01 silencedetect failed"):
+        style.silence_gaps(broken, -40.0, 0.65)
 
 
 def test_good_s01_off_in_default_profile(project, tmp_path):

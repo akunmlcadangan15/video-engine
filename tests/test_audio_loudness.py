@@ -79,3 +79,47 @@ def test_good_words_to_frames(project):
     cw = audio.words_to_captions([{"word": "a", "start": 0.5, "end": 1.0}, {"word": "b", "start": 1.0, "end": 9.0}],
                                  30, tl.total_frames)
     assert (cw[0].start_frame, cw[0].end_frame) == (15, 30) and cw[1].end_frame <= tl.total_frames
+
+
+# audio cache --------------------------------------------------------------------------------------------------------
+def test_good_master_audio_cache_hit_skips_loudness_pass1(project, tmp_path, monkeypatch):
+    p, tl = project(lambda d: d.update(audio_chain={"voiceover_path": "assets/tone.wav", "auto_captions": False}))
+    first = audio.master_audio(tl, p, tmp_path / "a.m4a", use_cache=True, correct=True)
+    assert not first[1] and first[0].is_file()
+    monkeypatch.setattr(audio, "measure_mix", lambda *a, **k: pytest.fail("loudnorm pass 1 ran on an audio cache hit"))
+    second = audio.master_audio(tl, p, tmp_path / "b.m4a", use_cache=True, correct=True)
+    assert second[1] and second[2] == first[2] and second[0].read_bytes() == first[0].read_bytes()
+    assert audio.cached_master(tl, p, tmp_path / "c.m4a", use_cache=True, correct=True) is not None
+
+
+def test_good_build_skips_measure_mix_when_the_audio_cache_hits(project, tmp_path, monkeypatch):
+    from video_engine import build
+
+    class Rep:
+        ok, timings, subtimings, fixes, ai, caption_y_overrides, findings = True, {}, {}, [], None, [], []
+
+        def summary(self):
+            return "preflight: OK (stub)"
+
+    def all_native(d):
+        d.update(audio_chain={"voiceover_path": "assets/tone.wav", "auto_captions": False})
+        d["segments"][2] = {"seg_index": 2, "engine_type": "NATIVE_RUST_FFMPEG", "start_frame": 120, "end_frame": 180,
+                            "source_video": "assets/clip_1080x1920_30.mp4", "asset_id": "clip"}
+    p, _ = project(all_native)
+    monkeypatch.setattr(build, "run_preflight", lambda *a, **k: Rep())
+    assert build.build(p).ok
+    monkeypatch.setattr(build.audio, "measure_mix",
+                        lambda *a, **k: pytest.fail("build measured the mix despite an audio cache hit"))
+    r = build.build(p)
+    assert r.ok and r.final.is_file()
+
+
+def test_bad_measure_mix_without_json_is_an_engine_error(project, monkeypatch):
+    from pathlib import Path
+    from types import SimpleNamespace
+    from video_engine.util import EngineError
+    _, tl = project()
+    monkeypatch.setattr(audio, "_mix_inputs", lambda *a, **k: ([], ["anull"]))
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0, stdout="", stderr="no json"))
+    with pytest.raises(EngineError, match="no usable JSON"):
+        audio.measure_mix(tl, Path("/tmp"))

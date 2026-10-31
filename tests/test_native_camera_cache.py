@@ -80,3 +80,20 @@ def test_good_preview_frame(project, tmp_path):
     p, tl = project()
     out = native.preview_frame(native.plan(tl.segments[0], tl, p), tl, 30, tmp_path / "f.png")
     assert Image.open(out).size == (1080, 1920)
+
+
+def test_good_copy_fallback_is_cached_under_the_encode_key(project, wd, tmp_path, monkeypatch):
+    from video_engine import cache, config
+    monkeypatch.setattr(config, "CACHE_DIR", tmp_path / "cache")
+    (tmp_path / "proj" / "assets").mkdir(parents=True)
+    engine_clip(tmp_path / "proj" / "assets" / "engine.mp4", 90)
+    p, tl = project(lambda d: d["segments"][1].update(source_video="assets/engine.mp4"))
+    job = native.plan(tl.segments[1], tl, p)
+    assert job.mode == "copy" and job.encode_key
+    monkeypatch.setattr(native, "_copy_ok", lambda *a: False)
+    out, hit, mode = native.render(job, tl, wd, threads=2)
+    assert mode == "encode" and not hit
+    assert cache.get_file("segments", job.key) is None
+    assert cache.get_file("segments", job.encode_key) is not None
+    out2, hit2, mode2 = native.render(job, tl, wd, threads=2)
+    assert hit2 and mode2 == "encode" and out2 == out

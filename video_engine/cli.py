@@ -20,6 +20,16 @@ def _load(project: str):
     return p, timeline.load(p)
 
 
+def _pairs(items: list[str], flag: str) -> dict[str, str]:
+    out = {}
+    for item in items:
+        old, sep, new = item.partition("=")
+        if not sep or not old or not new:
+            raise EngineError(f"{flag} expects OLD=NEW, got {item!r}")
+        out[old] = new
+    return out
+
+
 EXIT_AWAITING = 3
 AI_REQUEST_DIR = "ai_request"
 
@@ -156,12 +166,16 @@ def cmd_words(a) -> int:
 
 def cmd_deliver(a) -> int:
     from . import deliver
+    if not a.dry_run and not a.export:
+        print("error: pass --dry-run (print the plan) or --export DIR (write the upload package)", file=sys.stderr)
+        raise SystemExit(2)
     p, tl = _load(a.project)
-    if not a.dry_run:
-        raise EngineError("upload is not available in this milestone; use --dry-run")
     final = Path(a.final) if a.final else p / "out" / "final.mp4"
     deliver.check_build(final)
-    print(deliver.plan(tl, p, final).to_json())
+    if a.dry_run:
+        print(deliver.plan(tl, p, final).to_json())
+    if a.export:
+        print(json.dumps(deliver.export_package(tl, p, final, Path(a.export)), indent=2, ensure_ascii=False))
     return 0
 
 
@@ -252,7 +266,7 @@ def cmd_taste(a) -> int:
 
 def cmd_import_shots(a) -> int:
     from . import importer
-    subs = dict(x.split("=", 1) for x in a.substitute)
+    subs = _pairs(a.substitute, "--substitute")
     settings = {k: v for k, v in {"project_number": a.project_number, "topic": a.topic, "date": a.date}.items() if v}
     r = importer.import_shots(Path(a.csv), Path(a.dst), [Path(d) for d in a.search], credits_txt=Path(a.credits),
                               voiceover=Path(a.voiceover), manifest=Path(a.manifest) if a.manifest else None,
@@ -271,9 +285,58 @@ def cmd_sheet(a) -> int:
     return 0
 
 
+def cmd_assets(a) -> int:
+    from . import library
+    if a.copy:
+        if not a.project:
+            raise EngineError("--copy needs --project")
+        asset = library.credit_for_path(Path(a.copy), open_assets_root=Path(a.open_assets) if a.open_assets else None,
+                                       stock_roots=tuple(Path(x) for x in a.stock_root) if a.stock_root else None)
+        if asset is None:
+            raise EngineError(f"{a.copy} is not in the open-assets or stock index")
+        print(json.dumps(library.credit_row(asset, Path(a.project)), indent=2, ensure_ascii=False))
+        return 0
+    rows = library.search(a.query or "", kind=a.kind, limit=a.limit,
+                          open_assets_root=Path(a.open_assets) if a.open_assets else None,
+                          stock_roots=tuple(Path(x) for x in a.stock_root) if a.stock_root else None)
+    if a.json:
+        print(json.dumps([r.to_dict() for r in rows], indent=2, ensure_ascii=False))
+    else:
+        for r in rows:
+            print(f"{r.kind:10s} {r.license or '-':16s} {r.path}")
+    return 0
+
+
+def cmd_block(a) -> int:
+    from . import blocks
+    kw = {"width": a.width, "height": a.height}
+    if a.colour:
+        kw["colour"] = a.colour
+    if a.background:
+        kw["background"] = a.background
+    out = blocks.render(a.kind, a.data, Path(a.out), **kw)
+    print(out)
+    return 0
+
+
+def cmd_batch(a) -> int:
+    from . import batch
+    projects = [Path(x) for x in a.project]
+    if a.queue:
+        projects = [*batch.load_queue(Path(a.queue)), *projects]
+    if not projects:
+        raise EngineError("batch needs at least one project or --queue")
+    r = batch.run(projects, fail_fast=a.fail_fast, run_label=a.label, use_cache=not a.no_cache, relock=a.relock)
+    print(json.dumps(r, indent=2, ensure_ascii=False))
+    return 0 if r["ok"] else 1
+
+
 def cmd_cache(a) -> int:
     from . import cache_prune
     projects = [Path(x) for x in a.project] or cache_prune.default_projects()
+    if not projects:
+        print("error: cache --prune needs at least one project (--project P); nothing was deleted", file=sys.stderr)
+        return 1
     r = cache_prune.prune(projects, dry_run=a.dry_run)
     print(json.dumps(r, indent=2))
     return 1 if r["problems"] else 0
@@ -290,9 +353,30 @@ def cmd_doctor(a) -> int:
     return 0 if ok else 1
 
 
+def _clean_project_ids(projects: list[str]) -> set[str]:
+    from . import timeline
+    ids = set()
+    for pr in projects:
+        d = Path(pr).resolve()
+        try:
+            ids.add(timeline.load(d).project_id)
+        except Exception:  # noqa: BLE001  (an unreadable project still names a scratch prefix)
+            ids.add(config.safe_project_id(d.name))
+    return ids
+
+
 def cmd_clean(a) -> int:
-    shutil.rmtree(config.SHM_ROOT, ignore_errors=True)
-    removed = [str(config.SHM_ROOT)]
+    ids = _clean_project_ids(a.project)
+    removed = []
+    if config.SHM_ROOT.is_dir():
+        for entry in sorted(config.SHM_ROOT.iterdir()):
+            if not any(entry.name.startswith(f"{pid}-") for pid in ids):
+                continue
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry, ignore_errors=True)
+            else:
+                entry.unlink(missing_ok=True)
+            removed.append(str(entry))
     for pr in a.project:
         d = Path(pr).resolve() / AI_REQUEST_DIR
         if d.is_dir():
@@ -302,7 +386,8 @@ def cmd_clean(a) -> int:
     if a.cache:
         from . import cache
         kept = cache.clear()["skipped_leased"]
-    print(f"removed {', '.join(removed)}" + (f" and the cache entries in {config.CACHE_DIR}" if a.cache else "")
+    print(("removed " + ", ".join(removed) if removed else "removed nothing")
+          + (f" and the cache entries in {config.CACHE_DIR}" if a.cache else "")
           + "".join(f"\nkept (leased by a running build): {x}" for x in kept))
     return 0
 
@@ -355,9 +440,11 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("project")
     x.add_argument("--retranscribe", action="store_true", help="ignore the words cache and run faster-whisper again")
     x.add_argument("--print", action="store_true")
-    x = add("deliver", cmd_deliver, "Print the delivery plan (names, parts <= 95 MB, Drive folders). --dry-run only.")
+    x = add("deliver", cmd_deliver, "Print the delivery plan or write the upload package (video parts <= 95 MB, "
+            "JOIN, credits, SRT, thumbnail, YouTube/Reels metadata). No upload.")
     x.add_argument("project")
-    x.add_argument("--dry-run", action="store_true", required=True)
+    x.add_argument("--dry-run", action="store_true", help="print the delivery plan as JSON")
+    x.add_argument("--export", metavar="DIR", help="write the upload-ready package tree under DIR")
     x.add_argument("--final")
     x = add("director", cmd_director, "Footage analysis of a 360p proxy by the AI provider (planning models).")
     x.add_argument("src")
@@ -415,6 +502,32 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--video")
     x.add_argument("--out", help="default <project>/out/sheet.png")
     x.add_argument("--cols", type=int, default=7)
+    x = add("assets", cmd_assets, "Search the local open-assets and stock/B-roll index, or copy one asset and print "
+                                  "its credits_manifest row. No network request.")
+    x.add_argument("--query", default="", help="space-separated words, all must match")
+    x.add_argument("--kind", help="filter: broll, icons, textures, maps, models, ...")
+    x.add_argument("--limit", type=int, default=20)
+    x.add_argument("--json", action="store_true")
+    x.add_argument("--copy", metavar="PATH", help="copy this indexed asset and print its credit row")
+    x.add_argument("--project", help="destination project for --copy (default assets/)")
+    x.add_argument("--open-assets", help="overlay the open-assets root")
+    x.add_argument("--stock-root", action="append", default=[], help="stock/B-roll root (repeatable)")
+    x = add("block", cmd_block, "Render a chart, timeline or infographic block to a transparent PNG.")
+    x.add_argument("kind", choices=["chart", "timeline", "infographic"])
+    x.add_argument("--data", required=True, help="JSON object/array, or @file.json")
+    x.add_argument("--out", required=True)
+    x.add_argument("--width", type=int, default=1080)
+    x.add_argument("--height", type=int, default=720)
+    x.add_argument("--colour", default=None)
+    x.add_argument("--background", default=None)
+    x = add("batch", cmd_batch, "Build several projects in order, with one lock per project and a shared queue. "
+                                  "A failed item does not stop the queue unless --fail-fast.")
+    x.add_argument("project", nargs="*")
+    x.add_argument("--queue", help="JSON array/object with `projects`, or one project path per line")
+    x.add_argument("--fail-fast", action="store_true")
+    x.add_argument("--label", default="batch")
+    x.add_argument("--no-cache", action="store_true")
+    x.add_argument("--relock", action="store_true")
     x = add("cache", cmd_cache, "Cache maintenance. --prune deletes words/segments/maps entries not referenced by "
                                   "the current keys of the projects (default: every project passed via --project) and broken "
                                   "entries of the sound cache (sound/). Files leased by a running build are kept and "
@@ -425,8 +538,8 @@ def parser() -> argparse.ArgumentParser:
     x = add("doctor", cmd_doctor, "Check the pinned HyperFrames toolchain in vendor/ (node, hyperframes, puppeteer-core, "
                                     "chrome-headless-shell; pins in vendor/VERSIONS.json).")
     x.add_argument("--install", action="store_true", help="download and install missing or mismatched components")
-    x = add("clean", cmd_clean, "Remove the scratch root, the agent request bundles <project>/ai_request/ of the given "
-                                  "projects, and with --cache the cache entries words/, segments/, maps/.")
+    x = add("clean", cmd_clean, "Remove only the given projects' scratch dirs, their <project>/ai_request/ bundles, "
+                                  "and with --cache the cache entries words/, segments/, maps/.")
     x.add_argument("project", nargs="*")
     x.add_argument("--cache", action="store_true")
     return ap
@@ -447,7 +560,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"waiting for agent response: {e.bundle}\n  answer: {e.bundle / 'response.json'} "
               f"(schema: {e.bundle / 'schema.json'})\n  resume: {e.resume}")
         return EXIT_AWAITING
-    except (EngineError, ValidationError) as e:
+    except (EngineError, ValidationError, OSError, json.JSONDecodeError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
 

@@ -70,7 +70,7 @@ class LayoutBudget(_M):
     texts: int = 4                 # visible texts per frame incl. caption and fading ones, watermark excluded
     labelled_pins: int = 2
     routes: int = 1
-    animating: int = 2             # elements entering, exiting, drawing, counting or moving at once
+    animating: int = Field(2, gt=0)   # elements entering, exiting, drawing, counting or moving at once
     big_numbers: int = 1
     saturated_regions: int = 1
 
@@ -634,7 +634,7 @@ def _plan_key(seg: "Segment", tl: "Timeline", project_dir: Path) -> str:
             e.pop("at_frame", None)
     p = project_dir / seg.gsap_scene_config.map_asset
     return json.dumps([sc, seg.n_frames, tl.settings.model_dump(mode="json"), profiles.of(tl).blake3,
-                       str(p.resolve()), p.stat().st_mtime], sort_keys=True)
+                       str(Path(project_dir).resolve()), str(p.resolve()), p.stat().st_mtime_ns], sort_keys=True)
 
 
 _PLANS: dict[str, Plan] = {}
@@ -1032,7 +1032,7 @@ class _Planner:
     def z1_items(self, p: Plan):
         sc, L = self.sc, self.L
         col = self.L.grid.edges()[0] * self.kx
-        top = math.ceil(self.z1[1] / L.grid.unit) * L.grid.unit
+        top = math.ceil(self.z1[1] / (L.grid.unit * self.ky)) * (L.grid.unit * self.ky)
         if sc.title and any(b.title for b in sc.beats) and self.pr is None:
             px = L.sizes.title * self.ky
             m = text_metrics(sc.title, self.title_role, px, 1.04)
@@ -1227,14 +1227,14 @@ class _Planner:
             best = None
             for angle in [0.0, self.long_axis(poly)]:
                 cands = []
-                step = L.grid.unit
+                sx, sy = L.grid.unit * self.kx, L.grid.unit * self.ky
                 y = bb[1]
                 while y <= bb[3]:
                     x = bb[0]
                     while x <= bb[2]:
                         cands.append((math.hypot(x - cx, y - cy), x, y))
-                        x += step
-                    y += step
+                        x += sx
+                    y += sy
                 for _, x, y in sorted(cands):
                     cs = rot_corners(x, y, w + 2 * inset, h + 2 * inset, angle)
                     if quad_inside_poly(cs, poly) and free(rot_corners(x, y, w, h, angle)):
@@ -1245,8 +1245,8 @@ class _Planner:
             inside_ok = best is not None
             if best is None:   # outside the polygon with a leader from its edge
                 for _, x, y in sorted((math.hypot(x - cx, y - cy), x, y)
-                                      for x in range(int(self.z2[0]), int(self.z2[2]), L.grid.unit)
-                                      for y in range(int(self.z2[1]), int(self.z2[3]), L.grid.unit)):
+                                      for x in _frange(self.z2[0], self.z2[2], L.grid.unit * self.kx)
+                                      for y in _frange(self.z2[1], self.z2[3], L.grid.unit * self.ky)):
                     cs = rot_corners(x, y, w + 2 * inset, h + 2 * inset, 0.0)
                     if not quad_outside_poly(cs, poly) or not free(rot_corners(x, y, w, h, 0.0)):
                         continue
@@ -1298,8 +1298,8 @@ class _Planner:
             if any(overlap_area(inflate(b2, clear), t) > 0 for t in texts + heads):
                 return False
             return all(polyline_box_dist(r2, b2) >= rclear for r2 in routes)
-        step = L.grid.unit
-        grid_pts = [(x, y) for y in _frange(bb[1], bb[3], step) for x in _frange(bb[0], bb[2], step)
+        sx, sy = L.grid.unit * self.kx, L.grid.unit * self.ky
+        grid_pts = [(x, y) for y in _frange(bb[1], bb[3], sy) for x in _frange(bb[0], bb[2], sx)
                     if point_in_poly((x, y), poly)]
         if not grid_pts:
             grid_pts = [((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2)]
@@ -1324,8 +1324,32 @@ class _Planner:
                                               tracking_in=trk_in, title=k in self.area_title)
                             return
             px -= 4 * self.ky
+        px = pr.title_px_min * self.ky
+        m = text_metrics(T, role, px, 1.0, trk, w8)
+        tb = text_box(m, 0, 0, halo(self.theme, False, px))
+        tbi = text_box(text_metrics(T, role, px, 1.0, trk_in, w8), 0, 0, halo(self.theme, False, px))
+        w, h, w_in = tb[2] - tb[0], tb[3] - tb[1], tbi[2] - tbi[0]
+        cx, cy = sum(q[0] for q in poly) / len(poly), sum(q[1] for q in poly) / len(poly)
+        for _, x, y in sorted((math.hypot(x - cx, y - cy), x, y)
+                              for x in _frange(self.z2[0], self.z2[2], sx)
+                              for y in _frange(self.z2[1], self.z2[3], sy)):
+            cs = rot_corners(x, y, w_in + 2 * inset, h + 2 * inset, 0.0)
+            if not quad_outside_poly(cs, poly) or not free(rot_corners(x, y, w_in, h, 0.0)):
+                continue
+            _, a, b2 = min(((_pt_seg_dist((x, y), a, b2), a, b2) for a, b2 in poly_edges(poly)))
+            q = _closest(a, b2, (x, y))
+            if math.hypot(q[0] - x, q[1] - y) - min(w, h) / 2 > L.labels.leader_max * self.kx:
+                continue
+            anchor = ((x - c["x"]) / c["s"], (y - c["y"]) / c["s"])
+            lead = ((q[0] - c["x"]) / c["s"], (q[1] - c["y"]) / c["s"])
+            p.areas[k] = Area(text, reg, round(px, 2), w, h, anchor, 0.0, lead, False, k in self.area_water,
+                              key=k, role=role, weight=w8, tracking=trk, tracking_in=trk_in,
+                              title=k in self.area_title)
+            self.log.append(f"{'title' if k in self.area_title else 'place name'} '{text}' outside region {reg} "
+                            f"with a leader")
+            return
         self.log.append(f"{'title' if k in self.area_title else 'place name'} '{text}' hidden: no position inside "
-                        f"region {reg} from {pr.title_px:g} to {pr.title_px_min:g} px")
+                        f"or outside region {reg} from {pr.title_px:g} to {pr.title_px_min:g} px")
         p.spans[f"area:{k}"] = [Span(s.t_in, 0, s.t_in, 0) for s in p.spans[f"area:{k}"]]
 
     @staticmethod
@@ -1356,16 +1380,16 @@ class _Planner:
             y1 = HEAD[1] - gap
             y2 = y1 - ll
             out.append(Label(round(-m.adv / 2, 2), round(y2 - gap - m.ink[3], 2), px, "A", (0.0, y1, 0.0, y2), -1))
-        g = L.labels.offset
+        gx, gy = L.labels.offset * self.kx, L.labels.offset * self.ky
         hx0, hy0, hx1, hy1 = HEAD
         hm = HEAD_C[1]
         for si, sz in enumerate(sizes):
             px = sz * self.ky
             m = text_metrics(text, self.label_role, px, 1.0, weight=self.label_wt)
             w, h = m.adv, m.h
-            pos = {"TR": (hx1 + g, hy0 - h / 2), "BR": (hx1 + g, hy1 - h / 2), "TL": (hx0 - g - w, hy0 - h / 2),
-                   "BL": (hx0 - g - w, hy1 - h / 2), "TC": (-w / 2, hy0 - g - h), "BC": (-w / 2, SHADOW[3] + g),
-                   "R": (hx1 + g, hm - h / 2), "L": (hx0 - g - w, hm - h / 2)}
+            pos = {"TR": (hx1 + gx, hy0 - h / 2), "BR": (hx1 + gx, hy1 - h / 2), "TL": (hx0 - gx - w, hy0 - h / 2),
+                   "BL": (hx0 - gx - w, hy1 - h / 2), "TC": (-w / 2, hy0 - gy - h), "BC": (-w / 2, SHADOW[3] + gy),
+                   "R": (hx1 + gx, hm - h / 2), "L": (hx0 - gx - w, hm - h / 2)}
             for ri, name in enumerate(L.labels.order):
                 dx, dy = pos[name]
                 out.append(Label(round(dx, 2), round(dy, 2), px, name, None, ri + si * len(L.labels.order)))
@@ -1669,7 +1693,11 @@ def apply_segment(seg: "Segment", tl: "Timeline", project_dir: Path) -> Plan | N
     for i, r in enumerate(sc.routes or []):
         r.at_frame = first(f"route:{i}", seg.n_frames - 1)
     if sc.title:
-        sc.title_at_frame = first("title:0", seg.n_frames - 1)
+        if p.pr is not None:   # [print] places the title inside its beat's region (an area label), not in Z1
+            ta = next((a for a in p.areas.values() if a.title), None)
+            sc.title_at_frame = first(f"area:{ta.key}", 0) if ta else 0
+        else:
+            sc.title_at_frame = first("title:0", seg.n_frames - 1)
     for i, fg in enumerate(sc.figures or []):
         fg.at_frame = first(f"fig:{i}", seg.n_frames - 1)
     return p

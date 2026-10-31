@@ -58,12 +58,25 @@ def test_good_O01_pass(project):
     assert [f.level for f in layer1.o01_overlays(tl)] == ["pass"]
 
 
+def test_bad_O01_safe_margin_scales_with_width_not_height(project):
+    """At 1440x1920 the side margin is 80 px (60 x W/1080), so a box at x=70 leaves the safe area."""
+    def mut(d):
+        d["settings"].update(width=1440)
+        d["segments"][0]["overlays"] = [{"id": "edge", "kind": "label", "box": [70, 300, 600, 110], "text": "Tepi"}]
+
+    _, tl = project(mut)
+    fs = layer1.o01_overlays(tl)
+    assert any(f.level == "fail" and "safe area" in f.message for f in fs)
+
+
 @pytest.mark.parametrize("ovs,msg", [
     ([dict(CARD, box=[10, 300, 900, 300])], "safe area"),
     ([dict(LABEL, box=[240, 1000, 120, 40], text="Teks panjang sekali tidak muat")], "does not fit"),
     ([CARD, dict(LABEL, box=[200, 400, 600, 110])], "overlap"),
     ([dict(LABEL, start_frame=60)], "outside the segment"),
-], ids=["safe-area", "fit", "overlap", "range"])
+    ([dict(LABEL, end_frame=61)], "outside the segment"),
+    ([dict(LABEL, start_frame=30, end_frame=999)], "outside the segment"),
+], ids=["safe-area", "fit", "overlap", "range", "end-past-length", "end-far-past-length"])
 def test_bad_O01(project, ovs, msg):
     _, tl = project(lambda d: d["segments"][0].update(overlays=ovs))
     fs = layer1.o01_overlays(tl)

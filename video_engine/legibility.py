@@ -439,6 +439,8 @@ def dark_ink(el: dict, lg: dict, dl: float = 0.0) -> str:
 def light_ink(lg: dict, el: dict | None = None) -> str:
     if el and el.get("light"):
         return el["light"]
+    if el and el.get("water"):     # water names stay blue on a dark map too, at light-text lightness
+        return oklch_hex(max(lg["light_l"], lg["water_ink_l"]), lg["water_ink_c"], lg["water_ink_hue"])
     return oklch_hex(lg["light_l"], lg["light_c"], lg["light_hue"])
 
 

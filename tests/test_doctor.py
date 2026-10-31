@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PINS = json.loads((ROOT / "vendor" / "VERSIONS.json").read_text())
 
 
-def _fake_vendor(tmp_path: Path, *, node=True, hf_version=None, hf_dist=True, pptr=True, chrome=True,
+def _fake_vendor(tmp_path: Path, *, node=True, hf_version=None, hf_dist=True, hf_cli=True, pptr=True, chrome=True,
                  three=True) -> Path:
     v = tmp_path / "vendor"
     (v / "npm").mkdir(parents=True)
@@ -20,13 +20,17 @@ def _fake_vendor(tmp_path: Path, *, node=True, hf_version=None, hf_dist=True, pp
     x = doctor.paths(v, PINS)
     if node:
         x["node"].parent.mkdir(parents=True)
-        x["node"].write_text("")
+        x["node"].write_text(f"#!/bin/sh\necho {PINS['node']['version']}\n")
+        x["node"].chmod(0o755)
         (v / "node" / ".version").write_text(PINS["node"]["version"])
     hf = v / "npm" / "node_modules" / "hyperframes"
     hf.mkdir(parents=True)
     (hf / "package.json").write_text(json.dumps({"version": hf_version or PINS["npm"]["hyperframes"]}))
     if hf_dist:
         (hf / "dist").mkdir()
+    if hf_cli:
+        x["hf_cli"].parent.mkdir(parents=True)
+        x["hf_cli"].write_text("")
     if pptr:
         x["puppeteer"].mkdir(parents=True)
         (x["puppeteer"] / "package.json").write_text(json.dumps({"version": PINS["npm"]["puppeteer-core"]}))
@@ -50,6 +54,7 @@ def test_good_complete_vendor_passes(tmp_path):
     ({"node": False}, "node"),
     ({"hf_version": "0.8.100"}, "hyperframes"),
     ({"hf_dist": False}, "hyperframes"),
+    ({"hf_cli": False}, "hyperframes-cli"),
     ({"pptr": False}, "puppeteer-core"),
     ({"chrome": False}, "chrome"),
     ({"three": False}, "three"),
@@ -107,3 +112,22 @@ def test_bad_scanner_detects_a_reference(tmp_path):
     f = tmp_path / "x.py"
     f.write_text(f'P = "/workspace/{RETIRED}/kit/vendor/node22/bin/node"\n')
     assert re.search(r"hypoverum[-_]kit|/kit/vendor", f.read_text())
+
+
+def test_good_install_touches_only_failing_components(tmp_path, monkeypatch):
+    v = _fake_vendor(tmp_path, node=False, hf_cli=False, chrome=False)
+    calls = []
+    monkeypatch.setattr(doctor, "install_node", lambda *a: calls.append("node"))
+    monkeypatch.setattr(doctor, "install_npm", lambda *a: calls.append("npm"))
+    monkeypatch.setattr(doctor, "install_chrome", lambda *a: calls.append("chrome"))
+    doctor.install(v, tmp_path / "tmp")
+    assert calls == ["node", "npm", "chrome"]
+
+
+def test_good_install_does_nothing_when_everything_matches(tmp_path, monkeypatch):
+    v = _fake_vendor(tmp_path)
+    calls = []
+    for name in ("install_node", "install_npm", "install_chrome"):
+        monkeypatch.setattr(doctor, name, lambda *a, n=name: calls.append(n))
+    doctor.install(v, tmp_path / "tmp")
+    assert calls == []

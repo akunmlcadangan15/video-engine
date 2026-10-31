@@ -324,14 +324,17 @@ def check(seg: Segment, tl: Timeline) -> list[str]:
     pr = profiles.of(tl).print
     W, H = tl.settings.width, tl.settings.height
     k = _scale(H)
+    kx, ky = W / 1080.0, H / 1920.0
     errs = []
     ds = drawn(seg)
     for o in ds:
         x, y, w, h = o.box
-        if x < SAFE_X * k - 0.5 or x + w > W - SAFE_X * k + 0.5 or y < SAFE_TOP * k - 0.5 or y + h > H - SAFE_BOTTOM * k + 0.5:
+        if (x < SAFE_X * kx - 0.5 or x + w > W - SAFE_X * kx + 0.5
+                or y < SAFE_TOP * ky - 0.5 or y + h > H - SAFE_BOTTOM * ky + 0.5):
             errs.append(f"overlay '{o.id}' box {o.box} leaves the safe area ({SAFE_X} px sides, {SAFE_TOP}/{SAFE_BOTTOM} px top/bottom)")
         a, b = frame_range(o, seg)
-        if (o.start_frame or 0) >= seg.n_frames or b <= a:
+        end = o.end_frame if o.end_frame is not None else seg.n_frames
+        if (o.start_frame or 0) >= seg.n_frames or end > seg.n_frames or b <= a:
             errs.append(f"overlay '{o.id}' frame range {o.start_frame}..{o.end_frame} is outside the segment (length {seg.n_frames})")
         try:
             fit(o, H, pr)

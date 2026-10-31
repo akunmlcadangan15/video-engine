@@ -114,3 +114,18 @@ def test_bad_pin_colour_not_hex():
 def test_bad_label_side(project):
     with pytest.raises(ValidationError, match="'left' or 'right'"):
         project(_pins([{**PIN, "label_side": "up"}]))
+
+
+@pytest.mark.parametrize("bounds", [[10, 0, -10, 5], [0, 10, 5, -10], [0, 0, 5, 0], [0, 10, 5, 10]])
+def test_bad_map_bounds_need_south_north_west_east(project, bounds):
+    def mut(d):
+        d["segments"][2]["gsap_scene_config"]["map_bounds"] = bounds
+    with pytest.raises(ValidationError, match="map_bounds"):
+        project(mut)
+
+
+def test_good_map_bounds_are_accepted(project):
+    def mut(d):
+        d["segments"][2]["gsap_scene_config"]["map_bounds"] = [-10, 100, 10, 130]
+    _, tl = project(mut)
+    assert tl.segments[2].gsap_scene_config.map_bounds == [-10, 100, 10, 130]

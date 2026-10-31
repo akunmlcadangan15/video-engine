@@ -22,6 +22,8 @@ def frame_rgb(video: Path, frame: int, fps: int, w: int, h: int) -> bytes:
 
 def make(tl: Timeline, video: Path, out: Path, cols: int = 7) -> Path:
     from PIL import Image, ImageDraw, ImageFont
+    if cols < 1:
+        raise EngineError("--cols must be at least 1")
     if not video.is_file():
         raise EngineError(f"{video} not found; build first")
     S = tl.settings

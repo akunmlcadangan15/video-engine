@@ -5,7 +5,7 @@ import math
 import pytest
 from pydantic import ValidationError
 
-from video_engine import layout, profiles, timeline
+from video_engine import config, layout, profiles, timeline
 from video_engine.gates import layout_gates as G
 from video_engine.layout import Item, LayoutProfile, Span
 from video_engine.util import blake3_json
@@ -235,6 +235,8 @@ def test_good_default_profile_has_no_layout_and_keeps_its_hash():
     for k in ("layout", "print", "camera", "transitions", "render", "grade", "resources"):   # off tables add nothing to the hash
         dump.pop(k)
     assert dump["gates"].pop("camera") is None
+    for k in ("cta", "ending_keyword", "duration_exact", "geo"):
+        assert dump["gates"].pop(k) is None      # absent new gate tables add nothing either
     assert dump["gates"].pop("require") == []   # an empty required list adds nothing either
     assert p.blake3 == blake3_json(dump)
     assert p.blake3.startswith("6f0c27f00133")
@@ -283,6 +285,118 @@ def test_good_planner_plan_passes_every_layout_gate(project, monkeypatch):
     fails = [f.line() for f in fs if f.level == "fail"]
     assert fails == []
     assert {f.gate for f in fs if f.level == "pass"} == set(G.GATES)
+
+
+def test_good_layout_grid_and_label_offset_scale_with_width_and_height(project, monkeypatch):
+    """Grid steps, Z1 rounding and label offsets use kx/ky, not raw 1080x1920 px."""
+    no_print(monkeypatch)
+    d1, tl1 = project(beats_doc)
+    d2, tl2 = project(lambda d: (beats_doc(d), d["settings"].update(width=1188, height=2112)))
+    p1 = layout.apply_segment(tl1.segments[2], tl1, d1)
+    p2 = layout.apply_segment(tl2.segments[2], tl2, d2)
+    ky = 2112 / 1920
+    assert p2.title["y"] == pytest.approx(304 * ky)
+    assert abs(p2.title["y"] / (8 * ky) - round(p2.title["y"] / (8 * ky))) < 1e-9
+    c1 = layout._Planner(tl1.segments[2], tl1, d1).candidates("Titik A")[0]
+    c2 = layout._Planner(tl2.segments[2], tl2, d2).candidates("Titik A")[0]
+    assert c2.dx - c1.dx == pytest.approx(L.labels.offset * (1188 / 1080 - 1))
+
+
+def test_good_label_style_box_reaches_layout_titles_and_figures(project, monkeypatch):
+    """label_style box is no longer limited to scenes without a layout (print still owns the look when it is on)."""
+    no_print(monkeypatch)
+    d, tl = project(beats_doc)
+    from video_engine import hyperframes
+    sc = hyperframes.scene_data(tl.segments[2], tl, d)
+    assert sc["title"]["box"] and all("box" in f for f in sc["figures"])
+
+
+@pytest.mark.skipif(not config.NODE.is_file(), reason="vendor node/Chrome not installed")
+def test_good_print_heading_renders_with_layout_without_legibility(project, tmp_path, monkeypatch):
+    """[print] depends on [layout], not on [legibility]: its heading element is still built and probed."""
+    real = profiles.of
+
+    def of(tl):
+        p = real(tl)
+        if p.name != "geoverum":
+            return p
+        return profiles.Profile(p.name, p.data.model_copy(update={"legibility": None}), p.blake3 + "-noleg")
+
+    monkeypatch.setattr(profiles, "of", of)
+
+    def doc(d):
+        beats_doc(d)
+        d["segments"][2]["gsap_scene_config"]["beats"][1]["heading"] = "10 November"
+
+    d, tl = project(doc)
+    from video_engine import hyperframes
+    hf, sc = hyperframes.build_dir(tl.segments[2], tl, d, tmp_path / "hf")
+    res = hyperframes.probe_dom(hf, [(120 + 110 + 40) / 30], 1080, 1920)
+    ids = {r["id"] for it in res["times"] for r in it["rects"]}
+    assert "heading:1" in ids   # keyed by beat index
+
+
+def test_good_print_title_at_frame_is_the_regions_entry_not_the_last_frame(project):
+    """[print] titles live in an area span; title_at_frame follows that span, never the segment end."""
+    d, tl = project(beats_doc)
+    seg = tl.segments[2]
+    p = layout.apply_segment(seg, tl, d)
+    ta = next(a for a in p.areas.values() if a.title)
+    assert seg.gsap_scene_config.title_at_frame == p.spans[f"area:{ta.key}"][0].t_in
+    assert 0 <= seg.gsap_scene_config.title_at_frame < seg.n_frames - 1
+
+
+def test_good_hidden_print_title_does_not_show_at_the_last_frame(project):
+    def doc(d):
+        beats_doc(d)
+        d["segments"][2]["gsap_scene_config"]["beats"] = [{"at_frame": 0, "pins": [0], "title": True}]
+
+    d, tl = project(doc)
+    seg = tl.segments[2]
+    layout.apply_segment(seg, tl, d)
+    assert seg.gsap_scene_config.title_at_frame == 0
+
+
+def test_good_area_label_outside_a_small_region_keeps_its_leader(project, monkeypatch):
+    """A label that cannot fit inside its region is placed outside with a leader; the template draws that leader."""
+    no_print(monkeypatch)
+    real = profiles.of
+
+    def of(tl):
+        pr = real(tl)
+        if pr.name != "geoverum":
+            return pr
+        return profiles.Profile(pr.name, pr.data.model_copy(update={"camera": profiles.CameraProfile(max_zoom=1.0)}),
+                                pr.blake3 + "-z1")
+
+    monkeypatch.setattr(profiles, "of", of)
+
+    def doc(d):
+        beats_doc(d)
+        sc = d["segments"][2]["gsap_scene_config"]
+        sc["regions"] = [{"entity": "Sekutu", "polygon": [[0.48, 0.48], [0.52, 0.48], [0.52, 0.52], [0.48, 0.52]]}]
+        sc["beats"] = [{"at_frame": 0, "region": 0,
+                        "area_labels": [{"text": "SEKUTU RAYA SEKALI", "region": 0}]}]
+
+    d, tl = project(doc)
+    p = layout.apply_segment(tl.segments[2], tl, d)
+    areas = [a for a in p.areas.values() if a.text == "SEKUTU RAYA SEKALI"]
+    assert areas and areas[0].leader is not None and not areas[0].inside
+    html = (config.TEMPLATE_DIR / "index.html").read_text()
+    assert "leader:area:'+a.key" in html and "if(a.leader)" in html
+
+
+def test_good_area_leader_is_drawn_by_the_template():
+    """An area label placed outside its polygon gets a rendered leader, not only a gate-only segment."""
+    html = (config.TEMPLATE_DIR / "index.html").read_text()
+    assert "if(a.leader){" in html and "'leader:area:'+a.key" in html and "cam.insertBefore(ln,el)" in html
+
+
+def test_good_print_block_no_longer_requires_legibility():
+    """The template print block guards only [print] and [layout]; its legibility reads sit behind `if(A)`."""
+    html = (config.TEMPLATE_DIR / "index.html").read_text()
+    assert "if(!P||!LY)return;" in html
+    assert "if(!P||!LY||!LG)return;" not in html
 
 
 def test_bad_planner_beats_without_layout_profile(project):
@@ -371,3 +485,8 @@ def test_good_l04_hand_note_excluded_from_hero():
 def test_bad_l04_note_sized_label_still_counts():
     items = [T("title:0", "title", None, 88), T("label:0", "label", None, 76)]
     assert "1.5 x next" in G.hero(items, L)[0]
+
+
+def test_bad_layout_budget_animating_must_be_positive():
+    with pytest.raises(ValidationError, match="animating"):
+        LayoutProfile.model_validate({"budget": {"animating": 0}})

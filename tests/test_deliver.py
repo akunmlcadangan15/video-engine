@@ -1,4 +1,6 @@
-"""Delivery naming and part splitting (dry run only)."""
+"""Delivery naming, part splitting, build check and upload package."""
+import json
+
 import pytest
 
 from video_engine import deliver
@@ -84,3 +86,83 @@ def test_good_default_limit_boundary_95_000_000():
     assert deliver.PART_MAX_BYTES == 95_000_000
     assert deliver.split_ranges(95_000_000) == [(0, 95_000_000)]
     assert deliver.split_ranges(95_000_001) == [(0, 47_500_001), (47_500_001, 95_000_001)]
+
+
+def _built(tmp_path):
+    import json
+    from video_engine import manifest
+    d = tmp_path / "out"
+    d.mkdir()
+    final = d / "final.mp4"
+    final.write_bytes(b"published")
+    rep = {"ok": True, "build_id": "b1", "final_sha256": manifest.sha256(final, fresh=True)}
+    (d / "build_report.json").write_text(json.dumps(rep))
+    (d / manifest.MANIFEST).write_text(json.dumps({"build_id": "b1"}))
+    return d, final, rep
+
+
+def test_good_check_build_accepts_the_last_published_build(tmp_path):
+    _, final, rep = _built(tmp_path)
+    assert deliver.check_build(final)["build_id"] == rep["build_id"]
+
+
+def test_bad_check_build_rejects_stale_or_failed_output(tmp_path):
+    d, final, rep = _built(tmp_path)
+    (d / "build_report.failed.json").write_text("{}")
+    with pytest.raises(EngineError, match="last build failed"):
+        deliver.check_build(final)
+    (d / "build_report.failed.json").unlink()
+    (d / "build_manifest.json").write_text('{"build_id": "later"}')
+    with pytest.raises(EngineError, match="stale"):
+        deliver.check_build(final)
+    (d / "build_manifest.json").write_text('{"build_id": "b1"}')
+    final.write_bytes(b"changed")
+    with pytest.raises(EngineError, match="differs"):
+        deliver.check_build(final)
+    final.unlink()
+    with pytest.raises(EngineError, match="not found"):
+        deliver.check_build(final)
+
+
+def _captioned(tl, words):
+    from video_engine.timeline import CaptionWord
+    return tl.model_copy(update={"captions": [CaptionWord(word=w, start_frame=a, end_frame=b) for w, a, b in words]})
+
+
+def test_good_srt_groups_adjacent_words_and_uses_millisecond_timestamps(project):
+    _, tl = project()
+    tl = _captioned(tl, [("Halo", 0, 10), ("dunia", 10, 20), ("ini", 40, 50)])
+    text = deliver.srt(tl)
+    assert "1\n00:00:00,000 --> 00:00:00,667\nHalo dunia\n" in text
+    assert "2\n00:00:01,333 --> 00:00:01,667\nini\n" in text
+
+
+def test_good_metadata_has_youtube_and_reels(project):
+    _, tl = project()
+    tl = _captioned(tl, [("Sejarah", 0, 10), ("pelayaran", 10, 20)])
+    md = deliver.metadata(tl)
+    assert md["title"] == "Uji Coba" and md["youtube"]["shorts"] is True
+    assert md["reels"]["hashtags"][0] == "#Shorts" and "Sejarah" in md["description"]
+
+
+def test_good_export_writes_package_with_srt_thumbnail_and_metadata(project, tmp_path):
+    from conftest import ff
+    from PIL import Image
+    p, tl = project()
+    tl = _captioned(tl, [("Halo", 0, 10), ("dunia", 10, 20)])
+    S = tl.settings
+    final = tmp_path / "final.mp4"
+    ff("-f", "lavfi", "-i", f"testsrc2=size={S.width}x{S.height}:rate={S.fps}", "-frames:v", str(tl.total_frames),
+       "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", final)
+    r = deliver.export_package(tl, p, final, tmp_path / "pkg", part_max=400_000, verify=False)
+    root = tmp_path / "pkg"
+    assert r["srt_cues"] == 1 and len([f for f in r["files"] if ".part" in f]) >= 2
+    final_dir = root / "07 - 2026-10-28 - Uji Coba" / "05 Final"
+    assert (final_dir / "07 - Uji Coba - final.srt").read_text().startswith("1\n")
+    md = json.loads((final_dir / "07 - Uji Coba - metadata.json").read_text())
+    assert md["youtube"]["title"] == "Uji Coba"
+    assert Image.open(final_dir / "07 - Uji Coba - thumbnail.jpg").size == (S.width, S.height)
+    assert (root / "07 - 2026-10-28 - Uji Coba" / "03 Aset" / "07 - credits.txt").is_file()
+    # the byte-split parts join back to the published file
+    parts = sorted(final_dir.glob("*.part*"), key=lambda x: int(x.name.rsplit("part", 1)[1]))
+    assert b"".join(x.read_bytes() for x in parts) == final.read_bytes()

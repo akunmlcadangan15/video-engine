@@ -27,6 +27,7 @@ from . import config, profiles
 from .timeline import Timeline
 from .util import EngineError
 
+TRANSITION_VERSION = "trans-1"   # bump when a transition clip's pixels change without a source-code change
 BLUR_TAPS = 8          # zoomed copies averaged for the radial blur
 PAGE_BACK = 0.72       # flap colour = PAGE_BACK x paper + (1 - PAGE_BACK) x mirrored page
 PAGE_PAPER = (243, 236, 222)
@@ -192,9 +193,10 @@ def page_frames(last: np.ndarray, head: list[np.ndarray]) -> list[np.ndarray]:
 
 # ------------------------------------------------------------------------------------------------ files
 
-def decode(path: Path, first: int, count: int, W: int, H: int) -> list[np.ndarray]:
+def decode(path: Path, first: int, count: int, W: int, H: int, threads: int = 2) -> list[np.ndarray]:
     """Frames [first, first + count) of a segment file as RGB arrays."""
-    cmd = [config.FFMPEG, "-v", "error", "-i", str(path), "-vf", f"select=gte(n\\,{first}),scale={W}:{H}",
+    cmd = [config.FFMPEG, "-v", "error", "-threads", str(threads), "-i", str(path),
+           "-vf", f"select=gte(n\\,{first}),scale={W}:{H}",
            "-frames:v", str(count), "-vsync", "0", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
     buf = subprocess.run(cmd, capture_output=True, check=True).stdout
     n = len(buf) // (W * H * 3)
@@ -203,19 +205,36 @@ def decode(path: Path, first: int, count: int, W: int, H: int) -> list[np.ndarra
     return [np.frombuffer(buf, np.uint8, W * H * 3, k * W * H * 3).reshape(H, W, 3) for k in range(n)]
 
 
-def write_clip(frames: list[np.ndarray], out: Path, fps: int) -> Path:
+def write_clip(frames: list[np.ndarray], out: Path, fps: int, threads: int = 2) -> Path:
     """Lossless clip (FFV1, RGB) of the frames. Bit-exact muxing (no random Matroska UIDs, no encoder tags): equal
     frames give an equal file, so the composite key (which hashes this file) is stable across builds."""
     H, W = frames[0].shape[:2]
     cmd = [config.FFMPEG, "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(fps),
-           "-i", "-", "-c:v", "ffv1", "-pix_fmt", "bgr0", "-fflags", "+bitexact", "-flags:v", "+bitexact",
-           "-map_metadata", "-1", str(out)]
+           "-i", "-", "-c:v", "ffv1", *(["-threads", str(threads)] if threads else []),
+           "-pix_fmt", "bgr0", "-fflags", "+bitexact", "-flags:v", "+bitexact", "-map_metadata", "-1", str(out)]
     subprocess.run(cmd, input=b"".join(np.ascontiguousarray(f).tobytes() for f in frames), check=True,
                    capture_output=True)
     return out
 
 
-def render(tl: Timeline, seg_files: list[Path], workdir: Path) -> list[tuple[Path, int]]:
+def plan_key(tl: Timeline, seg_files: list[Path]) -> str:
+    """Content key of every transition clip of this timeline and these segment files: cache lookup of the composite
+    pass can happen before any clip is rendered (empty string when the profile draws no transition)."""
+    from .manifest import sha256
+    from .util import blake3_json, code_hash
+    ws = windows(tl)
+    if not ws:
+        return ""
+    S = tl.settings
+    used = sorted({w.seg - 1 for w in ws} | {w.seg for w in ws})
+    return blake3_json({"v": TRANSITION_VERSION, "code": code_hash([Path(__file__)]), "algo": core.ALGO_VERSION,
+                        "windows": [[w.boundary, w.seg, w.kind, w.f0, w.f1] for w in ws],
+                        "profile": profiles.of(tl).transitions.model_dump(mode="json"),
+                        "segments": [sha256(seg_files[i]) for i in used],
+                        "size": [S.width, S.height], "fps": S.fps})
+
+
+def render(tl: Timeline, seg_files: list[Path], workdir: Path, threads: int = 2) -> list[tuple[Path, int]]:
     """(clip, first frame) of every transition, drawn from the segment files (one per segment, in order)."""
     if probs := fit_problems(tl):
         raise EngineError("transitions: " + "; ".join(m for _, m in probs))
@@ -226,19 +245,19 @@ def render(tl: Timeline, seg_files: list[Path], workdir: Path) -> list[tuple[Pat
         a, b = tl.segments[w.seg - 1], tl.segments[w.seg]
         if w.kind == "crossfade":
             n_out, n_in = w.boundary - w.f0, w.f1 - w.boundary
-            tail = decode(seg_files[w.seg - 1], a.n_frames - n_out, n_out, W, H)
-            a_last = decode(seg_files[w.seg - 1], a.n_frames - 1, 1, W, H)[0]
-            head = decode(seg_files[w.seg], 0, n_in, W, H)
+            tail = decode(seg_files[w.seg - 1], a.n_frames - n_out, n_out, W, H, threads)
+            a_last = decode(seg_files[w.seg - 1], a.n_frames - 1, 1, W, H, threads)[0]
+            head = decode(seg_files[w.seg], 0, n_in, W, H, threads)
             frames = fade_frames(tail, a_last, head[0], head)
         elif w.kind == "zoom_whip":
             n_out = w.boundary - w.f0
-            tail = decode(seg_files[w.seg - 1], a.n_frames - n_out, n_out, W, H)
-            head = decode(seg_files[w.seg], 0, w.f1 - w.boundary, W, H)
+            tail = decode(seg_files[w.seg - 1], a.n_frames - n_out, n_out, W, H, threads)
+            head = decode(seg_files[w.seg], 0, w.f1 - w.boundary, W, H, threads)
             frames = whip_frames(tail, head, T, fps)
         else:
-            last = decode(seg_files[w.seg - 1], a.n_frames - 1, 1, W, H)[0]
-            frames = page_frames(last, decode(seg_files[w.seg], 0, w.f1 - w.f0, W, H))
-        out.append((write_clip(frames, workdir / f"transition_{w.seg:03d}.mkv", fps), w.f0))
+            last = decode(seg_files[w.seg - 1], a.n_frames - 1, 1, W, H, threads)[0]
+            frames = page_frames(last, decode(seg_files[w.seg], 0, w.f1 - w.f0, W, H, threads))
+        out.append((write_clip(frames, workdir / f"transition_{w.seg:03d}.mkv", fps, threads), w.f0))
     return out
 
 

@@ -1,6 +1,7 @@
 """Channel style gates (profile `[gates.*]`; an absent table = gate off). Input: timeline, project dir, caption words,
 voiceover onset. H01 hook, C01 hard cuts and shot changes, P01 camera motion, V01 visual type at shot changes, N01
-novelty, K01 hook keyword return, D01 duration. S01 (silence) runs on the final file (`silence_findings`)."""
+novelty, K01/K02 keyword return, D01/D02 duration, C02 CTA/end card. S01 (silence) runs on the final file
+(`silence_findings`)."""
 from __future__ import annotations
 
 import re
@@ -9,6 +10,7 @@ from pathlib import Path
 import math
 
 from .. import config, hyperframes, overlays, pauses, profiles, transitions
+from ..util import EngineError
 from ..timeline import HYPERFRAMES, CaptionWord, Segment, Timeline
 from .core import Finding
 
@@ -289,6 +291,46 @@ def d01_duration(tl: Timeline, g: profiles.DurationGate) -> list[Finding]:
     return [Finding("D01", "warn", f"duration {d:.1f} s outside {g.min_s:g}-{g.max_s:g} s")]
 
 
+def _words(text: str) -> list[str]:
+    return re.sub(r"[^\w\s]", " ", text.lower()).split()
+
+
+def c02_cta(tl: Timeline, words: list[CaptionWord] | None, g: profiles.CtaGate) -> list[Finding]:
+    """C02: no call-to-action or end-card phrase in on-screen text or captions."""
+    seen = " ".join(screen_text(tl, 0, tl.total_frames) + [w.word for w in words or []])
+    have = _words(seen)
+    hits = []
+    for phrase in g.phrases:
+        p = _words(phrase)
+        if p and any(have[i:i + len(p)] == p for i in range(len(have) - len(p) + 1)):
+            hits.append(phrase)
+    if hits:
+        return [Finding("C02", "fail", f"call to action / end card phrase(s) on screen: {', '.join(hits)}")]
+    return [Finding("C02", "pass", f"no CTA or end-card phrase ({len(g.phrases)} checked)")]
+
+
+def k02_ending_keyword(tl: Timeline, words: list[CaptionWord] | None, g: profiles.EndingKeywordGate) -> list[Finding]:
+    """K02: a hook keyword (first hook_s, on screen or caption) is still visible on the final frame."""
+    fps, n = tl.settings.fps, tl.total_frames
+    h = round(g.hook_s * fps)
+    hook = _tokens(screen_text(tl, 0, h) + [w.word for w in words or [] if w.start_frame < h], g.min_chars)
+    if not hook:
+        return [Finding("K02", "warn", f"no hook keyword of >= {g.min_chars} letters in the first {g.hook_s:g} s")]
+    end = _tokens(screen_text(tl, n - 1, n), g.min_chars)
+    both = sorted(hook & end)
+    if not both:
+        return [Finding("K02", "fail", f"hook keyword ({', '.join(sorted(hook)[:6])}) is not on screen on the final "
+                                       f"frame")]
+    return [Finding("K02", "pass", f"hook keyword still on screen at the end: {', '.join(both[:3])}")]
+
+
+def d02_duration_exact(tl: Timeline, g: profiles.ExactDurationGate) -> list[Finding]:
+    d = tl.total_frames / tl.settings.fps
+    if abs(d - g.target_s) <= g.tolerance_s + 1e-9:
+        return [Finding("D02", "pass", f"{d:.2f} s within {g.target_s:g} +/- {g.tolerance_s:g} s")]
+    return [Finding("D02", "fail", f"duration {d:.2f} s outside {g.target_s:g} +/- {g.tolerance_s:g} s")]
+
+
 def run_style(tl: Timeline, project_dir: Path, words: list[CaptionWord] | None) -> list[Finding]:
     g = profiles.of(tl).gates
     out: list[Finding] = []
@@ -306,8 +348,14 @@ def run_style(tl: Timeline, project_dir: Path, words: list[CaptionWord] | None) 
         out += n01_novelty(tl, g.novelty)
     if g.keyword_return:
         out += k01_keyword_return(tl, words, g.keyword_return)
+    if g.ending_keyword:
+        out += k02_ending_keyword(tl, words, g.ending_keyword)
+    if g.cta:
+        out += c02_cta(tl, words, g.cta)
     if g.duration:
         out += d01_duration(tl, g.duration)
+    if g.duration_exact:
+        out += d02_duration_exact(tl, g.duration_exact)
     return out
 
 
@@ -316,6 +364,9 @@ def silence_gaps(path: Path, threshold_db: float, min_s: float) -> list[tuple[fl
     import subprocess
     r = subprocess.run([config.FFMPEG, "-hide_banner", "-nostats", "-i", str(path), "-vn", "-af",
                         f"silencedetect=noise={threshold_db}dB:d={min_s}", "-f", "null", "-"], capture_output=True, text=True)
+    if r.returncode != 0:
+        tail = (r.stderr or r.stdout or "").strip()[-500:]
+        raise EngineError(f"S01 silencedetect failed ({r.returncode}) on {path}: {tail}")
     starts = [float(x) for x in re.findall(r"silence_start: (-?[\d.]+)", r.stderr)]
     durs = [float(x) for x in re.findall(r"silence_duration: ([\d.]+)", r.stderr)]
     end = re.search(r"Duration: (\d+):(\d+):([\d.]+)", r.stderr)

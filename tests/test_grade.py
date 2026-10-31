@@ -68,6 +68,8 @@ def test_bad_grade_values_rejected(kw):
 
 @pytest.mark.parametrize("text, msg", [("LUT_1D_SIZE 2\n0 0 0\n1 1 1\n", "1D"), ("0 0 0\n", "LUT_3D_SIZE"),
                                        ("LUT_3D_SIZE 2\n0 0 0\n", "needs 8"),
+                                       ("LUT_3D_SIZE two\n", "invalid .cube"),
+                                       ("LUT_3D_SIZE 2\nDOMAIN_MIN a b c\n", "invalid .cube"),
                                        ("LUT_3D_SIZE 2\nDOMAIN_MIN 1 1 1\nDOMAIN_MAX 1 1 1\n" + "0 0 0\n" * 8, "DOMAIN")])
 def test_bad_cube_files_raise(tmp_path, text, msg):
     (tmp_path / "x.cube").write_text(text)
@@ -136,7 +138,9 @@ def test_good_graded_segment_pixels_frame_range_cache_and_join(project, tmp_path
     a, b = _frames(src), _frames(out)
     assert len(b) == 60 and np.allclose(b[..., 0], a[..., 0], atol=3)
     assert np.allclose(b[..., 1:], a[..., 1:] * 0.5, atol=3)
-    assert streams.joinable([src, out]) == (True, [])
+    # a lossless grade is High 4:4:4 Predictive, so the composite joins it with the concat filter (not stream copy)
+    joined, diffs = streams.joinable([src, out])
+    assert not joined and any("profile" in d for d in diffs)
     assert grade.apply(tl.segments[0], tl, p, src, tmp_path / "wd") == (out, True)
 
 
@@ -148,6 +152,19 @@ def test_good_beat_grade_touches_only_its_frames(project, tmp_path):
     diff = np.abs(b - a).max(axis=(1, 2, 3))
     assert diff[:110].max() <= 2 and diff[200:].max() <= 2 and diff[110:200].min() > 20
     assert b[150, 0, 0, 0] > b[150, 0, 0, 2]                                  # the red tint
+
+
+def test_good_grade_intermediate_is_lossless(project, tmp_path):
+    """The graded intermediate is lossless: on a near-identity grade the decoded pixels stay within colour-conversion
+    rounding of the source (a CRF 8 second generation drifts much further)."""
+    def mut(d):
+        d["segments"][0]["grade"] = {"gain": 1.0000001}
+    p, tl = project(mut)
+    src = engine_clip(tmp_path / "s.mp4", 30, size=(320, 576), src="testsrc2")
+    a = _frames(src, w=320, h=576)
+    out = grade.apply(tl.segments[0], tl, p, src, tmp_path / "wd")[0]
+    b = _frames(out, w=320, h=576).astype(float)
+    assert np.abs(b - a).mean() < 0.15
 
 
 def test_good_near_identity_grade_keeps_the_picture(project, tmp_path):

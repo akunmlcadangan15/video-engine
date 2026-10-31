@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import functools
 import http.server
 import json
@@ -73,6 +74,9 @@ DEEP_TILE = 1024        # deep tile side (deep raster px)
 DEEP_PAD = 2            # deep raster px each tile reaches into its right and bottom neighbours (no seams)
 DEEP_MARGIN = 0.05      # viewport growth (fraction of its size) when picking the tiles a frame needs
 DEEP_VERSION = "deep-1" # bump when deep tile output changes
+DEEP_MAX_SIDE = 8192    # widest/tallest deep raster: a 43200 px source is never decoded and kept whole
+SCENE_CACHE_MAX = 64     # memo entries of scene_data() (one build calls it several times per segment)
+INK_CACHE_MAX = 64       # memo entries of the adaptive ink choices
 MORPH_PAPER, MORPH_GRAIN = "paper-F1E8D4.jpg", "grain-512.png"   # vendor/textures of a map morph
 # HyperFrames capture/encode profile for the intermediate segment file (re-encoded once more by the build).
 # "draft" = JPEG q80 screenshot + x264 ultrafast; CRF 14 keeps the intermediate close to lossless.
@@ -390,7 +394,66 @@ def card_frame(c, n: int, fps: int) -> int:
     return c.at_frame if c.at_frame is not None else min(n - 1, round(fps * 0.2))
 
 
+def _bounded_put(memo: dict, key: str, value, limit: int) -> None:
+    """Insert key -> value and evict the oldest entry when the memo is over `limit` (in-process memo, never grows
+    without bound in a long-lived engine process)."""
+    memo.pop(key, None)
+    memo[key] = value
+    while len(memo) > limit:
+        memo.pop(next(iter(memo)))
+
+
+def _scene_key(seg: Segment, tl: Timeline, project_dir: Path) -> str:
+    """Inputs of scene_data: the scene config, the timeline outside the segments, the profile and the map file.
+    A beats scene lets apply_segment derive camera_path and element at_frame values, so those derived fields are
+    excluded; every other scene keeps them, and the project directory is part of the key because relative assets
+    (morph, cards, props) live there even when two projects share one symlinked map."""
+    from . import layout
+    scfg = seg.gsap_scene_config
+    if layout.is_beats(seg, tl):
+        sc = scfg.model_dump(mode="json", exclude={"camera_path", "title_at_frame"})
+        for k in ("pins", "regions", "routes", "figures", "cards"):
+            for e in sc.get(k) or []:
+                e.pop("at_frame", None)
+    else:
+        sc = scfg.model_dump(mode="json")
+    p = project_dir / scfg.map_asset
+    try:
+        st = p.stat()
+        src = [str(p.resolve()), st.st_mtime_ns, st.st_size]
+    except OSError:
+        src = [str(p.resolve()), None, None]
+    deps = [scfg.map_asset]
+    if scfg.morph:
+        deps.append(scfg.morph.asset)
+    deps += [L.asset for L in (scfg.layers or [])]
+    deps += [pth.asset for _, pth, _, _ in props.flat(seg)]
+    for c in scfg.cards:
+        if c.asset_ref and (cr := tl.credit_for(ref=c.asset_ref)) and cr.path:
+            deps.append(cr.path)
+    files = sorted({str((Path(project_dir) / d).resolve()) for d in deps})
+    assets = [blake3_files([Path(f)])[0] if Path(f).is_file() else None for f in files]
+    hooks = [id(fn) for fn in (deep_plan, morph_data, map_image_size, probe_dom, props.scene_props,
+                               parallax.scene_layers, layout.apply_segment, legibility.all_times,
+                               legibility.collect, legibility.elements, legibility.choose, legibility.scene_inks)]
+    prof = profiles.of(tl)
+    return blake3_json({"scene": sc, "engine": seg.engine_type, "n": seg.n_frames,
+                        "project": str(Path(project_dir).resolve()), "assets": [files, assets], "hooks": hooks,
+                        "tl": tl.model_dump(mode="json", exclude={"segments", "captions", "captions_meta"}),
+                        "profile": [prof.name, prof.blake3, prof.data.model_dump(mode="json")],
+                        "legibility": legibility.code_hash(), "map": src})
+
+
+def clear_scene_cache() -> None:
+    """Drop the in-process scene memo (tests; a caller that mutates a timeline outside apply_segment)."""
+    _SCENES.clear()
+    _INKS.clear()
+
+
 def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
+    key = _scene_key(seg, tl, project_dir)
+    if (hit := _SCENES.get(key)) is not None:
+        return copy.deepcopy(hit)
     from . import layout
     lay = layout.apply_segment(seg, tl, project_dir)   # beats scenes: derived camera_path and frames first
     S = tl.settings
@@ -462,7 +525,8 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
                            "count_s": f.count_s or theme["counter_s"], "at_frame": f.at_frame,
                            "x": round(f.position[0] * S.width, 2), "y": round(f.position[1] * S.height, 2),
                            "entity": f.entity, "colour": col.get(f.entity, "#ffffff")} for f in sc.figures]
-    if theme["label_style"] == "box" and lay is None:
+    boxed = theme["label_style"] == "box" and (lay is None or prof.print is None)
+    if boxed:
         for t in [out.get("title"), *out.get("figures", [])]:
             if t:
                 t["box"] = entities.box_colour(col[t["entity"]], theme) if t["entity"] else theme["label_box_colour"]
@@ -504,7 +568,11 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
         out["deep"] = deep_entries(project_dir / sc.map_asset, dp, _q(out))
     if sc.morph:
         out["morph"] = morph_data(sc.morph, out, project_dir, (iw, ih))
+    _bounded_put(_SCENES, key, copy.deepcopy(out), SCENE_CACHE_MAX)
     return out
+
+
+_SCENES: dict[str, dict] = {}   # process-local: scene key -> scene_data, bounded by SCENE_CACHE_MAX
 
 
 def _q(scene: dict) -> int:
@@ -527,8 +595,8 @@ def _centroid(poly: list[list[float]]) -> tuple[float, float]:
 def region_data(r, col: dict, theme: dict, mw: float, mh: float, G: dict | None, S, beats: bool) -> dict:
     """Scene entry of a region: points in map px (globe scenes: `ll` lat/lng per point and the points projected at
     the region's first frame), style colours of every owner (`changes`) and its box label. The theme region_style
-    applies outside beats scenes; their regions stay "tint" unless the region sets a style."""
-    style = r.style or ("tint" if beats else theme["region_style"])
+    applies to every scene; a region's own style wins."""
+    style = r.style or theme["region_style"]
 
     def paint(e: str) -> dict:
         c = col[e]
@@ -593,6 +661,9 @@ def deep_plan(scene: dict, src_size: tuple[int, int]) -> dict | None:
     if dw <= _map_width(need):
         return None
     dh = round(src_size[1] * dw / src_size[0])
+    if max(dw, dh) > DEEP_MAX_SIDE:                        # bound the one decoded raster (source maps can be 43200 px)
+        k = DEEP_MAX_SIDE / max(dw, dh)
+        dw, dh = max(1, round(dw * k)), max(1, round(dh * k))
     d = dw / mw                                           # deep px per map px
     W, H, cam = scene["width"], scene["height"], scene["camera"]
     nx, ny = math.ceil(dw / DEEP_TILE), math.ceil(dh / DEEP_TILE)
@@ -889,8 +960,8 @@ def _inks(seg: Segment, tl: Timeline, project_dir: Path, seg_dir: Path, scene: d
         for e in legibility.elements(scene):
             if e["id"] in inks:
                 inks[e["id"]]["glow"] = e.get("colour")
-    _INKS[key] = inks
-    return _INKS[key]
+    _bounded_put(_INKS, key, inks, INK_CACHE_MAX)
+    return inks
 
 
 def cache_key(seg: Segment, tl: Timeline, project_dir: Path, scene: dict | None = None) -> str:

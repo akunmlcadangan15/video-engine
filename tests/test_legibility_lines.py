@@ -261,8 +261,8 @@ def test_good_area_labels_adaptive_and_water_label_blue_italic(project, tmp_path
     _halo_first(monkeypatch)
     p, tl = project(_water_beats)
     d, sc = hyperframes.build_dir(tl.segments[2], tl, p, tmp_path / "hf")
-    areas = sc["layout"]["areas"]
-    assert [bool(a.get("water")) for a in areas] == [False, True]
+    areas = {a["text"].casefold(): bool(a.get("water")) for a in sc["layout"]["areas"]}
+    assert areas["sekutu"] is False and areas["selat"] is True
     els = {e["id"]: e for e in L.elements(sc) if e["kind"] == "area"}
     t = round(max(e["start"] for e in els.values()) + 0.1, 2)
     res = hyperframes.probe_dom(d, [t], 1080, 1920, tmp_path / "snaps", bg="bg")
@@ -271,11 +271,14 @@ def test_good_area_labels_adaptive_and_water_label_blue_italic(project, tmp_path
     assert water["font_style"] == "italic" and land["font_style"] == "normal"
     # the water ink (#033d57) or, when the chooser escalates (step 3), the same blue lowered by ink_l_step
     blues = {L.dark_ink({"water": True}, LG, k * LG["ink_l_step"]).lower() for k in range(8)}
+    blues.add(L.light_ink(LG, {"water": True}).lower())   # dark map: the same blue at light-text lightness
     assert WATER in blues and _hex(water["color"]).lower() in blues and _hex(land["color"]).lower() not in blues
     assert _hex(water["color"]).lower() == sc["inks"][next(k for k in els if els[k]["water"])]["segs"][0]["ink"].lower()
     for r in (land, water):
         hx = layer2._halo(r)
-        assert r["stroke_px"] == 0 and hx and hx["alpha"] > 0 and LG["halo_width_min_em"] <= hx["em"] <= LG["halo_width_max_em"]
+        assert r["stroke_px"] == 0
+        if hx and hx["alpha"] > 0:      # dark ink: the halo band; light text uses its glow/shadow instead
+            assert LG["halo_width_min_em"] <= hx["em"] <= LG["halo_width_max_em"]
     res["legibility"] = {"lg": sc["legibility"], "elements": L.elements(sc), "times": res["times"]}
     rows = [w for w in layer2.r64_rows({2: res}) if w["kind"] == "area"]
     assert {w["id"] for w in rows} == set(els) and all(w["target"] == LG["lc_area"] for w in rows)

@@ -10,16 +10,18 @@ Map rows become HyperFrames map segments; stills alternate ken_burns_zoom_in / z
 from __future__ import annotations
 
 import csv
-import json
+import math
 import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import timeline as timeline_mod
 from .util import EngineError, probe
 
 STILL_PRESETS = ("ken_burns_zoom_in", "ken_burns_zoom_out")
 VIDEO_EXT = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
+SHOT_KINDS = {"source", "map"}
 
 
 @dataclass
@@ -42,15 +44,33 @@ def norm_licence_text(s: str) -> str:
 
 
 def read_shots(csv_path: Path) -> tuple[list[Shot], dict[str, dict]]:
-    shots, credits = [], {}
+    shots, credits, seen = [], {}, set()
     with csv_path.open(newline="", encoding="utf-8") as fh:
-        for r in csv.DictReader(fh):
+        reader = csv.DictReader(fh)
+        missing = {"shot", "file", "on_screen_s"} - set(reader.fieldnames or [])
+        if missing:
+            raise EngineError(f"{csv_path}: missing CSV column(s): {', '.join(sorted(missing))}")
+        for line, r in enumerate(reader, start=2):
+            shot, file = (r.get("shot") or "").strip(), (r.get("file") or "").strip()
+            kind = (r.get("type") or "source").strip() or "source"
+            if not shot or not file:
+                raise EngineError(f"{csv_path}:{line}: shot and file are required")
+            if shot in seen:
+                raise EngineError(f"{csv_path}:{line}: duplicate shot {shot!r}")
+            if kind not in SHOT_KINDS:
+                raise EngineError(f"{csv_path}:{line}: type {kind!r} is not one of {', '.join(sorted(SHOT_KINDS))}")
             m = re.fullmatch(r"\s*([\d.]+)\s*-\s*([\d.]+)\s*", r.get("on_screen_s", ""))
             if not m:
-                raise EngineError(f"shot {r.get('shot')!r}: on_screen_s {r.get('on_screen_s')!r} is not 'a-b'")
-            shots.append(Shot(r["shot"], r.get("type", "source"), r["file"], r.get("title", ""), float(m[1]), float(m[2])))
-            credits.setdefault(r["file"], {"source_url": r.get("source_url", "").strip(), "license": r.get("licence", ""),
-                                           "author": r.get("author", "")})
+                raise EngineError(f"shot {shot!r}: on_screen_s {r.get('on_screen_s')!r} is not 'a-b'")
+            t0, t1 = float(m[1]), float(m[2])
+            if not (math.isfinite(t0) and math.isfinite(t1)) or t0 < 0 or t1 <= t0:
+                raise EngineError(f"shot {shot!r}: on_screen_s {t0:g}-{t1:g} needs 0 <= start < end")
+            seen.add(shot)
+            shots.append(Shot(shot, kind, file, r.get("title", ""), t0, t1))
+            credits.setdefault(file, {"source_url": r.get("source_url", "").strip(), "license": r.get("licence", ""),
+                                      "author": r.get("author", "")})
+    if not shots:
+        raise EngineError(f"{csv_path}: no shots")
     return shots, credits
 
 
@@ -72,10 +92,21 @@ def _find(name: str, dirs: list[Path]) -> Path:
     raise EngineError(f"file {name!r} not found under {', '.join(map(str, dirs))}")
 
 
+def _asset_for(f: str, used: dict[str, str]) -> str:
+    base = _asset_id(f) or "asset"
+    aid, n = base, 2
+    while aid in used and used[aid] != f:
+        aid, n = f"{base}_{n}", n + 1
+    used[aid] = f
+    return aid
+
+
 def import_shots(csv_path: Path, dst: Path, search: list[Path], *, credits_txt: Path, voiceover: Path, fps: int = 30,
                  manifest: Path | None = None, substitute: dict[str, str] | None = None, exclude: set[str] | None = None,
                  watermark_checked: bool = False, settings: dict | None = None, force: bool = False) -> dict:
     substitute, exclude = substitute or {}, exclude or set()
+    if fps < 1:
+        raise EngineError(f"fps {fps} must be at least 1")
     if (dst / "master_timeline.json").exists() and not force:
         raise EngineError(f"{dst}/master_timeline.json exists; pass --force to overwrite")
     shots, row_credits = read_shots(csv_path)
@@ -92,11 +123,19 @@ def import_shots(csv_path: Path, dst: Path, search: list[Path], *, credits_txt: 
         else:
             kept.append(s)
     (dst / "assets").mkdir(parents=True, exist_ok=True)
-    total = round(float(probe(voiceover)["format"]["duration"]) * fps)
+    try:
+        duration = float(probe(voiceover)["format"]["duration"])
+    except (OSError, KeyError, TypeError, ValueError) as e:
+        raise EngineError(f"cannot read voiceover duration from {voiceover}: {e}") from None
+    total = round(duration * fps)
+    if total <= 0:
+        raise EngineError(f"voiceover {voiceover} has no frames at {fps} fps")
+    for s in kept:
+        if round(s.t1 * fps) > total:
+            raise EngineError(f"shot {s.shot}: on_screen_s ends at {s.t1:g} s, after the {duration:g} s voiceover")
     vo_rel = "assets/" + voiceover.name
     shutil.copyfile(voiceover, dst / vo_rel)
-    shutil.copyfile(credits_txt, dst / "credits.txt")
-    credits, segs, log = {}, [], []
+    credits, segs, log, used = {}, [], [], {}
     still_i = 0
     for i, s in enumerate(kept):
         f = substitute.get(s.file, s.file)
@@ -110,7 +149,7 @@ def import_shots(csv_path: Path, dst: Path, search: list[Path], *, credits_txt: 
         if not cred["source_url"]:
             raise EngineError(f"{s.shot}: {f!r} has no source_url in the shot list or manifest; add it there")
         src = _find(f, search)
-        aid = _asset_id(f)
+        aid = _asset_for(f, used)
         rel = f"assets/{f}"
         if not (dst / rel).exists():
             shutil.copyfile(src, dst / rel)
@@ -118,6 +157,8 @@ def import_shots(csv_path: Path, dst: Path, search: list[Path], *, credits_txt: 
                         "path": rel, "author": cred["author"] or None, "watermark_free": True if watermark_checked else None}
         a = round(s.t0 * fps) if i else 0
         b = round(kept[i + 1].t0 * fps) if i + 1 < len(kept) else total
+        if b <= a:
+            raise EngineError(f"shot {s.shot}: timestamps leave no frames ({a}-{b})")
         seg = {"seg_index": i, "start_frame": a, "end_frame": b, "source_in_frame": 0, "overlays": []}
         if s.kind == "map":
             seg |= {"engine_type": "HYPERFRAMES_GSAP", "gsap_scene_config": {
@@ -136,6 +177,16 @@ def import_shots(csv_path: Path, dst: Path, search: list[Path], *, credits_txt: 
            "credits_manifest": list(credits.values()),
            "audio_chain": {"voiceover_path": vo_rel, "auto_ducking": True, "language": "id", "whisper_model": "small", "auto_captions": True},
            "segments": segs}
-    (dst / "master_timeline.json").write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n")
+    try:
+        tl = timeline_mod.Timeline.model_validate(doc)
+    except ValueError as e:
+        raise EngineError(f"imported timeline is invalid: {e}") from None
+    text = credits_txt.read_text(encoding="utf-8")
+    urls = {c["source_url"] for c in credits.values()}
+    missing = [u for u in sorted(urls) if u not in text]
+    if missing:
+        text = text.rstrip("\n") + "\n" + "\n".join(missing) + "\n"
+    (dst / "credits.txt").write_text(text, encoding="utf-8")
+    timeline_mod.save(tl, dst)
     return {"segments": len(segs), "frames": total, "assets": len(credits), "substitutions": log,
             "excluded": sorted(exclude)}

@@ -274,3 +274,30 @@ def test_bad_manifest_relative_path_outside_project_stays_absolute(tmp_path):
     other = tmp_path / "elsewhere.wav"
     other.write_bytes(b"x")
     assert manifest.portable(other, tmp_path / "proj") == str(other.resolve())
+
+
+# --------------------------------------------------------------------------------- concurrent manifest writes
+def test_good_concurrent_manifest_saves_leave_one_whole_doc_and_no_temp(tmp_path):
+    import threading
+    out = tmp_path / "out"
+    out.mkdir()
+    errors = []
+    start = threading.Barrier(8)
+
+    def writer(i):
+        try:
+            start.wait(timeout=10)
+            for j in range(25):
+                manifest.save(out, {"version": manifest.VERSION, "build_id": f"{i}-{j}", "payload": "x" * 2000})
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    ts = [threading.Thread(target=writer, args=(i,)) for i in range(8)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(30)
+    assert errors == []
+    doc = manifest.load(out)
+    assert doc and doc["build_id"].count("-") == 1
+    assert sorted(p.name for p in out.iterdir()) == [manifest.MANIFEST]

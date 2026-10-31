@@ -3,10 +3,11 @@
 Leases: inside `session()` (every CLI command and `build.build`) each cache file the process resolves or is about
 to write is leased before its existence is checked, under a shared lock of the cache root. Eviction (`prune`, LRU),
 `clear`, `engine cache --prune` and the sound cache prune hold the exclusive lock while they scan and delete, skip
-every leased file and report it. A lease lives in <root>/.leases/<pid>-<start>.json
-({"pid", "start", "paths": [paths relative to the root]}), start = field 22 of /proc/<pid>/stat (process start
-time in clock ticks); the session removes its file on exit (success, failure, exception, AwaitingAgent). A pruner
-reclaims (deletes) a lease file whose pid is gone or runs a different process (other start time).
+every leased file and report it. A lease lives in <root>/.leases/<pid>-<start>.json as JSON lines, one
+{"pid", "start", "paths": [path relative to the root]} per acquired path (append-only, so a store never rewrites
+the whole set); start = field 22 of /proc/<pid>/stat (process start time in clock ticks). The session removes its
+file on exit (success, failure, exception, AwaitingAgent). A pruner reclaims (deletes) a lease file whose pid is
+gone or runs a different process (other start time).
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ import json
 import os
 import shutil
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -25,6 +27,11 @@ from . import config
 KINDS = ("words", "pauses", "segments", "maps", "models", "dom", "composite", "audio", "toolchain", "local_test_sfx")   # entry directories directly under the cache root
 LEASES = ".leases"                      # lease files: <root>/.leases/<pid>-<start>.json
 LOCK = ".lock"                          # flock: shared while leasing, exclusive while evicting
+# LRU housekeeping is not run on every stored file: a full cache scan is O(total cache) under the exclusive lock.
+# put_file prunes when the entry alone exceeds the budget, after PRUNE_EVERY_PUTS stores, or every PRUNE_INTERVAL_S.
+PRUNE_EVERY_PUTS = 32
+PRUNE_INTERVAL_S = 30.0
+_prune_state: dict[str, dict] = {}   # root -> {puts, last monotonic time}; per process, throttles put_file pruning
 
 
 # ---------------------------------------------------------------------------------------------------- leases
@@ -140,9 +147,9 @@ def acquire(path: Path, root: Path | None = None) -> Path:
                 f = _lease_file(root)
                 f.parent.mkdir(parents=True, exist_ok=True)
                 pid = os.getpid()
-                tmp = tmp_name(f)
-                tmp.write_text(json.dumps({"pid": pid, "start": proc_start(pid), "paths": sorted(have)}))
-                os.replace(tmp, f)
+                with open(f, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps({"pid": pid, "start": proc_start(pid), "paths": [rel]},
+                                        separators=(",", ":")) + "\n")
     return path
 
 
@@ -162,10 +169,43 @@ def leased(root: Path) -> tuple[set[str], list[str]]:
             reclaimed.append(f.name)
             continue
         try:
-            paths |= set(json.loads(f.read_text())["paths"])
-        except (FileNotFoundError, json.JSONDecodeError, KeyError, TypeError):
+            text = f.read_text()
+        except FileNotFoundError:
             continue
+        try:
+            rows = [json.loads(text)]
+        except json.JSONDecodeError:
+            rows = []
+            for line in text.splitlines():
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+        for row in rows:
+            try:
+                paths |= set(row["paths"])
+            except (KeyError, TypeError):
+                continue
     return paths, reclaimed
+
+
+def _maybe_prune(dst: Path, root: Path) -> None:
+    """Throttled LRU prune after a store: an entry larger than the budget is evicted at once; otherwise housekeeping
+    waits for PRUNE_EVERY_PUTS stores or PRUNE_INTERVAL_S (a build is not a cache-scan loop)."""
+    max_bytes = config.CACHE_MAX_BYTES
+    try:
+        size = dst.stat().st_size
+    except FileNotFoundError:
+        return
+    st = _prune_state.setdefault(str(root), {"puts": 0, "last": 0.0})
+    st["puts"] += 1
+    now = time.monotonic()
+    due = (size > max_bytes or st["puts"] >= PRUNE_EVERY_PUTS
+           or (st["last"] and now - st["last"] >= PRUNE_INTERVAL_S))
+    if not due:
+        return
+    prune(protect=(dst,), root=root)
+    st["puts"], st["last"] = 0, now
 
 
 def _note(root: Path, evicted=(), skipped=(), reclaimed=()) -> None:
@@ -235,7 +275,7 @@ def put_file(kind: str, key: str, src: Path, ext: str = ".mp4") -> Path:
     tmp = acquire(tmp_name(dst))
     shutil.copyfile(src, tmp)
     os.replace(tmp, dst)  # atomic: a crash never leaves a half file under a valid key
-    prune(protect=(dst,))
+    _maybe_prune(dst, Path(config.CACHE_DIR))
     return dst
 
 

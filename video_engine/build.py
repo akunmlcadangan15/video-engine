@@ -172,7 +172,8 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
     gate_rows: dict | None = None
     try:
         with timer.stage("captions") as st:
-            words, src = audio.captions_for(tl, project_dir, use_cache=use_cache, pin=pin_words)
+            words, src = audio.captions_for(tl, project_dir, use_cache=use_cache, pin=pin_words,
+                                            threads=budget.whisper_threads())
             st["note"] = f"{len(words)} words from {src}"
         with timer.stage("preflight") as st:
             rep = run_preflight(tl, project_dir, words, workdir=workdir, ai_qa=ai_qa)
@@ -194,9 +195,12 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
                                  budget=budget, relock=relock)
             st["note"] = f"build_id={man['build_id']} sounds={'locked' if lock else 'resolved'}"
         with timer.stage("segments") as st, ThreadPoolExecutor(max_workers=1) as aud:
-            measured_f = aud.submit(audio.measure_mix, tl, project_dir, mix)   # loudnorm pass 1, audio only
+            audio_hit = audio.cached_master(tl, project_dir, workdir / "master.m4a", mix=mix,
+                                            use_cache=use_cache, correct=True, threads=budget.mux_threads)
+            measured_f = (None if audio_hit is not None
+                          else aud.submit(audio.measure_mix, tl, project_dir, mix, budget.mux_threads))
             segs = render_segments(tl, project_dir, workdir, use_cache=use_cache, budget=budget)
-            measured = measured_f.result()
+            measured = None if audio_hit is not None else measured_f.result()
             st["note"] = " ".join(f"s{r.seg}:{r.mode}{'(hit)' if r.cache_hit else ''}={r.seconds}s" for r in segs)
         with timer.stage("ass") as st:
             ass, events = None, []
@@ -206,13 +210,24 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
         with timer.stage("composite") as st:
             joined, join_diffs = streams.joinable([Path(r.path) for r in segs])
             join = {"method": "concat demuxer" if joined else "concat filter", "differences": join_diffs}
-            clips = transitions.render(tl, [r.path for r in segs], workdir)
-            video, v_hit, v_key = audio.composite(tl, [r.path for r in segs], ass, workdir / "composite.mp4",
-                                                  threads=budget.mux_threads, transitions=clips, use_cache=use_cache)
+            files = [Path(r.path) for r in segs]
+            tkey = transitions.plan_key(tl, files)
+            clips = (None if (tkey and use_cache)
+                     else (transitions.render(tl, files, workdir, budget.mux_threads) if tkey else None))
+            factory = ((lambda: transitions.render(tl, files, workdir, budget.mux_threads))
+                       if tkey and use_cache else None)
+            video, v_hit, v_key = audio.composite(tl, files, ass, workdir / "composite.mp4",
+                                                  threads=budget.mux_threads, transitions=clips,
+                                                  transition_key=tkey or None, transition_factory=factory,
+                                                  use_cache=use_cache)
             st["note"] = f"{join['method']}{' (hit)' if v_hit else ''}"
         with timer.stage("audio") as st:
-            master, a_hit, a_key, a01, loud_hist = audio.master_audio(
-                tl, project_dir, workdir / "master.m4a", measured=measured, mix=mix, use_cache=use_cache, correct=True)
+            if audio_hit is not None:
+                master, a_hit, a_key, a01, loud_hist = audio_hit
+            else:
+                master, a_hit, a_key, a01, loud_hist = audio.master_audio(
+                    tl, project_dir, workdir / "master.m4a", measured=measured, mix=mix, use_cache=use_cache,
+                    correct=True, threads=budget.mux_threads)
             st["note"] = f"loudness_passes={len(loud_hist)}{' (hit)' if a_hit else ''}"
         with timer.stage("mux") as st:
             audio.mux(tl, video, master, staged)
@@ -223,7 +238,7 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             frames = count_frames(staged)
             if frames != tl.total_frames:
                 raise EngineError(f"final has {frames} frames, expected {tl.total_frames}")
-            findings, info = qa.pixel_gates(staged, tl)
+            findings, info = qa.pixel_gates(staged, tl, threads=budget.mux_threads)
             s01 = style.silence_findings(staged, tl)
             a02 = audio_source.build_findings(tl, mix)
             findings = severity.apply(findings + a01 + s01 + a02, tl)

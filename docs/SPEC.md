@@ -84,7 +84,7 @@
   per segment, getBoundingClientRect() to detect pin/card/text collisions and margins (R62/R63).
 - Layer 3 Visual snapshot QA (~3 s): 1 screenshot per segment (from those seeks or 1 frame via ffmpeg); R38 pixel
   distribution in Rust; optional (--ai-qa) snapshots to the AI provider's QA models to verify nothing overlaps.
-- Severity: technical gates block on fail. Style gates (H01, C01, V01, N01, P01, P02, K01, D01, S01) block only when the
+- Severity: technical gates block on fail. Style gates (H01, C01, C02, V01, N01, P01, P02, K01, K02, D01, D02, S01) block only when the
   channel profile `[gates] require` or the timeline `gates.require` lists them; otherwise fail -> warn. Timeline
   `gates.waive` and `hold: "read"` (segment or beat; P01/N01 findings) lower non-required style findings to info.
   build_report.json `gates`: required, fails, warns, waived.
@@ -116,7 +116,7 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 - Merge: default < channel profile < project values (caption_style keys, audio_chain loudness fields).
 - Channel-styleable: caption style and placement (incl. fixed caption y and a lowest caption bottom), loudness target, draft segment length and
   prompt rules, channel style gates (H01 hook, C01 hard cuts and shot changes, V01 visual type at shot changes, N01
-  novelty, P01 camera motion, K01 keyword return, D01 duration, S01 silence on the final file). Absent gate table = gate off.
+  novelty, P01 camera motion, K01/K02 keyword return, D01/D02 duration, C02 no call-to-action, S01 silence on the final file). Absent gate table = gate off.
 - Caption timing comes from the voiceover word timestamps for every profile; captions per 10 s is reported only.
 - Caption bottom limit (`caption_style.max_bottom_y`, px at 1920 height; default profile: none): gate Z01 fails when
   any caption box bottom (centre y + 0.75 x font size + `caption_pad`; contains glyphs, descenders, outline and

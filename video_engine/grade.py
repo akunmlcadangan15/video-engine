@@ -2,8 +2,9 @@
 
 A grade is lift / gamma / gain (per channel or one value), saturation, a tint, an optional 3D .cube LUT and a strength;
 it is baked into one 33-point 3D LUT and applied by ffmpeg lut3d (tetrahedral) to the rendered segment file, per frame
-range: the beat's grade, else the segment's, else profile [grade]. The graded file is cached (kind `segments`) under
-the source file's content hash, the baked LUTs, their frame ranges and the encoder settings."""
+range: the beat's grade, else the segment's, else profile [grade]. That intermediate is lossless (CRF 0), so the
+composite never adds a second compressed generation. The graded file is cached (kind `segments`) under the source
+file's content hash, the baked LUTs, their frame ranges and the encoder settings."""
 from __future__ import annotations
 
 import re
@@ -81,21 +82,24 @@ def read_cube(path: Path) -> np.ndarray:
         text = Path(path).read_text(errors="replace")
     except OSError as e:
         raise EngineError(f"grade lut '{path}': {e}") from None
-    for line in text.splitlines():
-        t = line.split("#", 1)[0].strip()
-        if not t:
-            continue
-        w = t.split()
-        if w[0] == "LUT_1D_SIZE":
-            raise EngineError(f"grade lut '{path}': 1D LUTs are not supported (LUT_3D_SIZE needed)")
-        if w[0] == "LUT_3D_SIZE":
-            size = int(w[1])
-        elif w[0] == "DOMAIN_MIN":
-            lo = np.array(w[1:4], float)
-        elif w[0] == "DOMAIN_MAX":
-            hi = np.array(w[1:4], float)
-        elif w[0][0] in "+-.0123456789":
-            rows.append([float(v) for v in w[:3]])
+    try:
+        for line in text.splitlines():
+            t = line.split("#", 1)[0].strip()
+            if not t:
+                continue
+            w = t.split()
+            if w[0] == "LUT_1D_SIZE":
+                raise EngineError(f"grade lut '{path}': 1D LUTs are not supported (LUT_3D_SIZE needed)")
+            if w[0] == "LUT_3D_SIZE":
+                size = int(w[1])
+            elif w[0] == "DOMAIN_MIN":
+                lo = np.array(w[1:4], float)
+            elif w[0] == "DOMAIN_MAX":
+                hi = np.array(w[1:4], float)
+            elif w[0][0] in "+-.0123456789":
+                rows.append([float(v) for v in w[:3]])
+    except (ValueError, IndexError) as e:
+        raise EngineError(f"grade lut '{path}': invalid .cube data ({e})") from None
     if not size or not 2 <= size <= 256:
         raise EngineError(f"grade lut '{path}': LUT_3D_SIZE missing or outside 2..256")
     if len(rows) != size ** 3:
@@ -189,9 +193,19 @@ def check(seg: "Segment", tl: "Timeline", project_dir: Path) -> list[str]:
     return errs
 
 
-def _x264(tl: "Timeline") -> list[str]:
+def _x264(tl: "Timeline", lossless: bool = False) -> list[str]:
+    """Segment encoder args of a grade. The graded intermediate is lossless (CRF 0): it is decoded again by the
+    composite, so a second compressed generation would accumulate loss before the final encode."""
     from . import profiles
-    return profiles.of(tl).render.x264("segment")
+    args = profiles.of(tl).render.x264("segment")
+    if lossless:
+        args = list(args)
+        i = args.index("-crf") if "-crf" in args else -1
+        if i >= 0:
+            args[i + 1] = "0"
+        else:
+            args += ["-crf", "0"]
+    return args
 
 
 def _key(seg: "Segment", rs: list, cubes: list[str], src: Path, x264: list[str] | None = None) -> str:
@@ -203,7 +217,7 @@ def _key(seg: "Segment", rs: list, cubes: list[str], src: Path, x264: list[str] 
 def key(seg: "Segment", tl: "Timeline", project_dir: Path, src: Path) -> str | None:
     """Cache key of the graded file of rendered segment file src; None when seg has no grade."""
     rs = ranges(seg, tl, project_dir)
-    return _key(seg, rs, [cube_text(g, root) for _, _, g, root in rs], src, _x264(tl)) if rs else None
+    return _key(seg, rs, [cube_text(g, root) for _, _, g, root in rs], src, _x264(tl, True)) if rs else None
 
 
 def apply(seg: "Segment", tl: "Timeline", project_dir: Path, src: Path, workdir: Path,
@@ -213,7 +227,7 @@ def apply(seg: "Segment", tl: "Timeline", project_dir: Path, src: Path, workdir:
     if not rs:
         return Path(src), False
     cubes = [cube_text(g, root) for _, _, g, root in rs]
-    key = _key(seg, rs, cubes, src, _x264(tl))
+    key = _key(seg, rs, cubes, src, _x264(tl, True))
     if use_cache and (hit := cache.get_file("segments", key)):
         return hit, True
     wd = Path(workdir) / f"grade_{seg.seg_index}"
@@ -229,7 +243,7 @@ def apply(seg: "Segment", tl: "Timeline", project_dir: Path, src: Path, workdir:
         vf = ("scale=in_color_matrix=bt709:in_range=tv:flags=neighbor+accurate_rnd,format=gbrp16le,"
               + ",".join(chain) + ",scale=out_color_matrix=bt709:out_range=tv:flags=area+accurate_rnd,format=yuv420p")
         out = wd / "graded.mp4"
-        run([config.FFMPEG, "-v", "error", "-y", "-i", src, "-an", "-vf", vf, *_x264(tl), "-threads",
+        run([config.FFMPEG, "-v", "error", "-y", "-i", src, "-an", "-vf", vf, *_x264(tl, True), "-threads",
              str(X264_THREADS), "-frames:v", str(seg.n_frames), "-movflags", "+faststart", out])
         if use_cache:
             return cache.put_file("segments", key, out), False

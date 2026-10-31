@@ -134,6 +134,14 @@ def test_bad_B01_text_too_wide_for_safe_area_fails(chan):
     assert fs[0].level == "fail" and "safe area" in fs[0].message
 
 
+def test_bad_B01_watermark_in_bottom_safe_zone_fails(chan, monkeypatch):
+    _, tl = chan()
+    low = watermark.Placement(x=800, y=1750, w=200, h=100, pad=0)
+    monkeypatch.setattr(watermark, "placement", lambda _tl: low)
+    fs = layer2.b01_watermark(tl, [], {})
+    assert fs[0].level == "fail" and "safe area" in fs[0].message
+
+
 @pytest.mark.parametrize("toml, msg", [
     ('[watermark]\ntext = "Geo"\ncolour = "white"\n', "#rrggbb"),
     ('[watermark]\ntext = "Geo\\nverum"\n', "one line"),

@@ -146,7 +146,7 @@ final_maxrate_kbps = 25000
 map_jpeg_quality = 95         # map derivatives and deep tiles
 
 [gates]                       # style gates whose fails block a build; every other style gate only warns
-require = ["P01", "P02", "H01"]   # the camera always moves: no hold over 3 s, drift >= 0.06 ln/s, frame 0 a moving map
+require = ["P01", "P02", "H01", "C01", "C02", "V01", "D01", "K01", "K02", "S01"]   # every style rule blocks a Geoverum build
 
 [gates.hook]
 vo_warn_s = 0.2
@@ -184,6 +184,18 @@ threshold_db = -40.0
 hook_s = 3.0
 end_s = 5.0
 min_chars = 4
+
+[gates.ending_keyword]         # K02: the keyword is still readable on the final frame
+hook_s = 3.0
+end_s = 5.0
+min_chars = 4
+
+[gates.cta]                    # C02: no call to action and no end card
+phrases = ["terima kasih", "subscribe", "follow", "like", "share", "tonton", "kunjungi", "link di bio",
+           "sampai jumpa", "jangan lupa", "selesai"]
+
+[gates.geo]                    # G02: pins on land, labels inside their own region
+require_land = true
 
 [gates.duration]
 min_s = 45.0

@@ -162,3 +162,57 @@ def test_good_clear_removes_entry_dirs_only(tmp_path):
 def test_bad_clear_on_missing_root_is_noop(tmp_path):
     from video_engine import cache
     assert cache.clear(tmp_path / "absent") == {"deleted": [], "skipped_leased": [], "reclaimed_leases": []}
+
+
+def test_bad_cache_prune_without_any_project_refuses(monkeypatch, capsys, tmp_path):
+    from video_engine import cli, config
+    monkeypatch.setattr(cache_prune, "default_projects", lambda: [])
+    monkeypatch.setattr(config, "CACHE_DIR", tmp_path / "c")
+    assert cli.main(["cache", "--prune"]) == 1
+    assert "needs at least one project" in capsys.readouterr().err
+    assert not (tmp_path / "c").exists()
+
+
+def test_bad_import_reversed_or_negative_time(src, tmp_path, monkeypatch):
+    rows = (src / "shots.csv").read_text().splitlines()
+    rows[2] = rows[2].replace("1-2", "2-1")
+    (src / "shots.csv").write_text("\n".join(rows) + "\n")
+    with pytest.raises(EngineError, match="0 <= start < end"):
+        run(src, tmp_path / "p")
+
+
+def test_bad_import_past_voiceover_end(src, tmp_path):
+    rows = (src / "shots.csv").read_text().splitlines()
+    rows[-1] = rows[-1].replace("3-4", "3-9")
+    (src / "shots.csv").write_text("\n".join(rows) + "\n")
+    with pytest.raises(EngineError, match="after the 4 s voiceover"):
+        run(src, tmp_path / "p")
+
+
+def test_bad_import_missing_column_and_duplicate_shot(src, tmp_path):
+    (src / "shots.csv").write_text("file,on_screen_s\na.jpg,0-1\n")
+    with pytest.raises(EngineError, match="missing CSV column"):
+        run(src, tmp_path / "p")
+    (src / "shots.csv").write_text("\n".join((src / "shots.csv").read_text().splitlines()) + "\n")
+    rows = COLS, ("1", "source", "a.jpg", "", "https://ex.org/a", "B", "CC BY 4.0", "0-1"), \
+        ("1", "source", "b.jpg", "", "https://ex.org/b", "", "PD", "1-2")
+    with (src / "shots.csv").open("w", newline="") as fh:
+        w = csv.writer(fh); w.writerow(COLS); w.writerows(rows[1:])
+    with pytest.raises(EngineError, match="duplicate shot"):
+        run(src, tmp_path / "q")
+
+
+def test_good_import_appends_missing_credit_urls(src, tmp_path):
+    (src / "credits.txt").write_text("https://ex.org/map\n")
+    dst = tmp_path / "p"
+    r = run(src, dst)
+    assert r["segments"] == 4
+    text = (dst / "credits.txt").read_text()
+    for url in ("https://ex.org/a", "https://ex.org/b", "https://ex.org/c"):
+        assert url in text
+
+
+def test_bad_sheet_cols_zero(project, tmp_path):
+    _, tl = project()
+    with pytest.raises(EngineError, match="at least 1"):
+        sheet.make(tl, tmp_path / "none.mp4", tmp_path / "s.png", cols=0)

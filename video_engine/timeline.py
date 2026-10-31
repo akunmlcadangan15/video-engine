@@ -15,6 +15,7 @@ import hypoverum_core_rs as core
 
 from . import config
 from .grade import Grade
+from .util import EngineError
 
 NATIVE = "NATIVE_RUST_FFMPEG"
 HYPERFRAMES = "HYPERFRAMES_GSAP"
@@ -565,6 +566,15 @@ class GsapScene(Strict):
     globe: Optional[Globe] = None                   # 3D globe instead of the flat map (map_asset = its texture)
 
     @model_validator(mode="after")
+    def _map_bounds(self):
+        b = self.map_bounds
+        if b is not None:
+            south, west, north, east = b
+            if not south < north or not west < east:
+                raise ValueError(f"map_bounds [south, west, north, east] = {b} needs south < north and west < east")
+        return self
+
+    @model_validator(mode="after")
     def _beats(self):
         b = self.beats
         if not b:
@@ -751,10 +761,13 @@ class ProjectGates(Strict):
 
     @model_validator(mode="after")
     def _ids(self):
-        from .profiles import STYLE_GATE_IDS
+        from .profiles import KNOWN_GATE_IDS, STYLE_GATE_IDS
         bad = [g for g in self.require if g not in STYLE_GATE_IDS]
         if bad:
             raise ValueError(f"gates.require: unknown style gate(s) {bad} (known: {', '.join(STYLE_GATE_IDS)})")
+        bad = [g for g in self.waive if g not in KNOWN_GATE_IDS]
+        if bad:
+            raise ValueError(f"gates.waive: unknown gate(s) {bad} (known: {', '.join(KNOWN_GATE_IDS)})")
         return self
 
 
@@ -808,7 +821,14 @@ def load(path: str | Path) -> Timeline:
     p = Path(path)
     if p.is_dir():
         p = p / "master_timeline.json"
-    return Timeline.model_validate_json(p.read_text())
+    try:
+        text = p.read_text()
+    except OSError as e:
+        raise EngineError(f"cannot read timeline {p}: {e}") from None
+    try:
+        return Timeline.model_validate_json(text)
+    except json.JSONDecodeError as e:
+        raise EngineError(f"timeline {p} is not valid JSON: {e}") from None
 
 
 def save(tl: Timeline, path: str | Path) -> None:

@@ -193,21 +193,23 @@ def credit_lines(provenances) -> list[str]:
 
 def append_credits(project_dir: Path, provenances) -> list[str]:
     """Append the credit lines of the given provenances that are not yet in <project>/credits.txt, under the line
-    CREDITS_HEADER (added once). Returns the appended lines."""
+    CREDITS_HEADER (added once). Returns the appended lines. The read-modify-write runs under the sound cache lock
+    so two builds of the same project cannot drop each other's lines; the final file replaces the old one atomically."""
     f = Path(project_dir) / "credits.txt"
-    text = f.read_text() if f.is_file() else ""
-    have = {ln.strip()[2:] for ln in text.splitlines() if ln.strip().startswith("- ")}
-    new = [c for c in credit_lines(provenances) if c not in have]
-    if not new:
-        return []
-    add = "" if not text or text.endswith("\n") else "\n"
-    if CREDITS_HEADER not in text.splitlines():
-        add += ("\n" if text else "") + CREDITS_HEADER + "\n"
-    add += "".join(f"- {c}\n" for c in new)
-    tmp = engine_cache.acquire(engine_cache.tmp_name(f))
-    tmp.write_text(text + add)
-    os.replace(tmp, f)
-    return new
+    with engine_cache.locked(config.CACHE_DIR / "sound", exclusive=True):
+        text = f.read_text() if f.is_file() else ""
+        have = {ln.strip()[2:] for ln in text.splitlines() if ln.strip().startswith("- ")}
+        new = [c for c in credit_lines(provenances) if c not in have]
+        if not new:
+            return []
+        add = "" if not text or text.endswith("\n") else "\n"
+        if CREDITS_HEADER not in text.splitlines():
+            add += ("\n" if text else "") + CREDITS_HEADER + "\n"
+        add += "".join(f"- {c}\n" for c in new)
+        tmp = engine_cache.acquire(engine_cache.tmp_name(f))
+        tmp.write_text(text + add)
+        os.replace(tmp, f)
+        return new
 
 
 # ---------------------------------------------------------------------------------------------------- cleanup
