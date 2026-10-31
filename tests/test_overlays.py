@@ -63,7 +63,9 @@ def test_good_O01_pass(project):
     ([dict(LABEL, box=[240, 1000, 120, 40], text="Teks panjang sekali tidak muat")], "does not fit"),
     ([CARD, dict(LABEL, box=[200, 400, 600, 110])], "overlap"),
     ([dict(LABEL, start_frame=60)], "outside the segment"),
-], ids=["safe-area", "fit", "overlap", "range"])
+    ([dict(LABEL, end_frame=61)], "outside the segment"),
+    ([dict(LABEL, start_frame=30, end_frame=999)], "outside the segment"),
+], ids=["safe-area", "fit", "overlap", "range", "end-past-length", "end-far-past-length"])
 def test_bad_O01(project, ovs, msg):
     _, tl = project(lambda d: d["segments"][0].update(overlays=ovs))
     fs = layer1.o01_overlays(tl)
