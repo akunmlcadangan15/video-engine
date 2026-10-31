@@ -146,7 +146,7 @@ final_maxrate_kbps = 25000
 map_jpeg_quality = 95         # map derivatives and deep tiles
 
 [gates]                       # style gates whose fails block a build; every other style gate only warns
-require = ["P01", "P02", "H01"]   # the camera always moves: no hold over 3 s, drift >= 0.06 ln/s, frame 0 a moving map
+require = ["P01", "P02", "H01", "C01", "V01", "D01", "K01", "S01"]   # every style rule blocks a Geoverum build
 
 [gates.hook]
 vo_warn_s = 0.2
