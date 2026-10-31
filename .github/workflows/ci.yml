@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 19 * * *"   # 02:17 WIB nightly, full suite with vendor Chrome
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m pip install ruff
+      - run: ruff check --select E9,F63,F7,F82 video_engine tests
+      - run: python -m compileall -q video_engine tests
+
+  types:
+    runs-on: ubuntu-latest
+    continue-on-error: true   # mypy is gradual; the job reports, it does not block yet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m pip install mypy
+      - run: mypy --ignore-missing-imports --follow-imports=skip video_engine
+
+  fast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: python -m pip install --upgrade pip maturin
+      - run: python -m pip install -e ".[test]" faster-whisper google-genai
+      - run: cd rust/hypoverum_core_rs && python -m maturin develop --release
+      - run: >-
+          python -m pytest -q
+          tests/test_cli.py tests/test_cli_aux.py tests/test_gate_severity.py tests/test_geo_gate.py
+          tests/test_profiles.py tests/test_blocks_library.py tests/test_import_sheet_prune.py
+          tests/test_scratch_safety.py tests/test_cache_lease.py tests/test_timeline_frames.py
+
+  nightly:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: python -m pip install --upgrade pip maturin
+      - run: python -m pip install -e ".[test]" faster-whisper google-genai
+      - run: cd rust/hypoverum_core_rs && python -m maturin develop --release
+      - run: python -m video_engine.cli doctor --install
+      - run: python -m pytest -q
