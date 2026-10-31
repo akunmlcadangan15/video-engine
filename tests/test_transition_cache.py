@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from conftest import engine_clip
-from video_engine import audio, transitions
+from video_engine import audio, profiles, transitions
 
 
 def test_good_composite_cache_hit_skips_transition_rendering(project, tmp_path, monkeypatch):
@@ -39,3 +39,16 @@ def test_good_composite_cache_hit_skips_transition_rendering(project, tmp_path, 
         pytest.fail("transition clips were rendered on a composite cache hit")
     out2, hit2, key2 = run(must_not_run)
     assert hit2 and key2 == key and out2.read_bytes() == out.read_bytes()
+
+
+def test_bad_transition_profile_change_invalidates_the_plan_key(project, tmp_path, monkeypatch):
+    _, tl = project(lambda d: d.update(profile="geoverum", settings={**d["settings"], "width": 216, "height": 384}))
+    files = [engine_clip(tmp_path / f"p{i}.mp4", 60, (216, 384), src=s)
+             for i, s in enumerate(["testsrc2", "smptebars", "rgbtestsrc"])]
+    base = profiles.load("geoverum").data
+    def with_scale(scale):
+        tr = base.transitions.model_copy(update={"kind": "zoom_whip", "whip_scale": scale})
+        data = base.model_copy(update={"transitions": tr})
+        monkeypatch.setattr(profiles, "of", lambda _tl: profiles.Profile("x", data, f"x{scale}"))
+        return transitions.plan_key(tl, files)
+    assert with_scale(1.2) != with_scale(1.4)

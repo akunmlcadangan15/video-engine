@@ -229,6 +229,7 @@ def plan_key(tl: Timeline, seg_files: list[Path]) -> str:
     used = sorted({w.seg - 1 for w in ws} | {w.seg for w in ws})
     return blake3_json({"v": TRANSITION_VERSION, "code": code_hash([Path(__file__)]), "algo": core.ALGO_VERSION,
                         "windows": [[w.boundary, w.seg, w.kind, w.f0, w.f1] for w in ws],
+                        "profile": profiles.of(tl).transitions.model_dump(mode="json"),
                         "segments": [sha256(seg_files[i]) for i in used],
                         "size": [S.width, S.height], "fps": S.fps})
 
