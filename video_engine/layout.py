@@ -634,7 +634,7 @@ def _plan_key(seg: "Segment", tl: "Timeline", project_dir: Path) -> str:
             e.pop("at_frame", None)
     p = project_dir / seg.gsap_scene_config.map_asset
     return json.dumps([sc, seg.n_frames, tl.settings.model_dump(mode="json"), profiles.of(tl).blake3,
-                       str(p.resolve()), p.stat().st_mtime], sort_keys=True)
+                       str(Path(project_dir).resolve()), str(p.resolve()), p.stat().st_mtime_ns], sort_keys=True)
 
 
 _PLANS: dict[str, Plan] = {}
