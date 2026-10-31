@@ -101,7 +101,7 @@ def test_bad_unknown_required_gate_in_profile_and_project(project, tmp_path, mon
 
 def test_good_geoverum_requires_camera_rules_and_p02_passes(project):
     p = profiles.load("geoverum")
-    assert set(p.gates.require) == {"P01", "P02", "H01", "C01", "V01", "D01", "K01", "S01"}
+    assert set(p.gates.require) == {"P01", "P02", "H01", "C01", "C02", "V01", "D01", "K01", "K02", "S01"}
     assert p.gates.camera.min_drift_per_s == 0.06
     _, tl = project(two_maps())
     assert [f.level for f in style.p02_drift(tl, p.gates.camera)] == ["pass"]
@@ -111,11 +111,13 @@ def test_bad_geoverum_editorial_fails_block_every_style_gate(project):
     """A Geoverum cut-rate, duration, keyword and silence fail stays a fail through severity.apply."""
     _, tl = project(two_maps())
     fs = severity.apply([Finding("C01", "fail", "3 shot changes per 10 s"),
+                         Finding("C02", "fail", "CTA on screen"),
                          Finding("D01", "fail", "duration 30.0 s outside 45-90 s"),
                          Finding("K01", "fail", "no ending keyword"),
+                         Finding("K02", "fail", "keyword gone on the final frame"),
                          Finding("V01", "fail", "hard cut between two maps"),
                          Finding("S01", "fail", "silent gap 1.00 s at 1.00 s")], tl)
-    assert [f.level for f in fs] == ["fail"] * 5 and not Report(fs).ok
+    assert [f.level for f in fs] == ["fail"] * 7 and not Report(fs).ok
 
 
 def test_bad_p02_drift_below_floor_fails(project, monkeypatch):
