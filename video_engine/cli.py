@@ -450,8 +450,8 @@ def parser() -> argparse.ArgumentParser:
     x = add("doctor", cmd_doctor, "Check the pinned HyperFrames toolchain in vendor/ (node, hyperframes, puppeteer-core, "
                                     "chrome-headless-shell; pins in vendor/VERSIONS.json).")
     x.add_argument("--install", action="store_true", help="download and install missing or mismatched components")
-    x = add("clean", cmd_clean, "Remove the scratch root, the agent request bundles <project>/ai_request/ of the given "
-                                  "projects, and with --cache the cache entries words/, segments/, maps/.")
+    x = add("clean", cmd_clean, "Remove only the given projects' scratch dirs, their <project>/ai_request/ bundles, "
+                                  "and with --cache the cache entries words/, segments/, maps/.")
     x.add_argument("project", nargs="*")
     x.add_argument("--cache", action="store_true")
     return ap
