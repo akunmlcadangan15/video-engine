@@ -331,7 +331,8 @@ def d02_duration_exact(tl: Timeline, g: profiles.ExactDurationGate) -> list[Find
     return [Finding("D02", "fail", f"duration {d:.2f} s outside {g.target_s:g} +/- {g.tolerance_s:g} s")]
 
 
-def run_style(tl: Timeline, project_dir: Path, words: list[CaptionWord] | None) -> list[Finding]:
+def run_style(tl: Timeline, project_dir: Path, words: list[CaptionWord] | None,
+              built_dirs: list[Path] | None = None) -> list[Finding]:
     g = profiles.of(tl).gates
     out: list[Finding] = []
     if g.hook:
@@ -356,6 +357,8 @@ def run_style(tl: Timeline, project_dir: Path, words: list[CaptionWord] | None) 
         out += d01_duration(tl, g.duration)
     if g.duration_exact:
         out += d02_duration_exact(tl, g.duration_exact)
+    from . import anti_slop
+    out += anti_slop.run(tl, project_dir, words, g.anti_slop, built_dirs=built_dirs)
     return out
 
 

@@ -253,8 +253,8 @@ def w01_pinned_words(tl: Timeline, project_dir: Path) -> list[Finding]:
         return [Finding("W01", "fail", "captions_meta present but audio_chain.voiceover_path is missing; run `engine words`")]
     from ..audio import expected_meta
     exp = expected_meta(tl, project_dir)
-    names = {"voiceover_blake3": "voiceover audio", "whisper_model": "whisper_model", "language": "language",
-             "prompt": "initial_prompt", "fixes_blake3": "caption_fixes", "fps": "settings.fps"}
+    names = {"voiceover_blake3": "voiceover audio", "stt_model": "stt.model", "language": "language",
+             "keyterms_blake3": "stt.keyterms", "fixes_blake3": "caption_fixes", "fps": "settings.fps"}
     out = [Finding("W01", "fail", f"pinned captions are stale: {names[k]} changed since `engine words`; run `engine words`")
            for k, v in exp.items() if getattr(m, k) != v]
     if m.clipped_words and tl.total_frames > m.total_frames:

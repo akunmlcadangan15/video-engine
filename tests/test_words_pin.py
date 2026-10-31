@@ -17,10 +17,10 @@ RAW = [{"word": " Surabaya", "start": 0.10, "end": 0.60, "prob": 0.9},
 
 
 @pytest.fixture
-def fake_whisper(monkeypatch):
+def fake_stt(monkeypatch):
     calls = []
 
-    def tw(path, lang="id", model="small", prompt=None, threads=None, use_cache=True):
+    def tw(path, lang="id", model=audio.STT_MODEL, keyterms=(), use_cache=True):
         calls.append((str(path), use_cache))
         return [dict(w) for w in RAW], use_cache
     monkeypatch.setattr(audio, "transcribe_words", tw)
@@ -34,7 +34,7 @@ def vo_project(project, extra=None):
     return project(mut)
 
 
-def test_good_pin_writes_words_once_and_W01_passes(project, fake_whisper):
+def test_good_pin_writes_words_once_and_W01_passes(project, fake_stt):
     p, _ = vo_project(project)
     tl, meta = audio.pin_captions(p)
     disk = timeline.load(p)
@@ -49,7 +49,7 @@ def test_good_pin_writes_words_once_and_W01_passes(project, fake_whisper):
     assert not (p / "master_timeline.json.part").exists()
 
 
-def test_good_build_path_uses_stored_words_without_transcribing(project, monkeypatch, fake_whisper):
+def test_good_build_path_uses_stored_words_without_transcribing(project, monkeypatch, fake_stt):
     p, _ = vo_project(project)
     audio.pin_captions(p)
     monkeypatch.setattr(audio, "transcribe_words", lambda *a, **k: pytest.fail("re-transcribed"))
@@ -58,7 +58,7 @@ def test_good_build_path_uses_stored_words_without_transcribing(project, monkeyp
     assert src == "timeline" and words == tl.captions
 
 
-def test_good_captions_for_pins_when_missing(project, fake_whisper):
+def test_good_captions_for_pins_when_missing(project, fake_stt):
     p, tl = vo_project(project)
     tl.segments[0].camera_move.intensity = 5.5          # in-memory gate fix must not be persisted by pinning
     words, src = audio.captions_for(tl, p, pin=True)
@@ -67,15 +67,15 @@ def test_good_captions_for_pins_when_missing(project, fake_whisper):
     assert len(disk.captions) == 5 and disk.segments[0].camera_move.intensity == 1.0
 
 
-def test_good_preflight_path_does_not_write(project, fake_whisper):
+def test_good_preflight_path_does_not_write(project, fake_stt):
     p, tl = vo_project(project)
     before = (p / "master_timeline.json").read_text()
     words, src = audio.captions_for(tl, p, pin=False)
-    assert len(words) == 5 and src == "whisper-cache"
+    assert len(words) == 5 and src == "stt-cache"
     assert (p / "master_timeline.json").read_text() == before
 
 
-def test_bad_W01_voiceover_changed(project, fake_whisper, assets):
+def test_bad_W01_voiceover_changed(project, fake_stt, assets):
     p, _ = vo_project(project)
     audio.pin_captions(p)
     (p / "assets" / "tone.wav").unlink()
@@ -84,7 +84,7 @@ def test_bad_W01_voiceover_changed(project, fake_whisper, assets):
     assert any(f.level == "fail" and "voiceover audio changed" in f.message for f in fs)
 
 
-def test_bad_W01_fixes_or_fps_changed(project, fake_whisper):
+def test_bad_W01_fixes_or_fps_changed(project, fake_stt):
     p, _ = vo_project(project)
     audio.pin_captions(p)
     d = json.loads((p / "master_timeline.json").read_text())
@@ -95,7 +95,7 @@ def test_bad_W01_fixes_or_fps_changed(project, fake_whisper):
     assert any("caption_fixes changed" in m for m in msgs) and any("settings.fps changed" in m for m in msgs)
 
 
-def test_bad_W01_timeline_grew_past_clipped_words(project, fake_whisper):
+def test_bad_W01_timeline_grew_past_clipped_words(project, fake_stt):
     p, _ = vo_project(project)
     audio.pin_captions(p)
     d = json.loads((p / "master_timeline.json").read_text())
@@ -112,10 +112,10 @@ def test_good_W01_handwritten_and_unpinned(project):
     assert layer1.w01_pinned_words(tl, p)[0].level == "skip"
 
 
-def test_good_cli_words(project, fake_whisper, capsys):
+def test_good_cli_words(project, fake_stt, capsys):
     p, _ = vo_project(project)
     assert main(["words", str(p), "--retranscribe"]) == 0
-    assert fake_whisper[-1][1] is False and "pinned 5 words" in capsys.readouterr().out
+    assert fake_stt[-1][1] is False and "pinned 5 words" in capsys.readouterr().out
     assert len(timeline.load(p).captions) == 5
 
 

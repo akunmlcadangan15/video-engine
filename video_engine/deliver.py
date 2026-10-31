@@ -31,7 +31,7 @@ from pathlib import Path
 from .timeline import Timeline
 from .util import EngineError
 
-PART_MAX_BYTES = 95 * 1000 * 1000
+PART_MAX_BYTES = 100 * 1000 * 1000
 BAD_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
 

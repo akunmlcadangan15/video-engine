@@ -71,7 +71,7 @@ def no_sleep(monkeypatch):
 @pytest.fixture
 def proj(project, monkeypatch):
     monkeypatch.setattr(audio, "transcribe_words",
-                        lambda path, lang="id", model="small", prompt=None, threads=None, use_cache=True:
+                        lambda path, lang="id", model=audio.STT_MODEL, keyterms=(), use_cache=True:
                         ([dict(w) for w in RAW[:4]], True))
     p, _ = project(lambda d: d.update(audio_chain={"voiceover_path": "assets/tone.wav"}))
     (p / "credits.txt").write_text(CREDITS)

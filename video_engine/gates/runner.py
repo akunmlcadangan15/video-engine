@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from .. import config, layout, profiles, props
-from ..timeline import CaptionWord, Timeline
+from ..timeline import HYPERFRAMES, CaptionWord, Timeline
 from . import geo, layer1, layer2, layer3, layout_gates, props_gates, severity, style
 from .core import Report
 
@@ -82,7 +82,9 @@ def _run(tl: Timeline, project_dir: Path, words, workdir: Path, dom: bool, snaps
     with rep.timed("layout"):
         rep.extend(layout_gates.run(tl, project_dir, events, workdir if dom else None, dom_res if dom else None))
     with rep.timed("style"):
-        rep.extend(style.run_style(tl, project_dir, words))
+        built = ([workdir / "hf" / f"seg{s.seg_index:03d}" for s in tl.segments if s.engine_type == HYPERFRAMES]
+                 if dom else None)
+        rep.extend(style.run_style(tl, project_dir, words, built))
     if snapshots:
         with rep.timed("layer3_snap"):
             fs, paths = layer3.r38_snapshots(tl, project_dir, dom_snaps, workdir / "snaps" / "gate")

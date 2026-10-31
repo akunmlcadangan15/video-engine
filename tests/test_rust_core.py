@@ -139,7 +139,7 @@ def test_good_schema_captions_sorted(project):
     assert len(tl.captions) == 2
 
 
-def test_good_whisper_words_sorted_before_compile():
+def test_good_stt_words_sorted_before_compile():
     caps = audio.words_to_captions([{"word": "b", "start": 1.0, "end": 1.2}, {"word": "a", "start": 0.0, "end": 0.0}],
                                    30, 300)
     assert [c.word for c in caps] == ["a", "b"] and all(c.end_frame > c.start_frame for c in caps)

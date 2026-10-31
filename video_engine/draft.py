@@ -1,7 +1,7 @@
 """`engine draft`: an AI provider drafts a master timeline from narration audio, script, credits.txt and the assets.
 
 Flow: inputs (voiceover, script, credits.txt lines, asset inventory with metadata, Rust pause analysis, pinned
-whisper words) -> one planning request (narration audio, optional video proxies, asset thumbnails, prompt; parts
+STT words) -> one planning request (narration audio, optional video proxies, asset thumbnails, prompt; parts
 the provider cannot take are degraded by `ai.base.degrade`) -> assemble a Timeline -> validate + pre-flight gates ->
 on failure feed the errors back (max_repairs rounds) -> save the gate-fixed draft + draft_report.json. Provider
 uploads are deleted after the last round and each deletion is verified. Source URLs, licences and authors are
@@ -295,7 +295,7 @@ def prompt(inp: Inputs) -> str:
     return f"""You are the editor of a vertical documentary short ({S.width}x{S.height}, {fps} fps, Indonesian narration).
 Draft the visual edit for the attached narration. Total length: frames 0..{inp.total_frames} (exclusive end).
 
-NARRATION WORDS with start frame (pinned whisper transcript, authoritative timing):
+NARRATION WORDS with start frame (pinned STT transcript, authoritative timing):
 {_words_text(inp)}
 
 SCRIPT (author's text, for meaning and names):
@@ -597,7 +597,7 @@ def draft(pdir: Path, *, out: Path | None = None, provider=None, max_repairs: in
     workdir = config.workdir(f"draft_{inp.project_id}")
     rounds: list[dict] = []
     tl, rep, ok, why = None, None, False, []
-    report: dict = {"project": str(pdir), "provider": provider.name, "inputs": {
+    report: dict = {"project": str(pdir), "provider": provider.name, "model": None, "fallback": False, "inputs": {
         "voiceover": inp.audio_chain.voiceover_path, "script": bool(inp.script), "credit_lines": len(inp.credit_lines),
         "assets": [{"id": a.id, "path": a.path, "kind": a.kind, "credit_line": a.credit_line} for a in inp.assets],
         "total_frames": inp.total_frames, "words": len(inp.words), "pauses": len(inp.pause_report.pauses),
@@ -652,14 +652,16 @@ def draft(pdir: Path, *, out: Path | None = None, provider=None, max_repairs: in
     finally:
         report["file_deletions"] = provider.cleanup()
         shutil.rmtree(workdir, ignore_errors=True)
-    if error is not None:
-        report.update({"ok": False, "rounds": rounds, "seconds": round(time.perf_counter() - t0, 2)})
-        report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
-        raise error
     ai_rounds = rounds + [x for x in report.get("review", []) if "ai" in x]
     last = rounds[-1]["ai"] if rounds else {}
+    answer = {"provider": last.get("provider", provider.name), "model": last.get("model"),
+              "fallback": any(x["ai"]["fallback"] for x in ai_rounds)}
+    if error is not None:
+        report.update({"ok": False, **answer, "rounds": rounds, "seconds": round(time.perf_counter() - t0, 2)})
+        report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
+        raise error
     report.update({
-        "ok": ok, "model": last.get("model"), "fallback": any(x["ai"]["fallback"] for x in ai_rounds),
+        "ok": ok, **answer,
         "warnings": [x["ai"]["warning"] for x in ai_rounds if x["ai"]["warning"]],
         "retries_total": sum(x["ai"]["retries"] for x in ai_rounds), "repair_rounds": max(0, len(rounds) - 1),
         "rounds": rounds, "seconds": round(time.perf_counter() - t0, 2)})

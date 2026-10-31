@@ -1,16 +1,19 @@
 """Gemini provider (google-genai SDK).
 
-Model lists (index 0 is the required model; later entries are a last-resort fallback):
-  PLANNING_MODELS  footage analysis / timeline drafting (required: gemini-3.8-flash)
+  MODEL            the only Gemini model, used for planning/draft/director and visual QA
+  PLANNING_MODELS  footage analysis / timeline drafting
   QA_MODELS        visual QA on gate snapshots
-Retry/fallback rules: `video_engine.ai.base`. Every HTTP request has a HTTP_TIMEOUT_S timeout.
-Request config: media_resolution=MEDIA_RESOLUTION_LOW, thinking_budget=1024, response_mime_type=application/json.
-Media parts (audio, video) go through the File API once per provider instance; `cleanup()` deletes every upload and
-verifies the deletion. Key: env GEMINI_API_KEY; never printed or logged.
+A configured fallback provider receives the same request when Gemini raises EngineError (after the normal retries,
+on 404, or on a missing GEMINI_API_KEY). Retry/fallback rules: `video_engine.ai.base`. Every HTTP request has a
+HTTP_TIMEOUT_S timeout. Request config: media_resolution=MEDIA_RESOLUTION_LOW, thinking_budget=1024,
+response_mime_type=application/json. Media parts (audio, video) go through the File API once per provider instance;
+`cleanup()` deletes every upload, verifies the deletion and delegates to the fallback provider.
+Key: env GEMINI_API_KEY; never printed or logged.
 """
 from __future__ import annotations
 
 import os
+import sys
 import time
 
 from . import base
@@ -18,8 +21,9 @@ from .base import AIResult, Image, Media, Part, Text, code_of, status_of
 from ..util import EngineError
 
 NAME = "gemini"
-PLANNING_MODELS = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3-flash-preview", "gemini-2.5-flash"]
-QA_MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite"]
+MODEL = "gemini-3.8-flash"
+PLANNING_MODELS = [MODEL]
+QA_MODELS = [MODEL]
 THINKING_BUDGET = 1024
 GONE_CODES = (403, 404)   # files.get status codes that mean a deleted file
 HTTP_TIMEOUT_S = base.HTTP_TIMEOUT_S
@@ -104,9 +108,11 @@ class GeminiProvider:
     name = NAME
     capabilities = CAPABILITIES
 
-    def __init__(self, client=None, models: list[str] | None = None, qa_models: list[str] | None = None):
+    def __init__(self, client=None, models: list[str] | None = None, qa_models: list[str] | None = None,
+                 fallback=None):
         self._client = client
         self.models = {"planning": models or PLANNING_MODELS, "qa": qa_models or QA_MODELS}
+        self.fallback = fallback
         self.uploads: list = []
         self._by_path: dict[str, object] = {}
 
@@ -135,9 +141,35 @@ class GeminiProvider:
 
     def generate_json(self, task: str, parts: list[Part], schema: dict | None, request_id: str = "",
                       attachments: dict | None = None) -> AIResult:
-        return generate_json(self.models[task], self._contents(parts), schema, client=self.client)
+        t0 = time.perf_counter()
+        try:
+            contents = self._contents(parts)
+            return generate_json(self.models[task], contents, schema, client=self.client)
+        except EngineError as e:
+            if self.fallback is None:
+                raise
+            primary = self.models[task][0]
+            gemini_error = e
+            gemini_tried = list(getattr(e, "tried", None) or [(primary, f"error {e}")])
+            gemini_seconds = time.perf_counter() - t0
+        try:
+            r = self.fallback.generate_json(task, parts, schema, request_id, attachments)
+        except EngineError as fallback_error:
+            raise EngineError(f"Gemini call failed: {gemini_error}; fallback {self.fallback.name} call failed: "
+                              f"{fallback_error}") from None
+        statuses = ", ".join(status for _, status in gemini_tried)
+        warning = (f"FALLBACK: {primary} did not answer ({statuses}); "
+                   f"answer is from {base.qualified_model(r.provider, r.model)}")
+        print(f"warning: {warning}", file=sys.stderr)
+        return AIResult(r.data, r.model, gemini_tried + list(r.tried), round(gemini_seconds + r.seconds, 2),
+                        r.usage, r.retries, True, warning, r.provider)
 
     def cleanup(self) -> list[dict]:
-        out = [delete_and_verify(self.client, f.name) for f in self.uploads]
+        out = [delete_and_verify(self.client, f.name) for f in self.uploads] if self.uploads else []
         self.uploads, self._by_path = [], {}
+        cleanup = getattr(self.fallback, "cleanup", None)
+        if callable(cleanup):
+            records = cleanup()
+            if isinstance(records, list):
+                out += records
         return out

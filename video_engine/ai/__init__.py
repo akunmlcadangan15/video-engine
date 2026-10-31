@@ -1,7 +1,8 @@
 """AI providers for `engine draft`, `engine director` and `--ai-qa`.
 
 Providers: `gemini` (default), `agent` (file handoff, `agent.py`), and every `[providers.NAME]` entry of the AI
-config file (OpenAI-compatible, `openai_compat.py`).
+config file (OpenAI-compatible, `openai_compat.py`). Gemini falls back to `[gemini] fallback_provider` (default
+`deepseek` when that provider is configured) for any request Gemini cannot answer.
 Selection precedence: --provider flag > env VIDEO_ENGINE_AI_PROVIDER > `default` in the AI config file > gemini.
 AI config file: env VIDEO_ENGINE_AI_CONFIG, else <engine root>/ai_providers.toml.
 """
@@ -48,19 +49,34 @@ def resolve(flag: str | None, cfg: dict | None = None) -> str:
     return name
 
 
+def _openai_provider(name: str, cfg: dict, post=None):
+    from .openai_compat import Entry, OpenAICompatProvider
+    return OpenAICompatProvider(Entry.from_config(name, cfg["providers"][name]), post=post)
+
+
 def get(flag: str | None = None, *, root: Path | None = None, resume_cmd: str = "", resume: bool = False,
         client=None, models: list[str] | None = None, post=None) -> Provider:
     """Provider instance. `root`, `resume_cmd`, `resume`: agent bundle root and the command that resumes.
-    `client`/`models` (gemini) and `post` (openai_compat) are injection points for tests."""
+    `client`/`models` (gemini) and `post` (openai_compat, including the Gemini fallback) are injection points for
+    tests."""
     cfg = load_config()
     name = resolve(flag, cfg)
     if name == "gemini":
         from .gemini import GeminiProvider
-        return GeminiProvider(client=client, models=models)
+        gemini_cfg, providers = cfg.get("gemini", {}), cfg.get("providers", {})
+        if "fallback_provider" in gemini_cfg:
+            fallback_name = gemini_cfg["fallback_provider"]
+            if fallback_name not in providers:
+                known = ", ".join(sorted(providers)) or "none"
+                raise EngineError(f"AI provider 'gemini': fallback_provider '{fallback_name}' is not a "
+                                  f"[providers.NAME] entry (known: {known})")
+        else:
+            fallback_name = "deepseek" if "deepseek" in providers else None
+        fallback = _openai_provider(fallback_name, cfg, post) if fallback_name else None
+        return GeminiProvider(client=client, models=models, fallback=fallback)
     if name == "agent":
         from .agent import MODEL_LABEL, AgentProvider
         if root is None:
             raise EngineError("agent provider needs a bundle root")
         return AgentProvider(root, resume_cmd, resume, cfg.get("agent", {}).get("model_label", MODEL_LABEL))
-    from .openai_compat import Entry, OpenAICompatProvider
-    return OpenAICompatProvider(Entry.from_config(name, cfg["providers"][name]), post=post)
+    return _openai_provider(name, cfg, post)

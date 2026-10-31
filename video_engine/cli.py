@@ -156,7 +156,7 @@ def cmd_words(a) -> int:
     new = [(w.word, w.start_frame, w.end_frame) for w in fresh.captions]
     changed = sum(1 for x, y in zip(old, new) if x != y) + abs(len(old) - len(new))
     print(f"pinned {len(new)} words into {p / 'master_timeline.json'} "
-          f"({'whisper cache' if meta.words_cache_hit else 'fresh transcription'}; {changed} differ from the previous pin; "
+          f"({'stt cache' if meta.words_cache_hit else 'fresh transcription'}; {changed} differ from the previous pin; "
           f"{meta.clipped_words} cut at frame {meta.total_frames})")
     if a.print:
         for w in fresh.captions:
@@ -435,12 +435,12 @@ def parser() -> argparse.ArgumentParser:
     x = add("audio", cmd_audio, "Print caption words (pinned timeline words, else cached or transcribed; writes nothing).")
     x.add_argument("project")
     x.add_argument("--no-cache", action="store_true")
-    x = add("words", cmd_words, "Transcribe (whisper cache unless --retranscribe) + caption_fixes and pin the words into "
+    x = add("words", cmd_words, "Transcribe (STT cache unless --retranscribe) + caption_fixes and pin the words into "
                                   "master_timeline.json `captions` + `captions_meta`.")
     x.add_argument("project")
-    x.add_argument("--retranscribe", action="store_true", help="ignore the words cache and run faster-whisper again")
+    x.add_argument("--retranscribe", action="store_true", help="ignore the words cache and run Grok STT again")
     x.add_argument("--print", action="store_true")
-    x = add("deliver", cmd_deliver, "Print the delivery plan or write the upload package (video parts <= 95 MB, "
+    x = add("deliver", cmd_deliver, "Print the delivery plan or write the upload package (video parts <= 100 MB, "
             "JOIN, credits, SRT, thumbnail, YouTube/Reels metadata). No upload.")
     x.add_argument("project")
     x.add_argument("--dry-run", action="store_true", help="print the delivery plan as JSON")

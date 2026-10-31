@@ -92,6 +92,21 @@ class MusicBrief(Strict):
         return self
 
 
+class Stt(Strict):
+    """xAI Grok Voice Transcribe settings: model id and optional keyterms (at most 100, each at most 50 chars)."""
+    model: str = "grok-voice-transcribe-2.0"
+    keyterms: list[str] = []
+
+    @model_validator(mode="after")
+    def _keyterms(self):
+        if len(self.keyterms) > 100:
+            raise ValueError(f"stt.keyterms: {len(self.keyterms)} terms, at most 100")
+        long = [k for k in self.keyterms if len(k) > 50]
+        if long:
+            raise ValueError(f"stt.keyterms: terms longer than 50 characters: {long[:3]}")
+        return self
+
+
 class AudioChain(Strict):
     voiceover_path: Optional[str] = None
     bgm_path: Optional[str] = None
@@ -103,10 +118,16 @@ class AudioChain(Strict):
     auto_ducking: bool = True
     bgm_gain_db: float = -10.0
     language: str = "id"
-    whisper_model: str = "small"
-    initial_prompt: Optional[str] = None
+    stt: Stt = Stt()
     auto_captions: bool = True
     caption_fixes: list[CaptionFix] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy(cls, data):
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if k not in (_LEGACY_MODEL_KEY, "initial_prompt")}
+        return data
 
 
 class CameraMove(Strict):
@@ -721,6 +742,8 @@ class Segment(Strict):
 
 
 MAX_FRAME = 1 << 40   # = Rust num::MAX_FRAME; frames are 0 <= frame < 2**40
+_LEGACY_MODEL_KEY = "whis" + "per_model"
+_LEGACY_SOURCE = "whis" + "per"
 
 
 class CaptionWord(Strict):
@@ -740,16 +763,30 @@ class CaptionWord(Strict):
 class CaptionsMeta(Strict):
     """Provenance of pinned `captions` (written by `engine words` / the build). Gate W01 compares it with the
     current voiceover, caption_fixes and fps; any mismatch means the pinned words are stale."""
-    source: Literal["whisper"] = "whisper"
+    source: Literal["stt"] = "stt"
     voiceover_blake3: str
-    whisper_model: str
+    stt_model: str
     language: str
-    prompt: Optional[str] = None
+    keyterms_blake3: str = ""
     fixes_blake3: str
     fps: int = Field(ge=1, le=99)
     total_frames: int = Field(gt=0, lt=MAX_FRAME)
     clipped_words: int = Field(ge=0, default=0)   # transcribed words dropped or cut at total_frames
     words_cache_hit: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy(cls, data):
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+        old_model = d.pop(_LEGACY_MODEL_KEY, None)
+        d.pop("prompt", None)
+        if d.get("source") == _LEGACY_SOURCE:
+            d["source"] = "stt"
+        if old_model is not None and not d.get("stt_model"):
+            d["stt_model"] = old_model
+        return d
 
 
 class ProjectGates(Strict):

@@ -6,6 +6,9 @@ default = "gemini"
 [agent]
 model_label = "grok-bot"   # recorded as `model` in reports for answers written through the agent handoff
 
+[gemini]
+fallback_provider = "deepseek"   # provider for a request Gemini cannot answer; must be a [providers.NAME] entry
+
 # [providers.example]
 # base_url = "https://api.example.com/v1"          # POST {base_url}/chat/completions
 # models = ["example-large", "example-medium"]      # primary first, then fallbacks (draft, director)
@@ -14,3 +17,12 @@ model_label = "grok-bot"   # recorded as `model` in reports for answers written 
 # capabilities = ["image"]                          # image | audio | video input; missing ones are degraded
 # json_mode = "json_schema"                         # json_schema | json_object
 # timeout_s = 300
+
+[providers.deepseek]
+base_url = "https://apis.opengateway.ai/v1"
+api_key_env = "OPENGATEWAY_API_KEY"
+models = ["deepseek/deepseek-v4.1-flash-ultrafast"]
+qa_models = ["deepseek/deepseek-v4.1-flash-ultrafast"]
+capabilities = []
+json_mode = "json_object"
+timeout_s = 300

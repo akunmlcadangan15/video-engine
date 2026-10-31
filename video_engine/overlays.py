@@ -272,15 +272,17 @@ def key_part(seg: Segment, pr=None) -> dict | None:
     return out
 
 
-def _fade_s(ov: Overlay, pr) -> float:
-    return pr.heading_fade_s if ov.kind == "heading" else FADE_S
+def _fade_s(ov: Overlay, pr, motion) -> float:
+    return pr.heading_fade_s if ov.kind == "heading" else motion.overlay_fade_s
 
 
 def ffmpeg_parts(seg: Segment, tl: Timeline, png_dir: Path, first_input: int) -> tuple[list[str], str]:
     """Extra ffmpeg inputs (one looped PNG per drawn overlay) and a filter_complex fragment that takes [vbase] and
     yields [vout]. Fades: FADE_S in/out (shortened for short ranges)."""
     from . import profiles
-    pr = profiles.of(tl).print
+    prof = profiles.of(tl)
+    pr = prof.print
+    motion = prof.motion
     fps = tl.settings.fps
     dur = seg.n_frames / fps
     args: list[str] = []
@@ -290,7 +292,7 @@ def ffmpeg_parts(seg: Segment, tl: Timeline, png_dir: Path, first_input: int) ->
         png = render_png(ov, png_dir / f"seg{seg.seg_index:03d}_ov{i}.png", tl.settings.height, pr)
         args += ["-loop", "1", "-framerate", str(fps), "-t", f"{dur:.6f}", "-i", str(png)]
         a, b = frame_range(ov, seg)
-        fd = min(_fade_s(ov, pr), (b - a) / fps / 3)
+        fd = min(_fade_s(ov, pr, motion), (b - a) / fps / 3)
         ta, tb = a / fps, b / fps
         idx = first_input + i
         chain.append(f"[{idx}:v]format=rgba,fade=t=in:st={ta:.4f}:d={fd:.4f}:alpha=1,"

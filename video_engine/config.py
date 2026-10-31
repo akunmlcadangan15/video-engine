@@ -22,7 +22,7 @@ CACHE_DIR = Path(os.environ.get("VIDEO_ENGINE_CACHE", ENGINE_ROOT / ".cache"))
 CACHE_MAX_BYTES = int(os.environ.get("VIDEO_ENGINE_CACHE_MAX_MB", "4096")) * 1024 * 1024
 SHM_ROOT = Path(os.environ.get("VIDEO_ENGINE_SHM", "/dev/shm/video_engine"))
 
-# CPU budget: max threads used by encoders, rayon and whisper. Default 6 (of 8 vCPU).
+# CPU budget: max threads used by encoders and rayon. Default 6 (of 8 vCPU).
 THREADS = max(1, int(os.environ.get("VIDEO_ENGINE_THREADS", "6")))
 # Rust (rayon) pool: THREADS-2 by default so concurrent ffmpeg encoders/decoders keep headroom.
 RUST_THREADS = max(1, min(256, int(os.environ.get("VIDEO_ENGINE_RUST_THREADS", str(max(1, THREADS - 2))))))

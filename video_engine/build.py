@@ -1,7 +1,7 @@
 """Smart router and one-command build.
 
 Stages (wall time of each is recorded):
-  captions   timeline captions, else faster-whisper words of the voiceover (BLAKE3 cache) + caption_fixes
+  captions   timeline captions, else Grok STT words of the voiceover (BLAKE3 cache) + caption_fixes
   preflight  all gates (gates.run_preflight); any "fail" stops the build before rendering
   sounds     sound.request.ensure_sounds: missing music/SFX of a profile [sound] -> request bundle
              <project>/out/sound_request/ and AwaitingAgent (exit 3); --resume imports the answer; then mixer.plan
@@ -172,8 +172,7 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
     gate_rows: dict | None = None
     try:
         with timer.stage("captions") as st:
-            words, src = audio.captions_for(tl, project_dir, use_cache=use_cache, pin=pin_words,
-                                            threads=budget.whisper_threads())
+            words, src = audio.captions_for(tl, project_dir, use_cache=use_cache, pin=pin_words)
             st["note"] = f"{len(words)} words from {src}"
         with timer.stage("preflight") as st:
             rep = run_preflight(tl, project_dir, words, workdir=workdir, ai_qa=ai_qa)

@@ -34,7 +34,7 @@ def referenced(projects: list[Path], root: Path | None = None) -> tuple[set[str]
             tl = timeline.load(p)
             ac = tl.audio_chain
             if ac.voiceover_path and (p / ac.voiceover_path).is_file():
-                names.add(audio.words_key(p / ac.voiceover_path, ac.language, ac.whisper_model, ac.initial_prompt) + ".json")
+                names.add(audio.words_key(p / ac.voiceover_path, ac.language, ac.stt.model, ac.stt.keyterms) + ".json")
             for s in tl.segments:
                 if s.engine_type == NATIVE:
                     sk = native.plan(s, tl, p).key

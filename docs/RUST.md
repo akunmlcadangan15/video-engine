@@ -132,7 +132,7 @@ Facts:
 - .ass time = `frame_to_cs(frame, fps) = floor(frame*100/fps)` centiseconds. For `fps < 100` this shows an event exactly from frame `start` through frame `end-1`. Consecutive events share the boundary value (`end_i == start_{i+1}`): no gap, no overlap. Never round to nearest; never subtract 1 cs from ends.
 - `frame_to_cs` is integer-only: `frame.checked_mul(100)? / fps`; negative frames are an error. No floats in frame->cs.
 - Caption hold (`end + hold_frames`) saturates and is capped at `MAX_FRAME`.
-- Schema mirror (`video_engine/timeline.py`): `CaptionWord` requires `0 <= start_frame < end_frame < 2^40`; `Timeline.captions` must be sorted by `start_frame`. Whisper words are sorted in `audio.words_to_captions` before compile.
+- Schema mirror (`video_engine/timeline.py`): `CaptionWord` requires `0 <= start_frame < end_frame < 2^40`; `Timeline.captions` must be sorted by `start_frame`. STT words are sorted in `audio.words_to_captions` before compile.
 
 ## .ass rules
 
@@ -155,7 +155,7 @@ Cache keys are built in Python: `blake3_json(dict)` = BLAKE3 of `json.dumps(sort
 A key must include every input that changes the output:
 - content hash of every source file read, including fonts, templates and JS libraries copied into the render;
 - every parameter: frames (`in`, `n`), `W`, `H`, `fps`, camera move, encoder args (`config.X264`), model names, prompts;
-- a stage version constant (`NATIVE_VERSION`, `HF_VERSION`, `MAP_VERSION`, `WHISPER_VERSION`), bumped on any change in code that affects output;
+- a stage version constant (`NATIVE_VERSION`, `HF_VERSION`, `MAP_VERSION`, `STT_VERSION`), bumped on any change in code that affects output;
 - the content hash of the engine sources that shape the product (`util.code_hash`): native `native.CODE` (`native.py`, `overlays.py`), HyperFrames `hyperframes.CODE` (`hyperframes.py`; `legibility.py` through the scene), grade `grade.py`, audio pass `audio.py`. Gate (checker) modules are in no key: gate results are never cached;
 - `core.ALGO_VERSION` (Rust `lib.rs::ALGO_VERSION`) for every key whose output depends on the crate: native segment key (`native.plan`, key `"algo"`), HyperFrames segment key (`hyperframes.cache_key`), map copy key (`hyperframes._map_copy`). Bump it in the same commit as any output-changing Rust edit (camera windows, warp, .ass text). Old cache entries then miss and are re-rendered; they are evicted by the cache size limit.
 - HyperFrames builds also hash the fonts copied into the build dir (`hyperframes.HF_FONTS` plus the `hyperframes.THEME_FONTS` roles the scene theme uses, from `config.FONTS_DIR`).
@@ -163,7 +163,7 @@ A key must include every input that changes the output:
 - Native segment key (`native.plan`): `NATIVE_VERSION`, source content hash, mode, `in`, `n`, camera move, `W`, `H`, `fps`, `config.X264`, `resources.X264_THREADS`, `-version` output of `config.FFMPEG`, `native.CODE`, `core.ALGO_VERSION`, the copy layout in copy mode, drawn overlays (`overlays.key_part`: spec, font hashes, Pillow version), the native profile values.
 - Grade key (`grade._key`): `GRADE_VERSION`, `grade.py`, rendered file content hash, frame count, baked LUT text per range, `config.X264`, x264 threads, ffmpeg `-version`.
 - Composite key (`audio.composite_key`) and audio key (`audio.audio_key`): `manifest.cmd_key` of the ffmpeg command (every input file as its sha256: segment files, transition clips, watermark PNG, `.ass`) plus the segment hashes and thread count; the composite adds every font file when captions are burned, the audio key adds the loudness-correction values and `audio.py`. Transition clips are drawn from both neighbouring segment files on every build and written bit-exact (`-fflags +bitexact`, no metadata), so equal frames give an equal clip hash.
-- Words key (`audio.words_key`): `WHISPER_VERSION`, voiceover content hash, language, model, prompt, faster-whisper version.
+- Words key (`audio.words_key`): `STT_VERSION`, voiceover content hash, language, model, keyterms.
 - Map derivative key (`hyperframes.map_key`): `MAP_VERSION`, `core.ALGO_VERSION`, source map content hash, output width (after the `MAP_MAX_SIDE` cap), `MAP_MAX_SIDE`, resample filter, `MAP_JPEG_QUALITY`, Pillow version.
 - DOM probe key (`hyperframes.probe_key`, cache kind `dom`, entry name `<segment key>.<probe key>`): `PROBE_VERSION`, `hyperframes.CODE`, `toolchain.hf_identity()`, every file of the built segment dir (relative path, content hash), the probe times (4 dp), viewport, screenshot flag and bg mode. It holds measurements only; gates judge them on every run.
 - Toolchain identity (`toolchain.hf_identity()`): content of `vendor/VERSIONS.json`, the node binary, every file of the headless Chrome dir, every file of `vendor/npm/node_modules`, `vendor/js/gsap.min.js`, every file of `video_engine/template/`, `video_engine/hf/dom_probe.mjs`, and the `-version` output of `config.FFMPEG` and of the ffmpeg the HyperFrames CLI encodes with. Directory hashes use paths relative to the directory. Computed once per process; directory content hashes are memoised in `<cache>/toolchain/`, keyed by every file's path, size, mtime_ns, inode and device.

@@ -1,7 +1,8 @@
-"""Audio chain: faster-whisper word timestamps (int8, BLAKE3-cached) and the final single-pass mux
+"""Audio chain: xAI Grok Voice Transcribe word timestamps (BLAKE3-cached) and the final single-pass mux
 (concat video + burned .ass captions + sidechain-ducked BGM + loudnorm)."""
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -9,55 +10,85 @@ from . import cache, config, profiles, streams
 from .timeline import CaptionsMeta, CaptionWord, Timeline, sec_to_frame
 from .util import EngineError, blake3_files, blake3_json, code_hash, count_frames, probe, run
 
-WHISPER_VERSION = "fw-1-t0"
-_MODELS: dict = {}
+STT_MODEL = "grok-voice-transcribe-2.0"
+STT_URL = "https://api.x.ai/v1/stt"
+STT_TIMEOUT_S = 300
+STT_VERSION = "stt-1-grok-2"
 
 
-def _model(name: str, threads: int):
-    from faster_whisper import WhisperModel
-    k = (name, threads)
-    if k not in _MODELS:
-        _MODELS[k] = WhisperModel(name, device="cpu", compute_type="int8", cpu_threads=threads)
-    return _MODELS[k]
+def _key() -> str:
+    key = os.environ.get("XAI_API_KEY")
+    if not key:
+        raise EngineError("XAI_API_KEY is not set")
+    return key
 
 
-def words_key(audio: Path, language: str, model: str, initial_prompt: str | None) -> str:
-    return blake3_json({"v": WHISPER_VERSION, "audio": blake3_files([audio])[0], "lang": language, "model": model,
-                        "prompt": initial_prompt, "faster_whisper": _pkg_version("faster-whisper")})
+def words_key(audio: Path, language: str, model: str, keyterms=()) -> str:
+    return blake3_json({"v": STT_VERSION, "audio": blake3_files([audio])[0], "lang": language, "model": model,
+                        "keyterms": list(keyterms)})
 
 
-def _pkg_version(name: str) -> str:
-    from importlib.metadata import PackageNotFoundError, version
-    try:
-        return version(name)
-    except PackageNotFoundError:
-        return "missing"
+def _post(url: str, headers: dict, fields: list, timeout: float):
+    import httpx
+    return httpx.post(url, headers=headers, files=fields, timeout=timeout)
 
 
-def transcribe_words(audio: Path, language: str = "id", model: str = "small", initial_prompt: str | None = None,
-                     threads: int | None = None, use_cache: bool = True) -> tuple[list[dict], bool]:
-    """[{word, start, end, prob}] in seconds. Second value: cache hit."""
-    threads = min(8, threads or config.THREADS)
-    key = words_key(audio, language, model, initial_prompt)
+def _wav_16k(path: Path) -> bytes:
+    """16 kHz mono WAV bytes via ffmpeg (the STT upload)."""
+    import subprocess
+    p = subprocess.run([config.FFMPEG, "-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", "16000",
+                        "-f", "wav", "-"], capture_output=True)
+    if p.returncode != 0:
+        raise EngineError(f"STT audio decode failed: {p.stderr[-600:].decode(errors='replace')}")
+    return p.stdout
+
+
+def _fields(model: str, language: str, keyterms: list[str], wav: bytes) -> list:
+    """Multipart fields in wire order; `file` MUST stay last."""
+    fields = [("model", (None, model)), ("language", (None, language))]
+    fields += [("keyterm", (None, term)) for term in keyterms]
+    fields += [("filler_words", (None, "false")), ("file", ("audio.wav", wav, "audio/wav"))]
+    return fields
+
+
+def _stt(audio: Path, language: str, model: str, keyterms: list[str]) -> list[dict]:
+    from .ai import base
+    key = _key()
+    wav = _wav_16k(audio)
+    fields = _fields(model, language, keyterms, wav)
+    headers = {"Authorization": f"Bearer {key}"}
+    for attempt in range(base.SAME_MODEL_RETRIES + 1):
+        try:
+            r = _post(STT_URL, headers, fields, STT_TIMEOUT_S)
+        except Exception as e:
+            if base.is_transport(e) and attempt < base.SAME_MODEL_RETRIES:
+                base._sleep(base.backoff_delay(attempt + 1))
+                continue
+            raise EngineError(f"xAI STT request failed: transport {type(e).__name__}: {e}") from None
+        if r.status_code == 200:
+            try:
+                body = r.json()
+            except ValueError:
+                raise EngineError("xAI STT returned invalid JSON") from None
+            return [{"word": w["text"], "start": round(float(w["start"]), 3), "end": round(float(w["end"]), 3)}
+                    for w in (body.get("words") or [])]
+        if r.status_code in base.SAME_MODEL_RETRY_CODES and attempt < base.SAME_MODEL_RETRIES:
+            base._sleep(base.backoff_delay(attempt + 1))
+            continue
+        raise EngineError(f"xAI STT request failed: HTTP {r.status_code}: {r.text[:300]}")
+    raise EngineError("xAI STT request failed: retries exhausted")
+
+
+def transcribe_words(audio: Path, language: str = "id", model: str = STT_MODEL, keyterms=(),
+                     use_cache: bool = True) -> tuple[list[dict], bool]:
+    """[{word, start, end}] in seconds. Second value: cache hit."""
+    keyterms = list(keyterms or [])
+    key = words_key(audio, language, model, keyterms)
     if use_cache and (hit := cache.get_json("words", key)) is not None:
         return hit, True
-    segs, _info = _model(model, threads).transcribe(
-        decode_16k(audio), language=language, word_timestamps=True, beam_size=5, temperature=0.0, vad_filter=True,
-        initial_prompt=initial_prompt, condition_on_previous_text=False)
-    words = [{"word": w.word, "start": round(w.start, 3), "end": round(w.end, 3), "prob": round(w.probability, 3)}
-             for s in segs for w in (s.words or [])]
+    words = _stt(audio, language, model, keyterms)
     cache.put_json("words", key, words)
     return words, False
-
-
-def decode_16k(path: Path):
-    """16 kHz mono float32 PCM via ffmpeg (faster-whisper input)."""
-    import subprocess
-
-    import numpy as np
-    raw = subprocess.run([config.FFMPEG, "-v", "error", "-i", str(path), "-ac", "1", "-ar", "16000", "-f", "f32le", "-"],
-                         capture_output=True, check=True).stdout
-    return np.frombuffer(raw, dtype=np.float32).copy()
 
 
 def _norm(t: str) -> str:
@@ -93,7 +124,7 @@ def words_to_captions(words: list[dict], fps: int, total_frames: int) -> list[Ca
         e = min(max(e, s + 1), total_frames)
         caps.append(CaptionWord(word=w["word"].strip(), start_frame=s, end_frame=e))
     caps.sort(key=lambda c: c.start_frame)   # Rust compile_ass requires words sorted by start
-    # strictly monotone, no overlaps (whisper occasionally overlaps by a frame)
+    # strictly monotone, no overlaps (STT words occasionally overlap by a frame)
     for a, b in zip(caps, caps[1:]):
         if a.end_frame > b.start_frame:
             a.end_frame = max(a.start_frame + 1, b.start_frame)
@@ -104,25 +135,28 @@ def fixes_digest(fixes) -> str:
     return blake3_json([[f.match, f.to] for f in fixes])
 
 
+def keyterms_digest(keyterms) -> str:
+    return blake3_json(list(keyterms))
+
+
 def expected_meta(tl: Timeline, project_dir: Path) -> dict:
     """Fields of CaptionsMeta that must match the current timeline for pinned words to be valid."""
     ac = tl.audio_chain
-    return {"voiceover_blake3": blake3_files([project_dir / ac.voiceover_path])[0], "whisper_model": ac.whisper_model,
-            "language": ac.language, "prompt": ac.initial_prompt, "fixes_blake3": fixes_digest(ac.caption_fixes),
-            "fps": tl.settings.fps}
+    return {"voiceover_blake3": blake3_files([project_dir / ac.voiceover_path])[0], "stt_model": ac.stt.model,
+            "language": ac.language, "keyterms_blake3": keyterms_digest(ac.stt.keyterms),
+            "fixes_blake3": fixes_digest(ac.caption_fixes), "fps": tl.settings.fps}
 
 
-def transcribe_captions(tl: Timeline, project_dir: Path, use_cache: bool = True,
-                        threads: int | None = None) -> tuple[list[CaptionWord], CaptionsMeta]:
-    """faster-whisper words (BLAKE3 cache) + caption_fixes -> frame captions and their provenance."""
+def transcribe_captions(tl: Timeline, project_dir: Path, use_cache: bool = True
+                        ) -> tuple[list[CaptionWord], CaptionsMeta]:
+    """Grok STT words (BLAKE3 cache) + caption_fixes -> frame captions and their provenance."""
     ac = tl.audio_chain
     if not ac.voiceover_path:
         raise EngineError("audio_chain.voiceover_path is empty: nothing to transcribe")
     vo = project_dir / ac.voiceover_path
     if not vo.is_file():
         raise EngineError(f"voiceover not found: {ac.voiceover_path}")
-    words, hit = transcribe_words(vo, ac.language, ac.whisper_model, ac.initial_prompt, threads=threads,
-                                  use_cache=use_cache)
+    words, hit = transcribe_words(vo, ac.language, ac.stt.model, ac.stt.keyterms, use_cache=use_cache)
     words = apply_fixes(words, ac.caption_fixes)
     total = tl.total_frames
     caps = words_to_captions(words, tl.settings.fps, total)
@@ -132,20 +166,19 @@ def transcribe_captions(tl: Timeline, project_dir: Path, use_cache: bool = True,
     return caps, meta
 
 
-def pin_captions(project_dir: Path, use_cache: bool = True, threads: int | None = None
-                 ) -> tuple[Timeline, CaptionsMeta]:
+def pin_captions(project_dir: Path, use_cache: bool = True) -> tuple[Timeline, CaptionsMeta]:
     """Transcribe + fix once and write `captions` and `captions_meta` into master_timeline.json. Loads a fresh copy
     of the file so in-memory gate fixes are never persisted by this call."""
     from . import timeline
     fresh = timeline.load(project_dir)
-    caps, meta = transcribe_captions(fresh, project_dir, use_cache=use_cache, threads=threads)
+    caps, meta = transcribe_captions(fresh, project_dir, use_cache=use_cache)
     fresh.captions, fresh.captions_meta = caps, meta
     timeline.save(fresh, project_dir)
     return fresh, meta
 
 
-def captions_for(tl: Timeline, project_dir: Path, use_cache: bool = True, pin: bool = False,
-                 threads: int | None = None) -> tuple[list[CaptionWord], str]:
+def captions_for(tl: Timeline, project_dir: Path, use_cache: bool = True, pin: bool = False
+                 ) -> tuple[list[CaptionWord], str]:
     """Pinned timeline captions if present; else (auto_captions) transcribed narration, written into the
     timeline when `pin` is true. Returns (words, source)."""
     if tl.captions:
@@ -154,11 +187,11 @@ def captions_for(tl: Timeline, project_dir: Path, use_cache: bool = True, pin: b
     if not (ac.auto_captions and ac.voiceover_path):
         return [], "none"
     if pin:
-        fresh, meta = pin_captions(project_dir, use_cache=use_cache, threads=threads)
+        fresh, meta = pin_captions(project_dir, use_cache=use_cache)
         tl.captions, tl.captions_meta = fresh.captions, meta
-        return tl.captions, ("whisper-cache" if meta.words_cache_hit else "whisper") + "+pinned"
-    caps, meta = transcribe_captions(tl, project_dir, use_cache=use_cache, threads=threads)
-    return caps, "whisper-cache" if meta.words_cache_hit else "whisper"
+        return tl.captions, ("stt-cache" if meta.words_cache_hit else "stt") + "+pinned"
+    caps, meta = transcribe_captions(tl, project_dir, use_cache=use_cache)
+    return caps, "stt-cache" if meta.words_cache_hit else "stt"
 
 
 MIX_RATE = 48000   # Hz of every mix graph and of the final audio stream

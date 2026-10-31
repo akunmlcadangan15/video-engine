@@ -24,7 +24,7 @@
    A. NATIVE path (Rust PyO3 + FFmpeg, 8 vCPU): cut/trim, pan/zoom camera on footage/stills, audio chain, .ass subtitles.
    B. MOTION-GRAPHICS path (HyperFrames HTML/GSAP): ONLY map/pin/card/chart segments, with NO captions in HTML.
 4. SINGLE-PASS MUX, PIXEL QA & AUTO DELIVERY (~20-45 s): concat A+B, burn captions .ass, audio normalise -14 LUFS,
-   auto name + upload to Google Drive.
+   auto name; the Projects Manager bot uploads to Google Drive.
 
 ## Components
 ### A. Rust crate `hypoverum_core_rs` (PyO3 + maturin + rayon)
@@ -42,7 +42,9 @@
    (libx264 -threads 8 -preset veryfast -crf 20 -tune fastdecode -pix_fmt yuv420p). Camera moves on normal video/stills:
    focus box [ymin,xmin,ymax,xmax] -> smooth crop/scale (zoompan) expressions. BLAKE3 hash of segment config = cache key.
 5. Fast audio chain (< 15 s) + caching: BLAKE3 of source audio/script; if unchanged, reuse cached word timestamps (0 s).
-   faster-whisper compute_type="int8", cpu_threads=8, word-level timestamps. Master audio pass (own cache entry; the
+   xAI Grok Voice Transcribe (`POST https://api.x.ai/v1/stt`, model `grok-voice-transcribe-2.0`, `XAI_API_KEY`,
+   16 kHz mono WAV, language from `audio_chain.language`, optional `stt.keyterms`, 300 s timeout, retries on
+   429/503/transport errors) provides word-level timestamps. Master audio pass (own cache entry; the
    final file is a stream-copy mux of the composite video and this audio):
    sidechaincompress auto-ducking of BGM + loudnorm=I=-14:TP=-1.5:LRA=11. The silence-padded voiceover and the looped
    BGM run unbounded through the compressor and the mix; the mixed signal is cut to exactly duration x 48000 samples
@@ -58,9 +60,11 @@
   `qa`), `cleanup() -> file deletion records`. AIResult records provider, model, retries, fallback, warning, tried.
 - Selection: --provider > env VIDEO_ENGINE_AI_PROVIDER > `default` in ai_providers.toml (env VIDEO_ENGINE_AI_CONFIG) >
   gemini.
-- gemini (default, google-genai SDK). Model lists (verified available on the owner's key 2026-10-28):
-  - Planning/video analysis: gemini-3.8-flash -> gemini-3.6-flash -> gemini-3-flash-preview -> gemini-2.5-flash
-  - Fast visual QA: gemini-3.5-flash-lite -> gemini-3.1-flash-lite -> gemini-2.5-flash-lite
+- gemini (default, google-genai SDK). Model: gemini-3.8-flash for planning, draft, director and visual QA.
+  Fallback: `[gemini] fallback_provider` in ai_providers.toml (default `deepseek`) answers the same request when
+  Gemini raises EngineError after its retries, on 404 or on a missing GEMINI_API_KEY. The result records provider,
+  model, fallback, warning and tried; the next request tries gemini-3.8-flash first. With no configured fallback the
+  Gemini error is raised.
   Rules: raw footage -> Rust 360p low-fps proxy in /dev/shm -> upload via Gemini File API;
   media_resolution=MEDIA_RESOLUTION_LOW; thinking_config thinking_budget=1024; response_mime_type="application/json";
   every upload deleted after the last request and the deletion verified. Key: env GEMINI_API_KEY (never print it).
@@ -73,7 +77,8 @@
   output and base64 inline images; audio -> transcript and video -> sampled JPEG frames without the capability.
   Key read from the named env var at call time, never stored or printed.
 - Retry semantics, all API providers: 429/503/transport drop/invalid JSON -> same model up to 3 retries (2/5/12 s +
-  jitter), then next model; 404 -> next model; other status -> error. 300 s HTTP timeout.
+  jitter), then next model; 404 -> next model; other status -> error. 300 s HTTP timeout. A Gemini EngineError hands
+  the request to the fallback provider (same task, parts, schema) and prints the FALLBACK warning.
 
 ### C. Gates: pre-flight gates in 3 layers, all BEFORE render
 - Layer 1 Static & metadata (~0.05 s): R07 every source URL in credits; R14 licence + watermark-free flag; R44 no duplicated
@@ -84,10 +89,11 @@
   per segment, getBoundingClientRect() to detect pin/card/text collisions and margins (R62/R63).
 - Layer 3 Visual snapshot QA (~3 s): 1 screenshot per segment (from those seeks or 1 frame via ffmpeg); R38 pixel
   distribution in Rust; optional (--ai-qa) snapshots to the AI provider's QA models to verify nothing overlaps.
-- Severity: technical gates block on fail. Style gates (H01, C01, C02, V01, N01, P01, P02, K01, K02, D01, D02, S01) block only when the
+- Severity: technical gates block on fail. Style gates (H01, C01, C02, V01, N01, P01, P02, K01, K02, D01, D02, S01, AS01, AS02, AS03, AS05, AS06) block only when the
   channel profile `[gates] require` or the timeline `gates.require` lists them; otherwise fail -> warn. Timeline
   `gates.waive` and `hold: "read"` (segment or beat; P01/N01 findings) lower non-required style findings to info.
-  build_report.json `gates`: required, fails, warns, waived.
+  build_report.json `gates`: required, fails, warns, waived. AS04 (readable on-screen time) is a technical-class
+  anti-slop gate: its default level is warn and a profile raises it with `[gates.anti_slop.levels] AS04 = "fail"`.
 No M-patches, no meta-gates. Every gate must be proven with labelled good + bad cases in tests.
 
 ### D. Infra, template, delivery
@@ -96,10 +102,10 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 2. Dynamic ports (bind port 0). `engine preview --seg <n> --time <t>` runs outside the render queue, so helpers can
    preview anytime.
 3. Camera presets with `intensity: float = 1.0` and `focus_target`; R56 shortfalls raise intensity in JSON, no code change.
-4. Delivery automated: after segments render in /dev/shm, concat, burn captions.ass, normalise audio, name per project
-   convention, upload to Google Drive (rclone or Drive API). Hypoverum Drive convention (Arundaya 2026-10-25 20:36 WIB):
-   per-project folder `NN - YYYY-MM-DD - Topik/05 Final`, files `NN - Topik - final.mp4[.partN]` (split only above 95,000,000 bytes; parts .part1.. <= 95,000,000 bytes),
-   `NN - credits.txt` (into `03 Aset`), `NN - JOIN.txt`. rclone remote not configured yet (owner signs in later).
+4. Delivery: after segments render in /dev/shm, concat, burn captions.ass, normalise audio, name per project
+   convention. Delivery goes to Google Drive; the Projects Manager bot arranges and handles the upload. Hypoverum Drive convention:
+   per-project folder `NN - YYYY-MM-DD - Topik/05 Final`, files `NN - Topik - final.mp4[.partN]` (files over 100 MB are split into parts of at most 100,000,000 bytes, never re-encoded),
+   `NN - credits.txt` (into `03 Aset`), `NN - JOIN.txt`. The JOIN text carries the join command. Once a project is finished, delete every asset downloaded for it; assets already on the box stay.
 
 ### D2. Director stage (`engine draft`)
 - 3 storyboard concepts (beats from_word/to_word, goal, pattern, assets, on-screen text, camera, transition) before the
@@ -116,7 +122,7 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 - Merge: default < channel profile < project values (caption_style keys, audio_chain loudness fields).
 - Channel-styleable: caption style and placement (incl. fixed caption y and a lowest caption bottom), loudness target, draft segment length and
   prompt rules, channel style gates (H01 hook, C01 hard cuts and shot changes, V01 visual type at shot changes, N01
-  novelty, P01 camera motion, K01/K02 keyword return, D01/D02 duration, C02 no call-to-action, S01 silence on the final file). Absent gate table = gate off.
+  novelty, P01 camera motion, K01/K02 keyword return, D01/D02 duration, C02 no call-to-action, S01 silence on the final file, AS01-AS06 anti-slop rules with their per-rule levels). Absent gate table = gate off.
 - Caption timing comes from the voiceover word timestamps for every profile; captions per 10 s is reported only.
 - Caption bottom limit (`caption_style.max_bottom_y`, px at 1920 height; default profile: none): gate Z01 fails when
   any caption box bottom (centre y + 0.75 x font size + `caption_pad`; contains glyphs, descenders, outline and
@@ -131,6 +137,14 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 - Segment field `visual_type` (map / photo / video / diagram / archive / illustration; inferred when absent).
 - Renderer theme (`[theme]`): values the HyperFrames template reads from the scene; part of the HyperFrames segment
   cache key. Default theme values reproduce the engine look.
+- Motion tokens (`[motion]`, `profiles.MotionProfile`): named curves `ease_out` [0.23, 1.0, 0.32, 1.0], `ease_in_out`
+  [0.77, 0.0, 0.175, 1.0] and `ease_drawer` [0.32, 0.72, 0.0, 1.0]; durations expressed in video frames at 30 fps
+  (`micro_frames` 4, `overlay_frames` 7, `panel_frames` 12, `stagger_frames` 2); role eases `entrance` (`power2.out`),
+  `move` (`power2.inOut`) and `exit` (`power2.in`), plus `entrance_scale` 0.96 and `overlay_fade_s` 0.20. The role names
+  keep the existing look until a profile names an Emil curve. The HyperFrames scene carries `theme.motion` and the
+  template uses the role names; native drawn overlay fades read `overlay_fade_s`. A default `[motion]` table is left
+  out of the profile hash. Native camera easing is baked in the Rust `camera_windows` kernel (`ALGO_VERSION`), so the
+  Python path carries no easing literal to rewire.
 - HyperFrames `camera_path`: several camera keys in one map segment (legs tweened key to key, glide end speeds continuous
   across keys, optional key holds, drift after the last key);
   key move `glide` or `whip` (drift, then a fast in-out move with directional motion blur); R56 per leg; DOM probe also at every key frame; drafts may return `map_path` when the profile enables it.
@@ -241,6 +255,19 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   source; otherwise fail. No finding without the key. `geoverum` requires `epidemic`.
 - Profile `[watermark]`: one-line text mark top right inside the safe area, drawn to a PNG and overlaid by the final
   mux (no segment re-render); B01 checks it against element boxes and captions before rendering.
+- Anti-AI-slop gates (`[gates.anti_slop]`, `video_engine/gates/anti_slop.py`): AS01 flags a drawn `lower_third` or
+  `text_card` left accent strip; AS02 flags em-dash saturation, listed buzzwords, >= 3 "No ..." rebuttal endings and
+  "theater"; AS03 flags an ease-in `[motion] entrance` or `[layout.fly] ease_in`, `entrance_scale` < 0.9 and bounce
+  figure entrances; AS04 flags drawn overlay text on screen shorter than max(`min_read_s`, characters / `chars_per_s`)
+  and is technical-class; AS05 scans project composition sources and the built HyperFrames HTML for gradient text,
+  `backdrop-filter` glass, side borders wider than `side_strip_px`, repeating stripes, zero-offset glow,
+  organic/high-vertex clip-path and kicker/eyebrow classes; AS06 flags literal source colours in forbidden AI-tell hue
+  ranges (violet 260-310, cyan 170-197) that the profile does not declare. Engine-generated template effects and
+  markup (`MO.*` motion tokens, whip blur, built-in `lower_third` markup) are allowlisted, so only project content is
+  flagged. Taste rules default to warn; `[gates.anti_slop.levels]` raises a rule, and for style-class ids
+  `[gates] require` keeps a raised fail blocking. Geoverum raises AS01 to fail and requires it, so the fail blocks a
+  build; AS02-AS06 stay warn, including AS04.
+  Declared brand palettes are exemptions.
 - Global safety gates (identical for every profile; a profile may only tighten true peak and loudness tolerance):
   T02, R07, R14, W01, L22, O01, M01, R56, R62, R63 element margins/overlaps, E01, R38, post-render QA, A01 limits.
 - build_report.json records the profile name and the BLAKE3 hash of the merged profile.

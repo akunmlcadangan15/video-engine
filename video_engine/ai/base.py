@@ -130,6 +130,12 @@ def backoff_delay(retry: int) -> float:
     return base + random.uniform(0.0, JITTER_FRAC * base)
 
 
+def qualified_model(provider: str, model: str) -> str:
+    """`provider/model` label; a model id that already starts with `provider/` is returned unchanged."""
+    prefix = f"{provider}/"
+    return model if model.startswith(prefix) else f"{prefix}{model}"
+
+
 def parse_json_text(text: str):
     """JSON object from a model reply; a ```json fenced block is accepted."""
     t = (text or "").strip()
@@ -149,7 +155,9 @@ def run_models(models: list[str], attempt: Callable[[str], tuple[str, dict]], la
         while True:
             try:
                 text, usage = attempt(m)
-            except EngineError:
+            except EngineError as e:
+                if not hasattr(e, "tried"):
+                    e.tried = list(tried)
                 raise
             except Exception as e:
                 code = code_of(e)
@@ -157,7 +165,9 @@ def run_models(models: list[str], attempt: Callable[[str], tuple[str, dict]], la
                 if code in NEXT_MODEL_CODES:
                     break
                 if code not in SAME_MODEL_RETRY_CODES:
-                    raise EngineError(f"{label} call to {m} failed ({status_of(e)}); not retried; tried {tried}") from None
+                    err = EngineError(f"{label} call to {m} failed ({status_of(e)}); not retried; tried {tried}")
+                    err.tried = list(tried)
+                    raise err from None
                 if retries >= SAME_MODEL_RETRIES:
                     break
                 retries += 1
@@ -181,7 +191,9 @@ def run_models(models: list[str], attempt: Callable[[str], tuple[str, dict]], la
                 print(f"warning: {warning}", file=sys.stderr)
             return AIResult(data if isinstance(data, dict) else {"items": data}, m, tried,
                             round(time.perf_counter() - t0, 2), usage, retries, fallback, warning, provider)
-    raise EngineError(f"all {label} models failed: {tried}")
+    err = EngineError(f"all {label} models failed: {tried}")
+    err.tried = list(tried)
+    raise err
 
 
 # ------------------------------------------------------------------------------------------------------ JSON schema

@@ -82,10 +82,10 @@ def test_bad_plan_one_byte_over_limit_splits_and_join_names_every_part(project, 
     assert " ".join(f'"{n}"' for n in names) in pl.join_txt and ".part0" not in pl.join_txt
 
 
-def test_good_default_limit_boundary_95_000_000():
-    assert deliver.PART_MAX_BYTES == 95_000_000
-    assert deliver.split_ranges(95_000_000) == [(0, 95_000_000)]
-    assert deliver.split_ranges(95_000_001) == [(0, 47_500_001), (47_500_001, 95_000_001)]
+def test_good_default_limit_boundary_100_000_000():
+    assert deliver.PART_MAX_BYTES == 100_000_000
+    assert deliver.split_ranges(100_000_000) == [(0, 100_000_000)]
+    assert deliver.split_ranges(100_000_001) == [(0, 50_000_001), (50_000_001, 100_000_001)]
 
 
 def _built(tmp_path):

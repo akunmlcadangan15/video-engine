@@ -19,6 +19,21 @@ min_seg_s = 1.5      # segment length range given to the drafting model and the 
 max_seg_s = 7.0
 rules = []           # extra numbered rules appended to the draft prompt
 
+[motion]
+# Named motion tokens. Easing curves are Emil Kowalski's (video translation); durations are video frames at 30 fps.
+ease_out = [0.23, 1.0, 0.32, 1.0]        # entrance/exit, responsive
+ease_in_out = [0.77, 0.0, 0.175, 1.0]    # objects moving on screen
+ease_drawer = [0.32, 0.72, 0.0, 1.0]     # sheet/drawer-like travel
+micro_frames = 4                         # 4 frames at 30 fps (~133 ms): press/feedback
+overlay_frames = 7                       # 7 frames (~233 ms): small overlay
+panel_frames = 12                        # 12 frames (400 ms): panel/card
+stagger_frames = 2                       # 2 frames (~67 ms) between grouped items
+entrance = "power2.out"                  # role mapping; GSAP names keep the engine look
+move = "power2.inOut"
+exit = "power2.in"                       # legacy exit look; set to an ease-out curve to adopt R03
+entrance_scale = 0.96                    # never start from scale(0)
+overlay_fade_s = 0.20                    # native drawn overlay fade
+
 [theme]
 # Renderer values: HyperFrames scene `theme` (in the HyperFrames segment cache key).
 camera_drift_per_s = 0.012   # camera_path: zoom growth per second after the last key and while waiting for a whip
@@ -95,3 +110,23 @@ palette = ["#ff4d4d", "#3d9bff", "#ffc533", "#3ddc84", "#b87cff", "#ff8a3d", "#2
 [theme.entities]
 
 # [gates.*] channel style gates are off in the default profile (see README, Profiles).
+
+[gates.anti_slop]
+# Anti-AI-slop rules (gates/anti_slop.py). Taste rules default to warn; raise a rule per profile with
+# [gates.anti_slop.levels] (AS01 = "fail") and, for the style-class ids, add it to [gates] require.
+level = "warn"
+panel = true                 # AS01 side-strip / glass panels
+copy = true                  # AS02 em-dash saturation, buzzwords, aphoristic cadence, "theater"
+motion = true                # AS03 ease-in entrance, scale near 0, bounce figures
+read_time = true             # AS04 minimum readable on-screen time
+source_tells = true          # AS05 gradient text, glass, side strips, stripes, glow, clip-path, kicker
+palette = true               # AS06 violet/cyan tell hues in literal composition colours
+em_dash_max = 8
+em_dash_per_500 = 1.0
+aphoristic_min = 3
+buzzwords = ["streamline", "empower", "supercharge", "world-class", "enterprise-grade", "next-generation", "cutting-edge", "seamless", "game-changing", "revolutionize"]
+chars_per_s = 20.0
+min_read_s = 0.8
+forbidden_hues = [[260, 310], [170, 197]]
+side_strip_px = 1.0
+clip_vertices = 6

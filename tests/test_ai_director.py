@@ -120,8 +120,7 @@ def test_bad_all_models_fail():
 
 
 def test_good_model_lists():
-    assert ai.PLANNING_MODELS[0] == "gemini-3.8-flash"
-    assert ai.PLANNING_MODELS[-1] == "gemini-2.5-flash" and ai.QA_MODELS[-1] == "gemini-2.5-flash-lite"
+    assert ai.PLANNING_MODELS == ai.QA_MODELS == ["gemini-3.8-flash"]
 
 
 def test_good_analyze_deletes_file_even_on_failure(monkeypatch, tmp_path, assets):

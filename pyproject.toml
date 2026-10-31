@@ -7,7 +7,7 @@ name = "video-engine"
 version = "0.1.0"
 description = "Universal hybrid video engine: native Rust/FFmpeg path + HyperFrames motion graphics, zero-render pre-flight gates"
 requires-python = ">=3.10"
-dependencies = ["pydantic>=2", "numpy", "pillow", "blake3", "faster-whisper", "google-genai"]
+dependencies = ["pydantic>=2", "numpy", "pillow", "blake3", "httpx", "google-genai"]
 
 [project.optional-dependencies]
 test = ["pytest"]

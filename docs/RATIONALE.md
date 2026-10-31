@@ -23,7 +23,7 @@
 - Integer frames everywhere remove float drift between segments, captions and the concat.
 - Pre-flight gates run before any render because a failed render costs several times more than the gate checks.
 - Caption placement is computed from measured element boxes (DOM probe) instead of fixed slots because map pins and cards move with the scene.
-- Words are pinned in the timeline because whisper output varies between processes; a cold build with an empty cache must render the same captions as the build that was reviewed.
+- Words are pinned in the timeline because speech-to-text output can vary between requests; a cold build with an empty cache must render the same captions as the build that was reviewed.
 - HyperFrames uses the draft capture profile (JPEG q80 screenshots, x264 `ultrafast` at CRF 14) because screenshot transfer and encoding dominate map-segment time, and the intermediate is re-encoded once more by the mux, so the profile does not change visible label or map detail. The profile is part of the segment cache key.
 - Loudness is enforced on the final file because concat, caption burn and AAC encoding change the measured integrated loudness after the mix stage.
 - AI work goes through a provider interface so that prompts, schemas, gates and the repair loop are identical for every model; a provider only moves bytes, which keeps the gate results comparable across models.

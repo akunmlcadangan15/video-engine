@@ -101,7 +101,7 @@ def test_bad_unknown_required_gate_in_profile_and_project(project, tmp_path, mon
 
 def test_good_geoverum_requires_camera_rules_and_p02_passes(project):
     p = profiles.load("geoverum")
-    assert set(p.gates.require) == {"P01", "P02", "H01", "C01", "C02", "V01", "D01", "K01", "K02", "S01"}
+    assert set(p.gates.require) == {"P01", "P02", "H01", "C01", "C02", "V01", "D01", "K01", "K02", "S01", "AS01"}
     assert p.gates.camera.min_drift_per_s == 0.06
     _, tl = project(two_maps())
     assert [f.level for f in style.p02_drift(tl, p.gates.camera)] == ["pass"]

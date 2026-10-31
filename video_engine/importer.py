@@ -175,7 +175,7 @@ def import_shots(csv_path: Path, dst: Path, search: list[Path], *, credits_txt: 
         segs.append(seg)
     doc = {"project_id": dst.name, "settings": {"width": 1080, "height": 1920, "fps": fps, **(settings or {})},
            "credits_manifest": list(credits.values()),
-           "audio_chain": {"voiceover_path": vo_rel, "auto_ducking": True, "language": "id", "whisper_model": "small", "auto_captions": True},
+           "audio_chain": {"voiceover_path": vo_rel, "auto_ducking": True, "language": "id", "stt": {"model": "grok-voice-transcribe-2.0"}, "auto_captions": True},
            "segments": segs}
     try:
         tl = timeline_mod.Timeline.model_validate(doc)

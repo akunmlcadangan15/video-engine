@@ -144,16 +144,56 @@ class CameraGate(_Strict):
         return self
 
 
-STYLE_GATE_IDS = ("H01", "C01", "C02", "V01", "N01", "P01", "P02", "K01", "K02", "D01", "D02", "S01")
-TECHNICAL_GATE_IDS = ("A01", "A02", "B01", "E01", "F01", "F02", "F03", "F04", "G01", "L01", "L02", "L03", "L04",
+STYLE_GATE_IDS = ("H01", "C01", "C02", "V01", "N01", "P01", "P02", "K01", "K02", "D01", "D02", "S01",
+                  "AS01", "AS02", "AS03", "AS05", "AS06")
+TECHNICAL_GATE_IDS = ("A01", "A02", "AS04", "B01", "E01", "F01", "F02", "F03", "F04", "G01", "L01", "L02", "L03", "L04",
                       "L05", "L06", "L07", "L08", "L09", "L10", "L22", "M01", "M02", "M03", "M04", "G02", "O01",
                       "R07", "R14", "R38", "R44", "R56", "R56px", "R62", "R63", "R64", "T01", "T02", "W01", "Z01")
 KNOWN_GATE_IDS = STYLE_GATE_IDS + TECHNICAL_GATE_IDS
+
+ANTI_SLOP_IDS = ("AS01", "AS02", "AS03", "AS04", "AS05", "AS06")
 
 
 class GeoGate(_Strict):
     """G02: geographic facts of map scenes; require_land also fails a pin that is in the water."""
     require_land: bool = False
+
+
+class AntiSlopGate(_Strict):
+    """Anti-AI-slop rules (gates/anti_slop.py). Taste rules default to warn; a profile may raise a rule through
+    `[gates.anti_slop.levels]` (and `[gates] require`, for the style-class ids, to stop a fail being lowered)."""
+    level: Literal["warn", "fail"] = "warn"
+    levels: dict[str, Literal["warn", "fail"]] = {}
+    panel: bool = True                 # AS01: decorative side-strip / glass panels
+    copy_tics: bool = Field(True, alias="copy")   # AS02: em-dash saturation, buzzwords, aphoristic cadence, "theater"
+    motion: bool = True                # AS03: ease-in entrance, scale near 0, bounce figures
+    read_time: bool = True             # AS04: minimum readable on-screen time for drawn text
+    source_tells: bool = True          # AS05: gradient text, glass, side strips, stripes, glow, clip-path, kicker
+    palette: bool = True               # AS06: violet/cyan tell hues in literal composition colours
+    em_dash_max: int = Field(8, ge=1)
+    em_dash_per_500: float = Field(1.0, gt=0)
+    aphoristic_min: int = Field(3, ge=1)
+    buzzwords: list[str] = ["streamline", "empower", "supercharge", "world-class", "enterprise-grade",
+                            "next-generation", "cutting-edge", "seamless", "game-changing", "revolutionize"]
+    chars_per_s: float = Field(20.0, gt=0)
+    min_read_s: float = Field(0.8, ge=0)
+    forbidden_hues: list[tuple[int, int]] = [(260, 310), (170, 197)]
+    side_strip_px: float = Field(1.0, ge=0)
+    clip_vertices: int = Field(6, ge=3)
+
+    @model_validator(mode="after")
+    def _v(self):
+        bad = sorted(set(self.levels) - set(ANTI_SLOP_IDS))
+        if bad:
+            raise ValueError(f"gates.anti_slop.levels: unknown rule(s) {', '.join(bad)} "
+                             f"(known: {', '.join(ANTI_SLOP_IDS)})")
+        for lo, hi in self.forbidden_hues:
+            if not (0 <= lo < hi <= 360):
+                raise ValueError("gates.anti_slop.forbidden_hues: each range needs 0 <= lo < hi <= 360")
+        return self
+
+    def level_for(self, rule: str) -> str:
+        return self.levels.get(rule, self.level)
 
 
 class StyleGates(_Strict):
@@ -172,6 +212,7 @@ class StyleGates(_Strict):
     duration_exact: ExactDurationGate | None = None
     cta: CtaGate | None = None
     geo: GeoGate | None = None
+    anti_slop: AntiSlopGate = AntiSlopGate()
 
     @model_validator(mode="after")
     def _req(self):
@@ -279,6 +320,50 @@ class Theme(_Strict):
 
 
 BEZIER_PULSE = (0.3, 0.0, 0.15, 1.0)
+MOTION_FPS = 30.0   # the still-frame rate the duration tokens are expressed at
+
+
+class MotionProfile(_Strict):
+    """Named motion tokens (Emil Kowalski, translated to video frames at 30 fps). `entrance`, `move` and `exit` are
+    GSAP ease names; the default role mapping keeps the engine look, so a profile adopts the Emil curves by name.
+    `micro_frames` (140 ms), `overlay_frames` (220 ms), `panel_frames` (400 ms) and `stagger_frames` (50 ms) are
+    exposed to the renderer as seconds at 30 fps, independent of the output frame rate."""
+    ease_out: tuple[float, float, float, float] = (0.23, 1.0, 0.32, 1.0)
+    ease_in_out: tuple[float, float, float, float] = (0.77, 0.0, 0.175, 1.0)
+    ease_drawer: tuple[float, float, float, float] = (0.32, 0.72, 0.0, 1.0)
+    micro_frames: int = Field(4, ge=1)
+    overlay_frames: int = Field(7, ge=1)
+    panel_frames: int = Field(12, ge=1)
+    stagger_frames: int = Field(2, ge=0)
+    entrance: str = "power2.out"
+    move: str = "power2.inOut"
+    exit: str = "power2.in"
+    entrance_scale: float = Field(0.96, gt=0, le=1)
+    overlay_fade_s: float = Field(0.20, ge=0, le=2)
+
+    @model_validator(mode="after")
+    def _m(self):
+        for name in ("ease_out", "ease_in_out", "ease_drawer"):
+            x1, _, x2, _ = getattr(self, name)
+            if not (0 <= x1 <= 1 and 0 <= x2 <= 1):
+                raise ValueError(f"motion.{name}: x1 and x2 must be in 0..1")
+        if self.micro_frames > self.overlay_frames or self.overlay_frames > self.panel_frames:
+            raise ValueError("motion: duration tokens must grow micro <= overlay <= panel")
+        for name in ("entrance", "move", "exit"):
+            if not getattr(self, name).strip():
+                raise ValueError(f"motion.{name} must name an ease")
+        return self
+
+    def seconds(self) -> dict:
+        return {"micro": self.micro_frames / MOTION_FPS, "overlay": self.overlay_frames / MOTION_FPS,
+                "panel": self.panel_frames / MOTION_FPS, "stagger": self.stagger_frames / MOTION_FPS}
+
+    def render_values(self) -> dict:
+        s = self.seconds()
+        return {"ease_out": list(self.ease_out), "ease_in_out": list(self.ease_in_out),
+                "ease_drawer": list(self.ease_drawer), "micro_s": s["micro"], "overlay_s": s["overlay"],
+                "panel_s": s["panel"], "stagger_s": s["stagger"], "entrance": self.entrance,
+                "move": self.move, "exit": self.exit, "entrance_scale": self.entrance_scale}
 
 
 class CameraProfile(_Strict):
@@ -658,6 +743,7 @@ class ProfileData(_Strict):
     layout: LayoutProfile | None = None     # beats layout of map scenes (video_engine/layout.py); None = off
     print: PrintStyle | None = None         # printed typography (PrintStyle); None = theme typography
     camera: CameraProfile = CameraProfile()
+    motion: MotionProfile = MotionProfile()
     transitions: TransitionsProfile = TransitionsProfile()
     render: RenderProfile = RenderProfile()   # encode / capture quality
     grade: Grade | None = None              # full-frame grade of every segment without its own (lut: profiles-relative)
@@ -715,6 +801,10 @@ class Profile:
         return self.data.camera
 
     @property
+    def motion(self) -> MotionProfile:
+        return self.data.motion
+
+    @property
     def grade(self) -> Grade | None:
         return self.data.grade
 
@@ -733,6 +823,7 @@ class Profile:
         out = json.loads(self.data.theme.model_dump_json(exclude={"entities", "palette"}))
         if (cp := self.data.camera.scene()) is not None:
             out["camera_pulse"] = cp
+        out["motion"] = self.data.motion.render_values()
         return out
 
     def report(self) -> dict:
@@ -810,9 +901,10 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
         dump.pop("layout", None)   # profiles without [layout] keep their hash
     elif dump["layout"].get("fly") is None:
         dump["layout"].pop("fly", None)   # [layout] without [layout.fly] keeps its hash
-    for k, cls in (("camera", CameraProfile), ("transitions", TransitionsProfile), ("render", RenderProfile)):
+    for k, cls in (("camera", CameraProfile), ("motion", MotionProfile), ("transitions", TransitionsProfile),
+                   ("render", RenderProfile)):
         if dump.get(k) == json.loads(cls().model_dump_json()):
-            dump.pop(k)            # profiles without [camera] / [transitions] / [render] values keep their hash
+            dump.pop(k)            # profiles without [camera] / [motion] / [transitions] / [render] values keep their hash
     if dump.get("grade") is None:
         dump.pop("grade", None)    # profiles without [grade] keep their hash
     if dump["gates"].get("camera") is None:
@@ -821,6 +913,8 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
         dump["gates"]["camera"].pop("min_drift_per_s", None)   # P01 tables without P02 keep their hash
     if not dump["gates"].get("require"):
         dump["gates"].pop("require", None)   # profiles without required style gates keep their hash
+    if dump["gates"].get("anti_slop") == json.loads(AntiSlopGate().model_dump_json()):
+        dump["gates"].pop("anti_slop", None)   # default anti-slop levels add nothing to the hash
     for k in ("cta", "ending_keyword", "duration_exact", "geo"):
         if dump["gates"].get(k) is None:
             dump["gates"].pop(k, None)       # absent new gate tables add nothing to the hash

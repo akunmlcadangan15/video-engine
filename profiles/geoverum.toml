@@ -146,7 +146,10 @@ final_maxrate_kbps = 25000
 map_jpeg_quality = 95         # map derivatives and deep tiles
 
 [gates]                       # style gates whose fails block a build; every other style gate only warns
-require = ["P01", "P02", "H01", "C01", "C02", "V01", "D01", "K01", "K02", "S01"]   # every style rule blocks a Geoverum build
+require = ["P01", "P02", "H01", "C01", "C02", "V01", "D01", "K01", "K02", "S01", "AS01"]   # Geoverum's editorial rules and AS01 block a build; every other style gate only warns
+
+[gates.anti_slop.levels]
+AS01 = "fail"                 # decorative side-strip panels fail; every other anti-slop rule keeps its default warn
 
 [gates.hook]
 vo_warn_s = 0.2

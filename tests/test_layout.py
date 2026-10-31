@@ -232,9 +232,10 @@ def test_good_default_profile_has_no_layout_and_keeps_its_hash():
     p = profiles.load()
     assert p.layout is None and p.print is None
     dump = json.loads(p.data.model_dump_json())
-    for k in ("layout", "print", "camera", "transitions", "render", "grade", "resources"):   # off tables add nothing to the hash
+    for k in ("layout", "print", "camera", "motion", "transitions", "render", "grade", "resources"):   # off tables add nothing to the hash
         dump.pop(k)
     assert dump["gates"].pop("camera") is None
+    assert dump["gates"].pop("anti_slop") is not None   # default rule levels add nothing to the hash
     for k in ("cta", "ending_keyword", "duration_exact", "geo"):
         assert dump["gates"].pop(k) is None      # absent new gate tables add nothing either
     assert dump["gates"].pop("require") == []   # an empty required list adds nothing either

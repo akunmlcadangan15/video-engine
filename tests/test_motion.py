@@ -459,6 +459,12 @@ def test_good_layout_without_fly_keeps_its_hash(tmp_path, monkeypatch):
     dump = json.loads(prof.data.model_dump_json())
     assert dump["layout"].pop("fly") is None
     assert dump.pop("grade") is None          # an absent [grade] adds nothing either
+    assert dump.pop("motion") is not None     # default motion tokens add nothing to the hash
+    anti = dump["gates"]["anti_slop"]
+    if anti == json.loads(profiles.AntiSlopGate().model_dump_json()):
+        dump["gates"].pop("anti_slop")        # default anti-slop levels add nothing to the hash
+    else:
+        assert anti["levels"] == {"AS01": "fail"}   # a raised anti-slop rule stays in the hash
     for k in ("duration_exact",):             # an absent optional gate table adds nothing
         assert dump["gates"].pop(k) is None
     dump.pop("resources")                     # the worker budget is a machine setting, never hashed
