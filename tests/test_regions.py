@@ -50,6 +50,23 @@ def test_good_no_regions_scene_unchanged(project):
     assert "regions" not in hyperframes.scene_data(tl.segments[2], tl, p)
 
 
+def test_good_beats_region_uses_the_profile_region_style(project):
+    """A beats scene no longer forces tint: the Geoverum block style reaches its scene data."""
+    from test_layout import beats_doc
+
+    def mut(d):
+        beats_doc(d)
+        d["segments"][2]["gsap_scene_config"]["beats"] = [{"at_frame": 0, "region": 0, "pins": [0]}]
+
+    p, tl = project(mut)
+    sc = hyperframes.scene_data(tl.segments[2], tl, p)
+    assert sc["regions"][0]["style"] == "block" and sc["regions"][0]["block"]
+    d = tl.segments[2].gsap_scene_config
+    d.regions[0].style = "tint"
+    sc = hyperframes.scene_data(tl.segments[2], tl, p)
+    assert sc["regions"][0]["style"] == "tint" and "block" not in sc["regions"][0]
+
+
 def test_good_render_values_exclude_entity_map():
     th = profiles.load().render_values("hf")
     assert "entities" not in th and "palette" not in th and th["region_edge"] == "white"

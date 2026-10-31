@@ -505,7 +505,8 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
                            "count_s": f.count_s or theme["counter_s"], "at_frame": f.at_frame,
                            "x": round(f.position[0] * S.width, 2), "y": round(f.position[1] * S.height, 2),
                            "entity": f.entity, "colour": col.get(f.entity, "#ffffff")} for f in sc.figures]
-    if theme["label_style"] == "box" and lay is None:
+    boxed = theme["label_style"] == "box" and (lay is None or prof.print is None)
+    if boxed:
         for t in [out.get("title"), *out.get("figures", [])]:
             if t:
                 t["box"] = entities.box_colour(col[t["entity"]], theme) if t["entity"] else theme["label_box_colour"]
@@ -574,8 +575,8 @@ def _centroid(poly: list[list[float]]) -> tuple[float, float]:
 def region_data(r, col: dict, theme: dict, mw: float, mh: float, G: dict | None, S, beats: bool) -> dict:
     """Scene entry of a region: points in map px (globe scenes: `ll` lat/lng per point and the points projected at
     the region's first frame), style colours of every owner (`changes`) and its box label. The theme region_style
-    applies outside beats scenes; their regions stay "tint" unless the region sets a style."""
-    style = r.style or ("tint" if beats else theme["region_style"])
+    applies to every scene; a region's own style wins."""
+    style = r.style or theme["region_style"]
 
     def paint(e: str) -> dict:
         c = col[e]

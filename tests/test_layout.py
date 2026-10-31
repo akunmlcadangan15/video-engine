@@ -5,7 +5,7 @@ import math
 import pytest
 from pydantic import ValidationError
 
-from video_engine import layout, profiles, timeline
+from video_engine import config, layout, profiles, timeline
 from video_engine.gates import layout_gates as G
 from video_engine.layout import Item, LayoutProfile, Span
 from video_engine.util import blake3_json
@@ -285,6 +285,47 @@ def test_good_planner_plan_passes_every_layout_gate(project, monkeypatch):
     fails = [f.line() for f in fs if f.level == "fail"]
     assert fails == []
     assert {f.gate for f in fs if f.level == "pass"} == set(G.GATES)
+
+
+def test_good_label_style_box_reaches_layout_titles_and_figures(project, monkeypatch):
+    """label_style box is no longer limited to scenes without a layout (print still owns the look when it is on)."""
+    no_print(monkeypatch)
+    d, tl = project(beats_doc)
+    from video_engine import hyperframes
+    sc = hyperframes.scene_data(tl.segments[2], tl, d)
+    assert sc["title"]["box"] and all("box" in f for f in sc["figures"])
+
+
+@pytest.mark.skipif(not config.NODE.is_file(), reason="vendor node/Chrome not installed")
+def test_good_print_heading_renders_with_layout_without_legibility(project, tmp_path, monkeypatch):
+    """[print] depends on [layout], not on [legibility]: its heading element is still built and probed."""
+    real = profiles.of
+
+    def of(tl):
+        p = real(tl)
+        if p.name != "geoverum":
+            return p
+        return profiles.Profile(p.name, p.data.model_copy(update={"legibility": None}), p.blake3 + "-noleg")
+
+    monkeypatch.setattr(profiles, "of", of)
+
+    def doc(d):
+        beats_doc(d)
+        d["segments"][2]["gsap_scene_config"]["beats"][1]["heading"] = "10 November"
+
+    d, tl = project(doc)
+    from video_engine import hyperframes
+    hf, sc = hyperframes.build_dir(tl.segments[2], tl, d, tmp_path / "hf")
+    res = hyperframes.probe_dom(hf, [(120 + 110 + 40) / 30], 1080, 1920)
+    ids = {r["id"] for it in res["times"] for r in it["rects"]}
+    assert "heading:0" in ids
+
+
+def test_good_print_block_no_longer_requires_legibility():
+    """The template print block guards only [print] and [layout]; its legibility reads sit behind `if(A)`."""
+    html = (config.TEMPLATE_DIR / "index.html").read_text()
+    assert "if(!P||!LY)return;" in html
+    assert "if(!P||!LY||!LG)return;" not in html
 
 
 def test_bad_planner_beats_without_layout_profile(project):
