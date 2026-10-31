@@ -86,6 +86,7 @@ def check_segment(s: Segment, tl: Timeline, project_dir: Path, events: list[tupl
     sx, st, sb = layer2.SAFE_X * W / 1080, layer2.SAFE_TOP * H / 1920, H - layer2.SAFE_BOTTOM * H / 1920
     plan = lay.plan(s, tl, project_dir) if lay.is_beats(s, tl) else None
     dom_at = {}
+    dom_ok = plan is not None or bool(dom and dom.get("times"))
     for item in (dom or {}).get("times", []):
         dom_at.setdefault(round(item["t"] * fps), []).extend(
             r for r in layer2.visible(item["rects"]) if not r["id"].startswith("anchor:"))
@@ -131,6 +132,9 @@ def check_segment(s: Segment, tl: Timeline, project_dir: Path, events: list[tupl
             out += [Finding(g, "fail", m, s.seg_index) for m in ls[:MAX_LINES]]
         elif g == "F02" and warn:
             out += [Finding("F02", "warn", m, s.seg_index) for m in warn[:MAX_LINES]]
+        elif g == "F03" and not dom_ok:
+            out.append(Finding("F03", "skip", "DOM probe unavailable: prop contact with pins, labels and cards is "
+                               "not verified", s.seg_index))
         else:
             out.append(Finding(g, "pass", f"{desc[g]}: {len(entries)} props clean", s.seg_index))
     return out

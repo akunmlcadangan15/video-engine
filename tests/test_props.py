@@ -187,7 +187,8 @@ def test_bad_f02_warns_below_1_5x_and_fails_below_1x_at_max_zoom(project):
 def test_good_f03_prop_away_from_texts_and_captions(project):
     d, tl = _proj(project, SCREEN_PROP)
     ev = [(120, 180, "Halo", 64, 300, 540, 1300)]
-    assert [f.level for f in _fs(d, tl, "F03", ev)] == ["pass"]
+    dom = {2: {"times": [{"t": 0.0, "rects": []}, {"t": 1.0, "rects": []}, {"t": 2.0, "rects": []}]}}
+    assert [f.level for f in _fs(d, tl, "F03", ev, dom)] == ["pass"]
 
 
 def test_bad_f03_prop_under_a_caption_or_a_pin_label_fails(project):
@@ -198,6 +199,12 @@ def test_bad_f03_prop_under_a_caption_or_a_pin_label_fails(project):
     dom = {2: {"times": [{"t": 1.0, "rects": [{"id": "pin:0", "x": 500, "y": 680, "w": 120, "h": 40, "opacity": 1}]}]}}
     fs = _fs(d, tl, "F03", (), dom)
     assert [f.level for f in fs] == ["fail"] and "pin:0" in fs[0].message
+
+
+def test_bad_f03_without_dom_skips_instead_of_claiming_clean(project):
+    d, tl = _proj(project, SCREEN_PROP)
+    fs = _fs(d, tl, "F03")
+    assert [f.level for f in fs] == ["skip"] and "DOM probe unavailable" in fs[0].message
 
 
 # F04 safe area -------------------------------------------------------------------------------------------------------
