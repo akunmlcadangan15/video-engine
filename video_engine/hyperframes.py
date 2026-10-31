@@ -417,9 +417,11 @@ def _scene_key(seg: Segment, tl: Timeline, project_dir: Path) -> str:
         src = [str(p.resolve()), st.st_mtime_ns, st.st_size]
     except OSError:
         src = [str(p.resolve()), None, None]
+    prof = profiles.of(tl)
     return blake3_json({"scene": sc, "engine": seg.engine_type, "n": seg.n_frames,
                         "tl": tl.model_dump(mode="json", exclude={"segments", "captions", "captions_meta"}),
-                        "profile": profiles.of(tl).blake3, "legibility": legibility.code_hash(), "map": src})
+                        "profile": [prof.name, prof.blake3, prof.data.model_dump(mode="json")],
+                        "legibility": legibility.code_hash(), "map": src})
 
 
 def clear_scene_cache() -> None:
