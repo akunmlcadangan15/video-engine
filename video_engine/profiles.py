@@ -127,6 +127,10 @@ class CameraGate(_Strict):
 
 
 STYLE_GATE_IDS = ("H01", "C01", "V01", "N01", "P01", "P02", "K01", "D01", "S01")
+TECHNICAL_GATE_IDS = ("A02", "B01", "E01", "F01", "F02", "F03", "F04", "G01", "L01", "L02", "L03", "L04", "L05",
+                      "L06", "L07", "L08", "L09", "L10", "L22", "M01", "M02", "M03", "M04", "O01", "R07", "R14", "R38",
+                      "R44", "R56", "R62", "R63", "R64", "T01", "T02", "W01", "Z01")
+KNOWN_GATE_IDS = STYLE_GATE_IDS + TECHNICAL_GATE_IDS
 
 
 class StyleGates(_Strict):

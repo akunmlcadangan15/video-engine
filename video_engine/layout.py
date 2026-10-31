@@ -70,7 +70,7 @@ class LayoutBudget(_M):
     texts: int = 4                 # visible texts per frame incl. caption and fading ones, watermark excluded
     labelled_pins: int = 2
     routes: int = 1
-    animating: int = 2             # elements entering, exiting, drawing, counting or moving at once
+    animating: int = Field(2, gt=0)   # elements entering, exiting, drawing, counting or moving at once
     big_numbers: int = 1
     saturated_regions: int = 1
 

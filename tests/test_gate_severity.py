@@ -157,3 +157,8 @@ def test_bad_beat_without_hold_keeps_its_pulses(project, monkeypatch):
     last = seg.gsap_scene_config.camera_path[-1]
     assert last.pulse is None or (isinstance(last.pulse, list) and any(last.pulse)) or last.pulse > 0
     assert severity.hold_ranges(tl) == []
+
+
+def test_bad_unknown_waived_gate_is_rejected(project):
+    with pytest.raises(ValidationError, match="gates.waive"):
+        project(two_maps(gates={"waive": ["X99"]}))

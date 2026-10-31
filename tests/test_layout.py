@@ -371,3 +371,8 @@ def test_good_l04_hand_note_excluded_from_hero():
 def test_bad_l04_note_sized_label_still_counts():
     items = [T("title:0", "title", None, 88), T("label:0", "label", None, 76)]
     assert "1.5 x next" in G.hero(items, L)[0]
+
+
+def test_bad_layout_budget_animating_must_be_positive():
+    with pytest.raises(ValidationError, match="animating"):
+        LayoutProfile.model_validate({"budget": {"animating": 0}})
