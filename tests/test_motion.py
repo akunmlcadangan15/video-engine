@@ -459,6 +459,8 @@ def test_good_layout_without_fly_keeps_its_hash(tmp_path, monkeypatch):
     dump = json.loads(prof.data.model_dump_json())
     assert dump["layout"].pop("fly") is None
     assert dump.pop("grade") is None          # an absent [grade] adds nothing either
+    for k in ("duration_exact",):             # an absent optional gate table adds nothing
+        assert dump["gates"].pop(k) is None
     dump.pop("resources")                     # the worker budget is a machine setting, never hashed
     assert prof.blake3 == blake3_json(dump)   # an absent [layout.fly] adds nothing to the hash
 
