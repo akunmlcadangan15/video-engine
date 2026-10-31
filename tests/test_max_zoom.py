@@ -176,3 +176,10 @@ def test_good_prune_keeps_the_deep_tiles(project, monkeypatch, tmp_path):
     keep, problems = cache_prune.referenced([d], tmp_path)
     deep = {e["img"].split("/")[1] for e in hyperframes.scene_data(tl.segments[2], tl, d)["deep"]}
     assert not problems and deep and deep <= keep
+
+
+def test_good_deep_raster_is_capped_to_a_bounded_side():
+    scene = {"map_size": [1000.0, 1000.0], "width": 216, "height": 384, "n_frames": 1,
+             "camera": {"start": {"x": 0, "y": 0, "s": 20.0}, "end": {"x": 0, "y": 0, "s": 20.0}, "legs": []}}
+    dp = hyperframes.deep_plan(scene, (20000, 20000))
+    assert dp is not None and max(dp["w"], dp["h"]) == hyperframes.DEEP_MAX_SIDE

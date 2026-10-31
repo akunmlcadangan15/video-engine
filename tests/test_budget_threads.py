@@ -19,12 +19,25 @@ def test_good_audio_command_carries_the_budget_thread_count(project):
 
 
 def test_good_qa_sample_frames_carries_the_budget_thread_count(monkeypatch):
+    import io
     seen = {}
+
+    class Proc:
+        stdout, stderr = io.BytesIO(b""), io.BytesIO(b"")
+
+        def wait(self):
+            return 0
+
+        def poll(self):
+            return 0
+
+        def kill(self):
+            pass
 
     def fake(cmd, **kw):
         seen["cmd"] = cmd
-        return SimpleNamespace(stdout=b"")
-    monkeypatch.setattr(qa.subprocess, "run", fake)
+        return Proc()
+    monkeypatch.setattr(qa.subprocess, "Popen", fake)
     qa.sample_frames(qa.Path("x.mp4"), 64, 96, threads=2)
     assert seen["cmd"][seen["cmd"].index("-threads") + 1] == "2"
 

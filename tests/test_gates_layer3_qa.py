@@ -101,7 +101,7 @@ def test_R38_bad_two_empty_thirds_alternating_blankest_both_flagged_every_sample
 def test_R38_bad_alternating_empty_thirds_fail_post_render_qa(project, monkeypatch):
     _, tl = project(lambda d: d.update(segments=d["segments"][:1]))
     frames = [_alternating(k).astype(np.uint8).tobytes() for k in range(6)]
-    monkeypatch.setattr(qa, "sample_frames", lambda v, w, h, step=5, threads=4: (frames, W, H))
+    monkeypatch.setattr(qa, "iter_sample_frames", lambda v, w, h, step=5, threads=4: iter(frames))
     fs, _ = qa.pixel_gates(None, tl)
     r38 = [f.message for f in fs if f.gate == "R38"]
     assert any("top third empty" in m for m in r38) and any("middle third empty" in m for m in r38)
@@ -112,3 +112,26 @@ def test_R38_good_alternating_faint_texture_with_detail_passes():
         a = noise(k)
         a[: H // 3] = a[: H // 3] // 2 + 64     # lower contrast, still detailed
         assert not layer3.r38_check(stats(a), 0, "t")
+
+
+def test_good_pixel_gates_process_samples_in_bounded_batches(project, tmp_path, monkeypatch):
+    _, tl = project(lambda d: d.update(segments=d["segments"][:1]))
+    tl.segments[0].end_frame = 60
+    v = tmp_path / "batched.mp4"
+    _video(v, "testsrc2=size=1080x1920:rate=30")
+    batches = []
+    real_stats, real_motion = qa.core.frame_stats, qa.core.frame_motion
+
+    def stats(frames, w, h):
+        batches.append(len(frames))
+        return real_stats(frames, w, h)
+
+    def motion(frames, w, h):
+        batches.append(len(frames))
+        return real_motion(frames, w, h)
+    monkeypatch.setattr(qa, "QA_BATCH_FRAMES", 5)
+    monkeypatch.setattr(qa.core, "frame_stats", stats)
+    monkeypatch.setattr(qa.core, "frame_motion", motion)
+    fs, info = qa.pixel_gates(v, tl)
+    assert not [f for f in fs if f.level == "fail"] and info["samples"] == 12
+    assert max(batches) <= 6 and len([b for b in batches if b <= 5]) > 1

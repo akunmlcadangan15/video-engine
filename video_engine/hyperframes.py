@@ -74,6 +74,7 @@ DEEP_TILE = 1024        # deep tile side (deep raster px)
 DEEP_PAD = 2            # deep raster px each tile reaches into its right and bottom neighbours (no seams)
 DEEP_MARGIN = 0.05      # viewport growth (fraction of its size) when picking the tiles a frame needs
 DEEP_VERSION = "deep-1" # bump when deep tile output changes
+DEEP_MAX_SIDE = 8192    # widest/tallest deep raster: a 43200 px source is never decoded and kept whole
 SCENE_CACHE_MAX = 64     # memo entries of scene_data() (one build calls it several times per segment)
 INK_CACHE_MAX = 64       # memo entries of the adaptive ink choices
 MORPH_PAPER, MORPH_GRAIN = "paper-F1E8D4.jpg", "grain-512.png"   # vendor/textures of a map morph
@@ -637,6 +638,9 @@ def deep_plan(scene: dict, src_size: tuple[int, int]) -> dict | None:
     if dw <= _map_width(need):
         return None
     dh = round(src_size[1] * dw / src_size[0])
+    if max(dw, dh) > DEEP_MAX_SIDE:                        # bound the one decoded raster (source maps can be 43200 px)
+        k = DEEP_MAX_SIDE / max(dw, dh)
+        dw, dh = max(1, round(dw * k)), max(1, round(dh * k))
     d = dw / mw                                           # deep px per map px
     W, H, cam = scene["width"], scene["height"], scene["camera"]
     nx, ny = math.ceil(dw / DEEP_TILE), math.ceil(dh / DEEP_TILE)
