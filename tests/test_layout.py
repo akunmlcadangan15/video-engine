@@ -333,7 +333,7 @@ def test_good_print_heading_renders_with_layout_without_legibility(project, tmp_
     hf, sc = hyperframes.build_dir(tl.segments[2], tl, d, tmp_path / "hf")
     res = hyperframes.probe_dom(hf, [(120 + 110 + 40) / 30], 1080, 1920)
     ids = {r["id"] for it in res["times"] for r in it["rects"]}
-    assert "heading:0" in ids
+    assert "heading:1" in ids   # keyed by beat index
 
 
 def test_good_print_title_at_frame_is_the_regions_entry_not_the_last_frame(project):

@@ -1324,8 +1324,32 @@ class _Planner:
                                               tracking_in=trk_in, title=k in self.area_title)
                             return
             px -= 4 * self.ky
+        px = pr.title_px_min * self.ky
+        m = text_metrics(T, role, px, 1.0, trk, w8)
+        tb = text_box(m, 0, 0, halo(self.theme, False, px))
+        tbi = text_box(text_metrics(T, role, px, 1.0, trk_in, w8), 0, 0, halo(self.theme, False, px))
+        w, h, w_in = tb[2] - tb[0], tb[3] - tb[1], tbi[2] - tbi[0]
+        cx, cy = sum(q[0] for q in poly) / len(poly), sum(q[1] for q in poly) / len(poly)
+        for _, x, y in sorted((math.hypot(x - cx, y - cy), x, y)
+                              for x in _frange(self.z2[0], self.z2[2], sx)
+                              for y in _frange(self.z2[1], self.z2[3], sy)):
+            cs = rot_corners(x, y, w_in + 2 * inset, h + 2 * inset, 0.0)
+            if not quad_outside_poly(cs, poly) or not free(rot_corners(x, y, w_in, h, 0.0)):
+                continue
+            _, a, b2 = min(((_pt_seg_dist((x, y), a, b2), a, b2) for a, b2 in poly_edges(poly)))
+            q = _closest(a, b2, (x, y))
+            if math.hypot(q[0] - x, q[1] - y) - min(w, h) / 2 > L.labels.leader_max * self.kx:
+                continue
+            anchor = ((x - c["x"]) / c["s"], (y - c["y"]) / c["s"])
+            lead = ((q[0] - c["x"]) / c["s"], (q[1] - c["y"]) / c["s"])
+            p.areas[k] = Area(text, reg, round(px, 2), w, h, anchor, 0.0, lead, False, k in self.area_water,
+                              key=k, role=role, weight=w8, tracking=trk, tracking_in=trk_in,
+                              title=k in self.area_title)
+            self.log.append(f"{'title' if k in self.area_title else 'place name'} '{text}' outside region {reg} "
+                            f"with a leader")
+            return
         self.log.append(f"{'title' if k in self.area_title else 'place name'} '{text}' hidden: no position inside "
-                        f"region {reg} from {pr.title_px:g} to {pr.title_px_min:g} px")
+                        f"or outside region {reg} from {pr.title_px:g} to {pr.title_px_min:g} px")
         p.spans[f"area:{k}"] = [Span(s.t_in, 0, s.t_in, 0) for s in p.spans[f"area:{k}"]]
 
     @staticmethod
