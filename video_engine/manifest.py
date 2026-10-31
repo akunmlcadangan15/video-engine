@@ -27,6 +27,7 @@ import hashlib
 import json
 import os
 import subprocess
+import threading
 import uuid
 from datetime import datetime
 from functools import lru_cache
@@ -233,9 +234,12 @@ def write(out_dir: Path, tl, project_dir: Path, *, mix, kinds_of: dict[str, str]
 
 def save(out_dir: Path, doc: dict) -> Path:
     f = Path(out_dir) / MANIFEST
-    tmp = f.with_suffix(".tmp")
-    tmp.write_text(json.dumps(doc, indent=2, ensure_ascii=False))
-    tmp.replace(f)
+    tmp = f.with_name(f".{f.name}.{os.getpid()}.{threading.get_ident()}.tmp")   # writer-unique, replaced atomically
+    try:
+        tmp.write_text(json.dumps(doc, indent=2, ensure_ascii=False))
+        os.replace(tmp, f)
+    finally:
+        tmp.unlink(missing_ok=True)
     return f
 
 

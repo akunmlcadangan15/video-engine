@@ -310,3 +310,27 @@ def test_bad_helpers_reject_unknown_input():
         epidemic.asset_url({"data": {"x": {}}})
     with pytest.raises(ValueError):
         epidemic.file_ext("https://cdn.example/a.exe?sig=1")
+
+
+def test_good_concurrent_credits_appends_keep_every_line(tmp_path):
+    import threading
+    errors = []
+    start = threading.Barrier(8)
+
+    def writer(i):
+        try:
+            start.wait(timeout=10)
+            for j in range(10):
+                cache.append_credits(tmp_path, [prov(f"es-{i}-{j}", title=f"T{i}-{j}")])
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    ts = [threading.Thread(target=writer, args=(i,)) for i in range(8)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(30)
+    assert errors == []
+    lines = [ln for ln in (tmp_path / "credits.txt").read_text().splitlines() if ln.startswith("- ")]
+    assert len(lines) == 80 and len(set(lines)) == 80
+    assert (tmp_path / "credits.txt").read_text().count(cache.CREDITS_HEADER) == 1
