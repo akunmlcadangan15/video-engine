@@ -243,6 +243,13 @@ def test_bad_s01_trailing_gap_without_silence_end_is_counted(tmp_path):
     assert len(gaps) == 1 and gaps[0][1] == pytest.approx(1.0, abs=0.05)
 
 
+def test_bad_s01_ffmpeg_failure_is_a_gate_error(tmp_path):
+    broken = tmp_path / "broken.wav"
+    broken.write_bytes(b"not audio")
+    with pytest.raises(EngineError, match="S01 silencedetect failed"):
+        style.silence_gaps(broken, -40.0, 0.65)
+
+
 def test_good_s01_off_in_default_profile(project, tmp_path):
     _, tl = project()
     assert style.silence_findings(tone(tmp_path / "a.wav", gap_at=1.0, gap_s=1.0), tl) == []

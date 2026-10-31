@@ -9,6 +9,7 @@ from pathlib import Path
 import math
 
 from .. import config, hyperframes, overlays, pauses, profiles, transitions
+from ..util import EngineError
 from ..timeline import HYPERFRAMES, CaptionWord, Segment, Timeline
 from .core import Finding
 
@@ -316,6 +317,9 @@ def silence_gaps(path: Path, threshold_db: float, min_s: float) -> list[tuple[fl
     import subprocess
     r = subprocess.run([config.FFMPEG, "-hide_banner", "-nostats", "-i", str(path), "-vn", "-af",
                         f"silencedetect=noise={threshold_db}dB:d={min_s}", "-f", "null", "-"], capture_output=True, text=True)
+    if r.returncode != 0:
+        tail = (r.stderr or r.stdout or "").strip()[-500:]
+        raise EngineError(f"S01 silencedetect failed ({r.returncode}) on {path}: {tail}")
     starts = [float(x) for x in re.findall(r"silence_start: (-?[\d.]+)", r.stderr)]
     durs = [float(x) for x in re.findall(r"silence_duration: ([\d.]+)", r.stderr)]
     end = re.search(r"Duration: (\d+):(\d+):([\d.]+)", r.stderr)
