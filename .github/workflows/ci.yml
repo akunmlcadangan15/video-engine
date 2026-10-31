@@ -37,7 +37,8 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: python -m pip install --upgrade pip maturin
       - run: python -m pip install -e ".[test]" faster-whisper google-genai
-      - run: cd rust/hypoverum_core_rs && python -m maturin develop --release
+      - run: python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist
+      - run: python -m pip install --force-reinstall dist/hypoverum_core_rs-*.whl
       - run: >-
           python -m pytest -q
           tests/test_cli.py tests/test_cli_aux.py tests/test_gate_severity.py tests/test_geo_gate.py
@@ -56,6 +57,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: python -m pip install --upgrade pip maturin
       - run: python -m pip install -e ".[test]" faster-whisper google-genai
-      - run: cd rust/hypoverum_core_rs && python -m maturin develop --release
+      - run: python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist
+      - run: python -m pip install --force-reinstall dist/hypoverum_core_rs-*.whl
       - run: python -m video_engine.cli doctor --install
       - run: python -m pytest -q
