@@ -341,3 +341,27 @@ def test_bad_acquire_outside_the_cache_root_or_outside_a_session_writes_no_lease
     with cache.session():
         cache.acquire(tmp_path / "elsewhere.mp4")
     assert leases(root) == []
+
+
+def test_good_put_file_defers_the_cache_scan_until_the_configured_interval(root, tmp_path, monkeypatch):
+    """put_file no longer scans the whole cache on every store: with a budget it does not exceed, housekeeping waits
+    for PRUNE_EVERY_PUTS stores (or PRUNE_INTERVAL_S)."""
+    monkeypatch.setattr(config, "CACHE_MAX_BYTES", 50)
+    monkeypatch.setattr(cache, "PRUNE_EVERY_PUTS", 3)
+    stale = entry(root, "words", "stale.json")
+    src = tmp_path / "seg.mp4"
+    src.write_text("x" * 10)
+    cache.put_file("segments", "a", src)
+    cache.put_file("segments", "b", src)
+    assert stale.exists()                                                # two stores: no full scan yet
+    cache.put_file("segments", "c", src)
+    assert not stale.exists()                                            # third store: housekeeping ran
+
+
+def test_good_put_file_prunes_at_once_when_the_entry_alone_exceeds_the_budget(root, tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "CACHE_MAX_BYTES", 10)
+    stale = entry(root, "words", "stale.json", age=100)
+    src = tmp_path / "big.mp4"
+    src.write_text("x" * 1000)
+    out = cache.put_file("segments", "big", src)
+    assert out.exists() and not stale.exists()                           # oversized store triggers the LRU scan
