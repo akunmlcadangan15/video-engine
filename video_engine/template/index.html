@@ -633,8 +633,7 @@ const cam=q('#cam');
     cam.insertBefore(ln,el);
     ZS.push(sc=>{const h=LY.leader_px/sc;ln.style.height=h+'px';ln.style.top=(ly-h/2)+'px';});
     const sp=LY.els['area:'+a.key]||[];
-    if(!sp)gsap.set(ln,{visibility:'hidden'});
-    else{gsap.set(ln,{visibility:'visible'});fades(ln,sp);}
+    gsap.set(ln,{visibility:'visible'});fades(ln,sp);
   }
   legs.forEach(g=>tl.fromTo(pb,{scale:1/g.from.s},{scale:1/g.L.to.s,duration:g.d,ease:g.inv,immediateRender:g.k===0},g.t0));
   show(lw,LY.els['area:'+a.key],'label');

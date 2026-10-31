@@ -285,6 +285,40 @@ def cmd_sheet(a) -> int:
     return 0
 
 
+def cmd_assets(a) -> int:
+    from . import library
+    if a.copy:
+        if not a.project:
+            raise EngineError("--copy needs --project")
+        asset = library.credit_for_path(Path(a.copy), open_assets_root=Path(a.open_assets) if a.open_assets else None,
+                                       stock_roots=tuple(Path(x) for x in a.stock_root) if a.stock_root else None)
+        if asset is None:
+            raise EngineError(f"{a.copy} is not in the open-assets or stock index")
+        print(json.dumps(library.credit_row(asset, Path(a.project)), indent=2, ensure_ascii=False))
+        return 0
+    rows = library.search(a.query or "", kind=a.kind, limit=a.limit,
+                          open_assets_root=Path(a.open_assets) if a.open_assets else None,
+                          stock_roots=tuple(Path(x) for x in a.stock_root) if a.stock_root else None)
+    if a.json:
+        print(json.dumps([r.to_dict() for r in rows], indent=2, ensure_ascii=False))
+    else:
+        for r in rows:
+            print(f"{r.kind:10s} {r.license or '-':16s} {r.path}")
+    return 0
+
+
+def cmd_block(a) -> int:
+    from . import blocks
+    kw = {"width": a.width, "height": a.height}
+    if a.colour:
+        kw["colour"] = a.colour
+    if a.background:
+        kw["background"] = a.background
+    out = blocks.render(a.kind, a.data, Path(a.out), **kw)
+    print(out)
+    return 0
+
+
 def cmd_batch(a) -> int:
     from . import batch
     projects = [Path(x) for x in a.project]
@@ -468,6 +502,24 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--video")
     x.add_argument("--out", help="default <project>/out/sheet.png")
     x.add_argument("--cols", type=int, default=7)
+    x = add("assets", cmd_assets, "Search the local open-assets and stock/B-roll index, or copy one asset and print "
+                                  "its credits_manifest row. No network request.")
+    x.add_argument("--query", default="", help="space-separated words, all must match")
+    x.add_argument("--kind", help="filter: broll, icons, textures, maps, models, ...")
+    x.add_argument("--limit", type=int, default=20)
+    x.add_argument("--json", action="store_true")
+    x.add_argument("--copy", metavar="PATH", help="copy this indexed asset and print its credit row")
+    x.add_argument("--project", help="destination project for --copy (default assets/)")
+    x.add_argument("--open-assets", help="overlay the open-assets root")
+    x.add_argument("--stock-root", action="append", default=[], help="stock/B-roll root (repeatable)")
+    x = add("block", cmd_block, "Render a chart, timeline or infographic block to a transparent PNG.")
+    x.add_argument("kind", choices=["chart", "timeline", "infographic"])
+    x.add_argument("--data", required=True, help="JSON object/array, or @file.json")
+    x.add_argument("--out", required=True)
+    x.add_argument("--width", type=int, default=1080)
+    x.add_argument("--height", type=int, default=720)
+    x.add_argument("--colour", default=None)
+    x.add_argument("--background", default=None)
     x = add("batch", cmd_batch, "Build several projects in order, with one lock per project and a shared queue. "
                                   "A failed item does not stop the queue unless --fail-fast.")
     x.add_argument("project", nargs="*")
