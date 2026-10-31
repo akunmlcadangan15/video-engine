@@ -937,8 +937,8 @@ def _inks(seg: Segment, tl: Timeline, project_dir: Path, seg_dir: Path, scene: d
         for e in legibility.elements(scene):
             if e["id"] in inks:
                 inks[e["id"]]["glow"] = e.get("colour")
-    _INKS[key] = inks
-    return _INKS[key]
+    _bounded_put(_INKS, key, inks, INK_CACHE_MAX)
+    return inks
 
 
 def cache_key(seg: Segment, tl: Timeline, project_dir: Path, scene: dict | None = None) -> str:
