@@ -649,8 +649,9 @@ def b01_watermark(tl: Timeline, events: list[tuple], boxes: dict[int, list[dict]
     gap = pr.watermark_clear_px * H / 1920 if pr is not None else 0.0
     rt = (r["x"], r["y"], r["x"] + r["w"], r["y"] + r["h"])
     out = []
-    sx, st = SAFE_X * W / 1080, SAFE_TOP * H / 1920
-    if r["x"] < sx - 0.5 or r["x"] + r["w"] > W - sx + 0.5 or r["y"] < st - 0.5:
+    sx, st, sb = SAFE_X * W / 1080, SAFE_TOP * H / 1920, H - SAFE_BOTTOM * H / 1920
+    if (r["x"] < sx - 0.5 or r["x"] + r["w"] > W - sx + 0.5 or r["y"] < st - 0.5
+            or r["y"] + r["h"] > sb + 0.5):
         out.append(Finding("B01", "fail", f"watermark ({r['x']:.0f},{r['y']:.0f},{r['w']:.0f}x{r['h']:.0f}) leaves the "
                            "safe area; shorten watermark.text or lower watermark.px"))
     n = 0
