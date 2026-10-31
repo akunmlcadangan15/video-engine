@@ -135,3 +135,21 @@ def test_good_pixel_gates_process_samples_in_bounded_batches(project, tmp_path, 
     fs, info = qa.pixel_gates(v, tl)
     assert not [f for f in fs if f.level == "fail"] and info["samples"] == 12
     assert max(batches) <= 6 and len([b for b in batches if b <= 5]) > 1
+
+
+def test_bad_QA_no_samples_fails_instead_of_passing(project, monkeypatch):
+    _, tl = project(lambda d: d.update(segments=d["segments"][:1]))
+    monkeypatch.setattr(qa, "iter_sample_frames", lambda v, w, h, step=5, threads=4: iter(()))
+    fs, info = qa.pixel_gates(None, tl)
+    assert info["samples"] == 0
+    assert any(f.gate == "R56px" and f.level == "fail" and "no sampled frames" in f.message for f in fs)
+
+
+def test_good_QA_single_sample_is_not_reported_as_no_motion(project, monkeypatch):
+    _, tl = project(lambda d: d.update(segments=d["segments"][:1]))
+    frames = [noise(0).astype(np.uint8).tobytes()]
+    monkeypatch.setattr(qa, "iter_sample_frames", lambda v, w, h, step=5, threads=4: iter(frames))
+    fs, info = qa.pixel_gates(None, tl)
+    assert not [f for f in fs if f.level == "fail"], fs
+    assert any(f.gate == "R56px" and f.level == "info" and "too few" in f.message for f in fs)
+    assert info["motion"] == {}

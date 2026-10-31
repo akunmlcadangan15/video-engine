@@ -79,15 +79,22 @@ def pixel_gates(video: Path, tl: Timeline, step: int = SAMPLE_STEP,
     for s in tl.segments:
         idx = [i for i in range(len(stats)) if s.start_frame <= i * step < s.end_frame]
         if not idx:
+            out.append(Finding("R56px", "fail", f"no sampled frames in segment {s.start_frame}-{s.end_frame}; "
+                                                "cannot check for motion", s.seg_index))
             continue
         bad = []
         for i in idx:
             fs = r38_check(stats[i], s.seg_index, f"frame {i * step}")
             if fs:
                 bad += fs
-        out += bad[:2]
-        pairs = [motion[i] for i in idx[:-1] if i < len(motion)]
-        m = sum(pairs) / len(pairs) if pairs else 0.0
+        out += bad
+        keep = set(idx)
+        pairs = [motion[i] for i in idx if i < len(motion) and i + 1 in keep]
+        if not pairs:
+            out.append(Finding("R56px", "info", f"{len(idx)} sampled frame(s) in the segment: too few to measure "
+                                                "motion between consecutive samples", s.seg_index))
+            continue
+        m = sum(pairs) / len(pairs)
         per_seg[s.seg_index] = round(m, 2)
         if m < MOTION_MIN:
             out.append(Finding("R56px", "fail", f"no visible motion (mean luma diff {m:.2f} < {MOTION_MIN})", s.seg_index))
