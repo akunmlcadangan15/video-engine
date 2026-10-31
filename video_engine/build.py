@@ -206,9 +206,14 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
         with timer.stage("composite") as st:
             joined, join_diffs = streams.joinable([Path(r.path) for r in segs])
             join = {"method": "concat demuxer" if joined else "concat filter", "differences": join_diffs}
-            clips = transitions.render(tl, [r.path for r in segs], workdir)
-            video, v_hit, v_key = audio.composite(tl, [r.path for r in segs], ass, workdir / "composite.mp4",
-                                                  threads=budget.mux_threads, transitions=clips, use_cache=use_cache)
+            files = [Path(r.path) for r in segs]
+            tkey = transitions.plan_key(tl, files)
+            clips = None if (tkey and use_cache) else (transitions.render(tl, files, workdir) if tkey else None)
+            factory = (lambda: transitions.render(tl, files, workdir)) if tkey and use_cache else None
+            video, v_hit, v_key = audio.composite(tl, files, ass, workdir / "composite.mp4",
+                                                  threads=budget.mux_threads, transitions=clips,
+                                                  transition_key=tkey or None, transition_factory=factory,
+                                                  use_cache=use_cache)
             st["note"] = f"{join['method']}{' (hit)' if v_hit else ''}"
         with timer.stage("audio") as st:
             master, a_hit, a_key, a01, loud_hist = audio.master_audio(

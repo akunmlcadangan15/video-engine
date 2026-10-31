@@ -321,26 +321,45 @@ def composite_cmd(tl: Timeline, segments: list[Path], ass: Path | None, out: Pat
     return cmd, cwd, extra, [wm_png, concat_list]
 
 
-def composite_key(cmd: list, parts: dict, ass: Path | None, out: Path, concat: Path) -> str:
+def composite_key(cmd: list, parts: dict, ass: Path | None, out: Path, concat: Path,
+                  transition_key: str | None = None, clips=()) -> str:
     """Key of the video pass: the command with every input file (segments, transition clips drawn from both
     neighbouring segments, watermark) replaced by its sha256, plus the segment, caption (.ass, fonts) and thread
-    entries (manifest.cmd_key). Call while composite_cmd's scratch files exist."""
+    entries (manifest.cmd_key). With `transition_key`, the rendered clips drop out of the command and their content
+    key is used instead, so the key exists before a clip is rendered. Call while composite_cmd's scratch files exist."""
     from .manifest import cmd_key, font_files, sha256
     extra = {"segments": [sha256(p) for p in parts["segments"]], "threads": parts["threads"],
-             **({"ass": sha256(ass), "fonts": [sha256(f) for f in font_files()]} if ass is not None else {})}
-    return cmd_key("composite", [c for c in cmd if Path(str(c)) not in (out, concat)], extra)
+             **({"ass": sha256(ass), "fonts": [sha256(f) for f in font_files()]} if ass is not None else {}),
+             **({"transitions": transition_key} if transition_key else {})}
+    drop = {out, concat, *map(Path, clips)}
+    return cmd_key("composite", [c for c in cmd if Path(str(c)) not in drop], extra)
 
 
 def composite(tl: Timeline, segments: list[Path], ass: Path | None, out: Path, threads: int,
-              transitions: list[tuple[Path, int]] | None = None, use_cache: bool = True) -> tuple[Path, bool, str]:
+              transitions: list[tuple[Path, int]] | None = None, use_cache: bool = True,
+              transition_key: str | None = None, transition_factory=None) -> tuple[Path, bool, str]:
     """Video pass -> (file, cache hit, key). Cache kind "composite"; the key is the command with every input
-    replaced by its sha256 plus the segment, caption (.ass, fonts) and thread entries (manifest.cmd_key)."""
+    replaced by its sha256 plus the segment, caption (.ass, fonts) and thread entries (manifest.cmd_key).
+    With `transition_key` and `transition_factory`, the factory (which renders the transition clips) runs only
+    after the cache lookup missed: a composite cache hit costs no transition render."""
     out = out.resolve()
+    key, canonical = "", None
+    if use_cache and transition_factory is not None:
+        ccmd, ccwd, cparts, cscratch = composite_cmd(tl, segments, ass, out, threads, None)
+        try:
+            key = composite_key(ccmd, cparts, ass, out, cscratch[1], transition_key=transition_key)
+            if hit := cache.get_file("composite", key):
+                return hit, True, key
+        finally:
+            for f in cscratch:
+                f.unlink(missing_ok=True)
+        canonical = key
+        transitions = transition_factory()
+    clips = [] if transitions is None else [p for p, _ in transitions]
     cmd, cwd, parts, scratch = composite_cmd(tl, segments, ass, out, threads, transitions)
-    key = ""
     try:
-        if use_cache:
-            key = composite_key(cmd, parts, ass, out, scratch[1])
+        if use_cache and canonical is None:
+            key = composite_key(cmd, parts, ass, out, scratch[1], transition_key=transition_key, clips=clips)
         if use_cache and (hit := cache.get_file("composite", key)):
             return hit, True, key
         run(cmd, cwd=cwd)

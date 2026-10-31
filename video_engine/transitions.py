@@ -27,6 +27,7 @@ from . import config, profiles
 from .timeline import Timeline
 from .util import EngineError
 
+TRANSITION_VERSION = "trans-1"   # bump when a transition clip's pixels change without a source-code change
 BLUR_TAPS = 8          # zoomed copies averaged for the radial blur
 PAGE_BACK = 0.72       # flap colour = PAGE_BACK x paper + (1 - PAGE_BACK) x mirrored page
 PAGE_PAPER = (243, 236, 222)
@@ -213,6 +214,22 @@ def write_clip(frames: list[np.ndarray], out: Path, fps: int) -> Path:
     subprocess.run(cmd, input=b"".join(np.ascontiguousarray(f).tobytes() for f in frames), check=True,
                    capture_output=True)
     return out
+
+
+def plan_key(tl: Timeline, seg_files: list[Path]) -> str:
+    """Content key of every transition clip of this timeline and these segment files: cache lookup of the composite
+    pass can happen before any clip is rendered (empty string when the profile draws no transition)."""
+    from .manifest import sha256
+    from .util import blake3_json, code_hash
+    ws = windows(tl)
+    if not ws:
+        return ""
+    S = tl.settings
+    used = sorted({w.seg - 1 for w in ws} | {w.seg for w in ws})
+    return blake3_json({"v": TRANSITION_VERSION, "code": code_hash([Path(__file__)]), "algo": core.ALGO_VERSION,
+                        "windows": [[w.boundary, w.seg, w.kind, w.f0, w.f1] for w in ws],
+                        "segments": [sha256(seg_files[i]) for i in used],
+                        "size": [S.width, S.height], "fps": S.fps})
 
 
 def render(tl: Timeline, seg_files: list[Path], workdir: Path) -> list[tuple[Path, int]]:
