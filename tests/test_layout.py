@@ -336,6 +336,41 @@ def test_good_print_heading_renders_with_layout_without_legibility(project, tmp_
     assert "heading:0" in ids
 
 
+def test_good_area_label_outside_a_small_region_keeps_its_leader(project, monkeypatch):
+    """A label that cannot fit inside its region is placed outside with a leader; the template draws that leader."""
+    no_print(monkeypatch)
+    real = profiles.of
+
+    def of(tl):
+        pr = real(tl)
+        if pr.name != "geoverum":
+            return pr
+        return profiles.Profile(pr.name, pr.data.model_copy(update={"camera": profiles.CameraProfile(max_zoom=1.0)}),
+                                pr.blake3 + "-z1")
+
+    monkeypatch.setattr(profiles, "of", of)
+
+    def doc(d):
+        beats_doc(d)
+        sc = d["segments"][2]["gsap_scene_config"]
+        sc["regions"] = [{"entity": "Sekutu", "polygon": [[0.48, 0.48], [0.52, 0.48], [0.52, 0.52], [0.48, 0.52]]}]
+        sc["beats"] = [{"at_frame": 0, "region": 0,
+                        "area_labels": [{"text": "SEKUTU RAYA SEKALI", "region": 0}]}]
+
+    d, tl = project(doc)
+    p = layout.apply_segment(tl.segments[2], tl, d)
+    areas = [a for a in p.areas.values() if a.text == "SEKUTU RAYA SEKALI"]
+    assert areas and areas[0].leader is not None and not areas[0].inside
+    html = (config.TEMPLATE_DIR / "index.html").read_text()
+    assert "leader:area:'+a.key" in html and "if(a.leader)" in html
+
+
+def test_good_area_leader_is_drawn_by_the_template():
+    """An area label placed outside its polygon gets a rendered leader, not only a gate-only segment."""
+    html = (config.TEMPLATE_DIR / "index.html").read_text()
+    assert "if(a.leader){" in html and "'leader:area:'+a.key" in html and "cam.insertBefore(ln,el)" in html
+
+
 def test_good_print_block_no_longer_requires_legibility():
     """The template print block guards only [print] and [layout]; its legibility reads sit behind `if(A)`."""
     html = (config.TEMPLATE_DIR / "index.html").read_text()
