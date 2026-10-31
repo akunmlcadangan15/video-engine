@@ -22,7 +22,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from . import config
-from .util import EngineError, count_frames, run
+from .util import EngineError, run
 
 VIDEO_KEYS = ("codec_name", "codec_tag_string", "profile", "level", "width", "height", "pix_fmt",
               "sample_aspect_ratio", "r_frame_rate", "avg_frame_rate", "time_base", "field_order", "color_range",
@@ -95,12 +95,20 @@ def engine_format(W: int, H: int, fps: int, x264: list[str] | None = None) -> li
     return [dict(s) for s in _engine_format(W, H, fps, tuple(x264 or config.X264), str(config.FFMPEG))]
 
 
+@lru_cache(maxsize=512)
+def _video_timing(path: str, stamp: tuple) -> tuple[int, float, float]:
+    """(packet frame count, start_time, duration) in one ffprobe call, memoised by path content stamp."""
+    s = json.loads(run([config.FFPROBE, "-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries",
+                        "stream=nb_read_packets,start_time,duration", "-print_format", "json", path]))["streams"][0]
+    return int(s.get("nb_read_packets") or 0), float(s.get("start_time") or 0.0), float(s.get("duration") or -1.0)
+
+
 def verify(path: str | Path, n: int, fps: int, what: str) -> None:
-    """Raise EngineError unless the first video stream of `path` has n frames, starts at 0 and lasts n / fps."""
-    got = count_frames(path)
-    s = json.loads(run([config.FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
-                        "stream=start_time,duration", "-print_format", "json", str(path)]))["streams"][0]
-    start, dur = float(s.get("start_time") or 0.0), float(s.get("duration") or -1.0)
+    """Raise EngineError unless the first video stream of `path` has n frames, starts at 0 and lasts n / fps. One
+    ffprobe per artifact: the timing is memoised by (size, mtime, inode) and reused by every later verify."""
+    p = Path(path)
+    st = p.stat()
+    got, start, dur = _video_timing(str(p), (st.st_size, st.st_mtime_ns, st.st_ino))
     half = 0.5 / fps
     if got != n or abs(start) > half or abs(dur - n / fps) > half:
         raise EngineError(f"{what}: {got} frames from {start:.6f} s lasting {dur:.6f} s, expected {n} frames from 0 "
