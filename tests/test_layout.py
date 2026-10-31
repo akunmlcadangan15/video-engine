@@ -336,6 +336,27 @@ def test_good_print_heading_renders_with_layout_without_legibility(project, tmp_
     assert "heading:0" in ids
 
 
+def test_good_print_title_at_frame_is_the_regions_entry_not_the_last_frame(project):
+    """[print] titles live in an area span; title_at_frame follows that span, never the segment end."""
+    d, tl = project(beats_doc)
+    seg = tl.segments[2]
+    p = layout.apply_segment(seg, tl, d)
+    ta = next(a for a in p.areas.values() if a.title)
+    assert seg.gsap_scene_config.title_at_frame == p.spans[f"area:{ta.key}"][0].t_in
+    assert 0 <= seg.gsap_scene_config.title_at_frame < seg.n_frames - 1
+
+
+def test_good_hidden_print_title_does_not_show_at_the_last_frame(project):
+    def doc(d):
+        beats_doc(d)
+        d["segments"][2]["gsap_scene_config"]["beats"] = [{"at_frame": 0, "pins": [0], "title": True}]
+
+    d, tl = project(doc)
+    seg = tl.segments[2]
+    layout.apply_segment(seg, tl, d)
+    assert seg.gsap_scene_config.title_at_frame == 0
+
+
 def test_good_area_label_outside_a_small_region_keeps_its_leader(project, monkeypatch):
     """A label that cannot fit inside its region is placed outside with a leader; the template draws that leader."""
     no_print(monkeypatch)

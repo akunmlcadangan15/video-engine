@@ -1669,7 +1669,11 @@ def apply_segment(seg: "Segment", tl: "Timeline", project_dir: Path) -> Plan | N
     for i, r in enumerate(sc.routes or []):
         r.at_frame = first(f"route:{i}", seg.n_frames - 1)
     if sc.title:
-        sc.title_at_frame = first("title:0", seg.n_frames - 1)
+        if p.pr is not None:   # [print] places the title inside its beat's region (an area label), not in Z1
+            ta = next((a for a in p.areas.values() if a.title), None)
+            sc.title_at_frame = first(f"area:{ta.key}", 0) if ta else 0
+        else:
+            sc.title_at_frame = first("title:0", seg.n_frames - 1)
     for i, fg in enumerate(sc.figures or []):
         fg.at_frame = first(f"fig:{i}", seg.n_frames - 1)
     return p
