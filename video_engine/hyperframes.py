@@ -404,21 +404,41 @@ def _bounded_put(memo: dict, key: str, value, limit: int) -> None:
 
 
 def _scene_key(seg: Segment, tl: Timeline, project_dir: Path) -> str:
-    """Inputs of scene_data that are not layout-derived: the segment scene config (without apply_segment's at_frame
-    and camera_path), the timeline outside the segments (credits, entities, settings), the profile and the map file.
-    Apply_segment only writes derived values into seg, so a later camera change (R56) still changes this key."""
-    sc = seg.gsap_scene_config.model_dump(mode="json", exclude={"camera_path", "title_at_frame"})
-    for k in ("pins", "regions", "routes", "figures", "cards"):
-        for e in sc.get(k) or []:
-            e.pop("at_frame", None)
-    p = project_dir / seg.gsap_scene_config.map_asset
+    """Inputs of scene_data: the scene config, the timeline outside the segments, the profile and the map file.
+    A beats scene lets apply_segment derive camera_path and element at_frame values, so those derived fields are
+    excluded; every other scene keeps them, and the project directory is part of the key because relative assets
+    (morph, cards, props) live there even when two projects share one symlinked map."""
+    from . import layout
+    scfg = seg.gsap_scene_config
+    if layout.is_beats(seg, tl):
+        sc = scfg.model_dump(mode="json", exclude={"camera_path", "title_at_frame"})
+        for k in ("pins", "regions", "routes", "figures", "cards"):
+            for e in sc.get(k) or []:
+                e.pop("at_frame", None)
+    else:
+        sc = scfg.model_dump(mode="json")
+    p = project_dir / scfg.map_asset
     try:
         st = p.stat()
         src = [str(p.resolve()), st.st_mtime_ns, st.st_size]
     except OSError:
         src = [str(p.resolve()), None, None]
+    deps = [scfg.map_asset]
+    if scfg.morph:
+        deps.append(scfg.morph.asset)
+    deps += [L.asset for L in (scfg.layers or [])]
+    deps += [pth.asset for _, pth, _, _ in props.flat(seg)]
+    for c in scfg.cards:
+        if c.asset_ref and (cr := tl.credit_for(ref=c.asset_ref)) and cr.path:
+            deps.append(cr.path)
+    files = sorted({str((Path(project_dir) / d).resolve()) for d in deps})
+    assets = [blake3_files([Path(f)])[0] if Path(f).is_file() else None for f in files]
+    hooks = [id(fn) for fn in (deep_plan, morph_data, map_image_size, probe_dom, props.scene_props,
+                               parallax.scene_layers, layout.apply_segment, legibility.all_times,
+                               legibility.collect, legibility.elements, legibility.choose, legibility.scene_inks)]
     prof = profiles.of(tl)
     return blake3_json({"scene": sc, "engine": seg.engine_type, "n": seg.n_frames,
+                        "project": str(Path(project_dir).resolve()), "assets": [files, assets], "hooks": hooks,
                         "tl": tl.model_dump(mode="json", exclude={"segments", "captions", "captions_meta"}),
                         "profile": [prof.name, prof.blake3, prof.data.model_dump(mode="json")],
                         "legibility": legibility.code_hash(), "map": src})
