@@ -235,7 +235,7 @@ def test_good_default_profile_has_no_layout_and_keeps_its_hash():
     for k in ("layout", "print", "camera", "transitions", "render", "grade", "resources"):   # off tables add nothing to the hash
         dump.pop(k)
     assert dump["gates"].pop("camera") is None
-    for k in ("cta", "ending_keyword", "duration_exact"):
+    for k in ("cta", "ending_keyword", "duration_exact", "geo"):
         assert dump["gates"].pop(k) is None      # absent new gate tables add nothing either
     assert dump["gates"].pop("require") == []   # an empty required list adds nothing either
     assert p.blake3 == blake3_json(dump)

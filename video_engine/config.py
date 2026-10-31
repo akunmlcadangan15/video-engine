@@ -15,6 +15,7 @@ TEXTURES_DIR = VENDOR / "textures"
 GSAP_JS = VENDOR / "js" / "gsap.min.js"
 TEMPLATE_DIR = PKG / "template"
 PROFILES_DIR = Path(os.environ.get("VIDEO_ENGINE_PROFILES", ENGINE_ROOT / "profiles"))
+GEO_LIBRARY = Path(os.environ.get("VIDEO_ENGINE_GEO_LIBRARY", "/workspace/geo-library"))
 
 # Persistent content-addressed cache (word timestamps, rendered segments) on disk; survives /dev/shm cleanup.
 CACHE_DIR = Path(os.environ.get("VIDEO_ENGINE_CACHE", ENGINE_ROOT / ".cache"))

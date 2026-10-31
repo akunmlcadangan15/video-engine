@@ -194,6 +194,9 @@ min_chars = 4
 phrases = ["terima kasih", "subscribe", "follow", "like", "share", "tonton", "kunjungi", "link di bio",
            "sampai jumpa", "jangan lupa", "selesai"]
 
+[gates.geo]                    # G02: pins on land, labels inside their own region
+require_land = true
+
 [gates.duration]
 min_s = 45.0
 max_s = 90.0

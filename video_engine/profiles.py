@@ -146,9 +146,14 @@ class CameraGate(_Strict):
 
 STYLE_GATE_IDS = ("H01", "C01", "C02", "V01", "N01", "P01", "P02", "K01", "K02", "D01", "D02", "S01")
 TECHNICAL_GATE_IDS = ("A02", "B01", "E01", "F01", "F02", "F03", "F04", "G01", "L01", "L02", "L03", "L04", "L05",
-                      "L06", "L07", "L08", "L09", "L10", "L22", "M01", "M02", "M03", "M04", "O01", "R07", "R14", "R38",
+                      "L06", "L07", "L08", "L09", "L10", "L22", "M01", "M02", "M03", "M04", "G02", "O01", "R07", "R14", "R38",
                       "R44", "R56", "R62", "R63", "R64", "T01", "T02", "W01", "Z01")
 KNOWN_GATE_IDS = STYLE_GATE_IDS + TECHNICAL_GATE_IDS
+
+
+class GeoGate(_Strict):
+    """G02: geographic facts of map scenes; require_land also fails a pin that is in the water."""
+    require_land: bool = False
 
 
 class StyleGates(_Strict):
@@ -166,6 +171,7 @@ class StyleGates(_Strict):
     duration: DurationGate | None = None
     duration_exact: ExactDurationGate | None = None
     cta: CtaGate | None = None
+    geo: GeoGate | None = None
 
     @model_validator(mode="after")
     def _req(self):
@@ -815,7 +821,7 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
         dump["gates"]["camera"].pop("min_drift_per_s", None)   # P01 tables without P02 keep their hash
     if not dump["gates"].get("require"):
         dump["gates"].pop("require", None)   # profiles without required style gates keep their hash
-    for k in ("cta", "ending_keyword", "duration_exact"):
+    for k in ("cta", "ending_keyword", "duration_exact", "geo"):
         if dump["gates"].get(k) is None:
             dump["gates"].pop(k, None)       # absent new gate tables add nothing to the hash
     dump.pop("resources", None)   # the worker budget is a machine setting; stage keys carry the thread counts

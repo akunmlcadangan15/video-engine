@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .. import config, layout, profiles, props
 from ..timeline import CaptionWord, Timeline
-from . import layer1, layer2, layer3, layout_gates, props_gates, severity, style
+from . import geo, layer1, layer2, layer3, layout_gates, props_gates, severity, style
 from .core import Report
 
 
@@ -43,6 +43,7 @@ def _run(tl: Timeline, project_dir: Path, words, workdir: Path, dom: bool, snaps
         rep.extend(layer2.m03_tilt_cover(tl, project_dir))
         rep.extend(layer2.m04_globe_resolution(tl, project_dir))
         rep.extend(layer2.g01_grade_luts(tl, project_dir))
+        rep.extend(geo.run(tl))
         fs, fixes = layer2.r56_camera(tl, project_dir)
         rep.extend(fs)
         rep.fixes += fixes
