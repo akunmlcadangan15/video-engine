@@ -52,7 +52,10 @@ def _params(path: str, stamp: tuple, select: str | None) -> tuple:
 def params(path: str | Path, select: str | None = None) -> list[dict]:
     """Parameter dict of every stream of `path` (ffprobe stream specifier `select`, e.g. "v:0"), in stream order."""
     p = Path(path)
-    st = p.stat()
+    try:
+        st = p.stat()
+    except OSError as e:
+        raise EngineError(f"cannot inspect {p}: {e}") from None
     return [dict(s) for s in _params(str(p), (st.st_size, st.st_mtime_ns, st.st_ino), select)]
 
 
@@ -98,16 +101,22 @@ def engine_format(W: int, H: int, fps: int, x264: list[str] | None = None) -> li
 @lru_cache(maxsize=512)
 def _video_timing(path: str, stamp: tuple) -> tuple[int, float, float]:
     """(packet frame count, start_time, duration) in one ffprobe call, memoised by path content stamp."""
-    s = json.loads(run([config.FFPROBE, "-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries",
-                        "stream=nb_read_packets,start_time,duration", "-print_format", "json", path]))["streams"][0]
-    return int(s.get("nb_read_packets") or 0), float(s.get("start_time") or 0.0), float(s.get("duration") or -1.0)
+    try:
+        s = json.loads(run([config.FFPROBE, "-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries",
+                            "stream=nb_read_packets,start_time,duration", "-print_format", "json", path]))["streams"][0]
+        return int(s.get("nb_read_packets") or 0), float(s.get("start_time") or 0.0), float(s.get("duration") or -1.0)
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError, ValueError) as e:
+        raise EngineError(f"ffprobe timing of {path} is unusable: {e}") from None
 
 
 def verify(path: str | Path, n: int, fps: int, what: str) -> None:
     """Raise EngineError unless the first video stream of `path` has n frames, starts at 0 and lasts n / fps. One
     ffprobe per artifact: the timing is memoised by (size, mtime, inode) and reused by every later verify."""
     p = Path(path)
-    st = p.stat()
+    try:
+        st = p.stat()
+    except OSError as e:
+        raise EngineError(f"{what}: cannot stat {p}: {e}") from None
     got, start, dur = _video_timing(str(p), (st.st_size, st.st_mtime_ns, st.st_ino))
     half = 0.5 / fps
     if got != n or abs(start) > half or abs(dur - n / fps) > half:

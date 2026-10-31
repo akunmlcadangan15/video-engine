@@ -472,7 +472,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"waiting for agent response: {e.bundle}\n  answer: {e.bundle / 'response.json'} "
               f"(schema: {e.bundle / 'schema.json'})\n  resume: {e.resume}")
         return EXIT_AWAITING
-    except (EngineError, ValidationError) as e:
+    except (EngineError, ValidationError, OSError, json.JSONDecodeError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
 

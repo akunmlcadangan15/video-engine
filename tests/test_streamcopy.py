@@ -286,3 +286,12 @@ def test_good_verify_uses_one_ffprobe_per_artifact(clip, monkeypatch):
     os.utime(p, (p.stat().st_atime, p.stat().st_mtime + 10))
     streams.verify(p, 12, 30, "after rewrite")
     assert len(calls) == 2
+
+
+def test_bad_verify_missing_file_and_unusable_ffprobe_json(clip, monkeypatch):
+    with pytest.raises(EngineError, match="cannot stat"):
+        streams.verify(clip("gone.mp4").with_name("missing.mp4"), 12, 30, "missing")
+    p = clip("timing.mp4", n=12)
+    monkeypatch.setattr(streams, "run", lambda *a, **k: "not json")
+    with pytest.raises(EngineError, match="timing .* unusable"):
+        streams.verify(p, 12, 30, "timing")

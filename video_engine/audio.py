@@ -243,7 +243,10 @@ def measure_mix(tl: Timeline, project_dir: Path, mix=None, threads: int | None =
     if r.returncode != 0:
         raise EngineError(f"loudness measure failed: {r.stderr[-600:]}")
     txt = r.stderr[r.stderr.rfind("{"):r.stderr.rfind("}") + 1]
-    return _json.loads(txt)
+    try:
+        return _json.loads(txt)
+    except ValueError as e:
+        raise EngineError(f"loudness measure produced no usable JSON: {e}") from None
 
 
 def norm_filter(tl: Timeline, m: dict | None) -> str:

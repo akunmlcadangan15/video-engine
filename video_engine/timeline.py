@@ -15,6 +15,7 @@ import hypoverum_core_rs as core
 
 from . import config
 from .grade import Grade
+from .util import EngineError
 
 NATIVE = "NATIVE_RUST_FFMPEG"
 HYPERFRAMES = "HYPERFRAMES_GSAP"
@@ -820,7 +821,14 @@ def load(path: str | Path) -> Timeline:
     p = Path(path)
     if p.is_dir():
         p = p / "master_timeline.json"
-    return Timeline.model_validate_json(p.read_text())
+    try:
+        text = p.read_text()
+    except OSError as e:
+        raise EngineError(f"cannot read timeline {p}: {e}") from None
+    try:
+        return Timeline.model_validate_json(text)
+    except json.JSONDecodeError as e:
+        raise EngineError(f"timeline {p} is not valid JSON: {e}") from None
 
 
 def save(tl: Timeline, path: str | Path) -> None:

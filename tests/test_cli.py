@@ -34,3 +34,9 @@ def test_bad_deliver_without_dry_run(project):
 def test_good_render_alias_parses():
     a = cli.parser().parse_args(["render", "x", "--no-cache"])
     assert a.fn == cli.cmd_build and a.no_cache
+
+
+def test_bad_missing_project_is_a_clean_cli_error(tmp_path, capsys):
+    assert cli.main(["validate", str(tmp_path / "missing")]) == 1
+    err = capsys.readouterr().err
+    assert "error:" in err and "Traceback" not in err

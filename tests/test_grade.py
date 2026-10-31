@@ -68,6 +68,8 @@ def test_bad_grade_values_rejected(kw):
 
 @pytest.mark.parametrize("text, msg", [("LUT_1D_SIZE 2\n0 0 0\n1 1 1\n", "1D"), ("0 0 0\n", "LUT_3D_SIZE"),
                                        ("LUT_3D_SIZE 2\n0 0 0\n", "needs 8"),
+                                       ("LUT_3D_SIZE two\n", "invalid .cube"),
+                                       ("LUT_3D_SIZE 2\nDOMAIN_MIN a b c\n", "invalid .cube"),
                                        ("LUT_3D_SIZE 2\nDOMAIN_MIN 1 1 1\nDOMAIN_MAX 1 1 1\n" + "0 0 0\n" * 8, "DOMAIN")])
 def test_bad_cube_files_raise(tmp_path, text, msg):
     (tmp_path / "x.cube").write_text(text)

@@ -81,21 +81,24 @@ def read_cube(path: Path) -> np.ndarray:
         text = Path(path).read_text(errors="replace")
     except OSError as e:
         raise EngineError(f"grade lut '{path}': {e}") from None
-    for line in text.splitlines():
-        t = line.split("#", 1)[0].strip()
-        if not t:
-            continue
-        w = t.split()
-        if w[0] == "LUT_1D_SIZE":
-            raise EngineError(f"grade lut '{path}': 1D LUTs are not supported (LUT_3D_SIZE needed)")
-        if w[0] == "LUT_3D_SIZE":
-            size = int(w[1])
-        elif w[0] == "DOMAIN_MIN":
-            lo = np.array(w[1:4], float)
-        elif w[0] == "DOMAIN_MAX":
-            hi = np.array(w[1:4], float)
-        elif w[0][0] in "+-.0123456789":
-            rows.append([float(v) for v in w[:3]])
+    try:
+        for line in text.splitlines():
+            t = line.split("#", 1)[0].strip()
+            if not t:
+                continue
+            w = t.split()
+            if w[0] == "LUT_1D_SIZE":
+                raise EngineError(f"grade lut '{path}': 1D LUTs are not supported (LUT_3D_SIZE needed)")
+            if w[0] == "LUT_3D_SIZE":
+                size = int(w[1])
+            elif w[0] == "DOMAIN_MIN":
+                lo = np.array(w[1:4], float)
+            elif w[0] == "DOMAIN_MAX":
+                hi = np.array(w[1:4], float)
+            elif w[0][0] in "+-.0123456789":
+                rows.append([float(v) for v in w[:3]])
+    except (ValueError, IndexError) as e:
+        raise EngineError(f"grade lut '{path}': invalid .cube data ({e})") from None
     if not size or not 2 <= size <= 256:
         raise EngineError(f"grade lut '{path}': LUT_3D_SIZE missing or outside 2..256")
     if len(rows) != size ** 3:

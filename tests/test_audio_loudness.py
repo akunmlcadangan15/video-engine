@@ -112,3 +112,14 @@ def test_good_build_skips_measure_mix_when_the_audio_cache_hits(project, tmp_pat
                         lambda *a, **k: pytest.fail("build measured the mix despite an audio cache hit"))
     r = build.build(p)
     assert r.ok and r.final.is_file()
+
+
+def test_bad_measure_mix_without_json_is_an_engine_error(project, monkeypatch):
+    from pathlib import Path
+    from types import SimpleNamespace
+    from video_engine.util import EngineError
+    _, tl = project()
+    monkeypatch.setattr(audio, "_mix_inputs", lambda *a, **k: ([], ["anull"]))
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0, stdout="", stderr="no json"))
+    with pytest.raises(EngineError, match="no usable JSON"):
+        audio.measure_mix(tl, Path("/tmp"))
