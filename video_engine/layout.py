@@ -202,7 +202,7 @@ def halo(theme: dict, glow: bool = False, px: float = 0.0, label: bool = False) 
     pad = [side, o + max(0.0, b - dy, g), side, o + max(b + dy, g)]
     lg = theme.get("legibility")
     if lg:
-        hw = px * (lg["label_halo_width_em"] if label else lg["halo_width_em"]) if lg["halo_alpha_max"] > 0 else 0.0
+        hw = px * (lg["label_halo_width_em"] if label else lg["halo_width_em"]) if max(lg["halo_alpha_max"], lg.get("light_halo_alpha_max") or 0) > 0 else 0.0
         sb, sdy, gl = float(lg["shadow_blur_px"]), float(lg["shadow_dy_px"]), float(lg["glow_px"])
         lp = [hw + max(gl, sb), hw + max(gl, sb - sdy), hw + max(gl, sb), hw + max(gl, sb + sdy)]
         pad = [max(a, c) for a, c in zip(pad, lp)]
@@ -417,6 +417,7 @@ class Area:
     tracking: float = 0.0           # em
     tracking_in: Optional[float] = None   # [print]: entry tracking (eases to `tracking` over the entry)
     title: bool = False             # [print]: the scene title placed inside its region
+    box: Optional[bool] = None      # None = profile label_style; True/False = solid box label on/off
 
 
 @dataclass
@@ -710,7 +711,7 @@ class _Planner:
                 self.log.append(f"beat at frame {b.at_frame}: title hidden (a printed title needs the beat's region)")
         elif b.title:
             s.add(("title", 0))
-        s |= {("area", self.area_id(a.text, a.region, a.water)) for a in b.area_labels}
+        s |= {("area", self.area_id(a.text, a.region, a.water, box=a.box)) for a in b.area_labels}
         if b.heading:
             s.add(("heading", k))
             self.heading_text[k] = b.heading
@@ -718,8 +719,9 @@ class _Planner:
             s.add(("note", self.note_id(nt)))
         return s
 
-    def area_id(self, text: str, region: int, water: bool = False, title: bool = False) -> int:
-        k = (text, region)
+    def area_id(self, text: str, region: int, water: bool = False, title: bool = False,
+                box: bool | None = None) -> int:
+        k = (text, region, box)
         if k not in self.area_keys:
             self.area_keys.append(k)
         if water:
@@ -823,7 +825,7 @@ class _Planner:
     def run(self) -> Plan:
         sc, fps, n = self.sc, self.fps, self.n
         beats = sc.beats
-        self.area_keys: list[tuple[str, int]] = []
+        self.area_keys: list[tuple[str, int, bool | None]] = []
         self.area_water: set[int] = set()
         self.area_title: set[int] = set()
         self.heading_text: dict[int, str] = {}
@@ -1197,7 +1199,7 @@ class _Planner:
     # ------------------------------------------------------------------ area labels
     def place_areas(self, p: Plan):
         L = self.L
-        for k, (text, reg) in enumerate(self.area_keys):
+        for k, (text, reg, box) in enumerate(self.area_keys):
             if self.pr is not None:
                 self.place_area_print(p, k, text, reg)
                 continue
@@ -1268,7 +1270,7 @@ class _Planner:
                 lead = ((q[0] - c["x"]) / c["s"], (q[1] - c["y"]) / c["s"])
                 self.log.append(f"area label '{text}' outside region {reg} with a leader")
             p.areas[k] = Area(text, reg, px, w, h, anchor, round(angle, 2), lead, inside_ok, k in self.area_water, key=k,
-                              tracking=L.sizes.area_tracking)
+                              tracking=L.sizes.area_tracking, box=box)
 
     def place_area_print(self, p: Plan, k: int, text: str, reg: int):
         """[print] title or place name inside its region: the largest size from title_px down to title_px_min whose
@@ -1276,6 +1278,7 @@ class _Planner:
         +-title_rot_max, nearest the region's pole of inaccessibility; inside with area_inset at the (wider) entry
         tracking, clear of other text, heads and routes."""
         L, pr = self.L, self.pr
+        box = self.area_keys[k][2]
         role, w8, trk = self.roles["area"][:3]
         if k in self.area_water:            # water names in the label face (italic on paper)
             role = self.roles["label"][0]
@@ -1321,7 +1324,7 @@ class _Planner:
                             anchor = ((x - c["x"]) / c["s"], (y - c["y"]) / c["s"])
                             p.areas[k] = Area(text, reg, round(px, 2), w, h, anchor, angle, None, True,
                                               k in self.area_water, key=k, role=role, weight=w8, tracking=trk,
-                                              tracking_in=trk_in, title=k in self.area_title)
+                                              tracking_in=trk_in, title=k in self.area_title, box=box)
                             return
             px -= 4 * self.ky
         px = pr.title_px_min * self.ky
@@ -1344,7 +1347,7 @@ class _Planner:
             lead = ((q[0] - c["x"]) / c["s"], (q[1] - c["y"]) / c["s"])
             p.areas[k] = Area(text, reg, round(px, 2), w, h, anchor, 0.0, lead, False, k in self.area_water,
                               key=k, role=role, weight=w8, tracking=trk, tracking_in=trk_in,
-                              title=k in self.area_title)
+                              title=k in self.area_title, box=box)
             self.log.append(f"{'title' if k in self.area_title else 'place name'} '{text}' outside region {reg} "
                             f"with a leader")
             return
@@ -1729,6 +1732,7 @@ def scene_layout(p: Plan) -> dict:
                      "anchor": [round(a.anchor[0], 2), round(a.anchor[1], 2)], "angle": a.angle,
                      "leader": None if a.leader is None else [round(a.leader[0], 2), round(a.leader[1], 2)],
                      "region": a.region, **({"water": True} if a.water else {}),
+                     **({"box": a.box} if a.box is not None else {}),
                      **({"role": a.role, "weight": a.weight, "tracking_in": a.tracking_in, "title": a.title}
                         if p.pr is not None else {})}
                     for k, a in p.areas.items()]

@@ -5,8 +5,12 @@ Keys handled in Python (not passed to Rust):
   y_overrides  [[start_frame, end_frame, y_px], ...]: captions starting in [start, end) are centred at y_px
   auto_place   bool: pre-flight moves captions that violate the clearance from element boxes
   clearance    px at 1920 height kept between a caption box and an element box (0 = must not intersect)
+  forbid_box   bool: caption_style.box_bg must not be true (captions never use a backing box)
+  ab_sizes     [px, ...]: A/B size candidates (validated, Python only; the effective `size` is what renders)
   fixed_y      px at 1920 height (scaled to the output height): centre y of every caption that no y_override or
                placement override moves; absent = the Rust slot y
+  place_band   [lo, hi] fractions of the output height: automatic placement (auto_place) keeps every moved caption
+               centre inside this band (the approved caption band); absent = anywhere in the safe area
   max_bottom_y px at 1920 height (scaled to the output height): lowest allowed caption box bottom (Z01; automatic
                placement never moves a caption below it); absent = no limit
 All other keys are Rust Style fields (unknown keys raise ValueError)."""
@@ -19,7 +23,7 @@ import hypoverum_core_rs as core
 from . import profiles
 from .timeline import MAX_FRAME, CaptionWord, Timeline
 
-PY_KEYS = ("y_overrides", "auto_place", "clearance", "fixed_y", "max_bottom_y")
+PY_KEYS = ("y_overrides", "auto_place", "place_band", "clearance", "fixed_y", "max_bottom_y", "forbid_box", "ab_sizes")
 
 
 def rust_style(tl: Timeline) -> dict | None:

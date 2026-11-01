@@ -12,6 +12,7 @@ def test_good_composite_cache_hit_skips_transition_rendering(project, tmp_path, 
     def small(d):
         d["profile"] = "geoverum"
         d["settings"].update(width=216, height=384)
+        d["segments"][1]["transition_in"] = "crossfade"     # geoverum cuts by default; ask for a drawn transition
     _, tl = project(small)
     files = [engine_clip(tmp_path / f"s{i}.mp4", 60, (216, 384), src=s)
              for i, s in enumerate(["testsrc2", "smptebars", "rgbtestsrc"])]

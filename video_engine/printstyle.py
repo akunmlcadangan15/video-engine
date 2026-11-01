@@ -29,6 +29,9 @@ def _map_y(path: str, mtime: float) -> float:
     from . import legibility
     Image.MAX_IMAGE_PIXELS = None
     with Image.open(path) as im:
+        # Draft first: a full decode of a 43200 px map plus its RGB copy is
+        # ~5.6 GB and got preflights OOM-killed. JPEG draft decodes at 1/8.
+        im.draft("RGB", (1024, 1024))
         im = im.convert("RGB")
         im.thumbnail((512, 512))
         px = np.asarray(im, dtype=float).reshape(-1, 3)

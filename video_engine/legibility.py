@@ -124,13 +124,18 @@ def elements(scene: dict) -> list[dict]:
     out = []
     pr = scene.get("print")        # profile [print]: fixed inks per text kind (el "ink" dark, "light" light)
     box = boxed(scene)
-    if th["pin_style"] == "teardrop" and not box:
+    def own_box(e: dict) -> bool:  # P10: a pin's own `box` wins over the theme label_style (boxed = not adaptive)
+        return bool(e["box"]) if e.get("box") is not None else box
+    if th["pin_style"] == "teardrop":
         out += [{"id": f"pin:{i}", "kind": "label", "start": p["at_frame"] / fps + 0.7, "end": end, "entity": None,
-                 "px": th["pin_label_px"], **({"ink": pr["ink"]} if pr else {})} for i, p in enumerate(scene["pins"])]
+                 "px": th["pin_label_px"], **({"ink": pr["ink"]} if pr else {})}
+                for i, p in enumerate(scene["pins"]) if not own_box(p)]
     if (t := scene.get("title")) and not box:
         out.append({"id": "title", "kind": "title", "start": t["at_frame"] / fps + 0.5, "end": end,
                     "entity": t.get("entity"), "colour": t.get("entity_colour"), "px": th["title_px"]})
-    for i, f in enumerate([] if box else scene.get("figures") or []):
+    for i, f in enumerate(scene.get("figures") or []):
+        if box or (f.get("box") and th.get("label_style") != "box"):   # theme boxes, or a P10 opt-in box
+            continue
         settle = 0.9 if f["motion"] == "bounce" else 0.2
         out.append({"id": f"figure:{i}", "kind": "figure", "start": f["at_frame"] / fps + settle, "end": end,
                     "entity": f.get("entity"), "colour": f.get("entity_colour"), "px": th["figure_px"]})
@@ -207,6 +212,8 @@ class Sample:
     ring_xy: np.ndarray
     cov: np.ndarray | None = None
     ring_cov: np.ndarray | None = None
+    cov_light: np.ndarray | None = None        # light-text halo (light_halo_alpha_max > 0): counters not punched
+    ring_cov_light: np.ndarray | None = None
 
 
 def _dilate(mask: np.ndarray, r: int) -> np.ndarray:
@@ -240,16 +247,17 @@ def holes(glyph: np.ndarray) -> np.ndarray:
     return (np.asarray(im) == 255)[1:-1, 1:-1]
 
 
-def halo_coverage(glyph: np.ndarray, hw: float, sd: float) -> np.ndarray:
+def halo_coverage(glyph: np.ndarray, hw: float, sd: float, punch: bool = True) -> np.ndarray:
     """Painted halo alpha (0-1, before halo_alpha) around a full-resolution glyph mask, as the template paints it:
     the glyphs stroked with width 2 hw (disk dilation) plus the fill, Gaussian blur sd (halo_blur_ratio x hw), and
-    0 in every enclosed counter."""
+    0 in every enclosed counter (punch=False: light text on a dark halo, counters stay covered)."""
     from PIL import Image, ImageFilter
     a = disk_dilate(glyph, hw) | glyph
     cov = a.astype(float)
     if sd > 0:
         cov = np.asarray(Image.fromarray(a.astype(np.uint8) * 255).filter(ImageFilter.GaussianBlur(sd)), float) / 255
-    cov[holes(glyph)] = 0.0
+    if punch:
+        cov[holes(glyph)] = 0.0
     return cov
 
 
@@ -291,12 +299,14 @@ def measure(bg: np.ndarray, mask_img: np.ndarray, rect: dict, el: dict, lg: dict
     ring = _dilate(full, int(math.ceil(lg["adjacent_px"]))) & ~full
     cov = halo_coverage(full, hw, sd)
     covd = _down(cov, f)
+    lt = halo_coverage(full, hw, sd, punch=False) if (lg.get("light_halo_alpha_max") or 0) > 0 else None
 
     def centres(m, k):
         ys, xs = np.nonzero(m)
         return np.stack([ox + x0 + (xs + 0.5) * k, oy + y0 + (ys + 0.5) * k], axis=1)
     return Sample(t, col[region], centres(region, f), (rect["x"], rect["y"], rect["w"], rect["h"]),
-                  bg[y0:y1, x0:x1][ring].astype(float), centres(ring, 1), covd[region], cov[ring])
+                  bg[y0:y1, x0:x1][ring].astype(float), centres(ring, 1), covd[region], cov[ring],
+                  None if lt is None else _down(lt, f)[region], None if lt is None else lt[ring])
 
 
 def _components(mask: np.ndarray) -> list[np.ndarray]:
@@ -449,9 +459,23 @@ def ladder(polarity: str, el: dict, lg: dict, halo: str) -> list[Style]:
     vignette_alpha_min..max; step 3 ink L - ink_l_step per rung down to ink_l_min. Light: one style (glow + shadow).
     ladder_order "ink_first" (printed ink): step 0 the ink at halo_alpha; step 1 darker ink per rung down to
     ink_l_min; step 2 the darkest ink on the knock-back vignette (halo colour) vignette_alpha_min..max. No glyph
-    halo: an element nothing passes is flagged."""
+    halo: an element nothing passes is flagged. Light text past its glow + shadow rung (light_halo_alpha_max > 0):
+    a dark glyph halo (light_halo_colour, else shadow_colour) at light_halo_alpha_min..max, step 1; then
+    light_halo_ink (if set) at light_halo_alpha_max, step 2 (not for element-specific or water inks)."""
     if polarity == "light":
-        return [Style("light", light_ink(lg, el), halo, 0.0, 0.0, 0)]
+        hi = lg.get("light_halo_alpha_max") or 0.0
+        dark = (lg.get("light_halo_colour") or lg["shadow_colour"]) if hi > 0 else halo
+        out = [Style("light", light_ink(lg, el), dark, 0.0, 0.0, 0)]   # every rung one halo colour (template: segs[0])
+        if hi > 0:
+            lo, n = lg.get("light_halo_alpha_min") or 0.0, lg.get("light_halo_steps") or 1
+            for j in range(n):
+                a = lo + (hi - lo) * (j / (n - 1) if n > 1 else 1)
+                if a > 0:
+                    out.append(Style("light", out[0].ink, dark, round(a, 4), 0.0, 1))
+            ink = lg.get("light_halo_ink")
+            if ink and ink.lower() != out[0].ink.lower() and not (el or {}).get("light") and not (el or {}).get("water"):
+                out.append(Style("light", ink, dark, round(hi, 4), 0.0, 2))
+        return out
     if lg.get("ladder_order") == "ink_first":
         out = [Style("dark", dark_ink(el, lg), halo, lg["halo_alpha"], 0.0, 0)]
         k = 1
@@ -501,6 +525,8 @@ def effective(s: Sample, st: Style, lg: dict, ring: bool = False) -> np.ndarray:
     va = vignette_alpha(s.ring_xy if ring else s.xy, s.box, st.vignette_alpha, lg)
     out = px * (1 - va[:, None]) + hc * va[:, None]
     cov = s.ring_cov if ring else s.cov
+    if st.polarity == "light" and s.cov_light is not None:
+        cov = s.ring_cov_light if ring else s.cov_light
     ha = st.halo_alpha * (np.ones(len(px)) if cov is None else cov)
     return out * (1 - ha[:, None]) + hc * ha[:, None]
 

@@ -420,7 +420,7 @@ def test_good_c01_transitions_are_not_hard_cuts(project, monkeypatch):
 
 
 def test_bad_c01_shot_change_rate_fails_with_transitions(project, monkeypatch):
-    segs = [("map", 5, None)] + [("photo" if i % 2 else "video", 5, None) for i in range(11)]
+    segs = [("map", 2, None)] + [("photo" if i % 2 else "video", 5, None) for i in range(11)]
     _, tl = project(tl_layout(*segs))
     _profile(monkeypatch, "geoverum", transitions=profiles.TransitionsProfile(**GEO_T))
     fs = style.c01_cuts(tl, profiles.load("geoverum").gates.cuts)
@@ -459,7 +459,8 @@ def test_good_layout_without_fly_keeps_its_hash(tmp_path, monkeypatch):
     dump = json.loads(prof.data.model_dump_json())
     assert dump["layout"].pop("fly") is None
     assert dump.pop("grade") is None          # an absent [grade] adds nothing either
-    assert dump.pop("motion") is not None     # default motion tokens add nothing to the hash
+    if dump.get("motion") == json.loads(profiles.MotionProfile().model_dump_json()):
+        dump.pop("motion")                    # default motion tokens add nothing to the hash
     anti = dump["gates"]["anti_slop"]
     if anti == json.loads(profiles.AntiSlopGate().model_dump_json()):
         dump["gates"].pop("anti_slop")        # default anti-slop levels add nothing to the hash
@@ -468,6 +469,10 @@ def test_good_layout_without_fly_keeps_its_hash(tmp_path, monkeypatch):
     for k in ("duration_exact",):             # an absent optional gate table adds nothing
         assert dump["gates"].pop(k) is None
     dump.pop("resources")                     # the worker budget is a machine setting, never hashed
+    if dump.get("flags") == json.loads(profiles.FlagsProfile().model_dump_json()):
+        dump.pop("flags")                     # default flag settings add nothing to the hash
+    if dump.get("fx") == json.loads(profiles.FxProfile().model_dump_json()):
+        dump.pop("fx")                        # default fx settings add nothing to the hash
     assert prof.blake3 == blake3_json(dump)   # an absent [layout.fly] adds nothing to the hash
 
 

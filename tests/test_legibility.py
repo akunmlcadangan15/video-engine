@@ -18,7 +18,9 @@ GEO = profiles.load("geoverum").legibility.model_dump()
 # the halo-first chooser (default ladder_order) on the Geoverum keys: a light halo, then the vignette, then darker ink
 HALO_FIRST = {"halo_alpha": 0.6, "halo_alpha_max": 0.85, "vignette_alpha_min": 0.35, "vignette_alpha_max": 0.70,
               "vignette_feather": 0.4, "ladder_order": "halo_first", "polarity_fallback": True, "glow_colour": "ink",
-              "entity_text_l_min": 0.0, "entity_text_l_max": 0.45, "entity_text_c_scale": 1.0}
+              "entity_text_l_min": 0.0, "entity_text_l_max": 0.45, "entity_text_c_scale": 1.0,
+              # the halo-first suites predate the light-text halo rungs (tests/test_light_halo.py): light stays one style
+              "light_halo_alpha_min": 0.0, "light_halo_alpha_max": 0.0}
 LG = {**GEO, **HALO_FIRST}
 
 

@@ -333,6 +333,7 @@ class MotionProfile(_Strict):
     ease_drawer: tuple[float, float, float, float] = (0.32, 0.72, 0.0, 1.0)
     micro_frames: int = Field(4, ge=1)
     overlay_frames: int = Field(7, ge=1)
+    overlay_frames_range: tuple[int, int] | None = None   # optional profile guard: overlay_frames within [lo, hi]
     panel_frames: int = Field(12, ge=1)
     stagger_frames: int = Field(2, ge=0)
     entrance: str = "power2.out"
@@ -349,6 +350,12 @@ class MotionProfile(_Strict):
                 raise ValueError(f"motion.{name}: x1 and x2 must be in 0..1")
         if self.micro_frames > self.overlay_frames or self.overlay_frames > self.panel_frames:
             raise ValueError("motion: duration tokens must grow micro <= overlay <= panel")
+        r = self.overlay_frames_range
+        if r is not None:
+            if len(r) != 2 or r[0] > r[1] or r[0] < 1:
+                raise ValueError("motion.overlay_frames_range must be [lo, hi] with 1 <= lo <= hi")
+            if not r[0] <= self.overlay_frames <= r[1]:
+                raise ValueError(f"motion.overlay_frames {self.overlay_frames} outside its declared range {r[0]}..{r[1]}")
         for name in ("entrance", "move", "exit"):
             if not getattr(self, name).strip():
                 raise ValueError(f"motion.{name} must name an ease")
@@ -398,8 +405,8 @@ class CameraProfile(_Strict):
                 "dir": 1 if self.pulse_direction == "in" else -1}
 
 
-TRANSITION_KINDS = ("cut", "crossfade", "zoom_whip", "page_turn")
-TransitionKind = Literal["cut", "crossfade", "zoom_whip", "page_turn"]
+TRANSITION_KINDS = ("cut", "crossfade", "zoom_whip", "page_turn", "state")
+TransitionKind = Literal["cut", "crossfade", "zoom_whip", "page_turn", "state"]
 
 
 class TransitionsProfile(_Strict):
@@ -417,6 +424,7 @@ class TransitionsProfile(_Strict):
     whip_scale: float = Field(1.3, ge=1.0, le=2.0)      # zoom_whip: outgoing end scale and incoming start scale
     whip_blur: float = Field(0.12, ge=0.0, le=0.5)      # zoom_whip: peak radial blur length (fraction of the scale)
     page_s: float = Field(0.4, ge=0.1, le=1.5)          # page_turn: the outgoing last frame folds away over the incoming
+    state_s: float = Field(0.2, ge=0.1, le=0.4)         # state: very short dissolve when both sides share the same base map
     page_turn: bool = True                              # false: page_turn is not allowed anywhere in this profile
     map_morph: bool = True                              # false: map segments may not morph to a second (paper) map
 
@@ -540,6 +548,13 @@ class Legibility(_Strict):
     shadow_blur_px: float = Field(ge=3, le=6)
     shadow_alpha: float = Field(ge=0, le=0.35)
     shadow_colour: str
+    # light text escalation (plain labels on imagery): after the glow + shadow rung, a dark glyph halo (same geometry
+    # as the dark-ink halo) at light_halo_alpha_min..max in light_halo_steps rungs; max 0 = off (one light style)
+    light_halo_alpha_min: float = Field(default=0.0, ge=0, le=0.85)
+    light_halo_alpha_max: float = Field(default=0.0, ge=0, le=0.85)
+    light_halo_steps: int = Field(default=3, ge=1, le=8)
+    light_halo_colour: str | None = None                      # None = shadow_colour
+    light_halo_ink: str | None = None    # last light rung: this ink at light_halo_alpha_max (None = no extra rung)
     # escalation step 2: soft radial paper vignette
     vignette_scale: float = Field(ge=1.3, le=1.5)             # ellipse radii = scale x the half box diagonal axes
     vignette_feather: float = Field(gt=0, le=0.6)             # feather band = this x box height
@@ -572,14 +587,17 @@ class Legibility(_Strict):
 
     @model_validator(mode="after")
     def _v(self):
-        for c in [self.text_fallback, self.shadow_colour, self.paper_colour, self.route_casing_colour, *self.never_text]:
+        for c in [self.text_fallback, self.shadow_colour, self.paper_colour, self.route_casing_colour, *self.never_text,
+                  *([self.light_halo_colour] if self.light_halo_colour else []),
+                  *([self.light_halo_ink] if self.light_halo_ink else [])]:
             if not re.fullmatch(r"#[0-9a-fA-F]{6}", c):
                 raise ValueError(f"legibility colour {c!r} must be #rrggbb")
         for lo, hi in [("halo_alpha", "halo_alpha_max"), ("vignette_alpha_min", "vignette_alpha_max"),
                        ("halo_l_min", "halo_l_max"), ("ink_l_min", "ink_l"), ("lc_title", "lc_title_aim"),
                        ("halo_width_min_em", "halo_width_em"), ("halo_width_min_em", "label_halo_width_em"),
                        ("halo_width_em", "halo_width_max_em"), ("label_halo_width_em", "halo_width_max_em"),
-                       ("halo_blur_ratio", "halo_blur_max_ratio"), ("lc_line_fail", "lc_line")]:
+                       ("halo_blur_ratio", "halo_blur_max_ratio"), ("lc_line_fail", "lc_line"),
+                       ("light_halo_alpha_min", "light_halo_alpha_max")]:
             if getattr(self, lo) > getattr(self, hi):
                 raise ValueError(f"legibility.{lo} must not exceed legibility.{hi}")
         return self
@@ -730,6 +748,118 @@ class Resources(_Strict):
     workers: int = Field(0, ge=0, le=64)    # 0 = auto from CPU count and RAM
 
 
+class FlagsProfile(_Strict):
+    alpha: float = Field(0.85, ge=0, le=1)
+    reveal_s: float = Field(0.45, ge=0.2, le=1.0)
+    edge_px: float = Field(3, ge=2, le=7)
+    glow_px: float = Field(6, ge=3, le=14)
+    # auto: per region, cover unless cropping would cut more than auto_max_loss of the flag (narrow/tall regions
+    # such as Myanmar on the globe), then contain (hyperframes.flag_fit). A flag's own `fit` still wins.
+    fit: Literal["auto", "cover", "contain", "stretch"] = "auto"
+    auto_max_loss: float = Field(0.35, ge=0, le=0.9)
+    pin_height_pct: float = Field(4.5, ge=3, le=7)
+
+
+class FxGrid(_Strict):
+    colour: str = "#2F6FD6"
+    bg: str = "#0B2A5B"
+    cell_pct: float = Field(4.0, gt=0, le=50)       # cell size as a share of the frame height
+    line_px: float = Field(2, ge=1, le=20)          # at 1080 wide
+    alpha: float = Field(0.5, ge=0, le=1)
+    graticule_spacing_deg: float = Field(30, ge=5, le=90)
+    graticule_colour: str = "#FFFFFF"                # light lines: the grid blue disappears on dark ocean
+    graticule_alpha: float = Field(0.35, ge=0, le=1)
+
+
+class FxStars(_Strict):
+    count: int = Field(400, ge=0, le=5000)
+    seed: int | None = Field(None, ge=0, le=2**31 - 1)   # None = project id + segment index
+    twinkle: float = Field(0.15, ge=0, le=1)
+    parallax: float = Field(0.2, ge=0, le=1)
+
+
+class FxHalo(_Strict):
+    colour: str = "#7EC8FF"
+    width_pct: float = Field(3.0, gt=0, le=20)
+    alpha: float = Field(0.6, ge=0, le=1)
+
+
+class FxTimezone(_Strict):
+    alpha: float = Field(0.25, ge=0, le=1)
+    at_frame: int = Field(0, ge=0)
+    colour: str = "#7EC8FF"                          # band colour when the band sets none
+
+
+class FxHatch(_Strict):
+    angle: float = Field(45, ge=0, le=180)
+    spacing_px: float = Field(10, ge=2, le=100)
+    line_px: float = Field(2, ge=1, le=20)
+    colour: str = "#FFFFFF"
+    alpha: float = Field(0.6, ge=0, le=1)
+
+
+class FxBubble(_Strict):
+    style: Literal["light", "dark"] = "light"
+    font_px: float = Field(44, ge=20, le=96)         # at 1920 high
+    pop_frames: int = Field(5, ge=1, le=15)          # overlay motion token
+    max_width_pct: float = Field(0.62, ge=0.3, le=0.9)
+    max_bottom_pct: float = Field(0.72, ge=0.5, le=0.9)   # never in the caption band
+    gap_px: float = Field(28, ge=4, le=120)
+
+
+class FxFlagCharacter(_Strict):
+    """Flag-icon characters (P15): cloth wave, eyes and blink, soft shadow. Lengths are at 1920 px height."""
+    wave_amplitude: float = Field(0.035, ge=0, le=0.12)   # share of the character height
+    wave_hz: float = Field(0.8, gt=0, le=4.0)             # wave cycles per second
+    slices: int = Field(14, ge=4, le=40)                  # vertical cloth strips
+    eye_pct: float = Field(17, gt=0, le=40)               # eye diameter as a share of the character height
+    blink_period_s: float = Field(3.2, gt=0.5, le=12.0)   # one blink per period
+    blink_frames: int = Field(5, ge=1, le=20)
+    shadow_px: float = Field(14, ge=0, le=60)
+
+
+class FxCutaway(_Strict):
+    """Cross-section diagram (P16)."""
+    reveal_s: float = Field(0.6, ge=0.05, le=5.0)         # one layer reveal; layers stagger by 0.6 of it
+    label_px: float = Field(38, ge=12, le=120)            # at 1920 px height
+    line_px: float = Field(2, ge=1, le=10)
+    height_ratio: float = Field(0.55, gt=0, le=1.5)       # section height / section width
+    inset_border_px: float = Field(5, ge=1, le=20)        # thin white photo frame
+    inset_gap_px: float = Field(28, ge=4, le=160)
+
+
+class FxGeoid(_Strict):
+    """Exaggerated Earth model (P18)."""
+    exaggeration: float = Field(0.08, ge=0, le=0.5)
+    colour_ramp: list[str] = Field(default_factory=lambda: ["#2B5BD7", "#3FB27F", "#F2D04B", "#D9483B"])
+    rotate_deg_s: float = Field(12, ge=-360, le=360)
+    harmonics: int = Field(6, ge=1, le=16)
+    fade_s: float = Field(0.5, ge=0, le=3.0)
+
+
+class FxParticles(_Strict):
+    """Deterministic particle accents (P19)."""
+    duration_s: float = Field(2.0, ge=0.2, le=10.0)
+    max_count: int = Field(180, ge=12, le=600)            # per emitter
+    gravity: float = Field(0.22, ge=0, le=1.0)            # fireworks: share of frame height per second^2
+    fireworks_colours: list[str] = Field(default_factory=lambda: ["#FFD84A", "#FF7A3D", "#FF4D6D", "#7ED0FF", "#FFFFFF"])
+    fire_colours: list[str] = Field(default_factory=lambda: ["#FFE07A", "#FF9A3D", "#E8452B"])
+
+
+class FxProfile(_Strict):
+    """[fx]: optional per-scene visual components (P12-P19). Absent scene fields keep the engine byte-identical."""
+    grid: FxGrid = FxGrid()
+    stars: FxStars = FxStars()
+    halo: FxHalo = FxHalo()
+    timezone: FxTimezone = FxTimezone()
+    hatch: FxHatch = FxHatch()
+    bubble: FxBubble = FxBubble()
+    flag_character: FxFlagCharacter = FxFlagCharacter()
+    cutaway: FxCutaway = FxCutaway()
+    geoid: FxGeoid = FxGeoid()
+    particles: FxParticles = FxParticles()
+
+
 class ProfileData(_Strict):
     description: str = ""
     caption_style: dict = {}
@@ -748,6 +878,8 @@ class ProfileData(_Strict):
     render: RenderProfile = RenderProfile()   # encode / capture quality
     grade: Grade | None = None              # full-frame grade of every segment without its own (lut: profiles-relative)
     resources: Resources = Resources()
+    flags: FlagsProfile = FlagsProfile()
+    fx: FxProfile = FxProfile()
 
 
 @dataclass(frozen=True)
@@ -816,6 +948,10 @@ class Profile:
     def render(self) -> RenderProfile:
         return self.data.render
 
+    @property
+    def fx(self) -> FxProfile:
+        return self.data.fx
+
     def render_values(self, renderer: str) -> dict:
         """Profile values that reach a segment renderer ("hf" or "native"); a segment cache key includes them."""
         if renderer != "hf":
@@ -858,12 +994,24 @@ def names() -> list[str]:
 def _check_python_keys(name: str, cs: dict) -> None:
     if "auto_place" in cs and not isinstance(cs["auto_place"], bool):
         raise EngineError(f"profile '{name}': caption_style.auto_place must be true or false")
+    if "forbid_box" in cs and not isinstance(cs["forbid_box"], bool):
+        raise EngineError(f"profile '{name}': caption_style.forbid_box must be true or false")
+    ab = cs.get("ab_sizes")
+    if ab is not None and (not isinstance(ab, list) or not ab
+                           or not all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in ab)):
+        raise EngineError(f"profile '{name}': caption_style.ab_sizes must be a non-empty list of positive integers")
+    if cs.get("forbid_box") and cs.get("box_bg") is True:
+        raise EngineError(f"profile '{name}': caption_style.forbid_box = true but box_bg = true; captions never use a box")
     c = cs.get("clearance")
     if c is not None and (isinstance(c, bool) or not isinstance(c, (int, float)) or c < 0):
         raise EngineError(f"profile '{name}': caption_style.clearance must be a number >= 0")
     y = cs.get("fixed_y")
     if y is not None and (isinstance(y, bool) or not isinstance(y, (int, float)) or not 0 < y < 1920):
         raise EngineError(f"profile '{name}': caption_style.fixed_y must be a number in 0..1920 (px at 1920 height)")
+    b = cs.get("place_band")
+    if b is not None and (not isinstance(b, list) or len(b) != 2 or any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in b)
+                          or not 0 < b[0] <= b[1] < 1):
+        raise EngineError(f"profile '{name}': caption_style.place_band must be [lo, hi] with 0 < lo <= hi < 1 (fractions of H)")
     m = cs.get("max_bottom_y")
     if m is not None and (isinstance(m, bool) or not isinstance(m, (int, float)) or not 0 < m <= 1920):
         raise EngineError(f"profile '{name}': caption_style.max_bottom_y must be a number in 0..1920 (px at 1920 height)")
@@ -902,9 +1050,9 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
     elif dump["layout"].get("fly") is None:
         dump["layout"].pop("fly", None)   # [layout] without [layout.fly] keeps its hash
     for k, cls in (("camera", CameraProfile), ("motion", MotionProfile), ("transitions", TransitionsProfile),
-                   ("render", RenderProfile)):
+                   ("render", RenderProfile), ("flags", FlagsProfile), ("fx", FxProfile)):
         if dump.get(k) == json.loads(cls().model_dump_json()):
-            dump.pop(k)            # profiles without [camera] / [motion] / [transitions] / [render] values keep their hash
+            dump.pop(k)            # profiles without [camera] / [motion] / [transitions] / [render] / [fx] values keep their hash
     if dump.get("grade") is None:
         dump.pop("grade", None)    # profiles without [grade] keep their hash
     if dump["gates"].get("camera") is None:
@@ -944,8 +1092,13 @@ def of(tl: "Timeline") -> Profile:
 
 
 def caption_style(tl: "Timeline") -> dict:
-    """Effective caption style: profile caption_style with the project's caption_style keys on top."""
-    return {**of(tl).caption_style, **tl.caption_style}
+    """Effective caption style: profile caption_style with the project's caption_style keys on top. A profile that
+    sets forbid_box rejects box_bg = true from either the profile or a timeline override."""
+    st = {**of(tl).caption_style, **tl.caption_style}
+    if st.get("forbid_box") and st.get("box_bg") is True:
+        raise EngineError("caption_style.forbid_box = true but box_bg = true (timeline override); captions never use "
+                          "a box in this channel")
+    return st
 
 
 def loudness(tl: "Timeline") -> Loudness:

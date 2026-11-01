@@ -53,7 +53,7 @@ def _ai_qa(a, p: Path):
 def cmd_validate(a) -> int:
     from pydantic import ValidationError
     try:
-        p, tl = _load(a.project)
+        _p, tl = _load(a.project)
     except ValidationError as e:
         print(f"invalid master_timeline.json:\n{e}")
         return 1
@@ -287,6 +287,19 @@ def cmd_sheet(a) -> int:
 
 def cmd_assets(a) -> int:
     from . import library
+    if a.action == "add":
+        from . import assets
+        if not a.path or not a.licence or not a.source:
+            raise EngineError("assets add requires PATH, --licence and --source")
+        result = assets.register(Path(a.path), licence=a.licence, source=a.source, source_url=a.source_url or "",
+                                 author=a.author or "", dest=a.to, kind=a.kind,
+                                 project=Path(a.project) if a.project else None, asset_id=a.id, dry_run=a.dry_run)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0
+    if a.action == "backfill":
+        from . import assets
+        print(json.dumps(assets.backfill(dry_run=a.dry_run), indent=2, ensure_ascii=False))
+        return 0
     if a.copy:
         if not a.project:
             raise EngineError("--copy needs --project")
@@ -295,6 +308,22 @@ def cmd_assets(a) -> int:
         if asset is None:
             raise EngineError(f"{a.copy} is not in the open-assets or stock index")
         print(json.dumps(library.credit_row(asset, Path(a.project)), indent=2, ensure_ascii=False))
+        return 0
+    if a.query and not a.open_assets and not a.stock_root:
+        from dataclasses import asdict
+
+        from . import assets
+        aliases = {"broll": "video", "photos": "image", "icons": "icon", "textures": "texture",
+                   "maps": "map", "models": "model", "fonts": "font"}
+        kind = aliases.get(a.kind, a.kind)
+        matches = assets.find(a.query, kind=kind, project=Path(a.project) if a.project else None, limit=a.limit)
+        if a.json:
+            print(json.dumps([{**asdict(r), "path": str(r.path), "license": r.licence,
+                               "name": r.path.stem, "collection": r.tier} for r in matches],
+                             indent=2, ensure_ascii=False))
+        else:
+            for r in matches:
+                print(f"{r.kind:10s} {r.licence or '-':16s} {r.path}")
         return 0
     rows = library.search(a.query or "", kind=a.kind, limit=a.limit,
                           open_assets_root=Path(a.open_assets) if a.open_assets else None,
@@ -504,6 +533,15 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--cols", type=int, default=7)
     x = add("assets", cmd_assets, "Search the local open-assets and stock/B-roll index, or copy one asset and print "
                                   "its credits_manifest row. No network request.")
+    x.add_argument("action", nargs="?", choices=["backfill", "add"])
+    x.add_argument("path", nargs="?", help="asset to register")
+    x.add_argument("--licence")
+    x.add_argument("--source")
+    x.add_argument("--source-url")
+    x.add_argument("--author")
+    x.add_argument("--to", choices=["stock", "open", "project"], default="stock")
+    x.add_argument("--id")
+    x.add_argument("--dry-run", action="store_true", help="report backfill changes without writing")
     x.add_argument("--query", default="", help="space-separated words, all must match")
     x.add_argument("--kind", help="filter: broll, icons, textures, maps, models, ...")
     x.add_argument("--limit", type=int, default=20)

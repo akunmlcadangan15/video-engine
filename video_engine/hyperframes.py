@@ -8,6 +8,7 @@ import functools
 import http.server
 import json
 import math
+import re
 import shutil
 import threading
 from pathlib import Path
@@ -15,7 +16,7 @@ from urllib.parse import quote
 
 import hypoverum_core_rs as core
 
-from . import camera3d, cache, globe, parallax, config, entities, legibility, printstyle, profiles, props, streams, toolchain
+from . import assets, camera3d, cache, fx, fx2, globe, parallax, config, entities, legibility, printstyle, profiles, props, streams, toolchain
 from .timeline import HYPERFRAMES, Segment, Timeline
 from .util import EngineError, blake3_files, blake3_json, code_hash, run
 
@@ -74,7 +75,9 @@ DEEP_TILE = 1024        # deep tile side (deep raster px)
 DEEP_PAD = 2            # deep raster px each tile reaches into its right and bottom neighbours (no seams)
 DEEP_MARGIN = 0.05      # viewport growth (fraction of its size) when picking the tiles a frame needs
 DEEP_VERSION = "deep-1" # bump when deep tile output changes
-DEEP_MAX_SIDE = 8192    # widest/tallest deep raster: a 43200 px source is never decoded and kept whole
+DEEP_MAX_SIDE = 65536   # widest/tallest deep raster (virtual: only the tiles a frame shows are cut and kept)
+DEEP_DECODE_MAX_PX = 640_000_000   # source px one full-scale deep decode may hold (rows 0..last needed row, 1.9 GB RGB);
+                                   # past it the raster drops to half the source width (JPEG draft decode)
 SCENE_CACHE_MAX = 64     # memo entries of scene_data() (one build calls it several times per segment)
 INK_CACHE_MAX = 64       # memo entries of the adaptive ink choices
 MORPH_PAPER, MORPH_GRAIN = "paper-F1E8D4.jpg", "grain-512.png"   # vendor/textures of a map morph
@@ -417,6 +420,12 @@ def _scene_key(seg: Segment, tl: Timeline, project_dir: Path) -> str:
                 e.pop("at_frame", None)
     else:
         sc = scfg.model_dump(mode="json")
+    for item in [*(sc.get("pins") or []), *(sc.get("regions") or [])]:
+        if item.get("flag") is None:
+            item.pop("flag", None)
+        for change in item.get("changes", []):
+            if change.get("flag") is None:
+                change.pop("flag", None)
     p = project_dir / scfg.map_asset
     try:
         st = p.stat()
@@ -431,16 +440,22 @@ def _scene_key(seg: Segment, tl: Timeline, project_dir: Path) -> str:
     for c in scfg.cards:
         if c.asset_ref and (cr := tl.credit_for(ref=c.asset_ref)) and cr.path:
             deps.append(cr.path)
+    deps += [str(assets.resolve(i.asset, project=project_dir, kind="image").path) for i in scfg.insets or []]
+    flags = [p.flag for p in scfg.pins]
+    flags += [f for r in scfg.regions or [] for f in [r.flag, *(c.flag for c in r.changes)]]
+    flags += [c.flag for c in scfg.flag_characters or []]
+    deps += [str(assets.resolve(assets.flag_for(f.code, f.variant), project=project_dir, kind="flag").path)
+             for f in flags if f]
     files = sorted({str((Path(project_dir) / d).resolve()) for d in deps})
-    assets = [blake3_files([Path(f)])[0] if Path(f).is_file() else None for f in files]
+    asset_hashes = [blake3_files([Path(f)])[0] if Path(f).is_file() else None for f in files]
     hooks = [id(fn) for fn in (deep_plan, morph_data, map_image_size, probe_dom, props.scene_props,
                                parallax.scene_layers, layout.apply_segment, legibility.all_times,
                                legibility.collect, legibility.elements, legibility.choose, legibility.scene_inks)]
     prof = profiles.of(tl)
     return blake3_json({"scene": sc, "engine": seg.engine_type, "n": seg.n_frames,
-                        "project": str(Path(project_dir).resolve()), "assets": [files, assets], "hooks": hooks,
+                        "project": str(Path(project_dir).resolve()), "assets": [files, asset_hashes], "hooks": hooks,
                         "tl": tl.model_dump(mode="json", exclude={"segments", "captions", "captions_meta"}),
-                        "profile": [prof.name, prof.blake3, prof.data.model_dump(mode="json")],
+                        "profile": [prof.name, prof.blake3, prof.data.model_dump(mode="json", exclude={"fx"})],
                         "legibility": legibility.code_hash(), "map": src})
 
 
@@ -448,6 +463,46 @@ def clear_scene_cache() -> None:
     """Drop the in-process scene memo (tests; a caller that mutates a timeline outside apply_segment)."""
     _SCENES.clear()
     _INKS.clear()
+
+
+def _flag_data(flag, prof, project_dir: Path, region_aspect: float | None = None) -> dict:
+    asset = assets.resolve(assets.flag_for(flag.code, flag.variant), project=project_dir, kind="flag")
+    out = {**prof.data.flags.model_dump(), **flag.model_dump(exclude_none=True, exclude={"code", "variant"}),
+           "href": f"assets/{asset.sha256[:16]}.svg", "aspect": _svg_aspect(asset.path)}
+    loss = out.pop("auto_max_loss")
+    if out["fit"] == "auto":
+        out["fit"] = "cover" if region_aspect is None else flag_fit(region_aspect, out["aspect"], loss)
+    return out
+
+
+def flag_fit(region_aspect: float, flag_aspect: float, max_loss: float) -> str:
+    """Automatic flag fit of one region: `cover` keeps the region filled and crops the flag; the share of the flag
+    cut away is 1 - min(r/a, a/r) for region bbox aspect r and flag aspect a. Past `max_loss` (a tall or very wide
+    region: Myanmar or Chile against a 4:3 flag) the crop would leave a strip nobody recognises, so the flag is
+    `contain`ed whole inside the region bbox instead."""
+    if not (region_aspect > 0 and flag_aspect > 0):
+        return "cover"
+    return "contain" if 1 - min(region_aspect / flag_aspect, flag_aspect / region_aspect) > max_loss else "cover"
+
+
+def region_aspect(polygon: list[list[float]], mw: float, mh: float, globe_scene: bool) -> float:
+    """Width/height of a region's bbox as drawn: map px on a flat map; on the globe the lng span shrinks by
+    cos(mean lat) (the orthographic view near the region's centre), the polygon being equirectangular 0..1."""
+    xs, ys = [p[0] for p in polygon], [p[1] for p in polygon]
+    dx, dy = max(xs) - min(xs), max(ys) - min(ys)
+    if dy <= 0:
+        return 0.0
+    if not globe_scene:
+        return dx * mw / (dy * mh)
+    lat = math.radians(90 - (max(ys) + min(ys)) / 2 * 180)
+    return dx * 360 * math.cos(lat) / (dy * 180)
+
+
+def _svg_aspect(path) -> float:
+    """width/height of an SVG's viewBox (4:3 fallback). The template fits flags itself: Chrome treats an
+    `<image>`-referenced SVG as `meet` whatever its preserveAspectRatio says, so `slice` alone never covers."""
+    m = re.search(r'viewBox\s*=\s*"\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)', Path(path).read_text()[:2000])
+    return round(float(m[1]) / float(m[2]), 4) if m and float(m[2]) > 0 else round(4 / 3, 4)
 
 
 def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
@@ -464,6 +519,10 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     G = None
     if sc.globe:   # the 2D camera stays at identity over a frame-sized #cam; hf/globe.js draws the globe and moves pins
         G = globe.scene_block(seg, tl, project_dir, theme)
+        if sc.globe.halo:
+            G["halo"] = fx.halo_data(prof.fx.halo, sc.globe.halo)
+        if sc.geoid:
+            G["geoid"] = fx2.geoid_block(seg, tl, prof)
         mw, mh = float(S.width), float(S.height)
         still = {"x": 0.0, "y": 0.0, "s": 1.0}
         cam = {"start": still, "end": still, "legs": [{"f0": 0, "f1": n, "to": still, "ease": "glide"}], "leg_motion": []}
@@ -485,7 +544,9 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
             px, py = _pin_xy(p, sc, mw, mh)
         pins.append({"label": p.label, "px": round(px, 2), "py": round(py, 2),
                      "at_frame": f, **({"label_side": p.label_side} if p.label_side else {}),
-                     **({"lat": p.lat, "lng": p.lng} if G else {})})
+                     **({"box": p.box} if p.box is not None else {}),
+                     **({"lat": p.lat, "lng": p.lng} if G else {}),
+                     **({"flag": _flag_data(p.flag, prof, project_dir)} if p.flag else {})})
     cards = []
     for i, c in enumerate(sc.cards):
         img = None
@@ -508,7 +569,14 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     if (mq := prof.render.map_jpeg_quality) and mq != MAP_JPEG_QUALITY:
         out["map_q"] = mq
     if sc.regions:
-        out["regions"] = [region_data(r, ecol, theme, mw, mh, G, S, lay is not None) for r in sc.regions]
+        out["regions"] = [region_data(r, ecol, theme, mw, mh, G, S, lay is not None, prof.fx) for r in sc.regions]
+        for r, data in zip(sc.regions, out["regions"]):
+            ra = region_aspect(r.polygon, mw, mh, G is not None)
+            if r.flag:
+                data["flag"] = _flag_data(r.flag, prof, project_dir, ra)
+            for change, target in zip(r.changes, data["changes"]):
+                if change.flag:
+                    target["flag"] = _flag_data(change.flag, prof, project_dir, ra)
     if sc.borders:
         out["borders"] = [{"points": [[round(x * mw, 2), round(y * mh, 2)] for x, y in b.points], "at_frame": b.at_frame,
                            "draw_s": theme["border_draw_s"] if b.draw_s is None else b.draw_s, "colour": b.colour.lower(),
@@ -526,14 +594,18 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
                            "x": round(f.position[0] * S.width, 2), "y": round(f.position[1] * S.height, 2),
                            "entity": f.entity, "colour": col.get(f.entity, "#ffffff")} for f in sc.figures]
     boxed = theme["label_style"] == "box" and (lay is None or prof.print is None)
-    if boxed:
-        for t in [out.get("title"), *out.get("figures", [])]:
-            if t:
-                t["box"] = entities.box_colour(col[t["entity"]], theme) if t["entity"] else theme["label_box_colour"]
-        for f in out.get("figures", []):
-            if f["kind"] == "year" and theme["year_box_colour"]:
-                f.update(box=theme["year_box_colour"], ink=theme["year_box_ink"], px=theme["year_box_px"],
-                         texture=theme["year_box_texture"], dim=texture_dim(theme["year_box_texture"]))
+    if boxed and out.get("title"):
+        t = out["title"]
+        t["box"] = entities.box_colour(col[t["entity"]], theme) if t["entity"] else theme["label_box_colour"]
+    for fm, f in zip(sc.figures or [], out.get("figures", [])):
+        on = fm.box if fm.box is not None else boxed
+        if not on:
+            continue
+        if fm.box is None and f["kind"] == "year" and theme["year_box_colour"]:
+            f.update(box=theme["year_box_colour"], ink=theme["year_box_ink"], px=theme["year_box_px"],
+                     texture=theme["year_box_texture"], dim=texture_dim(theme["year_box_texture"]))
+        else:
+            f["box"] = theme["label_box_colour"]
     if prof.legibility:
         out["legibility"] = {**prof.legibility.model_dump(), "v": legibility.code_hash()}
         for t in [out.get("title"), *out.get("figures", [])]:
@@ -568,6 +640,9 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
         out["deep"] = deep_entries(project_dir / sc.map_asset, dp, _q(out))
     if sc.morph:
         out["morph"] = morph_data(sc.morph, out, project_dir, (iw, ih))
+    out.update(fx.scene_block(seg, tl, project_dir, out, sc, prof))
+    if sc.flag_characters or sc.cutaway or sc.insets or sc.particles:
+        out.update(fx2.scene_block(seg, tl, project_dir, out, sc, prof, pins))
     _bounded_put(_SCENES, key, copy.deepcopy(out), SCENE_CACHE_MAX)
     return out
 
@@ -592,11 +667,13 @@ def _centroid(poly: list[list[float]]) -> tuple[float, float]:
     return cx / (3 * a), cy / (3 * a)
 
 
-def region_data(r, col: dict, theme: dict, mw: float, mh: float, G: dict | None, S, beats: bool) -> dict:
+def region_data(r, col: dict, theme: dict, mw: float, mh: float, G: dict | None, S, beats: bool, fxc=None) -> dict:
     """Scene entry of a region: points in map px (globe scenes: `ll` lat/lng per point and the points projected at
     the region's first frame), style colours of every owner (`changes`) and its box label. The theme region_style
-    applies to every scene; a region's own style wins."""
+    applies to every scene; a region's own style wins. The theme label_style or the region's own `box` decides
+    whether its label gets a solid box."""
     style = r.style or theme["region_style"]
+    boxed = r.box if r.box is not None else theme["label_style"] == "box"
 
     def paint(e: str) -> dict:
         c = col[e]
@@ -606,7 +683,7 @@ def region_data(r, col: dict, theme: dict, mw: float, mh: float, G: dict | None,
             L, C, h = legibility.rgb_oklch(legibility.hex_rgb(b))
             out.update(block=b, side=legibility.oklch_hex(max(0.0, L - theme["block_side_dl"]), C, h),
                        bevel=tint(b, theme["block_bevel_tint"]))
-        if r.label:
+        if r.label and boxed:
             out["box"] = entities.box_colour(c, theme)
         return out
 
@@ -629,6 +706,8 @@ def region_data(r, col: dict, theme: dict, mw: float, mh: float, G: dict | None,
         (lp,), lll = xy([list(r.label_at or _centroid(r.polygon))], f)
         out["label"] = {"text": r.label, "x": round(lp[0], 2), "y": round(lp[1], 2), "at_frame": f,
                         **({"ll": lll[0]} if lll else {})}
+    if r.hatch and fxc is not None:
+        out["hatch"] = fx.hatch_data(fxc.hatch, r.hatch)
     return out
 
 
@@ -653,15 +732,36 @@ def deep_plan(scene: dict, src_size: tuple[int, int]) -> dict | None:
     """Deep tiles of a map scene: when the camera zooms past the whole-map derivative's resolution (MAP_MAX_SIDE), a
     deep raster of width min(source width, map width x largest zoom) is cut into DEEP_TILE tiles and only the tiles
     some such frame shows (its viewport grown by DEEP_MARGIN) are kept. None when the derivative suffices."""
-    from . import layout
-    mw, mh = scene["map_size"]
     need = _need_w(scene)
-    base = _map_width(need) / mw                          # derivative px per map px
     dw = min(src_size[0], math.ceil(need))
     if dw <= _map_width(need):
         return None
+    dp = _deep_tiles_at(scene, src_size, dw)
+    if dp and dw * 2 > src_size[0] and src_size[0] * _deep_src_rows(dp, src_size) > DEEP_DECODE_MAX_PX:
+        dp = _deep_tiles_at(scene, src_size, src_size[0] // 2)   # too many source rows to decode at full scale
+    return dp
+
+
+def drawn_width(scene: dict, src_size: tuple[int, int]) -> int:
+    """Width of the map raster a map scene draws at its deepest zoom: the deep raster when deep tiles are cut, else the
+    whole-map derivative (both capped by the source). M02 divides it by the on-screen map width."""
+    dp = deep_plan(scene, src_size)
+    return min(src_size[0], max(dp["w"] if dp else 0, _map_width(_need_w(scene))))
+
+
+def _deep_src_rows(dp: dict, src_size: tuple[int, int]) -> int:
+    """Source rows 0..the last row a deep tile reads (a baseline JPEG decodes top-down: the rows below are skipped)."""
+    y1 = max(_deep_box(dp, i, j)[3] for i, j in dp["tiles"])
+    return min(src_size[1], math.ceil(y1 * src_size[1] / dp["h"]) + 2)
+
+
+def _deep_tiles_at(scene: dict, src_size: tuple[int, int], dw: int) -> dict | None:
+    """Deep plan at raster width dw: the tiles some frame past the derivative's resolution shows."""
+    from . import layout
+    mw, mh = scene["map_size"]
+    base = _map_width(_need_w(scene)) / mw
     dh = round(src_size[1] * dw / src_size[0])
-    if max(dw, dh) > DEEP_MAX_SIDE:                        # bound the one decoded raster (source maps can be 43200 px)
+    if max(dw, dh) > DEEP_MAX_SIDE:
         k = DEEP_MAX_SIDE / max(dw, dh)
         dw, dh = max(1, round(dw * k)), max(1, round(dh * k))
     d = dw / mw                                           # deep px per map px
@@ -711,6 +811,22 @@ def deep_entries(src: Path, dp: dict, q: int | None = None) -> list[dict]:
              "raster": [dp["w"], dp["h"]], **({"q": q} if q and q != MAP_JPEG_QUALITY else {})} for i, j in dp["tiles"]]
 
 
+def _load_top_rows(im, rows: int) -> None:
+    """Decode only the top `rows` rows of a baseline JPEG (libjpeg decodes top-down, so the rows below are never read):
+    a deep tile set over Asia reads 13k of a 43200 x 21600 map's rows. The decoder reports the unread rest as a broken
+    stream, so truncated loading is allowed for this one call (callers hold _DECODE); the rows read are exact."""
+    from PIL import ImageFile
+    t0 = im.tile[0]
+    im._size = (im.width, rows)
+    im.tile = [t0._replace(extents=(0, 0, im.width, rows))]
+    old = ImageFile.LOAD_TRUNCATED_IMAGES
+    ImageFile.LOAD_TRUNCATED_IMAGES = True
+    try:
+        im.load()
+    finally:
+        ImageFile.LOAD_TRUNCATED_IMAGES = old
+
+
 def deep_tiles(src: Path, scene: dict) -> dict[str, Path]:
     """Build-dir name -> cached file of every deep tile of a scene; renders the missing ones from one decode."""
     from PIL import Image
@@ -726,9 +842,14 @@ def deep_tiles(src: Path, scene: dict) -> dict[str, Path]:
         return out
     with _DECODE, Image.open(src) as im:   # one whole-map decode at a time: a 43200 px map is 2.8 GB of RGB
         dw, dh = todo[0]["raster"]
+        full_w, full_h = im.size
         if dw * 2 <= im.width:
             im.draft("RGB", (dw, dh))                      # JPEG: decode at a reduced scale when that is enough
-        sx, sy = im.width / dw, im.height / dh
+        elif im.format == "JPEG" and len(im.tile) == 1:   # full scale: decode only rows 0..the last row a tile reads
+            y1 = min(full_h, math.ceil(max(e["box"][3] for e in todo) * full_h / dh) + 2)
+            if y1 < full_h:
+                _load_top_rows(im, y1)
+        sx, sy = im.width / dw, full_h * im.width / full_w / dh
         im = im if im.mode == "RGB" else im.convert("RGB")
         for e in todo:
             x0, y0, x1, y1 = e["box"]
@@ -859,11 +980,20 @@ def textures(scene: dict) -> list[str]:
 
 
 PROPS_JS = config.PKG / "hf" / "props.js"   # props layer script; in the build dir and the key of prop segments only
+FX_BACKDROP_JS = config.PKG / "hf" / "fx_backdrop.js"
+FX_TIMEZONE_JS = config.PKG / "hf" / "fx_timezones.js"
+FX_BUBBLE_JS = config.PKG / "hf" / "fx_bubbles.js"
+FX2_JS = fx2.JS
 
 
 def script_files(scene: dict) -> list[Path]:
-    """Scripts a scene adds to the template: hf/props.js (props), hf/parallax.js (layers), hf/globe.js (globe, a module)."""
+    """Scripts a scene adds to the template: hf/props.js (props), hf/parallax.js (layers), the Stage 4a/4b effect
+    scripts and hf/globe.js (globe, a module)."""
     return ([PROPS_JS] if scene.get("props") else []) + ([parallax.JS] if scene.get("layers") else []) + \
+        ([FX_BACKDROP_JS] if scene.get("backdrop") else []) + \
+        ([FX_TIMEZONE_JS] if scene.get("timezones") else []) + \
+        ([FX_BUBBLE_JS] if scene.get("bubbles") else []) + \
+        ([FX2_JS] if any(scene.get(k) for k in ("flag_characters", "cutaway", "insets", "particles")) else []) + \
         ([globe.JS] if scene.get("globe") else [])
 
 
@@ -889,6 +1019,13 @@ def build_dir(seg: Segment, tl: Timeline, project_dir: Path, out_dir: Path) -> t
     if out_dir.exists():
         shutil.rmtree(out_dir)
     (out_dir / "assets").mkdir(parents=True)
+    sc = seg.gsap_scene_config
+    flags = [p.flag for p in sc.pins]
+    flags += [f for r in sc.regions or [] for f in [r.flag, *(c.flag for c in r.changes)]]
+    flags += [c.flag for c in sc.flag_characters or []]
+    for flag in (f for f in flags if f):
+        asset = assets.resolve(assets.flag_for(flag.code, flag.variant), project=project_dir, kind="flag")
+        shutil.copyfile(asset.path, out_dir / "assets" / f"{asset.sha256[:16]}.svg")
     if "globe" in scene:
         for name, f in globe.files(seg, project_dir, scene["globe"]).items():
             shutil.copyfile(f, out_dir / "assets" / name)
@@ -913,6 +1050,8 @@ def build_dir(seg: Segment, tl: Timeline, project_dir: Path, out_dir: Path) -> t
     for name, src in (props.sources(seg, project_dir, S.fps).items() if scene.get("props") else ()):
         shutil.copyfile(src, out_dir / "assets" / name)
     for name, src in (parallax.sources(seg, project_dir).items() if scene.get("layers") else ()):
+        shutil.copyfile(src, out_dir / "assets" / name)
+    for name, src in (fx2.sources(seg, project_dir).items() if scene.get("insets") else ()):
         shutil.copyfile(src, out_dir / "assets" / name)
     shutil.copyfile(config.GSAP_JS, out_dir / "assets" / "gsap.min.js")
     for f in textures(scene):

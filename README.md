@@ -195,7 +195,7 @@ Severity (`video_engine/gates/severity.py`): technical gates (assets, output int
 | 1 | W01 | Pinned captions match the current voiceover bytes, `caption_fixes`, `stt.model`, `stt.keyterms`, `language` and `fps`; a timeline that grew past words cut at the old end fails. Unpinned auto captions = `skip` (the build pins them). |
 | 1 | L22 | Valid caption style and slot; caption words ordered, non-overlapping, inside the timeline |
 | 2 math | M01 | Source video long enough for `source_in_frame + n_frames` |
-| 2 math | M02 | HyperFrames map source width / map width on screen at the segment's deepest zoom: warn < 1.0, fail < 0.5 |
+| 2 math | M02 | HyperFrames map texels per screen px at the segment's deepest zoom (tilt magnification included): width of the raster the page really draws (deep tiles up to the source width, else the 3000 px derivative) / map width on screen: warn < 1.0, fail < 0.5 |
 | 2 math | M03 | Tilted HyperFrames cameras: every screen corner of every frame shows map (not past the map edge or the horizon); fail otherwise |
 | 2 math | M04 | Globe scenes: texels per degree drawn at the view centre (finest detail patch there, else the globe texture) / screen px per degree, lowest over frames: fail < 0.5x, warn < 1.0x |
 | 2 math | G01 | Every grade LUT (segment, beat, profile) exists and parses as a 3D .cube (LUT_3D_SIZE 2-256, N^3 entries, DOMAIN_MAX > DOMAIN_MIN); fail otherwise |

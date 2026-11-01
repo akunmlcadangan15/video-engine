@@ -144,7 +144,8 @@ LEG_DEFAULTED = ("lc_area", "water_ink_l", "water_ink_c", "water_ink_hue", "halo
                  "halo_blur_ratio", "halo_blur_max_ratio", "counter_min_px", "counter_diff_max", "counter_open_min",
                  "region_casing_px", "leader_casing_px", "lc_line", "lc_line_fail", "line_ring_px", "line_percentile",
                  "line_mask_diff", "entity_text_l_min", "entity_text_c_scale", "glow_colour", "ladder_order",
-                 "polarity_fallback", "lc_heading", "lc_note")
+                 "polarity_fallback", "lc_heading", "lc_note", "light_halo_alpha_min", "light_halo_alpha_max",
+                 "light_halo_steps", "light_halo_colour", "light_halo_ink")
 
 
 GEO_TOML = (config.PROFILES_DIR / "geoverum.toml").read_text()

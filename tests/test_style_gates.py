@@ -152,7 +152,7 @@ def test_bad_c01_warn_rate_and_early_first_cut(project, monkeypatch):
 
 
 def test_bad_c01_fail_rate_and_first_cut_before_6_5_s(project):
-    segs = [("map", 5, None)] + [("photo" if i % 2 else "video", 5, None) for i in range(11)]
+    segs = [("map", 2, None)] + [("photo" if i % 2 else "video", 5, None) for i in range(11)]
     _, tl = project(layout(*segs))
     fs = style.c01_cuts(tl, profiles.load("geoverum").gates.cuts)   # 11 cuts / 60 s = 1.83 per 10 s, first at 5 s
     assert levels(fs, "C01") == ["fail", "fail"]
@@ -313,16 +313,16 @@ def test_good_geoverum_caption_style_fixed_y_two_words(project):
     _, tl = project(layout(("map", 30, None), ("photo", 30, None)))
     txt, ev = captions.compile_ass(GEO_WORDS, tl)
     style_line = next(l for l in txt.splitlines() if l.startswith("Style:")).split(",")
-    assert style_line[1:3] == ["Inter SemiBold", "72"] and style_line[7] == "0"       # font, size, bold off
-    assert style_line[15] == "1" and style_line[16] == "2.5"                          # no box, outline 2.5
-    assert all(e[6] == 1190.0 for e in ev) and all(len(e[2].split()) <= 2 for e in ev)
+    assert style_line[1:3] == ["Inter", "84"] and style_line[7] == "-1"               # font, size, bold on
+    assert style_line[15] == "1" and style_line[16] == "0"                            # no box, no outline
+    assert all(e[6] == 1382.0 for e in ev) and all(len(e[2].split()) <= 2 for e in ev)
     assert "\\1c" not in txt                                                            # no per-word highlight
 
 
 def test_good_project_y_override_beats_profile_fixed_y(project):
     _, tl = project(layout(("map", 30, None), ("photo", 30, None), cs={"y_overrides": [[0, 20, 1100]]}))
     ev = captions.compile_ass(GEO_WORDS, tl)[1]
-    assert ev[0][6] == 1100.0 and ev[-1][6] == 1190.0
+    assert ev[0][6] == 1100.0 and ev[-1][6] == 1382.0
 
 
 def test_good_default_captions_not_fixed(project):
@@ -332,13 +332,49 @@ def test_good_default_captions_not_fixed(project):
 
 
 def test_bad_geoverum_caption_on_an_element_still_fails_r63(project):
-    """Clearance is 0 and captions are never moved, but a caption intersecting an element box fails R63."""
-    box = {"overlays": [{"id": "low", "kind": "reserve", "box": [100, 1160, 880, 80]}]}
+    """Clearance is 0: a caption intersecting an element box fails R63 before placement."""
+    box = {"overlays": [{"id": "low", "kind": "reserve", "box": [100, 1340, 880, 80]}]}
     _, tl = project(layout(("photo", 30, box), ("map", 30, None)))
     ev = layer2.caption_events(tl, GEO_WORDS, [])
     fs = layer2.r63_caption_clearance(tl, ev, layer2.element_boxes(tl, None, {}))
     assert fs and all(f.level == "fail" for f in fs)
-    assert profiles.caption_style(tl)["auto_place"] is False
+    assert profiles.caption_style(tl)["place_band"] == [0.68, 0.72]
+
+
+def test_good_geoverum_caption_shifts_up_inside_band_past_a_pinhead(project):
+    """GOOD: a pinhead-sized box just under the fixed caption y (1382): Geoverum auto placement lifts the captions,
+    and the new centre stays inside the approved band 0.68-0.72 H (1306-1382 px)."""
+    box = {"overlays": [{"id": "pinhead", "kind": "reserve", "box": [500, 1395, 80, 60]}]}
+    _, tl = project(layout(("photo", 30, box), ("map", 30, None)))
+    ev = layer2.caption_events(tl, GEO_WORDS, [])
+    boxes = layer2.element_boxes(tl, None, {})
+    assert layer2.r63_caption_clearance(tl, ev, boxes)
+    ovs, fs = layer2.place_captions(tl, ev, boxes)
+    assert ovs and levels(fs, "R63") == ["fix"]
+    assert all(0.68 * 1920 <= y <= 0.72 * 1920 and y < 1382 for _, _, y in ovs)
+    assert layer2.r63_caption_clearance(tl, layer2.caption_events(tl, GEO_WORDS, ovs), boxes) == []
+
+
+def test_bad_geoverum_band_too_narrow_fails_instead_of_leaving_band(project):
+    """BAD: a box covering the whole band 1306-1382 (plus caption height): no y inside the band clears it, so
+    placement fails rather than moving the caption out of the approved band."""
+    box = {"overlays": [{"id": "wide", "kind": "reserve", "box": [60, 1240, 960, 220]}]}
+    _, tl = project(layout(("photo", 30, box), ("map", 30, None)))
+    ev = layer2.caption_events(tl, GEO_WORDS, [])
+    ovs, fs = layer2.place_captions(tl, ev, layer2.element_boxes(tl, None, {}))
+    assert ovs == [] and levels(fs, "R63") == ["fail"] and "place_band" in fs[0].message
+
+
+def test_bad_place_band_out_of_range(tmp_path, monkeypatch):
+    from video_engine import config
+    from video_engine.util import EngineError
+    d = tmp_path / "profiles"
+    d.mkdir()
+    (d / "default.toml").write_text((config.PROFILES_DIR / "default.toml").read_text())
+    (d / "chan.toml").write_text("[caption_style]\nplace_band = [0.8, 0.7]\n")
+    monkeypatch.setattr(config, "PROFILES_DIR", d)
+    with pytest.raises(EngineError, match="place_band"):
+        profiles.load("chan")
 
 
 # Z01 caption bottom limit (Shorts safe zone) --------------------------------------------------------------------------
@@ -364,30 +400,30 @@ def ink_rows(tl, ws, tmp_path):
 
 
 def test_good_geoverum_caption_bottom_within_max_bottom_y(project):
-    """GOOD: Geoverum fixed_y 1190 keeps every caption box bottom <= max_bottom_y 1250 (Z01 pass)."""
+    """GOOD: Geoverum fixed_y 1382 keeps every caption box bottom <= max_bottom_y 1480 (Z01 pass)."""
     _, tl = project(layout(("map", 30, None), ("photo", 30, None)))
-    assert profiles.caption_style(tl)["max_bottom_y"] == 1250
+    assert profiles.caption_style(tl)["max_bottom_y"] == 1480
     ev = layer2.caption_events(tl, GEO_WORDS, [])
     assert levels(layer2.z01_caption_bottom(tl, ev), "Z01") == ["pass"]
-    assert all(layer2.caption_box(e)[3] <= 1250 for e in ev)
+    assert all(layer2.caption_box(e)[3] <= 1480 for e in ev)
 
 
 def test_good_rendered_caption_ink_inside_caption_box(project, tmp_path):
     """GOOD: the libass-rendered ink (glyphs, descenders, soft shadow) of Geoverum captions ends inside the caption box
-    Z01 checks, and at or above 1250 px."""
+    Z01 checks, and at or above 1480 px."""
     ws = words(("gypsy", 0, 10), ("jq", 10, 20), ("Agustus", 30, 40), ("(Jepang)", 40, 50))
     _, tl = project(layout(("map", 30, None), ("photo", 30, None)))
     for e, top, bottom in ink_rows(tl, ws, tmp_path):
         box = layer2.caption_box(e)
-        assert box[1] <= top and bottom <= box[3] <= 1250, (e[2], top, bottom, box)
+        assert box[1] <= top and bottom <= box[3] <= 1480, (e[2], top, bottom, box)
 
 
-def test_bad_fixed_y_1370_exceeds_max_bottom_y_1250(project):
-    """BAD: the old Geoverum centre 1370 under max_bottom_y 1250 fails Z01 for every caption."""
-    _, tl = project(layout(("map", 30, None), ("photo", 30, None), cs={"fixed_y": 1370}))
+def test_bad_fixed_y_1500_exceeds_max_bottom_y_1480(project):
+    """BAD: a caption centre 1500 under max_bottom_y 1480 fails Z01 for every caption."""
+    _, tl = project(layout(("map", 30, None), ("photo", 30, None), cs={"fixed_y": 1500}))
     ev = layer2.caption_events(tl, GEO_WORDS, [])
     fs = layer2.z01_caption_bottom(tl, ev)
-    assert fs and len(fs) == len(ev) and all(f.level == "fail" and "max_bottom_y 1250" in f.message for f in fs)
+    assert fs and len(fs) == len(ev) and all(f.level == "fail" and "max_bottom_y 1480" in f.message for f in fs)
 
 
 def test_bad_project_y_override_below_max_bottom_y_fails_z01(project):
@@ -396,8 +432,8 @@ def test_bad_project_y_override_below_max_bottom_y_fails_z01(project):
     assert fs and all(f.level == "fail" and "y=1500" in f.message for f in fs)
 
 
-def test_bad_z01_preflight_fails_geoverum_build_at_1370(project, W):
-    d, tl = project(layout(("photo", 30, None), ("photo", 30, None), cs={"fixed_y": 1370}))
+def test_bad_z01_preflight_fails_geoverum_build_at_1500(project, W):
+    d, tl = project(layout(("photo", 30, None), ("photo", 30, None), cs={"fixed_y": 1500}))
     rep = run_preflight(tl, d, GEO_WORDS, dom=False, snapshots=False)
     assert "fail" in levels(rep.findings, "Z01")
 
@@ -411,8 +447,9 @@ def test_good_default_profile_has_no_max_bottom_y(project):
 
 def test_good_placement_shift_never_below_max_bottom_y(project):
     """GOOD: an element box over the caption band; automatic placement moves the captions, never below max_bottom_y."""
-    box = {"overlays": [{"id": "band", "kind": "reserve", "box": [100, 1000, 880, 200]}]}
-    _, tl = project(layout(("photo", 30, box), ("map", 30, None), cs={"auto_place": True, "clearance": 40}))
+    box = {"overlays": [{"id": "band", "kind": "reserve", "box": [100, 1280, 880, 200]}]}
+    cs = {"auto_place": True, "clearance": 40, "place_band": [0.3, 0.72]}   # wider than the Geoverum band
+    _, tl = project(layout(("photo", 30, box), ("map", 30, None), cs=cs))
     ev = layer2.caption_events(tl, GEO_WORDS, [])
     boxes = layer2.element_boxes(tl, None, {})
     assert layer2.r63_caption_clearance(tl, ev, boxes)
@@ -421,13 +458,13 @@ def test_good_placement_shift_never_below_max_bottom_y(project):
     ev2 = layer2.caption_events(tl, GEO_WORDS, ovs)
     assert layer2.r63_caption_clearance(tl, ev2, boxes) == []
     assert levels(layer2.z01_caption_bottom(tl, ev2), "Z01") == ["pass"]
-    assert ovs[0][2] < 1000   # moved up: below the box the bottom would pass 1250
+    assert ovs[0][2] < 1280   # moved up: below the box the bottom would pass 1480
 
 
 def test_bad_placement_without_room_above_max_bottom_y_fails(project):
     """BAD: the element box covers everything from the safe top to max_bottom_y; the only clear room is below the
     limit, so placement fails instead of pushing the caption there."""
-    box = {"overlays": [{"id": "wall", "kind": "reserve", "box": [60, 100, 960, 1150]}]}
+    box = {"overlays": [{"id": "wall", "kind": "reserve", "box": [60, 100, 960, 1400]}]}
     _, tl = project(layout(("photo", 30, box), ("map", 30, None), cs={"auto_place": True, "clearance": 0}))
     ev = layer2.caption_events(tl, GEO_WORDS, [])
     ovs, fs = layer2.place_captions(tl, ev, layer2.element_boxes(tl, None, {}))
@@ -486,7 +523,7 @@ def test_good_default_draft_prompt_keeps_engine_rules():
 def test_good_geoverum_draft_prompt_adds_channel_rules():
     p = draft.prompt(_inp("geoverum"))
     rules = profiles.load("geoverum").draft.rules
-    assert "Length 6.5-30.0 s each (195-900 frames)." in p
+    assert "Length 2.5-30.0 s each (75-900 frames)." in p
     assert all(f"\n{6 + i}. {r}" in p for i, r in enumerate(rules)) and p.endswith("matching the schema.")
 
 
@@ -515,15 +552,15 @@ def test_good_geoverum_caption_thin_outline_and_straight_soft_shadow(project):
     _, tl = project(layout(("map", 30, None), ("photo", 30, None)))
     txt, ev = captions.compile_ass(GEO_WORDS, tl)
     shadow = [l for l in txt.splitlines() if l.startswith("Dialogue: 0,")]
-    assert shadow and all("\\3a&H73&" in l and "\\blur4" in l and "\\pos(540,1193)" in l for l in shadow)   # 0 3 px, .55
+    assert shadow and all("\\3a&H73&" in l and "\\blur4" in l and "\\pos(540,1385)" in l for l in shadow)   # 0 3 px, .55
     assert all("BorderStyle" not in l for l in shadow) and layer2.caption_pad(tl) == 0
     assert levels(layer2.z01_caption_bottom(tl, ev), "Z01") == ["pass"]
 
 
 def test_bad_deep_caption_shadow_is_counted_by_z01(project, tmp_path):
-    """BAD: a 40 px shadow drop at fixed_y 1190 puts shadow ink below 1250: caption_pad extends the box and Z01 fails,
+    """BAD: a 60 px shadow drop at fixed_y 1382 puts shadow ink below 1480: caption_pad extends the box and Z01 fails,
     and the rendered ink stays inside the padded box."""
-    _, tl = project(layout(("map", 30, None), ("photo", 30, None), cs={"shadow_dy": 40}))
+    _, tl = project(layout(("map", 30, None), ("photo", 30, None), cs={"shadow_dy": 60}))
     pad = layer2.caption_pad(tl)
     assert pad > 25
     ev = layer2.caption_events(tl, GEO_WORDS, [])
@@ -551,3 +588,18 @@ def test_good_empty_captions_pass_or_skip_every_caption_gate(project):
 def test_bad_empty_captions_still_fail_an_invalid_max_bottom_y(project):
     _, tl = project(layout(("map", 30, None), cs={"max_bottom_y": "low"}))
     assert levels(layer2.z01_caption_bottom(tl, []), "Z01") == ["fail"]
+
+
+def test_good_late_pin_does_not_block_earlier_captions(project):
+    """GOOD: R63 caption clearance is time-resolved. A pinhead first seen at t=20 s in the caption band holds from
+    the previous probe (t=3 s) on: captions before that clear; a caption shown while the pin is there fails."""
+    _, tl = project(layout(("map", 30, None), ("photo", 30, None)))
+    pin = {"id": "pinhead:2", "text": "", "x": 500, "y": 1340, "w": 44, "h": 44, "opacity": 1}
+    items = [{"t": 1.0, "rects": []}, {"t": 3.0, "rects": []}, {"t": 20.0, "rects": [pin]}]
+    dom = {0: {"times": items, "all_times": items}}
+    boxes = layer2.element_boxes(tl, None, dom)
+    assert [r["frames"] for r in boxes[0] if r["id"] == "pinhead:2"] == [(90, 900)]
+    assert layer2.r63_caption_clearance(tl, layer2.caption_events(tl, GEO_WORDS, []), boxes) == []
+    late = words(("Malaysia", 600, 620))
+    fs = layer2.r63_caption_clearance(tl, layer2.caption_events(tl, late, []), boxes)
+    assert levels(fs, "R63") == ["fail"] and "pinhead:2" in fs[0].message

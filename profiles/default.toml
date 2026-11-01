@@ -2,6 +2,15 @@
 # (profiles/<name>.toml) overrides single keys on top of this file. Precedence: default < channel profile < project.
 description = "Engine defaults"
 
+# EXPERIMENTAL: used only when a region or pin specifies a flag.
+[flags]
+alpha = 0.85
+reveal_s = 0.45
+edge_px = 3
+glow_px = 6
+fit = "auto"           # per region: cover, contain where cropping would cut > auto_max_loss
+pin_height_pct = 4.5
+
 [caption_style]
 # Python-side caption keys. Rust Style fields not listed use the compiler defaults
 # (rust/hypoverum_core_rs/src/ass.rs, Style::default).
@@ -130,3 +139,81 @@ min_read_s = 0.8
 forbidden_hues = [[260, 310], [170, 197]]
 side_strip_px = 1.0
 clip_vertices = 6
+
+# [fx] optional per-scene visual components. Every scene field is off unless the timeline sets it; the values below
+# are the defaults a scene inherits. A scene without any of the new fields keeps the engine's previous look.
+[fx.grid]
+colour = "#2F6FD6"
+bg = "#0B2A5B"
+cell_pct = 4.0
+line_px = 2
+alpha = 0.5
+graticule_spacing_deg = 30
+graticule_colour = "#FFFFFF"
+graticule_alpha = 0.35
+
+[fx.stars]
+count = 400
+twinkle = 0.15
+parallax = 0.2
+# seed absent = derived from the project id and segment index (deterministic per segment)
+
+[fx.halo]
+colour = "#7EC8FF"
+width_pct = 3.0
+alpha = 0.6
+
+[fx.timezone]
+alpha = 0.25
+at_frame = 0
+colour = "#7EC8FF"
+
+[fx.hatch]
+angle = 45
+spacing_px = 10
+line_px = 2
+colour = "#FFFFFF"
+alpha = 0.6
+
+[fx.bubble]
+style = "light"
+font_px = 44
+pop_frames = 5
+max_width_pct = 0.62
+max_bottom_pct = 0.72
+gap_px = 28
+
+# P15: flag-icon characters. A scene without flag_characters stays unchanged.
+[fx.flag_character]
+wave_amplitude = 0.035
+wave_hz = 0.8
+slices = 14
+eye_pct = 17
+blink_period_s = 3.2
+blink_frames = 5
+shadow_px = 14
+
+# P16: cross-section diagram and photo insets.
+[fx.cutaway]
+reveal_s = 0.6
+label_px = 38
+line_px = 2
+height_ratio = 0.55
+inset_border_px = 5
+inset_gap_px = 28
+
+# P18: exaggerated Earth model on a globe scene.
+[fx.geoid]
+exaggeration = 0.08
+colour_ramp = ["#2B5BD7", "#3FB27F", "#F2D04B", "#D9483B"]
+rotate_deg_s = 12
+harmonics = 6
+fade_s = 0.5
+
+# P19: deterministic fireworks / fire accents.
+[fx.particles]
+duration_s = 2.0
+max_count = 180
+gravity = 0.22
+fireworks_colours = ["#FFD84A", "#FF7A3D", "#FF4D6D", "#7ED0FF", "#FFFFFF"]
+fire_colours = ["#FFE07A", "#FF9A3D", "#E8452B"]
