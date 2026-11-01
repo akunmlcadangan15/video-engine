@@ -129,10 +129,11 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   any caption box bottom (centre y + 0.75 x font size + `caption_pad`; contains glyphs, descenders, outline and
   shadow) is below it; automatic caption placement never moves a caption below it. `caption_pad` = the ink reach
   below the glyphs beyond 24 px: soft shadow `shadow_dy` (default 1.5 x `shadow`) + `outline` + 2 + 2 x `shadow_blur`,
-  hard shadow `outline` + `shadow` (0 for the default style). Geoverum: `fixed_y` 1190, `max_bottom_y` 1250 (caption
-  box bottom 1244 px at Inter SemiBold 72, pad 0; rendered ink, outline and shadow included, inside it).
+  hard shadow `outline` + `shadow` (0 for the default style). Geoverum: `fixed_y` 1382, `max_bottom_y` 1480 (caption
+  box bottom 1445 px at Inter Bold 84, pad 0; rendered ink and shadow included, inside it); `auto_place` moves a
+  caption only inside `place_band` 0.60-0.76 H.
 - Caption soft shadow offset: `shadow_dx`, `shadow_dy` (px; absent = `shadow`, 1.5 x `shadow`). Geoverum captions:
-  white Inter SemiBold 72, at most 2 words, black outline 2.5 px, soft shadow 0 3 px, `shadow_blur` 4 (libass
+  white Inter Bold 84 (A/B 84 / 92 / 104), at most 2 words, no outline, soft shadow 0 3 px, `shadow_blur` 4 (libass
   Gaussian, about a CSS 8 px blur), black at 55 % (`shadow_alpha` 115), no backing box.
 - No captions (no voiceover): every caption gate passes or skips on the empty list.
 - Segment field `visual_type` (map / photo / video / diagram / archive / illustration; inferred when absent).
