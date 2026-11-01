@@ -5,7 +5,7 @@ import pytest
 from PIL import Image
 from pydantic import ValidationError
 
-from video_engine import camera3d, hyperframes, layout, props, timeline
+from video_engine import camera3d, hyperframes, layout, maps, props, timeline
 from video_engine.gates import layer2, style
 
 W, H = 1080, 1920
@@ -120,7 +120,7 @@ def test_good_m02_counts_the_tilt_magnification(project):
     sc = hyperframes.scene_data(tl.segments[2], tl, d)
     top = max(L["to"]["s"] for L in sc["camera"]["legs"] if L["to"]["t"] == 30)       # the tilted views (drift included)
     assert top >= 2.5 * sc["camera"]["start"]["s"] / 2.0 - 1e-6
-    assert hyperframes._need_w(sc) == pytest.approx(sc["map_size"][0] * top * camera3d.max_mag(30, W, H), rel=1e-6)
+    assert maps._need_w(sc) == pytest.approx(sc["map_size"][0] * top * camera3d.max_mag(30, W, H), rel=1e-6)
 
 
 def test_good_m03_passes_a_tilt_with_map_under_every_corner(project):

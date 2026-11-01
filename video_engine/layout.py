@@ -652,7 +652,7 @@ def plan(seg: "Segment", tl: "Timeline", project_dir: Path) -> Plan:
 
 class _Planner:
     def __init__(self, seg: "Segment", tl: "Timeline", project_dir: Path):
-        from . import hyperframes, profiles
+        from . import hyperframes, maps, profiles
         self.hf = hyperframes
         self.seg, self.tl, self.sc = seg, tl, seg.gsap_scene_config
         S = tl.settings
@@ -666,7 +666,7 @@ class _Planner:
             self.theme["legibility"] = lg.model_dump(mode="json")
         self.fill_opacity = lg.entity_fill_alpha if lg is not None else self.theme["region_fill_opacity"]
         self.map_path = project_dir / self.sc.map_asset
-        iw, ih = hyperframes.map_image_size(self.map_path)
+        iw, ih = maps.map_image_size(self.map_path)
         cover = max(self.W / iw, self.H / ih)
         self.mw, self.mh = iw * cover, ih * cover
         self.kx, self.ky = self.W / 1080, self.H / 1920
@@ -823,7 +823,7 @@ class _Planner:
         return out
 
     def run(self) -> Plan:
-        sc, fps, n = self.sc, self.fps, self.n
+        sc, fps = self.sc, self.fps
         beats = sc.beats
         self.area_keys: list[tuple[str, int, bool | None]] = []
         self.area_water: set[int] = set()
@@ -839,7 +839,6 @@ class _Planner:
         anim: list[tuple[int, int, str]] = []
         keys = []
         beat_info = []
-        prev_view = None
         route_draw = [_frames(r.draw_s or self.theme["route_draw_s"], fps) for r in sc.routes or []]
         count_f = {i: _frames(f.count_s or self.theme["counter_s"], fps) for i, f in enumerate(sc.figures or [])
                    if f.motion == "counter"}
@@ -866,7 +865,6 @@ class _Planner:
                              "move_s": round(self.f_settle / fps, 4)})
                 if b.hold == "read":
                     keys[-1]["pulse"] = 0.0   # intent: the viewer reads; the wait keeps only the drift
-                prev_view = (focus, zoom)
             entries = sorted(sets[k] - prev, key=lambda e: (ENTRY_ORDER.index(e[0]), e[1]))
             regs = []
             for r in range(nreg):

@@ -279,8 +279,9 @@ def _fade_s(ov: Overlay, pr, motion) -> float:
 
 
 def ffmpeg_parts(seg: Segment, tl: Timeline, png_dir: Path, first_input: int) -> tuple[list[str], str]:
-    """Extra ffmpeg inputs (one looped PNG per drawn overlay) and a filter_complex fragment that takes [vbase] and
-    yields [vout]. Fades: FADE_S in/out (shortened for short ranges)."""
+    """Extra ffmpeg inputs (one looped PNG per drawn overlay) and a filter_complex fragment that takes [vbase] (BT.709
+    yuv420p) and yields [vout]. Each overlay is converted to BT.709 yuva420p on its own and blended in yuv420
+    (config.OVERLAY_YUV_VF), so the base pixels keep their values. Fades: FADE_S in/out (shortened for short ranges)."""
     from . import profiles
     prof = profiles.of(tl)
     pr = prof.print
@@ -298,12 +299,12 @@ def ffmpeg_parts(seg: Segment, tl: Timeline, png_dir: Path, first_input: int) ->
         ta, tb = a / fps, b / fps
         idx = first_input + i
         chain.append(f"[{idx}:v]format=rgba,fade=t=in:st={ta:.4f}:d={fd:.4f}:alpha=1,"
-                     f"fade=t=out:st={tb - fd:.4f}:d={fd:.4f}:alpha=1[o{i}]")
+                     f"fade=t=out:st={tb - fd:.4f}:d={fd:.4f}:alpha=1,{config.OVERLAY_YUV_VF}[o{i}]")
         nxt = f"v{i}"
         chain.append(f"[{cur}][o{i}]overlay=x={round(ov.box[0])}:y={round(ov.box[1])}:"
-                     f"enable='between(n,{a},{b - 1})':eof_action=pass:format=auto[{nxt}]")
+                     f"enable='between(n,{a},{b - 1})':eof_action=pass:format=yuv420[{nxt}]")
         cur = nxt
-    chain.append(f"[{cur}]scale=out_color_matrix=bt709:out_range=tv:flags=lanczos+accurate_rnd+full_chroma_int,format=yuv420p[vout]")
+    chain.append(f"[{cur}]format=yuv420p[vout]")
     return args, ";".join(chain)
 
 

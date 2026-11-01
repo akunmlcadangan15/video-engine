@@ -1,8 +1,8 @@
 """Map rasters, whole-map derivatives, texel density and deep-zoom tile pyramids for HyperFrames map scenes."""
 from __future__ import annotations
 
+import functools
 import math
-import sys
 import threading
 from pathlib import Path
 
@@ -25,11 +25,6 @@ DEEP_DECODE_MAX_PX = 640_000_000   # source px one full-scale deep decode may ho
 MORPH_PAPER, MORPH_GRAIN = "paper-F1E8D4.jpg", "grain-512.png"   # vendor/textures of a map morph
 
 
-def _hf_const(name: str, default):
-    hf = sys.modules.get("video_engine.hyperframes")
-    return getattr(hf, name, default) if hf is not None else default
-
-
 def map_image_size(path: Path) -> tuple[int, int]:
     from .native import image_size
     return image_size(path)
@@ -38,21 +33,19 @@ def map_image_size(path: Path) -> tuple[int, int]:
 def _q(scene: dict) -> int:
     """JPEG quality of a scene's map derivative and deep tiles: profile [render] map_jpeg_quality (scene map_q),
     else MAP_JPEG_QUALITY."""
-    return scene.get("map_q") or _hf_const("MAP_JPEG_QUALITY", MAP_JPEG_QUALITY)
+    return scene.get("map_q") or MAP_JPEG_QUALITY
 
 
 def _map_width(need_w: float) -> int:
-    return int(min(_hf_const("MAP_MAX_SIDE", MAP_MAX_SIDE), math.ceil(need_w)))
+    return int(min(MAP_MAX_SIDE, math.ceil(need_w)))
 
 
 def map_key(src: Path, need_w: float, q: int | None = None) -> str:
     """Key of the map derivative: its full recipe (version, width after the MAP_MAX_SIDE cap, LANCZOS resize and
     JPEG quality, Pillow version) and the source content hash."""
     import PIL
-    max_side = _hf_const("MAP_MAX_SIDE", MAP_MAX_SIDE)
-    def_q = _hf_const("MAP_JPEG_QUALITY", MAP_JPEG_QUALITY)
     return blake3_json({"v": MAP_VERSION, "algo": core.ALGO_VERSION, "src": blake3_files([src])[0],
-                        "w": _map_width(need_w), "max": max_side, "resample": "lanczos", "q": q or def_q,
+                        "w": _map_width(need_w), "max": MAP_MAX_SIDE, "resample": "lanczos", "q": q or MAP_JPEG_QUALITY,
                         "pil": PIL.__version__})
 
 
@@ -63,6 +56,76 @@ def _need_w(scene: dict) -> float:
     st = [c["start"], c["end"]] + [L["to"] for L in c["legs"]]
     W, H = scene["width"], scene["height"]
     return scene["map_size"][0] * max(x["s"] * (camera3d.max_mag(x["t"], W, H) if x.get("t") else 1.0) for x in st)
+
+
+EFFECTIVE_VERSION = "eff-1"   # bump when the upscale detector (_upscaled_2x, _detail_band) changes
+EFFECTIVE_MIN_W = 1600        # narrower rasters are taken at their pixel width
+
+
+def _detail_band(w: int, h: int) -> tuple[int, int, int, int]:
+    """Centre crop (x0, y0, x1, y1), at most 1024 x 256 px, the upscale detector reads."""
+    return (max(0, w // 2 - min(512, w // 4)), max(0, h // 2 - min(128, h // 4)),
+            min(w, w // 2 + min(512, w // 4)), min(h, h // 2 + min(128, h // 4)))
+
+
+def _upscaled_2x(grey) -> bool:
+    """A greyscale crop of a 2x pre-upscaled raster: mean differences of pixels 1, 2 and 3 apart grow like a ramp up to
+    2 px (no detail finer than 2 px) and flatten after it. Crops with d2 <= 2 (flat sea, plain fills) never count."""
+    import numpy as np
+    d1, d2, d3 = (float(np.mean(np.abs(grey[:, j:] - grey[:, :-j]))) for j in (1, 2, 3))
+    return d2 > 2.0 and d1 / d2 < 0.60 and d3 > 0 and d2 / d3 > 0.78
+
+
+def _measure_effective_width(src: Path) -> int:
+    """Pixel width, halved for a 2x pre-upscaled raster. One decode at a time (_DECODE); a JPEG decodes only the rows
+    down to the bottom of the detail band."""
+    import numpy as np
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = None
+    with _DECODE, Image.open(src) as im:
+        w, h = im.size
+        box = _detail_band(w, h)
+        if im.format == "JPEG" and len(im.tile) == 1 and box[3] < h:
+            _load_top_rows(im, box[3])
+        grey = np.asarray(im.crop(box).convert("L"), dtype=np.float32)
+    if grey.shape[1] < 8:
+        return w
+    return w // 2 if _upscaled_2x(grey) else w
+
+
+def effective_key(src_hash: str) -> str:
+    """Cache key (kind "maps", .json) of a raster's effective width: detector version and source content hash."""
+    return blake3_json({"v": EFFECTIVE_VERSION, "src": src_hash, "min_w": EFFECTIVE_MIN_W})
+
+
+def effective_cache_name(src: Path) -> str | None:
+    """Cache entry name of src's effective width, None when src is too narrow to be measured (never cached)."""
+    if map_image_size(src)[0] < EFFECTIVE_MIN_W:
+        return None
+    return effective_key(blake3_files([src])[0]) + ".json"
+
+
+@functools.lru_cache(maxsize=64)
+def _effective_width_at(resolved: str, mtime_ns: int, size: int) -> int:
+    src = Path(resolved)
+    w = map_image_size(src)[0]
+    if w < EFFECTIVE_MIN_W:
+        return w
+    key = effective_key(blake3_files([src])[0])
+    if (hit := cache.get_json("maps", key)) is not None:
+        return int(hit["w"])
+    ew = _measure_effective_width(src)
+    cache.put_json("maps", key, {"w": ew, "width": w})
+    return ew
+
+
+def effective_width(path: Path) -> int:
+    """True horizontal detail width of a map raster: its pixel width, halved when it was pre-upscaled 2x without the
+    matching high-frequency detail. Cached on disk by content hash (a 43200 px map decodes once, not per preflight)
+    and in memory by path, mtime and size."""
+    p = Path(path).resolve()
+    st = p.stat()
+    return _effective_width_at(str(p), st.st_mtime_ns, st.st_size)
 
 
 def _map_copy(src: Path, need_w: float, q: int | None = None) -> Path:
@@ -79,7 +142,7 @@ def _map_copy(src: Path, need_w: float, q: int | None = None) -> Path:
         im = im if im.mode == "RGB" else im.convert("RGB")
         if im.width > tw:
             im = im.resize((tw, round(im.height * tw / im.width)), Image.LANCZOS)
-        im.save(tmp, quality=q or _hf_const("MAP_JPEG_QUALITY", MAP_JPEG_QUALITY))
+        im.save(tmp, quality=q or MAP_JPEG_QUALITY)
     out = cache.put_file("maps", key, tmp, ".jpg")
     tmp.unlink(missing_ok=True)
     return out
@@ -94,8 +157,7 @@ def deep_plan(scene: dict, src_size: tuple[int, int]) -> dict | None:
     if dw <= _map_width(need):
         return None
     dp = _deep_tiles_at(scene, src_size, dw)
-    max_px = _hf_const("DEEP_DECODE_MAX_PX", DEEP_DECODE_MAX_PX)
-    if dp and dw * 2 > src_size[0] and src_size[0] * _deep_src_rows(dp, src_size) > max_px:
+    if dp and dw * 2 > src_size[0] and src_size[0] * _deep_src_rows(dp, src_size) > DEEP_DECODE_MAX_PX:
         dp = _deep_tiles_at(scene, src_size, src_size[0] // 2)   # too many source rows to decode at full scale
     return dp
 
@@ -119,9 +181,8 @@ def _deep_tiles_at(scene: dict, src_size: tuple[int, int], dw: int) -> dict | No
     mw, mh = scene["map_size"]
     base = _map_width(_need_w(scene)) / mw
     dh = round(src_size[1] * dw / src_size[0])
-    max_side = _hf_const("DEEP_MAX_SIDE", DEEP_MAX_SIDE)
-    if max(dw, dh) > max_side:
-        k = max_side / max(dw, dh)
+    if max(dw, dh) > DEEP_MAX_SIDE:
+        k = DEEP_MAX_SIDE / max(dw, dh)
         dw, dh = max(1, round(dw * k)), max(1, round(dh * k))
     d = dw / mw                                           # deep px per map px
     W, H, cam = scene["width"], scene["height"], scene["camera"]
@@ -158,18 +219,16 @@ def _deep_box(dp: dict, i: int, j: int) -> tuple[int, int, int, int]:
 
 def deep_key(src_hash: str, dp: dict, i: int, j: int, q: int | None = None) -> str:
     import PIL
-    def_q = _hf_const("MAP_JPEG_QUALITY", MAP_JPEG_QUALITY)
     return blake3_json({"v": DEEP_VERSION, "src": src_hash, "w": dp["w"], "h": dp["h"], "box": _deep_box(dp, i, j),
-                        "resample": "lanczos", "q": q or def_q, "pil": PIL.__version__})
+                        "resample": "lanczos", "q": q or MAP_JPEG_QUALITY, "pil": PIL.__version__})
 
 
 def deep_entries(src: Path, dp: dict, q: int | None = None) -> list[dict]:
     """Scene block of the deep tiles: image name (its content key), raster box (x0, y0, x1, y1) and raster size; the
     template places a tile at box x map size / raster size in map px."""
     h = blake3_files([src])[0]
-    def_q = _hf_const("MAP_JPEG_QUALITY", MAP_JPEG_QUALITY)
     return [{"img": f"assets/deep_{deep_key(h, dp, i, j, q)[:32]}.jpg", "box": list(_deep_box(dp, i, j)),
-             "raster": [dp["w"], dp["h"]], **({"q": q} if q and q != def_q else {})} for i, j in dp["tiles"]]
+             "raster": [dp["w"], dp["h"]], **({"q": q} if q and q != MAP_JPEG_QUALITY else {})} for i, j in dp["tiles"]]
 
 
 def _load_top_rows(im, rows: int) -> None:
@@ -201,7 +260,6 @@ def deep_tiles(src: Path, scene: dict) -> dict[str, Path]:
             todo.append(e)
     if not todo:
         return out
-    def_q = _hf_const("MAP_JPEG_QUALITY", MAP_JPEG_QUALITY)
     with _DECODE, Image.open(src) as im:   # one whole-map decode at a time: a 43200 px map is 2.8 GB of RGB
         dw, dh = todo[0]["raster"]
         full_w, full_h = im.size
@@ -219,7 +277,7 @@ def deep_tiles(src: Path, scene: dict) -> dict[str, Path]:
             name = Path(e["img"]).name
             tmp = cache.acquire(cache.tmp_name(config.CACHE_DIR / "maps" / f"{Path(name).stem}.part.jpg").with_suffix(".jpg"))
             tmp.parent.mkdir(parents=True, exist_ok=True)
-            t.save(tmp, format="JPEG", quality=e.get("q") or def_q)
+            t.save(tmp, format="JPEG", quality=e.get("q") or MAP_JPEG_QUALITY)
             out[name] = cache.put_file("maps", Path(name).stem, tmp, ".jpg")
             tmp.unlink(missing_ok=True)
     return out
@@ -228,17 +286,14 @@ def deep_tiles(src: Path, scene: dict) -> dict[str, Path]:
 def morph_data(m, scene: dict, project_dir: Path, base_size: tuple[int, int]) -> dict:
     """Scene block of a map morph: its whole-map derivative and deep tiles (the base map's camera), times and tones.
     The morph map must have the base map's aspect ratio (same extent and projection)."""
-    hf = sys.modules.get("video_engine.hyperframes")
-    size_fn = getattr(hf, "map_image_size", map_image_size) if hf is not None else map_image_size
-    dp_fn = getattr(hf, "deep_plan", deep_plan) if hf is not None else deep_plan
     src = project_dir / m.asset
     if not src.is_file():
         raise EngineError(f"morph asset {m.asset} not found")
-    w, h = size_fn(src)
+    w, h = map_image_size(src)
     if abs(w / h - base_size[0] / base_size[1]) > 0.005 * base_size[0] / base_size[1]:
         raise EngineError(f"morph asset {m.asset} is {w}x{h}; it must have the aspect ratio of map_asset "
                           f"({base_size[0]}x{base_size[1]}): same extent and projection")
-    dp = dp_fn(scene, (w, h))
+    dp = deep_plan(scene, (w, h))
     return {"img": f"assets/morph_{map_key(src, _need_w(scene), _q(scene))[:32]}.jpg", "asset": m.asset,
             "deep": deep_entries(src, dp, _q(scene)) if dp else [], "at_frame": m.at_frame, "s": m.s,
             "back_at_frame": m.back_at_frame, "sepia": m.sepia, "paper": m.paper, "grain": m.grain,

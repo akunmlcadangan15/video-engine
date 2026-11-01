@@ -8,7 +8,7 @@ Each one goes through `mismatch`: packets of two streams are interchangeable onl
 - `params(path, select)`: the parameter dicts of a file's streams (ffprobe, extradata as an MD5 hash).
 - `mismatch(a, b)`: list of differing parameters ("v0.time_base: 1/15360 != 1/90000"); empty = copy-compatible.
 - `joinable(paths)`: (True, []) when every file has the parameters of the first, else (False, differences).
-- `engine_format(W, H, fps)`: parameters of the engine's own segment encoder (raw RGB frames -> config.X264), the
+- `engine_format(W, H, fps)`: parameters of the engine's own segment encoder (raw RGB frames -> config.X264_SEGMENT), the
   target a native stream copy must match exactly. Encoded once per process and size.
 - `verify(path, n, fps, what)`: raises EngineError unless the file's first video stream has exactly `n` frames,
   starts at 0 and lasts n / fps (both within half a frame).
@@ -93,9 +93,9 @@ def _engine_format(W: int, H: int, fps: int, x264: tuple, ffmpeg: str) -> tuple:
 
 
 def engine_format(W: int, H: int, fps: int, x264: list[str] | None = None) -> list[dict]:
-    """Video stream parameters of the engine's segment encoder (`x264`, default config.X264) at W x H, fps (see
-    module docstring)."""
-    return [dict(s) for s in _engine_format(W, H, fps, tuple(x264 or config.X264), str(config.FFMPEG))]
+    """Video stream parameters of the engine's segment encoder (`x264`, default config.X264_SEGMENT) at W x H, fps
+    (see module docstring)."""
+    return [dict(s) for s in _engine_format(W, H, fps, tuple(x264 or config.X264_SEGMENT), str(config.FFMPEG))]
 
 
 @lru_cache(maxsize=512)

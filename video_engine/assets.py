@@ -111,7 +111,7 @@ from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
 from functools import lru_cache
 
-from .licence import LICENCE_ALLOW, OWN_LICENCES, norm_licence
+from .licence import OWN_LICENCES, licence_allowed, norm_licence
 from .util import EngineError
 
 
@@ -234,7 +234,7 @@ def _allowed(meta: dict, kind: str) -> bool:
         return False
     if kind in {'music', 'sfx'}:
         return 'epidemic' in source and bool(lic) and bool(meta.get('source_url'))
-    return (lic in LICENCE_ALLOW | {'mit'} and bool(source)
+    return (licence_allowed(lic) and bool(source)
             and (lic in OWN_LICENCES or bool(re.match(r'^https?://[^\s/]+\.[^\s]+$', meta.get('source_url', '')))))
 
 

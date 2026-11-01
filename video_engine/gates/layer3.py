@@ -9,7 +9,7 @@ from pathlib import Path
 import hypoverum_core_rs as core
 
 from .. import native
-from ..timeline import HYPERFRAMES, NATIVE, Timeline
+from ..timeline import NATIVE, Timeline
 from ..util import EngineError
 from .core import Finding
 

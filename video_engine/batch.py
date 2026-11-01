@@ -1,7 +1,8 @@
 """Sequential batch runner: one queue, one project lock per build, no two runs of the same project.
 
-The lock lives at <project>/out/.batch.lock and is held with `flock` for the whole build. A second batch that names
-the same project fails that item with an EngineError instead of racing its `out/` manifest and credits. The queue is
+The lock lives at <project>/out/.batch.lock and is held with `flock` for the whole build; `engine build` takes the
+same lock. A second build or batch that names the same project fails with an EngineError instead of racing its `out/`
+manifest and credits. The queue is
 a JSON array, a JSON object with `projects`, or one path per line; relative paths resolve against the queue file.
 """
 from __future__ import annotations
@@ -32,7 +33,7 @@ class ProjectLock:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             os.close(fd)
-            raise EngineError(f"project {self.project} is already locked by another batch") from None
+            raise EngineError(f"project {self.project} is already locked by another build or batch") from None
         os.ftruncate(fd, 0)
         os.write(fd, f"{os.getpid()}\n".encode())
         self.fd = fd

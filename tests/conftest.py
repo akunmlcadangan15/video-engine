@@ -53,19 +53,48 @@ def pytest_unconfigure(config):
     cleanup_scratch(TEST_ROOT, SHM_PARENT, _PARENT_PREEXISTED)
 
 
+VENDOR = Path(__file__).resolve().parents[1] / "vendor"
+
+
+def missing_vendored_tool(e: BaseException) -> str | None:
+    """The vendored toolchain file (vendor/node, vendor/chrome, vendor/npm) a FileNotFoundError reports missing."""
+    name = getattr(e, "filename", None)
+    if not isinstance(e, FileNotFoundError) or not name:
+        return None
+    p = Path(str(name))
+    p = (p if p.is_absolute() else Path.cwd() / p).resolve()
+    if p.exists() or not p.is_relative_to(VENDOR):
+        return None
+    return str(name)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item):
+    """A test that needs the vendored HyperFrames toolchain skips with a hint while it is not installed
+    (`engine doctor --install`) instead of failing; VIDEO_ENGINE_REQUIRE_TOOLCHAIN=1 (the nightly CI job, which
+    installs it) makes such a test fail."""
+    try:
+        return (yield)
+    except FileNotFoundError as e:
+        missing = missing_vendored_tool(e)
+        if missing and os.environ.get("VIDEO_ENGINE_REQUIRE_TOOLCHAIN") != "1":
+            pytest.skip(f"vendored toolchain not installed ({missing}); run `engine doctor --install`")
+        raise
+
+
 def ff(*args):
     subprocess.run(["ffmpeg", "-v", "error", "-y", *map(str, args)], check=True)
 
 
 def engine_clip(out: Path, n: int, size=(1080, 1920), fps: int = 30, src: str = "testsrc2", extra=()) -> Path:
-    """n-frame clip in the engine segment format (raw RGB frames -> config.X264, as native._encoder); `extra`
-    output options are appended after config.X264."""
+    """n-frame clip in the engine segment format (raw RGB frames -> config.X264_SEGMENT, as native._encoder); `extra`
+    output options are appended after config.X264_SEGMENT."""
     from video_engine import config
     w, h = size
     raw = subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"{src}{':' if '=' in src else '='}size={w}x{h}:rate={fps}", "-frames:v",
                           str(n), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{w}x{h}", "-r", str(fps),
-                    "-i", "-", *config.X264, *map(str, extra), "-frames:v", str(n), "-an", "-movflags", "+faststart",
+                    "-i", "-", *config.X264_SEGMENT, *map(str, extra), "-frames:v", str(n), "-an", "-movflags", "+faststart",
                     str(out)], input=raw, check=True)
     return out
 
@@ -86,7 +115,7 @@ def assets() -> Path:
            "-pix_fmt", "yuv420p", land)
     mp = ASSETS / "map.jpg"
     if not mp.exists():
-        ff("-f", "lavfi", "-i", "testsrc2=size=1500x1600:rate=1", "-frames:v", "1", mp)
+        ff("-f", "lavfi", "-i", "testsrc2=size=2700x2880:rate=1", "-frames:v", "1", mp)   # >= 1.2 texels per screen px (M02)
     tone = ASSETS / "tone.wav"
     if not tone.exists():
         ff("-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "3", "-af", "volume=-26dB", tone)

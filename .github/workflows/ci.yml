@@ -17,6 +17,19 @@ jobs:
       - run: ruff check --select E9,F63,F7,F82 video_engine tests
       - run: python -m compileall -q video_engine tests
 
+  calls:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m pip install mypy
+      # Blocking: a call with unknown keyword or wrong argument count (mypy call-arg) fails the run. The gradual
+      # `types` job below still reports every other mypy error without blocking.
+      - run: |
+          mypy --ignore-missing-imports --follow-imports=skip video_engine > mypy.txt || true
+          if grep -E "\[call-arg\]" mypy.txt; then exit 1; fi
+
   types:
     runs-on: ubuntu-latest
     continue-on-error: true   # mypy is gradual; the job reports, it does not block yet
@@ -44,6 +57,7 @@ jobs:
           tests/test_cli.py tests/test_cli_aux.py tests/test_gate_severity.py tests/test_geo_gate.py
           tests/test_profiles.py tests/test_blocks_library.py tests/test_import_sheet_prune.py
           tests/test_scratch_safety.py tests/test_cache_lease.py tests/test_timeline_frames.py
+          tests/test_gates_layer1.py tests/test_examples.py tests/test_audio_mix_exact.py tests/test_overlays.py
 
   nightly:
     if: github.event_name == 'schedule'
@@ -61,3 +75,4 @@ jobs:
       - run: python -m pip install --force-reinstall dist/hypoverum_core_rs-*.whl
       - run: python -m video_engine.cli doctor --install
       - run: python -m pytest -q
+        env: { VIDEO_ENGINE_REQUIRE_TOOLCHAIN: "1" }   # toolchain installed: a missing vendored file is a failure

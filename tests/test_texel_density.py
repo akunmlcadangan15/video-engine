@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from video_engine import hyperframes, timeline
+from video_engine import hyperframes, maps, timeline
 from video_engine.gates import layer2
 
 W, H = 1080, 1920
@@ -21,7 +21,7 @@ def test_good_top_rows_decode_is_pixel_exact(tmp_path):
     Image.fromarray(rng.integers(0, 256, (300, 400, 3), dtype=np.uint8)).save(tmp_path / "m.jpg", quality=90)
     full = np.asarray(Image.open(tmp_path / "m.jpg"), dtype=int)
     im = Image.open(tmp_path / "m.jpg")
-    hyperframes._load_top_rows(im, 117)
+    maps._load_top_rows(im, 117)
     assert im.size == (400, 117) and np.array_equal(np.asarray(im, dtype=int), full[:117])
     from PIL import ImageFile
     assert ImageFile.LOAD_TRUNCATED_IMAGES is False                 # the flag is restored
@@ -29,14 +29,14 @@ def test_good_top_rows_decode_is_pixel_exact(tmp_path):
 
 def test_bad_rows_past_the_decode_budget_fall_back_to_half_width(monkeypatch):
     sc = _scene(y=-19000.0)                                          # the view sits near the bottom of the map
-    assert hyperframes.deep_plan(sc, (20000, 20000))["w"] == 20000
-    monkeypatch.setattr(hyperframes, "DEEP_DECODE_MAX_PX", 20000 * 1000)
-    assert hyperframes.deep_plan(sc, (20000, 20000))["w"] == 10000   # JPEG draft 1/2 decode instead
+    assert maps.deep_plan(sc, (20000, 20000))["w"] == 20000
+    monkeypatch.setattr(maps, "DEEP_DECODE_MAX_PX", 20000 * 1000)
+    assert maps.deep_plan(sc, (20000, 20000))["w"] == 10000   # JPEG draft 1/2 decode instead
 
 
 def test_good_drawn_width_is_the_deep_raster_or_the_derivative():
-    assert hyperframes.drawn_width(_scene(), (20000, 20000)) == 20000
-    assert hyperframes.drawn_width(_scene(s=1.0), (20000, 20000)) == 1000   # the derivative suffices
+    assert maps.drawn_width(_scene(), (20000, 20000)) == 20000
+    assert maps.drawn_width(_scene(s=1.0), (20000, 20000)) == 1000   # the derivative suffices
 
 
 def _deep_proj(project, zoom=4.0, keys=None, side=3000):
@@ -56,7 +56,7 @@ def test_bad_m02_flags_a_raster_capped_below_the_zoom(project, monkeypatch):
     d, tl = _deep_proj(project, side=10000)                           # needs about 7800 px: the source covers it
     ok = layer2.m02_map_resolution(tl, d)
     assert [f.level for f in ok] == ["pass"]
-    monkeypatch.setattr(hyperframes, "DEEP_MAX_SIDE", 4500)          # the old kind of cap: source 10000, drawn 4500
+    monkeypatch.setattr(maps, "DEEP_MAX_SIDE", 4500)          # the old kind of cap: source 10000, drawn 4500
     hyperframes.clear_scene_cache()
     fs = layer2.m02_map_resolution(tl, d)
     assert fs[0].level in ("warn", "fail") and "raster" in fs[0].message and "texels per screen px" in fs[0].message

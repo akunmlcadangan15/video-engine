@@ -88,10 +88,12 @@ def cmd_build(a) -> int:
         c = cache.clear()
         if c["skipped_leased"]:
             print(f"cache: kept {len(c['skipped_leased'])} files leased by a running build")
+    from .batch import ProjectLock
     argv = [x for x in a.argv if x != "--resume"]
-    r = build.build(p, use_cache=True, run_label=a.label, ai_qa=_ai_qa(a, p), keep_workdir=a.keep_workdir,
-                    resume=a.resume, resume_cmd=shlex.join(["engine", *argv, "--resume"]), raise_on_fail=False,
-                    relock=a.relock)
+    with ProjectLock(p):   # one build per project at a time (shared with `engine batch`)
+        r = build.build(p, use_cache=True, run_label=a.label, ai_qa=_ai_qa(a, p), keep_workdir=a.keep_workdir,
+                        resume=a.resume, resume_cmd=shlex.join(["engine", *argv, "--resume"]), raise_on_fail=False,
+                        relock=a.relock)
     for row in r.timer.rows:
         print("\t".join(str(x) for x in row))
     if a.timing_tsv:
@@ -142,6 +144,10 @@ def cmd_preview(a) -> int:
     from . import sheet
     p, tl = _load(a.project)
     if getattr(a, "all", False):
+        if a.seg is not None or a.time is not None:
+            raise EngineError("--all renders the middle frame of every segment; drop --seg/--time")
+        if a.out and str(a.out).endswith(".png") and not getattr(a, "sheet", False):
+            raise EngineError("with --all, --out names a directory for the frames (a .png --out needs --sheet)")
         out_dir = Path(a.out) if a.out and not str(a.out).endswith(".png") else (config.SHM_ROOT / "preview" / tl.project_id)
         out_dir.mkdir(parents=True, exist_ok=True)
         tiles: dict[int, Path] = {}
@@ -490,8 +496,10 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--seg", type=int, help="segment index (0..N-1)")
     x.add_argument("--time", type=float, help="seconds from segment start")
     x.add_argument("--all", action="store_true", help="render the middle frame of every segment")
-    x.add_argument("--sheet", action="store_true", help="with --all, also assemble a contact sheet PNG")
-    x.add_argument("--timeout", type=int, default=60, help="DOM probe timeout in seconds (default 60)")
+    x.add_argument("--sheet", action="store_true", help="with --all, also assemble a contact sheet PNG (--out F.png, "
+                                                        "default out/preview_sheet.png)")
+    x.add_argument("--timeout", type=int, help="HyperFrames DOM probe timeout in seconds (default: the probe's own, "
+                                               "120 s)")
     x.add_argument("--out")
     x = add("audio", cmd_audio, "Print caption words (pinned timeline words, else cached or transcribed; writes nothing).")
     x.add_argument("project")

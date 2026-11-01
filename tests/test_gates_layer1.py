@@ -1,4 +1,6 @@
 """Layer 1 gates: labelled GOOD and BAD cases."""
+import pytest
+
 from video_engine.gates import layer1
 
 
@@ -87,6 +89,18 @@ def test_R14_good(project):
 def test_R14_bad_noncommercial(project):
     _, tl = project(lambda d: d["credits_manifest"][0].update(license="CC BY-NC 4.0"))
     assert any("not in allowlist" in f.message for f in layer1.r14_licence(tl))
+
+
+@pytest.mark.parametrize("lic", ["CC BY-NC-SA 4.0", "CC BY-ND 4.0", "CC-BY-NC", "cc_by_nc_nd_3.0", "CC BY 4.0 NC"])
+def test_R14_bad_restricted_cc_variants(project, lic):
+    _, tl = project(lambda d: d["credits_manifest"][0].update(license=lic))
+    assert any("not in allowlist" in f.message for f in layer1.r14_licence(tl))
+
+
+@pytest.mark.parametrize("lic", ["CC BY 4.0 International", "CC BY-SA 3.0 IGO", "CC BY 3.0 DE", "CC0 1.0 Universal"])
+def test_R14_good_free_cc_spelling_variants(project, lic):
+    _, tl = project(lambda d: d["credits_manifest"][0].update(license=lic))
+    assert levels(layer1.r14_licence(tl), "R14") == {"pass"}
 
 
 def test_R14_bad_watermark_not_declared(project):

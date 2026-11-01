@@ -282,9 +282,14 @@ def put_file(kind: str, key: str, src: Path, ext: str = ".mp4") -> Path:
 def get_json(kind: str, key: str):
     p = acquire(_p(kind, key, ".json"))
     try:
-        return json.loads(p.read_text())
+        data = json.loads(p.read_text())
     except FileNotFoundError:
         return None
+    try:
+        os.utime(p)  # LRU touch, as get_file: an entry in use is not the first one evicted
+    except FileNotFoundError:
+        pass
+    return data
 
 
 def put_json(kind: str, key: str, obj) -> None:

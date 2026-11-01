@@ -53,22 +53,23 @@ def test_bad_AS01_text_card_side_strip_warns(project):
     assert [f.level for f in anti_slop.as01_panel(tl, gate())] == ["warn"]
 
 
-def test_bad_AS01_geoverum_side_strip_fails(project):
+def test_bad_AS01_geoverum_side_strip_warns(project):
     _d, tl = project(lambda doc: (doc.update(profile="geoverum"),
                                   overlay(doc, {"id": "lt", "kind": "lower_third", "box": [100, 1400, 800, 170],
                                                 "text": "Surabaya", "subtitle": "1945"})))
     fs = anti_slop.as01_panel(tl, gate("geoverum"))
-    assert [f.level for f in fs] == ["fail"] and "side accent strip" in fs[0].message
+    assert [f.level for f in fs] == ["warn"] and "side accent strip" in fs[0].message
 
 
-def test_bad_AS01_geoverum_fail_stays_fail_after_severity(project):
+def test_good_AS01_is_not_required_on_geoverum(project):
+    """Geoverum requires only S01 (approved 2026-11-01): an AS01 side strip stays a warning through severity."""
     from video_engine.gates import severity
     _d, tl = project(lambda doc: (doc.update(profile="geoverum"),
                                   overlay(doc, {"id": "lt", "kind": "lower_third", "box": [100, 1400, 800, 170],
                                                 "text": "Surabaya", "subtitle": "1945"})))
     fs = anti_slop.as01_panel(tl, gate("geoverum"))
-    assert "AS01" in severity.required(tl)
-    assert [f.level for f in severity.apply(fs, tl)] == ["fail"] and fs[0].waived is None
+    assert "AS01" not in severity.required(tl)
+    assert [f.level for f in severity.apply(fs, tl)] == ["warn"]
 
 
 # AS02 copy -----------------------------------------------------------------------------------------------------------

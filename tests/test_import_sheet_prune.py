@@ -7,7 +7,7 @@ import pytest
 from PIL import Image
 
 from conftest import ff
-from video_engine import cache_prune, importer, sheet, timeline
+from video_engine import cache, cache_prune, importer, sheet, timeline
 from video_engine.util import EngineError
 
 COLS = ["shot", "type", "file", "title", "source_url", "author", "licence", "on_screen_s"]
@@ -102,7 +102,7 @@ def test_bad_sheet_missing_video(project, tmp_path):
 
 
 def _fill(root, keep):
-    for k in cache_prune.KINDS:
+    for k in cache.KINDS:
         (root / k).mkdir(parents=True, exist_ok=True)
     (root / "segments" / "stale.mp4").write_bytes(b"x")
     (root / "words" / "stale.json").write_text("[]")
@@ -151,7 +151,6 @@ def test_bad_prune_unloadable_project_deletes_nothing(project, tmp_path):
 
 
 def test_good_clear_removes_entry_dirs_only(tmp_path):
-    from video_engine import cache
     root = tmp_path / "c"
     _fill(root, set())
     r = cache.clear(root)

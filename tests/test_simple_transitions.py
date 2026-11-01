@@ -4,7 +4,7 @@ import pytest
 from PIL import Image
 from pydantic import ValidationError
 
-from video_engine import config, hyperframes, profiles, transitions
+from video_engine import config, hyperframes, maps, profiles, transitions
 from video_engine.gates import layer1, style
 
 from test_style_gates import CUTS, layout as tl_layout, levels
@@ -76,7 +76,7 @@ def test_good_map_morph_allowed_by_default_profile(project):
 
 def test_good_render_defaults_are_the_engine_constants():
     r = profiles.load().render
-    assert r.x264("segment") == config.X264 and r.x264("final") == config.X264
+    assert r.x264("segment") == config.X264_SEGMENT and r.x264("final") == config.X264
 
 
 def test_good_geoverum_render_quality_values():
@@ -92,7 +92,7 @@ def test_good_geoverum_render_quality_values():
 
 def test_good_hf_encode_settings_and_keys_follow_profile_render(project, monkeypatch):
     p, tl = project()
-    assert hyperframes.encode_settings(tl) == (hyperframes.HF_QUALITY, hyperframes.HF_CRF, config.X264)
+    assert hyperframes.encode_settings(tl) == (hyperframes.HF_QUALITY, hyperframes.HF_CRF, config.X264_SEGMENT)
     k0 = hyperframes.keys(tl.segments[2], tl, p)
     prof = profiles.load()
     _profile(monkeypatch, "default", render=prof.render.model_copy(update={"hf_quality": "high", "hf_crf": 8}))
@@ -103,13 +103,13 @@ def test_good_hf_encode_settings_and_keys_follow_profile_render(project, monkeyp
 def test_good_map_jpeg_quality_reaches_the_scene_and_the_map_key(project, monkeypatch, tmp_path):
     p, tl = project()
     sc0 = hyperframes.scene_data(tl.segments[2], tl, p)
-    assert "map_q" not in sc0 and hyperframes._q(sc0) == hyperframes.MAP_JPEG_QUALITY
+    assert "map_q" not in sc0 and maps._q(sc0) == maps.MAP_JPEG_QUALITY
     prof = profiles.load()
     _profile(monkeypatch, "default", render=prof.render.model_copy(update={"map_jpeg_quality": 97}))
     sc = hyperframes.scene_data(tl.segments[2], tl, p)
-    assert hyperframes._q(sc) == 97
+    assert maps._q(sc) == 97
     src = p / sc["map"]
-    assert hyperframes.map_key(src, 1000, 97) != hyperframes.map_key(src, 1000)
+    assert maps.map_key(src, 1000, 97) != maps.map_key(src, 1000)
 
 
 # bad ----------------------------------------------------------------------------------------------------------------

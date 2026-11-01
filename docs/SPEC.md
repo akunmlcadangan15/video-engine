@@ -39,7 +39,8 @@
    style, active-word highlight, automatic safe margins (so R62/R63/L22 pass by construction). Caption text/style edits never
    trigger a Chrome re-render.
 4. Parallel ffmpeg executor: pure cuts via stream copy at keyframes or chunked parallel encoding
-   (libx264 -threads 8 -preset veryfast -crf 20 -tune fastdecode -pix_fmt yuv420p). Camera moves on normal video/stills:
+   (libx264 yuv420p BT.709; profile `[render]` segment_* / final_* values, else crf 16 veryfast for intermediates and
+   crf 18 medium for the final composite). Camera moves on normal video/stills:
    focus box [ymin,xmin,ymax,xmax] -> smooth crop/scale (zoompan) expressions. BLAKE3 hash of segment config = cache key.
 5. Fast audio chain (< 15 s) + caching: BLAKE3 of source audio/script; if unchanged, reuse cached word timestamps (0 s).
    xAI Grok Voice Transcribe (`POST https://api.x.ai/v1/stt`, model `grok-voice-transcribe-2.0`, `XAI_API_KEY`,
@@ -128,10 +129,11 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   any caption box bottom (centre y + 0.75 x font size + `caption_pad`; contains glyphs, descenders, outline and
   shadow) is below it; automatic caption placement never moves a caption below it. `caption_pad` = the ink reach
   below the glyphs beyond 24 px: soft shadow `shadow_dy` (default 1.5 x `shadow`) + `outline` + 2 + 2 x `shadow_blur`,
-  hard shadow `outline` + `shadow` (0 for the default style). Geoverum: `fixed_y` 1190, `max_bottom_y` 1250 (caption
-  box bottom 1244 px at Inter SemiBold 72, pad 0; rendered ink, outline and shadow included, inside it).
+  hard shadow `outline` + `shadow` (0 for the default style). Geoverum: `fixed_y` 1382, `max_bottom_y` 1480 (caption
+  box bottom 1445 px at Inter Bold 84, pad 0; rendered ink and shadow included, inside it); `auto_place` moves a
+  caption only inside `place_band` 0.60-0.76 H.
 - Caption soft shadow offset: `shadow_dx`, `shadow_dy` (px; absent = `shadow`, 1.5 x `shadow`). Geoverum captions:
-  white Inter SemiBold 72, at most 2 words, black outline 2.5 px, soft shadow 0 3 px, `shadow_blur` 4 (libass
+  white Inter Bold 84 (A/B 84 / 92 / 104), at most 2 words, no outline, soft shadow 0 3 px, `shadow_blur` 4 (libass
   Gaussian, about a CSS 8 px blur), black at 55 % (`shadow_alpha` 115), no backing box.
 - No captions (no voiceover): every caption gate passes or skips on the empty list.
 - Segment field `visual_type` (map / photo / video / diagram / archive / illustration; inferred when absent).
@@ -156,8 +158,9 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 - Camera zoom limit (`[camera] max_zoom`, default 4, Geoverum 16): bounds camera keys, the layout fit and draft
   `map_path` zooms. Map frames past the 3000 px derivative's density draw deep source tiles, rastered at the width
   the deepest zoom needs up to the full source width (JPEG rows below the deepest tile are not decoded; past a
-  640 Mpx decode budget the raster drops to half width). M02 grades that drawn raster's texels per screen px
-  (warn < 1.0x, fail < 0.5x). Tilted scenes drop will-change/force3D on the camera so Chrome rasters at the camera
+  640 Mpx decode budget the raster drops to half width). M02 grades the real source detail per screen px
+  (warn < 1.2x, fail < 0.85x; a 2x pre-upscaled source counts half its width; the derivative and deep raster count
+  only when cut below the on-screen width). Tilted scenes drop will-change/force3D on the camera so Chrome rasters at the camera
   scale instead of scale 1 under the perspective.
 - Colour grade (`grade` on a segment or beat, profile `[grade]`): lift/gamma/gain, saturation, tint, .cube LUT and
   strength baked into one 3D LUT, applied by ffmpeg lut3d to the rendered segment per frame range, under the captions.
@@ -189,8 +192,8 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   `same_type` `{visual type: kind}` takes precedence when both sides of a boundary share that type.
   `page_turn = false` rejects any page_turn in the profile; `map_morph = false` makes a map `morph` a T02 fail
   (`geoverum`: every boundary a 0.4 s crossfade, no page turns, no paper morphs).
-- Render quality (`[render]`, every key optional; absent = engine defaults: HyperFrames `draft` + CRF 14,
-  x264 veryfast CRF 20 fastdecode for intermediates and the final mux, map JPEG q90): `hf_quality`
+- Render quality (`[render]`, every key optional; absent = engine defaults: HyperFrames `standard` + CRF 14,
+  x264 crf 16 veryfast for intermediates, crf 18 medium for the final composite, map JPEG q90): `hf_quality`
   (draft | standard | high), `hf_crf`, `segment_crf` / `segment_preset` / `segment_tune`, `final_crf` /
   `final_preset` / `final_tune` (`none` = no -tune) / `final_maxrate_kbps` (VBV cap, bufsize 2x),
   `map_jpeg_quality`. Every value is part of the cache key of the stage it reaches.
@@ -268,11 +271,12 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   ranges (violet 260-310, cyan 170-197) that the profile does not declare. Engine-generated template effects and
   markup (`MO.*` motion tokens, whip blur, built-in `lower_third` markup) are allowlisted, so only project content is
   flagged. Taste rules default to warn; `[gates.anti_slop.levels]` raises a rule, and for style-class ids
-  `[gates] require` keeps a raised fail blocking. Geoverum raises AS01 to fail and requires it, so the fail blocks a
-  build; AS02-AS06 stay warn, including AS04.
+  `[gates] require` keeps a raised fail blocking. Geoverum keeps every anti-slop rule at warn (AS01-AS06) and
+  requires only S01.
   Declared brand palettes are exemptions.
-- Global safety gates (identical for every profile; a profile may only tighten true peak and loudness tolerance):
-  T02, R07, R14, W01, L22, O01, M01, R56, R62, R63 element margins/overlaps, E01, R38, post-render QA, A01 limits.
+- Global safety gates (identical for every profile; a profile may only tighten true peak and loudness tolerance, and
+  no `[gates] advisory` list can lower them): T02, R07, R14, A01, A02, W01, R38, R56px, M01, M03, G01, L22
+  (`profiles.NEVER_ADVISORY`) and post-render QA.
 - build_report.json records the profile name and the BLAKE3 hash of the merged profile.
 - Locked build manifest out/build_manifest.json (before render): build_id, sha256 of timeline, inputs, fonts and sounds
   (portable paths), profile hash, toolchain pins, seeds, worker budget, stage cache keys. Sounds stay locked until
