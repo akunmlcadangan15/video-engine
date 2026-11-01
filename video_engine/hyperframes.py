@@ -16,39 +16,9 @@ from urllib.parse import quote
 
 import hypoverum_core_rs as core
 
-from . import assets, cache, camera3d, config, entities, fx, globe, legibility, maps, parallax, printstyle, profiles, props, streams, toolchain
-from .maps import (
-    DEEP_DECODE_MAX_PX,
-    DEEP_MARGIN,
-    DEEP_MAX_SIDE,
-    DEEP_PAD,
-    DEEP_TILE,
-    DEEP_VERSION,
-    MAP_JPEG_QUALITY,
-    MAP_MAX_SIDE,
-    MAP_VERSION,
-    MORPH_GRAIN,
-    MORPH_PAPER,
-    _DECODE,
-    _deep_box,
-    _deep_src_rows,
-    _deep_tiles_at,
-    _load_top_rows,
-    _map_copy,
-    _map_width,
-    _need_w,
-    _q,
-    deep_entries,
-    deep_key,
-    deep_plan,
-    deep_tiles,
-    drawn_width,
-    map_image_size,
-    map_key,
-    morph_data,
-    texture_dim,
-    textures,
-)
+from . import assets, cache, camera3d, config, entities, fx, globe, legibility, parallax, printstyle, profiles, props, streams, toolchain
+from .maps import (MAP_JPEG_QUALITY, _map_copy, _need_w, _q, deep_entries, deep_plan, deep_tiles, map_image_size,
+                   map_key, morph_data, texture_dim, textures)
 from .timeline import HYPERFRAMES, Segment, Timeline
 from .util import EngineError, blake3_files, blake3_json, code_hash, run
 
@@ -373,7 +343,7 @@ def leg_ease(L: dict, s_from: float):
         return lambda t: ((a + b - 2) * t + 3 - 2 * a - b) * t * t + a * t
     if "bez" in L:
         b = L["bez"]
-        shape = lambda t: cubic_bezier(*b, t)
+        shape = lambda t: cubic_bezier(b[0], b[1], b[2], b[3], t)
     elif L["ease"] == "drift":
         return (lambda t: t) if abs(rho - 1) < 1e-9 else (lambda t: (rho ** t - 1) / (rho - 1))
     else:
@@ -899,7 +869,7 @@ def cache_key(seg: Segment, tl: Timeline, project_dir: Path, scene: dict | None 
 
 def encode_settings(tl: Timeline) -> tuple[str, int, list[str]]:
     """(capture quality, HyperFrames CRF, normalising x264 args) of a timeline: profile [render], else HF_QUALITY,
-    HF_CRF and config.X264."""
+    HF_CRF and config.X264_SEGMENT."""
     r = profiles.of(tl).render
     return r.hf_quality or HF_QUALITY, HF_CRF if r.hf_crf is None else r.hf_crf, r.x264("segment")
 

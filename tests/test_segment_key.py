@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from video_engine import config, hyperframes, profiles, toolchain
+from video_engine import config, hyperframes, maps, profiles, toolchain
 
 REAL_TEMPLATE = config.TEMPLATE_DIR
 REAL_GSAP = config.GSAP_JS
@@ -100,7 +100,7 @@ def test_good_map_grade_change_invalidates_the_segment_key(project, monkeypatch)
 def test_good_map_derivative_recipe_change_invalidates_both_keys(project, monkeypatch, change):
     p, tl = project()
     k0 = hyperframes.keys(tl.segments[2], tl, p)
-    monkeypatch.setattr(hyperframes, *change)
+    monkeypatch.setattr(maps, *change)
     k1 = hyperframes.keys(tl.segments[2], tl, p)
     assert k1[0] != k0[0] and k1[1] != k0[1]
 

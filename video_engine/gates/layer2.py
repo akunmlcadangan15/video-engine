@@ -8,12 +8,11 @@ import math
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
-from functools import lru_cache
 from pathlib import Path
 
 import hypoverum_core_rs as core
 
-from .. import captions, entities, hyperframes, legibility, native, profiles, props, watermark
+from .. import captions, entities, hyperframes, legibility, maps, native, profiles, props, watermark
 from ..timeline import HYPERFRAMES, NATIVE, CaptionWord, Segment, Timeline
 from ..util import EngineError, video_info
 from .core import Finding
@@ -29,42 +28,12 @@ CAPTION_BAND_HALF = 0.75     # caption box half-height as a fraction of font siz
 CAPTION_REACH_BAND = 24.0    # px of outline/shadow reach below the glyphs the band already holds (caption_pad)
 PLACE_STEP = 10              # px: vertical search step of automatic caption placement
 OVERLAP_TOL = 2              # px
-M02_WARN = 1.2               # map source px per on-screen px at the deepest zoom: warn below
-M02_FAIL = 0.85              # fail below
+M02_WARN = 1.2               # map source detail px per on-screen px at the deepest zoom: warn below
+M02_FAIL = 0.85              # fail below (shown more than ~1.18x upscaled)
 
 
 def r56_min_px(W: int, H: int) -> float:
     return R56_MIN_PX_1080P * math.hypot(W, H) / math.hypot(1080, 1920)
-
-
-@lru_cache(maxsize=64)
-def _effective_width_cached(resolved: str, mtime_ns: int, size: int) -> int:
-    """Detect 2x pre-upscaled raster images by comparing 1px, 2px and 3px horizontal step differences."""
-    import numpy as np
-    from PIL import Image
-    Image.MAX_IMAGE_PIXELS = None
-    with Image.open(resolved) as im:
-        w, h = im.size
-        if w < 1600:
-            return w
-        cy, ch = max(0, h // 2 - min(128, h // 4)), min(h, h // 2 + min(128, h // 4))
-        cx, cw = max(0, w // 2 - min(512, w // 4)), min(w, w // 2 + min(512, w // 4))
-        arr = np.asarray(im.crop((cx, cy, cw, ch)).convert("L"), dtype=np.float32)
-    if arr.shape[1] < 8:
-        return w
-    d1 = float(np.mean(np.abs(arr[:, 1:] - arr[:, :-1])))
-    d2 = float(np.mean(np.abs(arr[:, 2:] - arr[:, :-2])))
-    d3 = float(np.mean(np.abs(arr[:, 3:] - arr[:, :-3])))
-    if d2 > 2.0 and d1 / d2 < 0.60 and d3 > 0 and d2 / d3 > 0.78:
-        return w // 2
-    return w
-
-
-def effective_width(path: Path) -> int:
-    """True horizontal detail width of a raster image (halved when pre-upscaled 2x without high-frequency detail)."""
-    p = Path(path).resolve()
-    st = p.stat()
-    return _effective_width_cached(str(p), st.st_mtime_ns, st.st_size)
 
 
 def m01_source_length(tl: Timeline, project_dir: Path) -> list[Finding]:
@@ -88,8 +57,10 @@ def m01_source_length(tl: Timeline, project_dir: Path) -> list[Finding]:
 
 def m02_map_resolution(tl: Timeline, project_dir: Path) -> list[Finding]:
     """Texels per screen px at the deepest camera zoom of each HyperFrames segment (keys, pulses, drift and the tilt
-    magnification included): width of the raster the page really draws (deep tiles, else the map derivative; never
-    more than the source) / on-screen map width; warn below M02_WARN, fail below M02_FAIL."""
+    magnification included): real source detail (pixel width, or the effective width of a 2x pre-upscaled raster) /
+    on-screen map width; warn below M02_WARN, fail below M02_FAIL. The derivative and the deep raster are sized to the
+    on-screen width on purpose (1 texel per px when the source allows), so they count only when they are cut below
+    both that width and the source (a DEEP_MAX_SIDE cap): then the drawn raster is the limit."""
     out = []
     for s in tl.segments:
         if s.engine_type != HYPERFRAMES or s.gsap_scene_config.globe:
@@ -97,15 +68,17 @@ def m02_map_resolution(tl: Timeline, project_dir: Path) -> list[Finding]:
         sc = s.gsap_scene_config
         try:
             scene = hyperframes.scene_data(s, tl, project_dir)
-            iw, ih = hyperframes.map_image_size(project_dir / sc.map_asset)
-            ew = effective_width(project_dir / sc.map_asset)
+            iw, ih = maps.map_image_size(project_dir / sc.map_asset)
+            ew = maps.effective_width(project_dir / sc.map_asset)
         except (EngineError, OSError) as e:
             out.append(Finding("M02", "fail", f"map '{sc.map_asset}': {e}", s.seg_index))
             continue
-        need = hyperframes._need_w(scene)
-        drawn = min(ew, hyperframes.drawn_width(scene, (iw, ih)))
-        r = drawn / need
-        via = "" if drawn >= iw else f", drawn from a {drawn} px raster"
+        need = maps._need_w(scene)
+        detail = min(ew, iw)
+        drawn = maps.drawn_width(scene, (iw, ih))
+        capped = drawn < min(detail, math.floor(need))
+        r = (min(drawn, detail) if capped else detail) / need
+        via = f", drawn from a {drawn} px raster" if capped else ""
         if ew < iw:
             via += f" (effective detail ~{ew} px)"
         msg = (f"map '{sc.map_asset}' {iw} px wide{via}, shown up to {need:.0f} px wide at zoom "
@@ -113,7 +86,7 @@ def m02_map_resolution(tl: Timeline, project_dir: Path) -> list[Finding]:
         if r < M02_FAIL:
             out.append(Finding("M02", "fail", msg + f"; needs >= {M02_FAIL:g}x (a larger source or a lower zoom)", s.seg_index))
         elif r < M02_WARN:
-            out.append(Finding("M02", "warn", msg + f"; upscaled below {M02_WARN:g}x", s.seg_index))
+            out.append(Finding("M02", "warn", msg + f"; below the {M02_WARN:g}x sharpness headroom", s.seg_index))
     return out or [Finding("M02", "pass", "every map source covers its deepest zoom")]
 
 
@@ -180,14 +153,14 @@ def _native_motion(s: Segment, tl: Timeline, sw: int, sh: int, intensity: float)
 def _hf_motion(s: Segment, tl: Timeline, project_dir: Path, intensity: float) -> float:
     sc = s.gsap_scene_config.model_copy(update={"camera_intensity": intensity})
     W, H = tl.settings.width, tl.settings.height
-    iw, ih = hyperframes.map_image_size(project_dir / sc.map_asset)
+    iw, ih = maps.map_image_size(project_dir / sc.map_asset)
     cover = max(W / iw, H / ih)
     return hyperframes.camera_states(sc, W, H, iw * cover, ih * cover)[2]
 
 
 def _hf_plan(s: Segment, tl: Timeline, project_dir: Path) -> dict:
     W, H = tl.settings.width, tl.settings.height
-    iw, ih = hyperframes.map_image_size(project_dir / s.gsap_scene_config.map_asset)
+    iw, ih = maps.map_image_size(project_dir / s.gsap_scene_config.map_asset)
     cover = max(W / iw, H / ih)
     return hyperframes.camera_plan(s.gsap_scene_config, W, H, iw * cover, ih * cover, s.n_frames, tl.settings.fps,
                                    profiles.of(tl).render_values("hf"))
@@ -812,7 +785,8 @@ def r64_rows(dom: dict[int, dict]) -> list[dict]:
                     frames = legibility.load_frames(item)
                 hx = _halo(r)
                 org = (item["clip"]["x"], item["clip"]["y"])
-                s = legibility.measure(*frames, r, el, lg, item["t"], org, (hx["w"], hx["blur"]) if hx else None)
+                bg, mask = frames
+                s = legibility.measure(bg, mask, r, el, lg, item["t"], org, (hx["w"], hx["blur"]) if hx else None)
                 ink, (halo, ha) = _rgb_hex(r["color"]), (hx["rgb"], hx["alpha"]) if hx else _stroke(r)
                 if s is None or ink is None:
                     continue
@@ -824,7 +798,7 @@ def r64_rows(dom: dict[int, dict]) -> list[dict]:
                         png = np.asarray(Image.open(item["png"]).convert("RGB"))
                     oth = tuple((o, legibility.state(o)) for o in item["rects"] if o is not r and o.get("opacity", 0) > 0
                                 and legibility.state(o))
-                    cnt = legibility.counters(png, *frames, r, el, lg, org, st, oth)
+                    cnt = legibility.counters(png, bg, mask, r, el, lg, org, st, oth)
                 style = legibility.Style(pol, ink, legibility.rgb_hex(halo), ha, float(st["va"]), int(st["step"]))
                 ev = legibility.evaluate(s, style, lg)
                 rows.append({"seg": seg, "id": r["id"], "text": r.get("text", ""), "kind": el["kind"], "t": item["t"],

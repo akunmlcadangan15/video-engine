@@ -4,7 +4,7 @@ import pytest
 from PIL import Image
 from pydantic import ValidationError
 
-from video_engine import fx2, hyperframes, timeline
+from video_engine import fx, hyperframes, timeline
 
 GEOID = {"exaggeration": 0.08, "colour_ramp": ["#2B5BD7", "#3FB27F", "#F2D04B", "#D9483B"],
          "rotate_deg_s": 12, "at_frame": 0}
@@ -40,9 +40,9 @@ def test_good_scene_harmonics_and_determinism(project):
     g = a["globe"]["geoid"]
     assert a["globe"]["geoid"] == b["globe"]["geoid"]
     assert len(g["harmonics"]) == 6 and g["exaggeration"] == 0.08
-    vals = [fx2.geoid_height(g["harmonics"], lat, lng) for lat in range(-80, 81, 20) for lng in range(-180, 181, 30)]
+    vals = [fx.geoid_height(g["harmonics"], lat, lng) for lat in range(-80, 81, 20) for lng in range(-180, 181, 30)]
     assert min(vals) >= -1.0 and max(vals) <= 1.0 and max(vals) - min(vals) > 0.2
-    assert fx2.geoid_height(g["harmonics"], 12, 40) == pytest.approx(fx2.geoid_height(g["harmonics"], 12, 40))
+    assert fx.geoid_height(g["harmonics"], 12, 40) == pytest.approx(fx.geoid_height(g["harmonics"], 12, 40))
 
 
 def test_good_build_and_three_js_render(project, tmp_path):

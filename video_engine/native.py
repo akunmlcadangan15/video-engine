@@ -17,7 +17,7 @@ NATIVE_VERSION = "native-1"
 COPY_FORMAT = "copy-edit-list"   # stream-copy segment layout (render_copy); part of every copy-mode key
 IMAGE_MAX_SIDE = 8192
 CODE = (Path(__file__), Path(overlays.__file__))   # engine sources of a native segment's pixels (cache key)
-BT709_VF = "scale=out_color_matrix=bt709:out_range=tv:flags=lanczos+accurate_rnd+full_chroma_int,format=yuv420p"
+BT709_VF = config.BT709_VF   # raw RGB frames -> BT.709 yuv420p
 
 
 @dataclass
@@ -61,8 +61,8 @@ def _keyframe_at(src: Path, t: float, fps: float) -> bool:
 
 
 def seg_x264(tl: Timeline | None) -> list[str]:
-    """Segment (intermediate) encoder arguments of the timeline's profile ([render]); config.X264 without one."""
-    return profiles.of(tl).render.x264("segment") if tl is not None else config.X264
+    """Segment (intermediate) encoder arguments of the timeline's profile ([render]); config.X264_SEGMENT without one."""
+    return profiles.of(tl).render.x264("segment") if tl is not None else config.X264_SEGMENT
 
 
 def copy_eligible(src: Path, W: int, H: int, fps: int, x264: list[str] | None = None) -> bool:

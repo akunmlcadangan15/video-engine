@@ -239,6 +239,7 @@ def test_good_default_profile_has_no_layout_and_keeps_its_hash():
     for k in ("cta", "ending_keyword", "duration_exact", "geo"):
         assert dump["gates"].pop(k) is None      # absent new gate tables add nothing either
     assert dump["gates"].pop("require") == []   # an empty required list adds nothing either
+    assert dump["gates"].pop("advisory") == []  # nor does an empty advisory list
     assert p.blake3 == blake3_json(dump)
     assert p.blake3.startswith("6f0c27f00133")
     assert profiles.load("geoverum").layout is not None

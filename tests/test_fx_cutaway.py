@@ -2,7 +2,7 @@
 import pytest
 from pydantic import ValidationError
 
-from video_engine import assets, fx2, hyperframes, profiles, timeline
+from video_engine import assets, fx, hyperframes, profiles, timeline
 from video_engine.gates import layer1
 
 LAYERS = [{"label": "Kerak", "colour": "#8B5A2B", "thickness": 0.2},
@@ -65,7 +65,7 @@ def test_good_cutaway_is_deterministic_and_default_off_is_identical(project):
     hyperframes.clear_scene_cache()
     b = hyperframes.scene_data(seg, tl, path)
     assert a["cutaway"] == b["cutaway"]
-    assert fx2.cutaway_block(seg, tl, profiles.of(tl)) == a["cutaway"]
+    assert fx.cutaway_block(seg, tl, profiles.of(tl)) == a["cutaway"]
     seg.gsap_scene_config.cutaway = None
     hyperframes.clear_scene_cache()
     assert (hyperframes.scene_data(seg, tl, path), hyperframes.keys(seg, tl, path)) == before

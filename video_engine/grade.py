@@ -211,7 +211,7 @@ def _x264(tl: "Timeline", lossless: bool = False) -> list[str]:
 def _key(seg: "Segment", rs: list, cubes: list[str], src: Path, x264: list[str] | None = None) -> str:
     return blake3_json({"v": GRADE_VERSION, "code": code_hash([__file__]), "src": blake3_files([src])[0], "n": seg.n_frames,
                         "ranges": [[a, e, blake3_json(c)] for (a, e, _, _), c in zip(rs, cubes)],
-                        "x264": x264 or config.X264, "threads": X264_THREADS, "ffmpeg": toolchain.ffmpeg_version(config.FFMPEG)})
+                        "x264": x264 or config.X264_SEGMENT, "threads": X264_THREADS, "ffmpeg": toolchain.ffmpeg_version(config.FFMPEG)})
 
 
 def key(seg: "Segment", tl: "Timeline", project_dir: Path, src: Path) -> str | None:

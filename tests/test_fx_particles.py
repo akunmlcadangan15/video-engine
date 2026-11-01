@@ -5,7 +5,7 @@ import subprocess
 import pytest
 from pydantic import ValidationError
 
-from video_engine import config, fx2, hyperframes, timeline
+from video_engine import config, fx, hyperframes, timeline
 
 FIREWORKS = {"kind": "fireworks", "xy": [0.5, 0.3], "at_frame": 0, "duration_s": 2.0, "seed": 3, "scale": 1.0}
 FIRE = {"kind": "fire", "xy": [0.5, 0.72], "at_frame": 0, "duration_s": 2.0, "seed": 7, "scale": 1.0,
@@ -37,13 +37,13 @@ def test_good_scene_bounded_and_deterministic(project):
     assert all(e["count"] <= 180 for e in a["particles"])
     e = a["particles"][0]
     frames = [0, 7.5, 15, 30, 45, 59]
-    first = [fx2.particle_state(e, f, a["fps"], a["height"]) for f in frames]
-    again = [fx2.particle_state(e, f, a["fps"], a["height"]) for f in frames]
+    first = [fx.particle_state(e, f, a["fps"], a["height"]) for f in frames]
+    again = [fx.particle_state(e, f, a["fps"], a["height"]) for f in frames]
     assert first == again
     assert len(first[2]) == e["count"] and first[0] != first[2]
     fire = a["particles"][1]
-    assert fx2.particle_state(fire, 15, a["fps"], a["height"]) == \
-        fx2.particle_state(fire, 15, a["fps"], a["height"])
+    assert fx.particle_state(fire, 15, a["fps"], a["height"]) == \
+        fx.particle_state(fire, 15, a["fps"], a["height"])
 
 
 def test_good_canvas_draws_particles_in_the_dom(project, tmp_path):

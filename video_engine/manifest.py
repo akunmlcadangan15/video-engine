@@ -102,7 +102,7 @@ def toolchain() -> dict:
         ev = version("video-engine")
     except PackageNotFoundError:
         ev = "unknown"
-    return {"ffmpeg": ffmpeg_version(), "x264": list(config.X264), "node": pins["node"]["version"],
+    return {"ffmpeg": ffmpeg_version(), "x264": list(config.X264), "x264_segment": list(config.X264_SEGMENT), "node": pins["node"]["version"],
             "chrome": f"{pins['chrome']['product']} {pins['chrome']['version']}",
             "hyperframes": pins["npm"]["hyperframes"], "puppeteer-core": pins["npm"]["puppeteer-core"],
             "engine": ev}

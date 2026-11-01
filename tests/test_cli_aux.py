@@ -45,6 +45,23 @@ def test_good_cli_preview_and_audio(project, tmp_path, capsys):
     assert "Halo" in capsys.readouterr().out
 
 
+def test_bad_preview_all_with_a_png_out_needs_sheet(project, tmp_path, capsys):
+    p, _ = project()
+    assert cli.main(["preview", str(p), "--all", "--out", str(tmp_path / "x.png")]) == 1
+    assert "needs --sheet" in capsys.readouterr().err
+    assert cli.main(["preview", str(p), "--all", "--seg", "0"]) == 1
+    assert "drop --seg/--time" in capsys.readouterr().err
+
+
+def test_bad_build_of_a_locked_project_is_refused(project, capsys):
+    from video_engine import batch
+    p, _ = project()
+    with batch.ProjectLock(p):
+        assert cli.main(["build", str(p)]) == 1
+    assert "already locked by another build or batch" in capsys.readouterr().err
+    assert not (p / "out" / "final.mp4").exists()
+
+
 def test_good_cli_doctor(monkeypatch):
     monkeypatch.setattr(doctor, "check", lambda: [doctor.Check("node", True, "v1", "v1")])
     assert cli.main(["doctor"]) == 0

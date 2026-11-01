@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 import hypoverum_core_rs as core
-from video_engine import audio, config, hyperframes, native, timeline
+from video_engine import audio, config, hyperframes, maps, native, timeline
 from video_engine.util import EngineError
 
 RGB2x2 = bytes(12)
@@ -228,7 +228,7 @@ def test_good_hf_and_map_keys_include_algo_and_fonts(project, tmp_path, monkeypa
     seg = tl.segments[2]
     _, scene = hyperframes.build_dir(seg, tl, p, tmp_path / "hf")
     k1 = hyperframes.cache_key(seg, tl, p, scene)
-    m1 = hyperframes._map_copy(p / "assets" / "map.jpg", 500)
+    m1 = maps._map_copy(p / "assets" / "map.jpg", 500)
     fonts = tmp_path / "fonts"
     fonts.mkdir()
     for f in hyperframes.HF_FONTS:
@@ -237,7 +237,7 @@ def test_good_hf_and_map_keys_include_algo_and_fonts(project, tmp_path, monkeypa
     k2 = hyperframes.cache_key(seg, tl, p, scene)
     monkeypatch.setattr(core, "ALGO_VERSION", core.ALGO_VERSION + "-test")
     k3 = hyperframes.cache_key(seg, tl, p, scene)
-    m2 = hyperframes._map_copy(p / "assets" / "map.jpg", 500)
+    m2 = maps._map_copy(p / "assets" / "map.jpg", 500)
     assert len({k1, k2, k3}) == 3 and m1 != m2
 
 

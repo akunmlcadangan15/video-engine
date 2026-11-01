@@ -2,7 +2,8 @@
 
 Referenced keys are recomputed from each project's master_timeline.json (default: every project under examples/ if present):
 words (voiceover transcription), segments (native and HyperFrames, and the graded file of a graded segment whose
-rendered file is cached), maps (downscaled map copies and deep tiles), models (model prop sprites), dom (DOM probe
+rendered file is cached), maps (downscaled map copies, deep tiles and the measured effective width of each
+map source), models (model prop sprites), dom (DOM probe
 results and screenshots named <segment key>.<probe key>[.<file>]: kept while their HyperFrames segment key is
 referenced; "adhoc." entries of probes without a segment are never referenced). Only the entry kinds words/,
 segments/, maps/, models/, dom/ directly under the cache root are scanned for unreferenced entries. The sound
@@ -15,9 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import audio, config, globe, grade, hyperframes, models, native, props, timeline
-from . import cache
-from .cache import KINDS
+from . import audio, cache, config, globe, grade, hyperframes, maps, native, props, timeline
 from .sound import cache as sound_cache
 from .timeline import NATIVE
 
@@ -45,8 +44,10 @@ def referenced(projects: list[Path], root: Path | None = None) -> tuple[set[str]
                     names.add(DOM_REF + sk)
                     scene = hyperframes.scene_data(s, tl, p)
                     names |= {Path(e["img"]).name for e in scene.get("deep", [])}
+                    if (sc := s.gsap_scene_config) and sc.map_asset and (en := maps.effective_cache_name(p / sc.map_asset)):
+                        names.add(en)
                     if m := scene.get("morph"):
-                        names |= {hyperframes.map_key(p / m["asset"], hyperframes._need_w(scene), hyperframes._q(scene)) + ".jpg",
+                        names |= {maps.map_key(p / m["asset"], maps._need_w(scene), maps._q(scene)) + ".jpg",
                                   *(Path(e["img"]).name for e in m["deep"])}
                     if "globe" in scene:
                         names |= globe.cache_names(s, tl, p, scene["globe"])

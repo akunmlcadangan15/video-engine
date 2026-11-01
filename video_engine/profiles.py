@@ -463,7 +463,7 @@ class RenderProfile(_Strict):
     segment file (native renders, grades, HyperFrames normalisation); `final_*` = the one composite pass (x264 CRF,
     preset, tune "none" = no -tune, optional VBV cap); `hf_*` = the HyperFrames capture and its own encode
     (hyperframes.HF_QUALITY / HF_CRF; draft: JPEG q80 screenshots + x264 ultrafast, standard: q100 + medium, high:
-    q100 + slow); `map_jpeg_quality` = whole-map derivatives and deep tiles (hyperframes.MAP_JPEG_QUALITY)."""
+    q100 + slow); `map_jpeg_quality` = whole-map derivatives and deep tiles (maps.MAP_JPEG_QUALITY)."""
     hf_quality: Literal["draft", "standard", "high"] | None = None
     hf_crf: int | None = Field(None, ge=0, le=51)
     segment_crf: int | None = Field(None, ge=0, le=51)
@@ -476,14 +476,16 @@ class RenderProfile(_Strict):
     map_jpeg_quality: int | None = Field(None, ge=50, le=100)
 
     def x264(self, stage: Literal["segment", "final"]) -> list[str]:
-        """Encoder arguments of a stage: config.X264 when the stage sets nothing, else config.x264 with the stage's
-        values over the config.x264 defaults."""
+        """Encoder arguments of a stage: the stage default (config.X264_SEGMENT / config.X264) when the stage sets
+        nothing, else config.x264 with the stage's values over that stage's default CRF and preset."""
         from . import config
-        crf, preset, tune, cap = ((self.segment_crf, self.segment_preset, self.segment_tune, None) if stage == "segment"
+        seg = stage == "segment"
+        crf, preset, tune, cap = ((self.segment_crf, self.segment_preset, self.segment_tune, None) if seg
                                   else (self.final_crf, self.final_preset, self.final_tune, self.final_maxrate_kbps))
         if (crf, preset, tune, cap) == (None, None, None, None):
-            return list(config.X264)
-        return config.x264(18 if crf is None else crf, preset or "medium",
+            return list(config.X264_SEGMENT if seg else config.X264)
+        d_crf, d_preset = (config.SEGMENT_CRF, config.SEGMENT_PRESET) if seg else (config.FINAL_CRF, config.FINAL_PRESET)
+        return config.x264(d_crf if crf is None else crf, preset or d_preset,
                            None if tune in (None, "none") else tune, cap)
 
 

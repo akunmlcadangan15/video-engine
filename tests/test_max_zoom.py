@@ -1,16 +1,14 @@
 """[camera] max_zoom: profile key (default 4, Geoverum 16), camera key validation against it, layout fit and draft
 clamp, deep map tiles past the whole-map derivative (plan, pixels, cache, Chrome render) and the M02 map resolution
 gate."""
-import json
 
 import numpy as np
 import pytest
 from PIL import Image, ImageFilter
 from pydantic import ValidationError
 
-from video_engine import draft, hyperframes, layout, profiles, timeline
+from video_engine import draft, hyperframes, layout, maps, profiles, timeline
 from video_engine.gates import layer2
-from video_engine.util import EngineError
 
 
 def _deep_profile(monkeypatch, mz=16.0):
@@ -96,21 +94,21 @@ def test_good_deep_tiles_cover_only_the_deep_viewports(project, monkeypatch):
     sc = hyperframes.scene_data(tl.segments[2], tl, d)
     deep = sc["deep"]
     dw, dh = deep[0]["raster"]
-    assert dw == 6000 and 0 < len(deep) < (6000 // hyperframes.DEEP_TILE + 1) ** 2 / 2
+    assert dw == 6000 and 0 < len(deep) < (6000 // maps.DEEP_TILE + 1) ** 2 / 2
     mw = sc["map_size"][0]
     c = layout.camera_at(sc["camera"], sc["n_frames"] - 1)
     cx, cy = (540 - c["x"]) / c["s"] * dw / mw, (960 - c["y"]) / c["s"] * dh / sc["map_size"][1]
     assert any(b[0] <= cx < b[2] and b[1] <= cy < b[3] for b in (e["box"] for e in deep))   # the final view is covered
     for e in deep:
         b = e["box"]
-        assert b[2] - b[0] <= hyperframes.DEEP_TILE + hyperframes.DEEP_PAD and b[2] <= dw and b[3] <= dh
+        assert b[2] - b[0] <= maps.DEEP_TILE + maps.DEEP_PAD and b[2] <= dw and b[3] <= dh
 
 
 def test_good_deep_tile_pixels_are_the_source_region_and_cached(project, monkeypatch):
     _deep_profile(monkeypatch)
     d, tl = _deep_proj(project)
     sc = hyperframes.scene_data(tl.segments[2], tl, d)
-    files = hyperframes.deep_tiles(d / "assets" / "deepmap.jpg", sc)
+    files = maps.deep_tiles(d / "assets" / "deepmap.jpg", sc)
     e = sc["deep"][0]
     got = np.asarray(Image.open(files[e["img"].split("/")[1]]).convert("RGB"), dtype=float)
     want = np.asarray(Image.open(d / "assets" / "deepmap.jpg").convert("RGB").crop(tuple(e["box"])), dtype=float)
@@ -118,7 +116,7 @@ def test_good_deep_tile_pixels_are_the_source_region_and_cached(project, monkeyp
     assert got.shape == want.shape and np.abs(got - want).mean() < 0.4 * np.abs(got - off).mean()   # JPEG noise only
     monkeypatch.setattr(hyperframes.Image if hasattr(hyperframes, "Image") else Image, "open",
                         lambda *a, **k: pytest.fail("cached tiles must not decode the source"))
-    assert hyperframes.deep_tiles(d / "assets" / "deepmap.jpg", sc) == files
+    assert maps.deep_tiles(d / "assets" / "deepmap.jpg", sc) == files
 
 
 def test_good_segment_key_follows_the_deep_tiles(project, monkeypatch):
@@ -161,8 +159,8 @@ def test_good_m02_passes_a_map_covering_its_deepest_zoom(project):
     assert [f.level for f in layer2.m02_map_resolution(tl, d)] == ["pass"]
 
 
-@pytest.mark.parametrize("zoom, level", [(4.0, "warn"), (16.0, "fail")])   # source 6000 px, need 1920 px x zoom
-def test_bad_m02_warns_upscaled_and_fails_beyond_2x(project, monkeypatch, zoom, level):
+@pytest.mark.parametrize("zoom, level", [(3.0, "warn"), (4.0, "fail"), (16.0, "fail")])   # source 6000 px, need ~1950 px x zoom
+def test_bad_m02_warns_without_headroom_and_fails_upscaled(project, monkeypatch, zoom, level):
     _deep_profile(monkeypatch)
     d, tl = _deep_proj(project, zoom=zoom)
     fs = layer2.m02_map_resolution(tl, d)
@@ -181,6 +179,6 @@ def test_good_prune_keeps_the_deep_tiles(project, monkeypatch, tmp_path):
 def test_good_deep_raster_follows_the_zoom_up_to_the_source_not_an_8192_cap():
     scene = {"map_size": [1000.0, 1000.0], "width": 216, "height": 384, "n_frames": 1,
              "camera": {"start": {"x": 0, "y": 0, "s": 20.0}, "end": {"x": 0, "y": 0, "s": 20.0}, "legs": []}}
-    dp = hyperframes.deep_plan(scene, (20000, 20000))          # needs 20000 px: the whole source width
+    dp = maps.deep_plan(scene, (20000, 20000))          # needs 20000 px: the whole source width
     assert dp is not None and (dp["w"], dp["h"]) == (20000, 20000)
-    assert hyperframes.deep_plan(scene, (43200, 43200))["w"] == 20000   # never more than the zoom needs
+    assert maps.deep_plan(scene, (43200, 43200))["w"] == 20000   # never more than the zoom needs

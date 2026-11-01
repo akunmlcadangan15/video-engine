@@ -222,12 +222,13 @@ def _audio_graph(tl: Timeline, vi: int | None, bi: int | None, norm: str) -> lis
     norm = f",{norm}" if norm else ""
     fa = []
     if vi is not None and bi is not None:
-        fa.append(f"[{vi}:a]{fmt},apad,asplit=2[vo][sc]")
-        fa.append(f"[{bi}:a]{fmt},volume={ac.bgm_gain_db}dB[bg]")
         if ac.auto_ducking:
+            fa.append(f"[{vi}:a]{fmt},apad,asplit=2[vo][sc]")
+            fa.append(f"[{bi}:a]{fmt},volume={ac.bgm_gain_db}dB[bg]")
             fa.append("[bg][sc]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=450:makeup=1[duck]")
-        else:
-            fa.append("[sc]anullsink;[bg]anull[duck]")
+        else:   # no sidechain branch: an unbounded VO split into anullsink never reaches EOF on FFmpeg 6.x
+            fa.append(f"[{vi}:a]{fmt},apad[vo]")
+            fa.append(f"[{bi}:a]{fmt},volume={ac.bgm_gain_db}dB[duck]")
         fa.append(f"[vo][duck]amix=inputs=2:duration=first:normalize=0,{cut}{norm},{tail}[a]")
     elif vi is not None:
         fa.append(f"[{vi}:a]{fmt},apad,{cut}{norm},{tail}[a]")
@@ -349,8 +350,8 @@ def composite_cmd(tl: Timeline, segments: list[Path], ass: Path | None, out: Pat
         fv = f"{vsrc}{vf},format=yuv420p[v]"
     else:
         cmd += ["-i", wm_png]
-        fv = (f"{vsrc}{vf}[base];[base][{nv}:v]overlay=x={pl.x}:y={pl.y},"
-              "scale=out_color_matrix=bt709:out_range=tv:flags=lanczos+accurate_rnd+full_chroma_int,format=yuv420p[v]")
+        fv = (f"{vsrc}{vf}[base];[{nv}:v]format=rgba,{config.OVERLAY_YUV_VF}[wm];"
+              f"[base][wm]overlay=x={pl.x}:y={pl.y}:format=yuv420,format=yuv420p[v]")
     if transitions:
         chain, lab = trans.overlay_graph(transitions, nv + (pl is not None), S.fps, vsrc)
         for clip, _ in transitions:
