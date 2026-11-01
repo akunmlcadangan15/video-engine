@@ -6,7 +6,7 @@ import sys
 import uuid
 from pathlib import Path
 
-from conftest import SHM_PARENT, TEST_ROOT, cleanup_scratch
+from conftest import SHM_PARENT, TEST_ROOT, cleanup_scratch, remove_dead_session_roots
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -65,3 +65,15 @@ def test_bad_cleanup_keeps_preexisting_or_nonempty_parent(tmp_path):
     (parent / "build_x").mkdir()
     cleanup_scratch(parent / "pytest-2", parent, parent_preexisted=False)
     assert (parent / "build_x").exists()
+
+
+def test_good_dead_session_roots_are_removed_live_and_foreign_kept(tmp_path):
+    parent = tmp_path / "video_engine"
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()                                                    # a session killed before it cleaned up
+    (parent / f"pytest-{gone.pid}" / "tmp").mkdir(parents=True)
+    (parent / f"pytest-{os.getpid()}").mkdir()                     # a live session
+    (parent / "pytest-foreign-x").mkdir()                          # not a pytest-<pid> root
+    (parent / "build_x").mkdir()
+    remove_dead_session_roots(parent)
+    assert sorted(d.name for d in parent.iterdir()) == sorted([f"pytest-{os.getpid()}", "pytest-foreign-x", "build_x"])

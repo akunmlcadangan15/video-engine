@@ -14,6 +14,32 @@ import pytest
 # removed only when this session created it and it is empty afterwards (a real build's scratch is never touched).
 SHM_PARENT = Path(os.environ.get("VIDEO_ENGINE_SHM_TEST", "/tmp/video_engine_test_shm"))
 TEST_ROOT = SHM_PARENT / f"pytest-{os.getpid()}"
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass
+    return True
+
+
+def remove_dead_session_roots(parent: Path) -> None:
+    """Remove pytest-<pid> roots whose session is gone (killed before pytest_unconfigure ran); any other entry, and
+    the root of every live session, is kept."""
+    try:
+        entries = list(parent.iterdir())
+    except OSError:
+        return
+    for d in entries:
+        pid = d.name.removeprefix("pytest-")
+        if d.name.startswith("pytest-") and pid.isdigit() and not d.is_symlink() and not _pid_alive(int(pid)):
+            shutil.rmtree(d, ignore_errors=True)
+
+
+remove_dead_session_roots(SHM_PARENT)
 _PARENT_PREEXISTED = SHM_PARENT.exists()
 TEST_ROOT.mkdir(parents=True, exist_ok=True)
 os.environ["VIDEO_ENGINE_SHM"] = str(TEST_ROOT / "shm")
