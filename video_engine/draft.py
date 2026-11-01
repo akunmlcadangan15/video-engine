@@ -26,8 +26,8 @@ from . import ai
 from .ai import tasks
 from .ai.base import AwaitingAgent, Image, Media, Text
 from . import audio, config, pauses, profiles
-from .gates.layer1 import LICENCE_ALLOW, norm_licence
 from .hyperframes import HF_PRESETS
+from .licence import is_licence_field
 from .timeline import (HYPERFRAMES, IMAGE_EXT, NATIVE, AudioChain, CaptionWord, CaptionsMeta, Settings, Timeline,
                        sec_to_frame)
 from .util import EngineError, video_info
@@ -103,8 +103,7 @@ def parse_credits(text: str) -> list[CreditLine]:
         body = line.strip().lstrip("-*• ").strip()
         parts = [p.strip() for p in re.split(r"\s+[|—]\s+", body) if p.strip()]
         rest = [p for p in parts if not URL_RE.search(p)]
-        lic = next((p for p in rest if norm_licence(p) in LICENCE_ALLOW or norm_licence(p).startswith("ccby")
-                    or norm_licence(p) == "cc0"), None)
+        lic = next((p for p in rest if is_licence_field(p)), None)
         others = [p for p in rest if p != lic]
         out.append(CreditLine(len(out) + 1, body, url, lic or "unknown", others[1] if len(others) > 1 else None,
                               others[0] if others else None))

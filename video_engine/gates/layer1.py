@@ -10,7 +10,7 @@ import hypoverum_core_rs as core
 
 from .. import hyperframes, profiles, props
 from ..assets import flag_for
-from ..licence import LICENCE_ALLOW, OWN_LICENCES, norm_licence
+from ..licence import OWN_LICENCES, licence_allowed, norm_licence
 from ..timeline import HYPERFRAMES, NATIVE, CaptionWord, Timeline
 from ..util import EngineError
 from .core import Finding
@@ -161,7 +161,7 @@ def r07_credits(tl: Timeline, project_dir: Path) -> list[Finding]:
         out.append(Finding("R07", "fail", "credits.txt missing in project dir"))
     extra = set(EXTRA_CREDIT_URLS.get())
     for seg, aid, path, role in visual_refs(tl):
-        c = tl.credit_for(asset_id=aid, path=path)
+        c = tl.credit_for(ref=aid, path=path)
         label = f"{role} '{aid or path}'"
         if c is None:
             out.append(Finding("R07", "fail", f"{label} has no credits_manifest entry", seg))
@@ -177,13 +177,13 @@ def r07_credits(tl: Timeline, project_dir: Path) -> list[Finding]:
 
 def r14_licence(tl: Timeline) -> list[Finding]:
     out = []
-    used = {tl.credit_for(asset_id=aid, path=path) for _, aid, path, _ in visual_refs(tl)}
+    used = {c.asset_id for _, aid, path, _ in visual_refs(tl) if (c := tl.credit_for(ref=aid, path=path))}
     for c in tl.credits_manifest:
-        if c not in used:
+        if c.asset_id not in used:
             continue
-        nl = norm_licence(c.license)
-        if nl not in LICENCE_ALLOW and not nl.startswith("ccby") and nl != "cc0":
-            out.append(Finding("R14", "fail", f"credit '{c.asset_id}' license '{c.license}' not in allowlist"))
+        if not licence_allowed(c.license):
+            out.append(Finding("R14", "fail", f"credit '{c.asset_id}' license '{c.license}' not in allowlist (PD, CC0, "
+                                              "CC BY, CC BY-SA, Pexels, Pixabay, Unsplash, Mixkit, Own; never NC/ND)"))
         if c.watermark_free is not True:
             state = "not declared" if c.watermark_free is None else "false"
             out.append(Finding("R14", "fail", f"credit '{c.asset_id}' watermark_free is {state}; must be true"))
