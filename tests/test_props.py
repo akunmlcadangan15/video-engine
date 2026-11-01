@@ -1,8 +1,6 @@
 """Props layer (gsap_scene_config.props, beats[].props): model, scene math (props.state), the hf/props.js render on
 the shared camera legs (probed in headless Chrome), the F01-F04 gates, T02 timing, R07 credits, the caption
-avoid-list and the segment key."""
-import json
-
+avoid-list, props.chip() badge generator and the segment key."""
 import pytest
 from PIL import Image
 from pydantic import ValidationError
@@ -47,6 +45,14 @@ SCREEN_PROP = {"asset": "assets/prop.png", "asset_id": "prop", "anchor": "screen
 
 def _fs(d, tl, gate, events=(), dom=None):
     return [f for f in props_gates.run(tl, d, list(events), dom or {}) if f.gate == gate]
+
+
+def test_good_chip_renders_transparent_rgba_png_without_opsz_error(tmp_path):
+    for st in ("parchment", "ink"):
+        out = props.chip("Kesepakatan 1893", tmp_path / f"chip_{st}.png",
+                         subtitle="Batas kolonial Portugis & Belanda", year="1893", style=st)
+        w, h, has_alpha, ink = props.image_info(out)
+        assert w == 620 and h > 100 and has_alpha and ink is not None
 
 
 # model -------------------------------------------------------------------------------------------------------------

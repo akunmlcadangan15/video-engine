@@ -45,7 +45,7 @@ CHROME = VENDOR / "chrome" / _CH["product"] / f"linux-{_CH['version']}" / f"{_CH
 FFMPEG = os.environ.get("VIDEO_ENGINE_FFMPEG", "ffmpeg")
 FFPROBE = os.environ.get("VIDEO_ENGINE_FFPROBE", "ffprobe")
 
-def x264(crf: int = 20, preset: str = "veryfast", tune: str | None = "fastdecode",
+def x264(crf: int = 18, preset: str = "medium", tune: str | None = None,
          maxrate_kbps: int | None = None) -> list[str]:
     """libx264 encoder arguments (yuv420p, bt709 tags); maxrate_kbps caps the CRF rate (VBV, bufsize 2x)."""
     return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf), *(["-tune", tune] if tune else []),

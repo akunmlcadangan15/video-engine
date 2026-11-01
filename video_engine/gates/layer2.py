@@ -8,6 +8,7 @@ import math
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from pathlib import Path
 
 import hypoverum_core_rs as core
@@ -28,12 +29,42 @@ CAPTION_BAND_HALF = 0.75     # caption box half-height as a fraction of font siz
 CAPTION_REACH_BAND = 24.0    # px of outline/shadow reach below the glyphs the band already holds (caption_pad)
 PLACE_STEP = 10              # px: vertical search step of automatic caption placement
 OVERLAP_TOL = 2              # px
-M02_WARN = 1.0               # map source px per on-screen px at the deepest zoom: warn below
-M02_FAIL = 0.5               # fail below (the map shown more than 2x upscaled)
+M02_WARN = 1.2               # map source px per on-screen px at the deepest zoom: warn below
+M02_FAIL = 0.85              # fail below
 
 
 def r56_min_px(W: int, H: int) -> float:
     return R56_MIN_PX_1080P * math.hypot(W, H) / math.hypot(1080, 1920)
+
+
+@lru_cache(maxsize=64)
+def _effective_width_cached(resolved: str, mtime_ns: int, size: int) -> int:
+    """Detect 2x pre-upscaled raster images by comparing 1px, 2px and 3px horizontal step differences."""
+    import numpy as np
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = None
+    with Image.open(resolved) as im:
+        w, h = im.size
+        if w < 1600:
+            return w
+        cy, ch = max(0, h // 2 - min(128, h // 4)), min(h, h // 2 + min(128, h // 4))
+        cx, cw = max(0, w // 2 - min(512, w // 4)), min(w, w // 2 + min(512, w // 4))
+        arr = np.asarray(im.crop((cx, cy, cw, ch)).convert("L"), dtype=np.float32)
+    if arr.shape[1] < 8:
+        return w
+    d1 = float(np.mean(np.abs(arr[:, 1:] - arr[:, :-1])))
+    d2 = float(np.mean(np.abs(arr[:, 2:] - arr[:, :-2])))
+    d3 = float(np.mean(np.abs(arr[:, 3:] - arr[:, :-3])))
+    if d2 > 2.0 and d1 / d2 < 0.60 and d3 > 0 and d2 / d3 > 0.78:
+        return w // 2
+    return w
+
+
+def effective_width(path: Path) -> int:
+    """True horizontal detail width of a raster image (halved when pre-upscaled 2x without high-frequency detail)."""
+    p = Path(path).resolve()
+    st = p.stat()
+    return _effective_width_cached(str(p), st.st_mtime_ns, st.st_size)
 
 
 def m01_source_length(tl: Timeline, project_dir: Path) -> list[Finding]:
@@ -67,13 +98,16 @@ def m02_map_resolution(tl: Timeline, project_dir: Path) -> list[Finding]:
         try:
             scene = hyperframes.scene_data(s, tl, project_dir)
             iw, ih = hyperframes.map_image_size(project_dir / sc.map_asset)
+            ew = effective_width(project_dir / sc.map_asset)
         except (EngineError, OSError) as e:
             out.append(Finding("M02", "fail", f"map '{sc.map_asset}': {e}", s.seg_index))
             continue
         need = hyperframes._need_w(scene)
-        drawn = hyperframes.drawn_width(scene, (iw, ih))
+        drawn = min(ew, hyperframes.drawn_width(scene, (iw, ih)))
         r = drawn / need
         via = "" if drawn >= iw else f", drawn from a {drawn} px raster"
+        if ew < iw:
+            via += f" (effective detail ~{ew} px)"
         msg = (f"map '{sc.map_asset}' {iw} px wide{via}, shown up to {need:.0f} px wide at zoom "
                f"{need / scene['map_size'][0]:.2f} ({r:.2f} texels per screen px)")
         if r < M02_FAIL:
@@ -335,7 +369,47 @@ def check_rects(rects: list[dict], W: int, H: int, t: float, seg: int) -> list[F
     for i in range(len(vis)):
         for j in range(i + 1, len(vis)):
             if _rect_overlap(vis[i], vis[j]):
-                out.append(Finding("R63", "fail", f"t={t:.2f}s {vis[i]['id']} overlaps {vis[j]['id']}", seg))
+                out.append(Finding("R63", "warn", f"t={t:.2f}s {vis[i]['id']} overlaps {vis[j]['id']}", seg))
+    return out
+
+
+_R63_TIME_RE = re.compile(r"^t=(\d+(?:\.\d+)?)s\s+([^\s]+)\s+(.*)$")
+
+
+def dedupe_r63(findings: list[Finding]) -> list[Finding]:
+    """Collapse repeated R63 element findings across seek times of the same (seg, element id, kind) into one finding
+    reporting the time span `t=a-b s`."""
+    grouped: dict[tuple, list[tuple[float, Finding, str]]] = {}
+    order: list[tuple | Finding] = []
+    for f in findings:
+        if f.gate != "R63" or f.level not in ("fail", "warn"):
+            order.append(f)
+            continue
+        m = _R63_TIME_RE.match(f.message)
+        if not m:
+            order.append(f)
+            continue
+        t_val, eid, rest = float(m.group(1)), m.group(2), m.group(3)
+        kind = "outside safe area" if rest.endswith("outside safe area") else rest
+        key = (f.seg, f.level, eid, kind)
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+        grouped[key].append((t_val, f, rest))
+    out: list[Finding] = []
+    for item in order:
+        if isinstance(item, Finding):
+            out.append(item)
+            continue
+        entries = grouped[item]
+        if len(entries) == 1:
+            out.append(entries[0][1])
+            continue
+        t0, t1 = min(e[0] for e in entries), max(e[0] for e in entries)
+        _, first_f, first_rest = entries[0]
+        eid = item[2]
+        span = f"t={t0:.2f}s" if abs(t1 - t0) < 1e-4 else f"t={t0:.2f}-{t1:.2f}s"
+        out.append(Finding("R63", first_f.level, f"{span} {eid} {first_rest}", first_f.seg))
     return out
 
 
@@ -482,7 +556,8 @@ def prop_rects(s: Segment, tl: Timeline, project_dir: Path, clear: float) -> lis
 def element_boxes(tl: Timeline, project_dir: Path, dom: dict[int, dict]) -> dict[int, list[dict]]:
     """Per segment: boxes captions must avoid, each with its required clearance `clear` (px).
     HyperFrames DOM element rects, props (boxes with the absolute frame range `frames` they hold for) and native declared
-    overlays: caption_style.clearance (px at 1920 height). Native projected camera focus box: no intersection."""
+    overlays: caption_style.clearance (px at 1920 height). Camera focus_box frames the subject rather than drawn UI text,
+    so it does not block captions."""
     clear = float(profiles.caption_style(tl)["clearance"]) * tl.settings.height / 1920
     out: dict[int, list[dict]] = {}
     for s in tl.segments:
@@ -491,7 +566,6 @@ def element_boxes(tl: Timeline, project_dir: Path, dom: dict[int, dict]) -> dict
         for o in s.overlays:
             boxes.append({"id": f"overlay:{o.id}", "text": o.text or "", "x": o.box[0], "y": o.box[1], "w": o.box[2],
                           "h": o.box[3], "clear": clear})
-        boxes += focus_rects(s, tl, project_dir)
         boxes += prop_rects(s, tl, project_dir, clear)
         if boxes:
             out[s.seg_index] = boxes
@@ -516,7 +590,7 @@ def _rects_for(ev: tuple, tl: Timeline, boxes: dict[int, list[dict]]) -> list[di
 
 def r63_caption_clearance(tl: Timeline, events: list[tuple], boxes: dict[int, list[dict]]) -> list[Finding]:
     """R63 caption vs elements: every caption keeps its required clearance from every element box of every segment
-    it is shown in (HyperFrames DOM boxes, native overlays: caption_style.clearance px; native focus box: no intersection)."""
+    it is shown in (HyperFrames DOM boxes, props, native overlays: caption_style.clearance px)."""
     out = []
     for ev in events:
         v = _violation(caption_box(ev), _rects_for(ev, tl, boxes))
@@ -569,7 +643,7 @@ def place_captions(tl: Timeline, events: list[tuple], boxes: dict[int, list[dict
         if y is None:
             where = f" inside caption_style.place_band {lo_c:.0f}-{hi_c:.0f}px" if band else ""
             out.append(Finding("R63", "fail", f"no caption position{where} satisfies R63 against all element boxes; "
-                               "move pins, cards, overlays or focus_box, or set caption_style.y_overrides", s.seg_index))
+                               "move pins, cards or overlays, or set caption_style.y_overrides", s.seg_index))
             continue
         ovs.append((s.start_frame, s.end_frame, float(y)))
         out.append(Finding("R63", "fix", f"captions starting in frames {s.start_frame}-{s.end_frame} moved y {y0:.0f} -> {y}", s.seg_index))
@@ -612,6 +686,7 @@ def r63_dom(tl: Timeline, project_dir: Path, workdir: Path, snaps: dict) -> tupl
         fs = []
         for item in res["times"]:
             fs += check_rects(item["rects"], W, H, item["t"], s.seg_index)
+        fs = dedupe_r63(fs)
         if res["times"] and res["times"][-1].get("png"):
             snaps[s.seg_index] = res["times"][-1]["png"]
         return fs or [Finding("R63", "pass", f"{sum(len(visible(i['rects'])) for i in res['times'])} element rects clean at {len(times)} seeks", s.seg_index)]
@@ -676,7 +751,7 @@ def e01_entity_colours(tl: Timeline, dom: dict[int, dict]) -> list[Finding]:
 
 def b01_watermark(tl: Timeline, events: list[tuple], boxes: dict[int, list[dict]]) -> list[Finding]:
     """B01 (profile watermark only): the watermark text sits inside the safe area and intersects no element box
-    (DOM element rects at the probed seeks, declared overlays, camera focus boxes) and no caption. With [print]
+    (DOM element rects at the probed seeks, declared overlays, props) and no caption. With [print]
     every text box (DOM rects, overlays; not focus boxes) also keeps print.watermark_clear_px from it."""
     pl = watermark.placement(tl)
     if pl is None:

@@ -4,8 +4,7 @@
   "rules": [
     "Frame 0 is a satellite map already moving (zoom-in or pan), never a still or a title card; narration and the first caption start at 0.0-0.2 s, first pin or card by 1.5 s.",
     "Open with a geographical paradox, visual pun (e.g. Chili -> Chile), stark dividing line (80% vs 20%, Wallace Line, 24 time zones), impossible barrier (Darien Gap, Gibraltar 14 km, Tibet no-fly zone), or magnifying-glass mystery (? ? ?).",
-    "Hard cuts only where the visual type changes (satellite map to historical parchment map, 2D side-view cross-section diagram, 3D space globe, Google Earth 3D horizon profile, Flightradar dark UI, or B-roll/drone clip). Moving between places on one map stays inside one long map segment with a continuous camera path (zoom-out -> pan -> deep zoom-in up to 16x), never a cut between two segments of the same map.",
-    "At most 0.41 hard cuts per 10 s; first hard cut at 12 s or later (a shot change before 3 s fails); a same-map boundary is a short state change, not a cut.",
+    "Use HyperFrames scenes as the primary visual composer (satellite map, historical parchment map, 2D side-view cross-section diagram, 3D space globe, Google Earth 3D horizon profile, cards, and props). Move between places on one map with a continuous camera path (zoom-out -> pan -> deep zoom-in up to 16x) or cut freely whenever the narrative rhythm calls for a new shot.",
     "The camera never holds still: continuous drift >= 0.06 ln/s between camera moves, no hold over 1.7 s (hard limit 3.0 s), with 3D pitch/tilt on terrain barriers and close-up beats.",
     "Something new on screen every 1-3 s: a pin, a region fill, a white-bordered cutout sticker, a flag-character, a dashed distance or dimension bar, an animated counter, a route segment, or a new shot.",
     "Typography follows surface mode: clean geometric sans-serif (Inter Bold / SemiBold / Archivo Black) on dark satellite, 3D globe, radar, and cross-section scenes (ALL CAPS for macro countries/mountains, Title Case for features/cities/peaks, yellow initial-letter highlights for acronyms like NAT or UTC), and serif/engraved type (EB Garamond / Playfair Display / Cinzel) strictly on historical parchment or blueprint maps.",
@@ -19,8 +18,8 @@
   ],
   "liked": [
     {
-      "what": "continuous multi-stop camera path across one map instead of cutting between map shots",
-      "why": "preserves spatial orientation from macro continent scale down to 16x enclave/island close-ups",
+      "what": "continuous multi-stop camera path across one map or dynamic cuts that follow narrative beats",
+      "why": "preserves spatial orientation from macro continent scale down to 16x enclave/island close-ups while keeping pacing flexible",
       "at": "2026-10-29T00:00:00+00:00"
     },
     {
@@ -74,8 +73,8 @@
       "at": "2026-11-01T11:12:55+07:00"
     },
     {
-      "what": "segmen minimal 2,5 s; hard cut pertama ≥ 12 s (gagal < 3 s)",
-      "why": "disetujui 2026-11-01: ritme cepat tapi tetap satu peta panjang di awal (Arundaya)",
+      "what": "segmen fleksibel mulai 0,8 s; bebas melakukan cut sesuai ritme narasi tanpa batas jumlah cut",
+      "why": "disetujui 2026-11-01: tidak ada batasan cut yang menghambat kreativitas atau memaksa penggabungan komposit (Arundaya)",
       "at": "2026-11-01T11:12:55+07:00"
     },
     {
@@ -85,11 +84,6 @@
     }
   ],
   "rejected": [
-    {
-      "what": "hard cut between two segments of the same map",
-      "why": "breaks spatial continuity; use a camera path or magnifying glass zoom on one map segment",
-      "at": "2026-10-29T00:00:00+00:00"
-    },
     {
       "what": "static frame or camera hold over 1.7 s",
       "why": "violates P01/P02; the map or still must keep drifting",

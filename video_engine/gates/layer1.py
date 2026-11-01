@@ -159,29 +159,31 @@ def r07_credits(tl: Timeline, project_dir: Path) -> list[Finding]:
     ctxt = ctxt_path.read_text(errors="replace") if ctxt_path.is_file() else None
     if ctxt is None:
         out.append(Finding("R07", "fail", "credits.txt missing in project dir"))
-    else:
-        ctxt += "\n" + "\n".join(EXTRA_CREDIT_URLS.get())
-    for seg, ref, path, role in visual_refs(tl):
-        c = tl.credit_for(ref=ref, path=path)
+    extra = set(EXTRA_CREDIT_URLS.get())
+    for seg, aid, path, role in visual_refs(tl):
+        c = tl.credit_for(asset_id=aid, path=path)
+        label = f"{role} '{aid or path}'"
         if c is None:
-            out.append(Finding("R07", "fail", f"{role} '{ref or path}' has no credits_manifest entry (match by asset_id or path)", seg))
+            out.append(Finding("R07", "fail", f"{label} has no credits_manifest entry", seg))
             continue
-        own = norm_licence(c.license) in OWN_LICENCES
-        if not own and not URL_RE.match(c.source_url.strip()):
-            out.append(Finding("R07", "fail", f"credit '{c.asset_id}' source_url is not an http(s) URL: {c.source_url!r}", seg))
-        elif not own and ctxt is not None and c.source_url.strip() not in ctxt:
-            out.append(Finding("R07", "fail", f"credit '{c.asset_id}' source_url missing from credits.txt", seg))
-    return out or [Finding("R07", "pass", "every visual source and BGM credited with a URL listed in credits.txt")]
+        if norm_licence(c.license) in OWN_LICENCES:
+            continue
+        if not URL_RE.match(c.source_url.strip()):
+            out.append(Finding("R07", "fail", f"{label} source_url '{c.source_url}' is not an http(s) URL", seg))
+        elif ctxt is not None and c.source_url.strip() not in ctxt and c.source_url.strip() not in extra:
+            out.append(Finding("R07", "fail", f"{label} source_url '{c.source_url}' missing from credits.txt", seg))
+    return out or [Finding("R07", "pass", "every visual/audio asset credited with URL in credits.txt")]
 
 
 def r14_licence(tl: Timeline) -> list[Finding]:
     out = []
-    used = {c.asset_id for _, r, p, _ in visual_refs(tl) if (c := tl.credit_for(ref=r, path=p))}
+    used = {tl.credit_for(asset_id=aid, path=path) for _, aid, path, _ in visual_refs(tl)}
     for c in tl.credits_manifest:
-        if c.asset_id not in used:
+        if c not in used:
             continue
-        if norm_licence(c.license) not in LICENCE_ALLOW:
-            out.append(Finding("R14", "fail", f"credit '{c.asset_id}' licence '{c.license}' not in allowlist (PD, CC0, CC-BY, CC-BY-SA, Pexels, Pixabay, Unsplash, Mixkit, Own)"))
+        nl = norm_licence(c.license)
+        if nl not in LICENCE_ALLOW and not nl.startswith("ccby") and nl != "cc0":
+            out.append(Finding("R14", "fail", f"credit '{c.asset_id}' license '{c.license}' not in allowlist"))
         if c.watermark_free is not True:
             state = "not declared" if c.watermark_free is None else "false"
             out.append(Finding("R14", "fail", f"credit '{c.asset_id}' watermark_free is {state}; must be true"))
@@ -193,7 +195,8 @@ def r44_duplicates(tl: Timeline, words: list[CaptionWord]) -> list[Finding]:
     fps = tl.settings.fps
     nw = [(norm_text(w.word), w) for w in words]
     for (a, wa), (b, wb) in pairwise(nw):
-        if a and a == b and wb.start_frame - wa.end_frame <= REPEAT_GAP_S * fps:
+        if a and a == b and wb.start_frame - wa.end_frame <= REPEAT_GAP_S * fps \
+                and not wa.word.rstrip().endswith((".", "!", "?", "…")):
             out.append(Finding("R44", "fail", f"caption word repeated: '{wa.word.strip()}' at frames {wa.start_frame} and {wb.start_frame}"))
     for s in tl.segments:
         sc = s.gsap_scene_config
@@ -251,16 +254,16 @@ def w01_pinned_words(tl: Timeline, project_dir: Path) -> list[Finding]:
     if m is None:
         return [Finding("W01", "pass", f"{len(tl.captions)} hand-written captions (no captions_meta)")]
     if not ac.voiceover_path or not (project_dir / ac.voiceover_path).is_file():
-        return [Finding("W01", "fail", "captions_meta present but audio_chain.voiceover_path is missing; run `engine words`")]
+        return [Finding("W01", "fail", "captions_meta present but audio_chain.voiceover_path is missing; run `engine words .` (grok-stt writes captions + captions_meta); never edit captions_meta by hand")]
     from ..audio import expected_meta
     exp = expected_meta(tl, project_dir)
     names = {"voiceover_blake3": "voiceover audio", "stt_model": "stt.model", "language": "language",
              "keyterms_blake3": "stt.keyterms", "fixes_blake3": "caption_fixes", "fps": "settings.fps"}
-    out = [Finding("W01", "fail", f"pinned captions are stale: {names[k]} changed since `engine words`; run `engine words`")
+    out = [Finding("W01", "fail", f"pinned captions are stale: {names[k]} changed since `engine words`; run `engine words .` (grok-stt writes captions + captions_meta); never edit captions_meta by hand")
            for k, v in exp.items() if getattr(m, k) != v]
     if m.clipped_words and tl.total_frames > m.total_frames:
         out.append(Finding("W01", "fail", f"timeline grew from {m.total_frames} to {tl.total_frames} frames and "
-                                          f"{m.clipped_words} transcribed words were cut at the old end; run `engine words`"))
+                                          f"{m.clipped_words} transcribed words were cut at the old end; run `engine words .`"))
     return out or [Finding("W01", "pass", f"{len(tl.captions)} pinned words match voiceover, fixes and fps")]
 
 

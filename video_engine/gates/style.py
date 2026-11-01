@@ -4,14 +4,13 @@ novelty, K01/K02 keyword return, D01/D02 duration, C02 CTA/end card. S01 (silenc
 (`silence_findings`)."""
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path
 
-import math
-
 from .. import config, hyperframes, overlays, pauses, profiles, transitions
-from ..util import EngineError
 from ..timeline import HYPERFRAMES, CaptionWord, Segment, Timeline
+from ..util import EngineError
 from .core import Finding
 
 
@@ -111,14 +110,14 @@ def c01_cuts(tl: Timeline, g: profiles.CutGate) -> list[Finding]:
     """FAIL levels on shot changes (every boundary), WARN levels on hard cuts (boundaries without a transition)."""
     fps, cuts, shots = tl.settings.fps, hard_cuts(tl), shot_changes(tl)
     dur = tl.total_frames / fps
-    name = "hard cuts" if len(cuts) == len(shots) else f"shot changes ({len(cuts)} hard cuts)"
     rate, cut_rate = len(shots) / (dur / 10), len(cuts) / (dur / 10)
     out = []
     lv = "fail" if rate > g.fail_per_10s + 1e-9 else "warn" if cut_rate > g.warn_per_10s + 1e-9 else "pass"
-    shown = cut_rate if lv == "warn" and len(cuts) != len(shots) else rate
-    lim = g.fail_per_10s if lv == "fail" else g.warn_per_10s
-    out.append(Finding("C01", lv, f"{len(shots)} {name} in {dur:.1f} s = {shown:.2f} per 10 s "
-                                  f"({'>' if lv != 'pass' else '<='} {lim})"))
+    max_b = math.floor(g.fail_per_10s * dur / 10 + 1e-9)
+    out.append(Finding("C01", lv,
+                       f"{len(shots)} shot changes ({len(cuts)} hard cuts) in {dur:.1f} s: {rate:.2f}/10 s shot changes "
+                       f"(fail > {g.fail_per_10s}), {cut_rate:.2f}/10 s hard cuts (warn > {g.warn_per_10s}); "
+                       f"budget {max_b} boundaries = {max_b + 1} segments; crossfades count as shot changes"))
     if shots:
         t, tc = shots[0] / fps, (cuts[0] / fps if cuts else math.inf)
         lv = "fail" if t < g.first_fail_s - 1e-9 else "warn" if tc < g.first_warn_s - 1e-9 else "pass"

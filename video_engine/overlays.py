@@ -209,7 +209,8 @@ def render_im(ov: Overlay, H: int = 1920, pr=None):
         ty += lay.title_px * 0.25
         fs = _font(FONT_SEMI, lay.sub_px)
         for ln in lay.sub_lines:
-            d.text((x0, ty), ln, font=fs, fill=(214, 220, 228, 255))
+            sx = (w - fs.getlength(ln)) / 2 if ov.kind == "label" else x0
+            d.text((sx, ty), ln, font=fs, fill=(214, 220, 228, 255))
             ty += lay.sub_px * 1.22
     return im
 
@@ -241,7 +242,8 @@ def render_png(ov: Overlay, out: Path, H: int = 1920, pr=None) -> Path:
         ty += lay.title_px * 0.25
         fs = _font(FONT_SEMI, lay.sub_px)
         for ln in lay.sub_lines:
-            d.text((x0, ty), ln, font=fs, fill=(214, 220, 228, 255))
+            sx = (w - fs.getlength(ln)) / 2 if ov.kind == "label" else x0
+            d.text((sx, ty), ln, font=fs, fill=(214, 220, 228, 255))
             ty += lay.sub_px * 1.22
     out.parent.mkdir(parents=True, exist_ok=True)
     im.save(out)
@@ -301,7 +303,7 @@ def ffmpeg_parts(seg: Segment, tl: Timeline, png_dir: Path, first_input: int) ->
         chain.append(f"[{cur}][o{i}]overlay=x={round(ov.box[0])}:y={round(ov.box[1])}:"
                      f"enable='between(n,{a},{b - 1})':eof_action=pass:format=auto[{nxt}]")
         cur = nxt
-    chain.append(f"[{cur}]format=yuv420p[vout]")
+    chain.append(f"[{cur}]scale=out_color_matrix=bt709:out_range=tv:flags=lanczos+accurate_rnd+full_chroma_int,format=yuv420p[vout]")
     return args, ";".join(chain)
 
 
@@ -362,7 +364,6 @@ def check(seg: Segment, tl: Timeline) -> list[str]:
 
 def _boxes_overlap(a, b) -> bool:
     return a[0] < b[0] + b[2] and b[0] < a[0] + a[2] and a[1] < b[1] + b[3] and b[1] < a[1] + a[3]
-
 
 
 def typefaces(seg: Segment, max_n: int) -> list[str]:

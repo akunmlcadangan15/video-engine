@@ -1,12 +1,13 @@
-"""Gate severity: technical rules block a build, style rules only warn unless the channel requires them.
+"""Gate severity: technical rules block a build, style and channel-advisory rules only warn unless required.
 
 Classes:
-  technical  every gate not in profiles.STYLE_GATE_IDS (missing or invalid assets, broken output, decode errors,
-             loudness, licence and credits, caption bounds and legibility, factual pins). Levels unchanged; fail
-             blocks the build.
-  style      H01, C01, V01, N01, P01, P02, K01, D01, S01. Required set = profile `[gates] require` + timeline
-             `gates.require`. Required: levels unchanged (fail blocks). Not required: fail -> warn.
-Intent and waivers (only for style gates outside the required set):
+  technical  every gate not in profiles.STYLE_GATE_IDS or the profile's `[gates] advisory` list (missing or invalid
+             assets, broken output, decode errors, loudness, licence and credits, caption bounds, factual pins). Levels
+             unchanged; fail blocks the build.
+  style      profiles.STYLE_GATE_IDS plus any gate in the profile's `[gates] advisory` list. Required set = profile
+             `[gates] require` + timeline `gates.require`. Required: levels unchanged (fail blocks). Not required:
+             fail -> warn.
+Intent and waivers (only for style/advisory gates outside the required set):
   - a P01 hold or N01 gap finding whose frame range starts inside a beat or segment marked `hold: "read"` -> info;
   - a finding of a gate listed in timeline `gates.waive` -> info.
 A waive or a hold intent on a required gate changes nothing; a waive naming a required or technical gate adds one
@@ -21,8 +22,8 @@ from .core import Finding
 HOLD_GATES = ("P01", "N01")   # style gates whose frame-ranged findings a hold:"read" intent lowers
 
 
-def is_style(gate: str) -> bool:
-    return gate in profiles.STYLE_GATE_IDS
+def is_style(gate: str, tl: Timeline | None = None) -> bool:
+    return gate in profiles.STYLE_GATE_IDS or (tl is not None and gate in profiles.of(tl).gates.advisory)
 
 
 def required(tl: Timeline) -> set[str]:
@@ -52,11 +53,11 @@ def apply(findings: list[Finding], tl: Timeline) -> list[Finding]:
     waive = set(tl.gates.waive if tl.gates else ())
     out = list(findings)
     for g in sorted(waive):
-        if g in req or not is_style(g):
+        if g in req or not is_style(g, tl):
             why = "required by the channel" if g in req else "a technical gate"
             out.append(Finding("GW01", "warn", f"project waive of {g} ignored: {g} is {why}"))
     for f in findings:
-        if not is_style(f.gate) or f.gate in req or f.level not in ("fail", "warn"):
+        if not is_style(f.gate, tl) or f.gate in req or f.level not in ("fail", "warn"):
             continue
         orig = f.level
         if f.gate in waive:
@@ -71,7 +72,7 @@ def apply(findings: list[Finding], tl: Timeline) -> list[Finding]:
 def summary(findings: list[Finding], tl: Timeline) -> dict:
     """build_report.json `gates`: fails, warns and waived (lowered) findings listed separately."""
     def row(f: Finding) -> dict:
-        return {"gate": f.gate, "class": "style" if is_style(f.gate) else "technical", "level": f.level,
+        return {"gate": f.gate, "class": "style" if is_style(f.gate, tl) else "technical", "level": f.level,
                 "message": f.message, **({"seg": f.seg} if f.seg is not None else {}),
                 **({"frames": list(f.frames)} if f.frames else {}), **({"waived": f.waived} if f.waived else {})}
     return {"required": sorted(required(tl)),

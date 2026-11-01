@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -94,12 +95,15 @@ class Timer:
     def stage(self, name: str, note: str = ""):
         t0 = time.perf_counter()
         box = {"note": note}
+        print(f"[build] {name} …", file=sys.stderr, flush=True)
         if self.monitor is not None:
             self.monitor.begin(name)
         try:
             yield box
         finally:
-            self.rows.append((self.run_label, name, round(time.perf_counter() - t0, 3), box["note"]))
+            dt = round(time.perf_counter() - t0, 3)
+            self.rows.append((self.run_label, name, dt, box["note"]))
+            print(f"[build] {name} {dt:.1f}s {str(box['note'])[:160]}", file=sys.stderr, flush=True)
             if self.monitor is not None:
                 self.resources.append(self.monitor.end(name))
 

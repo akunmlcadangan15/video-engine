@@ -349,7 +349,8 @@ def composite_cmd(tl: Timeline, segments: list[Path], ass: Path | None, out: Pat
         fv = f"{vsrc}{vf},format=yuv420p[v]"
     else:
         cmd += ["-i", wm_png]
-        fv = f"{vsrc}{vf}[base];[base][{nv}:v]overlay=x={pl.x}:y={pl.y},format=yuv420p[v]"
+        fv = (f"{vsrc}{vf}[base];[base][{nv}:v]overlay=x={pl.x}:y={pl.y},"
+              "scale=out_color_matrix=bt709:out_range=tv:flags=lanczos+accurate_rnd+full_chroma_int,format=yuv420p[v]")
     if transitions:
         chain, lab = trans.overlay_graph(transitions, nv + (pl is not None), S.fps, vsrc)
         for clip, _ in transitions:

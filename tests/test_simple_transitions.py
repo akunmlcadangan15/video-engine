@@ -1,6 +1,4 @@
 """Simple transitions (crossfade; page turn and map morph switched off per profile) and profile [render] quality."""
-from pathlib import Path
-
 import numpy as np
 import pytest
 from PIL import Image
@@ -9,7 +7,7 @@ from pydantic import ValidationError
 from video_engine import config, hyperframes, profiles, transitions
 from video_engine.gates import layer1, style
 
-from test_style_gates import layout as tl_layout, levels
+from test_style_gates import CUTS, layout as tl_layout, levels
 
 FPS = 30
 
@@ -64,9 +62,9 @@ def test_good_explicit_crossfade_is_named_in_v01(project, monkeypatch):
         tl_layout(("photo", 10, None), ("photo", 10, None), profile="geoverum")(d)
         d["segments"][1]["transition_in"] = "crossfade"
     _, tl = project(cross)
-    fs = [f for f in style.run_style(tl, Path("."), None) if f.gate == "V01" and f.level != "pass"]
+    fs = [f for f in style.v01_visual_type(tl) if f.level != "pass"]
     assert fs and "crossfade" in fs[0].message
-    assert levels(style.c01_cuts(tl, profiles.of(tl).gates.cuts), "C01")[0] == "pass"
+    assert levels(style.c01_cuts(tl, CUTS), "C01")[0] == "pass"
 
 
 def test_good_map_morph_allowed_by_default_profile(project):

@@ -17,6 +17,7 @@ NATIVE_VERSION = "native-1"
 COPY_FORMAT = "copy-edit-list"   # stream-copy segment layout (render_copy); part of every copy-mode key
 IMAGE_MAX_SIDE = 8192
 CODE = (Path(__file__), Path(overlays.__file__))   # engine sources of a native segment's pixels (cache key)
+BT709_VF = "scale=out_color_matrix=bt709:out_range=tv:flags=lanczos+accurate_rnd+full_chroma_int,format=yuv420p"
 
 
 @dataclass
@@ -117,7 +118,8 @@ def _overlay_args(seg: Segment, tl: Timeline, base_filter: str, png_dir: Path) -
 
 def _encoder(out: Path, W: int, H: int, fps: int, n: int, threads: int, seg: Segment | None = None,
              tl: Timeline | None = None) -> subprocess.Popen:
-    inputs, filt = _overlay_args(seg, tl, "", out.parent / "ov") if seg is not None else ([], [])
+    inputs, filt = (_overlay_args(seg, tl, BT709_VF, out.parent / "ov")
+                    if seg is not None else ([], ["-vf", BT709_VF]))
     cmd = [config.FFMPEG, "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(fps),
            "-i", "-", *inputs, *filt, *seg_x264(tl), "-threads", str(threads), "-frames:v", str(n), "-an",
            "-movflags", "+faststart", str(out)]

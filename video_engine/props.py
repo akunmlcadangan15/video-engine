@@ -29,15 +29,94 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import camera3d
-from .util import EngineError, blake3_files
+from . import camera3d, config
 from .timeline import MODEL_EXT, Prop, Segment, Timeline, sec_to_frame
+from .util import EngineError, blake3_files
 
 SLIDE_PX = 80.0
 SLIDE_DIR = {"up": (0.0, -1.0), "down": (0.0, 1.0), "left": (-1.0, 0.0), "right": (1.0, 0.0)}
 ALPHA_INK = 8          # alpha above this is prop ink (ink box)
 CHUNK = 6              # frames per caption avoid box
 SHEET_MAX = 8192       # widest turntable sheet (px)
+
+
+def chip(title: str, out: Path, *, subtitle: str = "", year: str = "", style: str = "parchment",
+         width: int = 620) -> Path:
+    """Render an archival or ink badge PNG with transparent corners and 2x supersampling using vendored fonts
+    (single `wght` axis on Playfair Display, Cinzel and EB Garamond; never `opsz`)."""
+    from PIL import ImageDraw, ImageFont
+    if style not in ("parchment", "ink"):
+        raise EngineError(f"props.chip: unknown style {style!r} (expected 'parchment' or 'ink')")
+    ss = 2
+    W = max(240, int(width)) * ss
+    pad_x, pad_y = 36 * ss, 26 * ss
+
+    def vfont(filename: str, px: int, weight: int | None = None):
+        f = ImageFont.truetype(str(config.FONTS_DIR / filename), px)
+        if weight is not None:
+            f.set_variation_by_axes([weight])
+        return f
+
+    f_year = vfont("Cinzel[wght].ttf", 28 * ss, 700) if year else None
+    f_title = vfont("PlayfairDisplay[wght].ttf", 44 * ss, 700)
+    f_sub = vfont("EBGaramond[wght].ttf", 30 * ss, 500) if subtitle else None
+
+    inner_w = W - 2 * pad_x
+
+    def wrap(txt: str, font) -> list[str]:
+        lines, cur = [], ""
+        for w in txt.split():
+            cand = f"{cur} {w}".strip()
+            if font.getlength(cand) <= inner_w or not cur:
+                cur = cand
+            else:
+                lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+        return lines
+
+    t_lines = wrap(title.strip(), f_title)
+    s_lines = wrap(subtitle.strip(), f_sub) if subtitle.strip() and f_sub else []
+    y_h = (38 * ss) if year.strip() else 0
+    t_h = len(t_lines) * (52 * ss)
+    s_h = (len(s_lines) * (36 * ss) + 12 * ss) if s_lines else 0
+    H = pad_y * 2 + y_h + t_h + s_h
+
+    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    rad = 18 * ss
+    if style == "parchment":
+        bg, border, c_year, c_title, c_sub = (
+            (244, 235, 217, 242), (168, 132, 74, 255), (140, 59, 43, 255), (42, 35, 29, 255), (91, 58, 35, 255)
+        )
+    else:
+        bg, border, c_year, c_title, c_sub = (
+            (20, 24, 31, 232), (201, 162, 75, 235), (229, 184, 92, 255), (247, 242, 230, 255), (214, 206, 190, 255)
+        )
+    d.rounded_rectangle([2 * ss, 2 * ss, W - 2 * ss - 1, H - 2 * ss - 1], radius=rad, fill=bg,
+                        outline=border, width=2 * ss)
+    y = pad_y
+    if year.strip() and f_year:
+        yt = year.strip().upper()
+        yw = f_year.getlength(yt)
+        d.text(((W - yw) / 2, y), yt, font=f_year, fill=c_year)
+        y += y_h
+    for ln in t_lines:
+        lw = f_title.getlength(ln)
+        d.text(((W - lw) / 2, y), ln, font=f_title, fill=c_title)
+        y += 52 * ss
+    if s_lines and f_sub:
+        y += 12 * ss
+        for ln in s_lines:
+            lw = f_sub.getlength(ln)
+            d.text(((W - lw) / 2, y), ln, font=f_sub, fill=c_sub)
+            y += 36 * ss
+
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    im.resize((W // ss, H // ss), Image.LANCZOS).save(out)
+    return out
 
 
 def flat(seg: Segment) -> list[tuple[str, Prop, int, int]]:

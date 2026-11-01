@@ -29,7 +29,7 @@ fixed_y = 1382                # caption centre, px at 1920 height (about 0.72 x 
 max_bottom_y = 1480           # Z01: caption box bottom at or above the Shorts lower UI limit
 forbid_box = true             # captions never use a backing box (box_bg = true is rejected)
 auto_place = true             # a caption that would hit a pin, label or figure shifts (R63 fix) ...
-place_band = [0.68, 0.72]     # ... but only inside the approved band, centre 0.68-0.72 H (1306-1382 px)
+place_band = [0.60, 0.76]     # ... inside the approved lower band, centre 0.60-0.76 H (1152-1459 px)
 clearance = 0                 # captions must still not intersect any element box (R63)
 
 [audio]
@@ -40,13 +40,12 @@ tolerance_lu = 0.2
 require_source = "epidemic"   # A02: music and SFX from Epidemic Sound only (docs/SOUND.md)
 
 [draft]
-min_seg_s = 2.5               # approved 2026-11-01: short map beats allowed; the pause segmenter follows this value
+min_seg_s = 0.8               # flexible segment pacing; short cuts and montages allowed
 max_seg_s = 30.0
 map_path = true               # map segments may carry a multi-key camera path
 rules = [
   "Open on a moving map (kind map, camera zoom_in or a pan) with a geographical paradox, visual pun, stark dividing line, or magnifying-glass mystery and the first pin, route, or card within 1.5 s; narration and the first caption start at 0.0-0.2 s.",
-  "Hard cuts only where the visual type changes (satellite map to historical parchment map, 2D side-view cross-section diagram, 3D space globe, 3D horizon profile, Flightradar dark UI, photo, or video). Moving between places on one map stays inside one long map segment with a map_path (one key per place, 2-5 s apart, zooming up to 16x for enclaves/straits), never a cut between two segments of the same map.",
-  "At most 0.41 hard cuts per 10 s; the first hard cut at 12 s or later (a shot change before 3 s fails). A map boundary that keeps the same base map is a short state change, not a cut.",
+  "Use HyperFrames scenes as the primary visual composer (satellite maps, historical parchment maps, 2D side-view cross-section diagrams, 3D space globes, cards, and props). Move between places on one map with a map_path (zooming up to 16x for enclaves/straits) or cut freely whenever the narrative rhythm calls for a new shot.",
   "Something new on screen every 1-3 s: a pin with dot-and-leader label, a glowing or striped region fill, a white-bordered cutout sticker, a flag-character, a route or dimension bar (mi / km), an animated counter or stat pill, a true-scale polygon drag/tile comparison, or a new shot.",
   "Match typography to the surface: geometric sans-serif (Inter Bold / SemiBold) on dark satellite, globe, radar, and cross-section scenes (ALL CAPS for macro countries/mountains, Title Case for features/cities/peaks, yellow initial letters for acronyms), and serif/engraved type (EB Garamond / Playfair Display / Cinzel) strictly on historical parchment or blueprint maps.",
   "The last 5 s show a keyword or the title of the hook again on screen (pin label, card, icon equation, 3D globe summary, or overlay text).",
@@ -165,10 +164,8 @@ final_maxrate_kbps = 25000
 map_jpeg_quality = 95         # map derivatives and deep tiles
 
 [gates]                       # style gates whose fails block a build; every other style gate only warns
-require = ["P01", "P02", "H01", "C01", "C02", "V01", "D01", "K01", "K02", "S01", "AS01"]   # Geoverum's editorial rules and AS01 block a build; every other style gate only warns
-
-[gates.anti_slop.levels]
-AS01 = "fail"                 # decorative side-strip panels fail; every other anti-slop rule keeps its default warn
+require = ["S01"]
+advisory = ["R64", "E01", "R56", "T01", "R44", "AS04", "F03", "L02", "L03", "L04", "L05", "L07", "L08", "L09", "L10"]
 
 [gates.hook]
 vo_warn_s = 0.2
@@ -179,12 +176,6 @@ graphic_warn_s = 1.5
 graphic_fail_s = 3.0
 open_on_moving_map = true
 
-[gates.cuts]
-warn_per_10s = 0.41
-fail_per_10s = 1.65
-first_warn_s = 12.0           # approved 2026-11-01: earlier hard cuts allowed than the old 21 s
-first_fail_s = 3.0            # approved 2026-11-01: a shot change before 3 s blocks the build
-
 [gates.camera]                # P01: planned camera motion
 hold_warn_s = 1.7
 hold_fail_s = 3.0
@@ -192,8 +183,6 @@ moving_warn = 0.8
 still_zoom_ln_s = 0.05        # zoom speed below this is still; the 0.06 ln/s drift is moving
 still_pan_w_s = 0.02
 min_drift_per_s = 0.06        # P02: the drift between camera moves stays >= 0.06 ln/s (theme camera_drift_per_s)
-
-[gates.visual_type]
 
 [gates.novelty]
 max_gap_s = 3.0

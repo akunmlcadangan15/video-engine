@@ -3,6 +3,7 @@ import pytest
 
 from video_engine import captions, profiles, timeline
 from video_engine.gates import layer2, run_preflight
+from video_engine.gates.core import Finding
 
 CLEAR = profiles.load().caption_style["clearance"]   # default profile caption clearance (px at 1920)
 
@@ -88,7 +89,14 @@ def test_R63_bad_outside_safe_area():
 
 def test_R63_bad_pairwise_overlap():
     fs = layer2.check_rects([rect("pin:0", 300, 300, 347, 66), rect("card:0", 270, 230, 540, 244)], 1080, 1920, 1.0, 1)
-    assert "overlaps" in fs[0].message
+    assert "overlaps" in fs[0].message and fs[0].level == "warn"
+
+
+def test_R63_dedupe_collapses_repeated_seeks():
+    fs = [Finding("R63", "fail", "t=0.50s pin:0 'A' at (900,500,300x66) outside safe area", 1),
+          Finding("R63", "fail", "t=1.20s pin:0 'A' at (910,500,300x66) outside safe area", 1)]
+    dd = layer2.dedupe_r63(fs)
+    assert len(dd) == 1 and "t=0.50-1.20s pin:0" in dd[0].message
 
 
 def test_R63_good_invisible_elements_ignored():
@@ -153,11 +161,13 @@ def test_R63_bad_no_free_position(project, W):
 def test_R63_native_overlay_and_focus_box(project, W):
     def mut(d):
         d["segments"][0]["overlays"] = [{"id": "logo", "box": [300, 1250, 480, 120], "text": "LOGO"}]
+        d["segments"][0]["camera_move"]["focus_box"] = [600, 300, 900, 700]
     p, tl = project(mut)
     ws = W(("Halo", 5, 20))
     ev = captions.compile_ass(ws, tl)[1]
     boxes = layer2.element_boxes(tl, p, {})
     assert any(r["id"] == "overlay:logo" for r in boxes[0])
+    assert not any(r["id"].startswith("focus:") for r in boxes[0])           # focus_box never blocks captions
     assert layer2.r63_caption_clearance(tl, ev, boxes)                       # BAD: overlay box at the caption slot
     ovs, _ = layer2.place_captions(tl, ev, boxes)
     assert not layer2.r63_caption_clearance(tl, captions.compile_ass(ws, tl, ovs)[1], boxes)   # GOOD after placement

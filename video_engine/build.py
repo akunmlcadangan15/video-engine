@@ -32,7 +32,9 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -131,17 +133,29 @@ def render_segments(tl: Timeline, project_dir: Path, workdir: Path, use_cache: b
     budget = budget or resources.budget(tl)
     natives = [s for s in tl.segments if s.engine_type == NATIVE]
     hfs = [s for s in tl.segments if s.engine_type == HYPERFRAMES]
+    total = len(tl.segments)
+    done = 0
+    lock = threading.Lock()
+
+    def _report(r: SegResult):
+        nonlocal done
+        with lock:
+            done += 1
+            hit = " (hit)" if r.cache_hit else ""
+            print(f"[build] seg {done}/{total} s{r.seg:02d} {r.mode}{hit} {r.seconds:.1f}s",
+                  file=sys.stderr, flush=True)
+        return r
 
     def do_native(s):
         t = time.perf_counter()
         job = native.plan(s, tl, project_dir)
         p, hit, mode = native.render(job, tl, workdir, threads=budget.x264_threads, use_cache=use_cache)
-        return SegResult(s.seg_index, NATIVE, str(p), hit, mode, round(time.perf_counter() - t, 3))
+        return _report(SegResult(s.seg_index, NATIVE, str(p), hit, mode, round(time.perf_counter() - t, 3)))
 
     def do_hf(s):
         t = time.perf_counter()
         p, hit = hyperframes.render(s, tl, project_dir, workdir, workers=budget.hf_workers, use_cache=use_cache)
-        return SegResult(s.seg_index, HYPERFRAMES, str(p), hit, "hyperframes", round(time.perf_counter() - t, 3))
+        return _report(SegResult(s.seg_index, HYPERFRAMES, str(p), hit, "hyperframes", round(time.perf_counter() - t, 3)))
 
     with ThreadPoolExecutor(max_workers=budget.hf_parallel(len(natives))) as hf_ex, \
             ThreadPoolExecutor(max_workers=budget.native_workers) as nat_ex:

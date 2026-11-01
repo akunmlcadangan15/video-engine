@@ -45,3 +45,34 @@ def make(tl: Timeline, video: Path, out: Path, cols: int = 7) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(out)
     return out
+
+
+def make_from_tiles(tl: Timeline, tiles: dict[int, Path], out: Path, cols: int = 7) -> Path:
+    """Contact sheet assembled from already-rendered preview PNGs (one per segment), without requiring final.mp4."""
+    from PIL import Image, ImageDraw, ImageFont
+    if cols < 1:
+        raise EngineError("--cols must be at least 1")
+    S = tl.settings
+    w, h = S.width // TILE_DIV, S.height // TILE_DIV
+    segs = tl.segments
+    rows = -(-len(segs) // cols)
+    pad, lab = 6, 26
+    sheet = Image.new("RGB", (cols * (w + pad) + pad, rows * (h + lab + pad) + pad), (16, 18, 22))
+    draw = ImageDraw.Draw(sheet)
+    font = ImageFont.truetype(str(config.FONTS_DIR / "Inter-SemiBold.otf"), 18)
+    for i, s in enumerate(segs):
+        p = tiles.get(s.seg_index)
+        if p and Path(p).is_file():
+            with Image.open(p) as im:
+                tile = im.convert("RGB").resize((w, h), Image.LANCZOS)
+        else:
+            tile = Image.new("RGB", (w, h), (32, 36, 44))
+        x, y = pad + (i % cols) * (w + pad), pad + (i // cols) * (h + lab + pad)
+        sheet.paste(tile, (x, y + lab))
+        f = (s.start_frame + s.end_frame) // 2
+        t = f / S.fps
+        kind = "HF" if s.gsap_scene_config else "N"
+        draw.text((x + 2, y + 3), f"seg {s.seg_index} {kind}  {int(t // 60):02d}:{t % 60:04.1f}", fill=(235, 235, 235), font=font)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(out)
+    return out

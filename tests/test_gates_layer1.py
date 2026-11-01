@@ -105,6 +105,11 @@ def test_R44_good(project, W):
     assert levels(layer1.r44_duplicates(tl, W(("Surabaya", 0, 10), ("menolak", 10, 20))), "R44") == {"pass"}
 
 
+def test_R44_good_repeated_word_across_sentence_boundary(project, W):
+    _, tl = project()
+    assert levels(layer1.r44_duplicates(tl, W(("gagal.", 0, 10), ("Gagal", 12, 20))), "R44") == {"pass"}
+
+
 def test_R44_bad_repeated_word(project, W):
     _, tl = project()
     fs = layer1.r44_duplicates(tl, W(("Surabaya", 0, 10), ("surabaya,", 12, 20)))

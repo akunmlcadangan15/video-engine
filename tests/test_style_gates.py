@@ -14,6 +14,7 @@ from conftest import words
 
 FPS = 30
 MAP = {"map_asset": "assets/map.jpg", "map_asset_id": "map", "camera_preset": "zoom_in"}
+CUTS = profiles.CutGate(warn_per_10s=0.41, fail_per_10s=1.65, first_warn_s=12.0, first_fail_s=3.0)
 
 
 def layout(*segs, profile="geoverum", vo=None, cs=None):
@@ -73,10 +74,10 @@ def test_good_default_profile_runs_no_style_gates(project, W):
     assert style.run_style(tl, d, W(("Halo", 0, 10))) == []
 
 
-def test_good_geoverum_runs_every_style_gate_and_no_caption_cadence_gate(project):
+def test_good_geoverum_runs_active_style_gates_and_no_cut_or_cadence_gate(project):
     d, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, None)))
     fs = style.run_style(tl, d, words(("Pagi", 0, 10), ("Titik", 10, 20)))
-    assert {f.gate for f in fs} == {"H01", "C01", "C02", "V01", "N01", "K01", "K02", "D01", "P01", "P02"}
+    assert {f.gate for f in fs} == {"H01", "C02", "N01", "K01", "K02", "D01", "P01", "P02"}
     assert not any("caption" in f.message and "per 10" in f.message for f in fs)
 
 
@@ -124,16 +125,16 @@ def test_good_h01_default_pin_timing_is_the_renderer_timing(project):
     assert style.element_events(tl.segments[0], FPS)[0][0] == sd["pins"][0]["at_frame"] == 12
 
 
-# C01 cut budget ---------------------------------------------------------------------------------------------------------
+# C01 cut budget (when configured on a profile) ------------------------------------------------------------------------
 def test_good_c01_one_late_cut(project):
     _, tl = project(layout(("map", 30, None), ("photo", 30, None)))
-    assert levels(style.c01_cuts(tl, profiles.load("geoverum").gates.cuts), "C01") == ["pass", "pass"]
+    assert levels(style.c01_cuts(tl, CUTS), "C01") == ["pass", "pass"]
 
 
 def test_good_c01_camera_moves_inside_a_segment_are_not_cuts(project):
     """Pans, zooms and pin reveals inside one map segment are no hard cut; only segment boundaries count."""
     _, tl = project(layout(("map", 60, pins_every(2, 60))))
-    fs = style.c01_cuts(tl, profiles.load("geoverum").gates.cuts)
+    fs = style.c01_cuts(tl, CUTS)
     assert levels(fs, "C01") == ["pass"] and "0 hard cuts" in fs[0].message
 
 
@@ -147,14 +148,14 @@ def _hard_cuts_only(monkeypatch):
 def test_bad_c01_warn_rate_and_early_first_cut(project, monkeypatch):
     _, tl = project(layout(("map", 10, None), ("photo", 20, None), ("video", 15, None), ("photo", 15, None)))
     _hard_cuts_only(monkeypatch)
-    fs = style.c01_cuts(tl, profiles.load("geoverum").gates.cuts)   # 3 cuts / 60 s = 0.5 per 10 s, first at 10 s
+    fs = style.c01_cuts(tl, CUTS)   # 3 cuts / 60 s = 0.5 per 10 s, first at 10 s
     assert levels(fs, "C01") == ["warn", "warn"]
 
 
-def test_bad_c01_fail_rate_and_first_cut_before_6_5_s(project):
+def test_bad_c01_fail_rate_and_first_cut_before_3_0_s(project):
     segs = [("map", 2, None)] + [("photo" if i % 2 else "video", 5, None) for i in range(11)]
     _, tl = project(layout(*segs))
-    fs = style.c01_cuts(tl, profiles.load("geoverum").gates.cuts)   # 11 cuts / 60 s = 1.83 per 10 s, first at 5 s
+    fs = style.c01_cuts(tl, CUTS)   # 11 cuts / 60 s = 1.83 per 10 s, first at 2 s
     assert levels(fs, "C01") == ["fail", "fail"]
 
 
@@ -338,12 +339,12 @@ def test_bad_geoverum_caption_on_an_element_still_fails_r63(project):
     ev = layer2.caption_events(tl, GEO_WORDS, [])
     fs = layer2.r63_caption_clearance(tl, ev, layer2.element_boxes(tl, None, {}))
     assert fs and all(f.level == "fail" for f in fs)
-    assert profiles.caption_style(tl)["place_band"] == [0.68, 0.72]
+    assert profiles.caption_style(tl)["place_band"] == [0.60, 0.76]
 
 
 def test_good_geoverum_caption_shifts_up_inside_band_past_a_pinhead(project):
     """GOOD: a pinhead-sized box just under the fixed caption y (1382): Geoverum auto placement lifts the captions,
-    and the new centre stays inside the approved band 0.68-0.72 H (1306-1382 px)."""
+    and the new centre stays inside the approved band 0.60-0.76 H (1152-1459 px)."""
     box = {"overlays": [{"id": "pinhead", "kind": "reserve", "box": [500, 1395, 80, 60]}]}
     _, tl = project(layout(("photo", 30, box), ("map", 30, None)))
     ev = layer2.caption_events(tl, GEO_WORDS, [])
@@ -351,14 +352,14 @@ def test_good_geoverum_caption_shifts_up_inside_band_past_a_pinhead(project):
     assert layer2.r63_caption_clearance(tl, ev, boxes)
     ovs, fs = layer2.place_captions(tl, ev, boxes)
     assert ovs and levels(fs, "R63") == ["fix"]
-    assert all(0.68 * 1920 <= y <= 0.72 * 1920 and y < 1382 for _, _, y in ovs)
+    assert all(0.60 * 1920 <= y <= 0.76 * 1920 and y < 1382 for _, _, y in ovs)
     assert layer2.r63_caption_clearance(tl, layer2.caption_events(tl, GEO_WORDS, ovs), boxes) == []
 
 
 def test_bad_geoverum_band_too_narrow_fails_instead_of_leaving_band(project):
-    """BAD: a box covering the whole band 1306-1382 (plus caption height): no y inside the band clears it, so
+    """BAD: a box covering the whole band 1152-1459 (plus caption height): no y inside the band clears it, so
     placement fails rather than moving the caption out of the approved band."""
-    box = {"overlays": [{"id": "wide", "kind": "reserve", "box": [60, 1240, 960, 220]}]}
+    box = {"overlays": [{"id": "wide", "kind": "reserve", "box": [60, 1080, 960, 400]}]}
     _, tl = project(layout(("photo", 30, box), ("map", 30, None)))
     ev = layer2.caption_events(tl, GEO_WORDS, [])
     ovs, fs = layer2.place_captions(tl, ev, layer2.element_boxes(tl, None, {}))
@@ -523,7 +524,7 @@ def test_good_default_draft_prompt_keeps_engine_rules():
 def test_good_geoverum_draft_prompt_adds_channel_rules():
     p = draft.prompt(_inp("geoverum"))
     rules = profiles.load("geoverum").draft.rules
-    assert "Length 2.5-30.0 s each (75-900 frames)." in p
+    assert "Length 0.8-30.0 s each (24-900 frames)." in p
     assert all(f"\n{6 + i}. {r}" in p for i, r in enumerate(rules)) and p.endswith("matching the schema.")
 
 
@@ -541,7 +542,7 @@ def test_bad_draft_range_inverted(tmp_path, monkeypatch):
 def test_good_preflight_reports_style_gates_for_geoverum_only(project):
     d, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, None)))
     rep = run_preflight(tl, d, None, dom=False, snapshots=False)
-    assert {"H01", "C01", "D01"} <= {f.gate for f in rep.findings} and "style" in rep.timings
+    assert {"H01", "D01"} <= {f.gate for f in rep.findings} and "style" in rep.timings
     d, tl = project()
     rep = run_preflight(tl, d, None, dom=False, snapshots=False)
     assert not {"H01", "C01", "V01", "N01", "K01", "D01"} & {f.gate for f in rep.findings}

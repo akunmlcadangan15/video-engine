@@ -12,7 +12,7 @@ from video_engine import audio, config, hyperframes, layout, profiles, timeline,
 from video_engine.gates import style
 from video_engine.util import EngineError
 
-from test_style_gates import layout as tl_layout, levels
+from test_style_gates import CUTS, layout as tl_layout, levels
 
 W, H, FPS = 1080, 1920, 30
 VIEW = ((1000.0, 1500.0), 1.5)
@@ -415,7 +415,7 @@ def test_good_final_mux_without_transitions_builds_the_same_command(project, mon
 def test_good_c01_transitions_are_not_hard_cuts(project, monkeypatch):
     _, tl = project(tl_layout(("map", 10, None), ("photo", 20, None), ("video", 15, None), ("photo", 15, None)))
     _profile(monkeypatch, "geoverum", transitions=profiles.TransitionsProfile(**GEO_T))
-    fs = style.c01_cuts(tl, profiles.load("geoverum").gates.cuts)
+    fs = style.c01_cuts(tl, CUTS)
     assert levels(fs, "C01") == ["pass", "pass"] and "0 hard cuts" in fs[0].message
 
 
@@ -423,14 +423,14 @@ def test_bad_c01_shot_change_rate_fails_with_transitions(project, monkeypatch):
     segs = [("map", 2, None)] + [("photo" if i % 2 else "video", 5, None) for i in range(11)]
     _, tl = project(tl_layout(*segs))
     _profile(monkeypatch, "geoverum", transitions=profiles.TransitionsProfile(**GEO_T))
-    fs = style.c01_cuts(tl, profiles.load("geoverum").gates.cuts)
+    fs = style.c01_cuts(tl, CUTS)
     assert levels(fs, "C01") == ["fail", "fail"] and "shot changes" in fs[0].message
 
 
 def test_good_v01_names_the_transition(project, monkeypatch):
     _, tl = project(tl_layout(("photo", 10, None), ("photo", 10, None)))
     _profile(monkeypatch, "geoverum", transitions=profiles.TransitionsProfile(**GEO_T))
-    fs = [f for f in style.run_style(tl, Path("."), None) if f.gate == "V01" and f.level != "pass"]
+    fs = [f for f in style.v01_visual_type(tl) if f.level != "pass"]
     assert fs and "zoom whip" in fs[0].message
 
 

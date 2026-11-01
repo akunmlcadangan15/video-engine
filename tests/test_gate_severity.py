@@ -1,9 +1,9 @@
-"""Gate severity split (video_engine/gates/severity.py): technical fails block, style gates warn unless the channel
-requires them, hold:"read" intent and project waivers lower only non-required style findings. GOOD and BAD cases."""
+"""Gate severity split (video_engine/gates/severity.py): technical fails block, style and advisory gates warn unless the
+channel requires them, hold:"read" intent and project waivers lower only non-required style/advisory findings."""
 import pytest
 from pydantic import ValidationError
 
-from video_engine import config, layout, profiles, timeline
+from video_engine import config, layout, profiles
 from video_engine.gates import severity, style
 from video_engine.gates.core import Finding, Report
 from video_engine.util import EngineError
@@ -48,23 +48,23 @@ def test_good_style_fail_not_required_becomes_warn_and_does_not_block(project):
 
 
 def test_bad_required_style_fail_still_blocks(project):
-    _, tl = project(two_maps())
+    _, tl = project(two_maps(gates={"require": ["P01"]}))
     rep = Report(severity.apply([hold()], tl))
-    assert severity.required(tl) >= {"P01", "P02", "H01"}
+    assert severity.required(tl) >= {"S01", "P01"}
     assert [f.level for f in rep.findings] == ["fail"] and not rep.ok
 
 
 def test_bad_project_cannot_waive_a_channel_required_rule(project):
-    _, tl = project(two_maps(gates={"waive": ["P01", "R14"]}))
-    fs = severity.apply([hold(), Finding("R14", "fail", "licence not in allowlist")], tl)
-    assert [f.level for f in fs if f.gate in ("P01", "R14")] == ["fail", "fail"]
+    _, tl = project(two_maps(gates={"waive": ["S01", "R14"]}))
+    fs = severity.apply([Finding("S01", "fail", "silence gap"), Finding("R14", "fail", "licence not in allowlist")], tl)
+    assert [f.level for f in fs if f.gate in ("S01", "R14")] == ["fail", "fail"]
     gw = [f.message for f in fs if f.gate == "GW01"]
-    assert len(gw) == 2 and any("P01 is required by the channel" in m for m in gw)
+    assert len(gw) == 2 and any("S01 is required by the channel" in m for m in gw)
     assert any("R14 is a technical gate" in m for m in gw)
 
 
 def test_bad_project_hold_intent_cannot_lower_a_required_rule(project):
-    _, tl = project(two_maps(seg1={"hold": "read"}))
+    _, tl = project(two_maps(seg1={"hold": "read"}, gates={"require": ["P01"]}))
     fs = severity.apply([hold(lv="warn", a=930, b=990)], tl)
     assert [f.level for f in fs] == ["warn"] and fs[0].waived is None
 
@@ -99,16 +99,23 @@ def test_bad_unknown_required_gate_in_profile_and_project(project, tmp_path, mon
         project(two_maps(gates={"require": ["X99"]}))
 
 
-def test_good_geoverum_requires_camera_rules_and_p02_passes(project):
+def test_bad_never_advisory_gate_rejected_in_profile(tmp_path, monkeypatch):
+    chan(tmp_path, monkeypatch, '[gates]\nadvisory = ["T02"]\n')
+    with pytest.raises(EngineError, match="gates.advisory"):
+        profiles.load("chan")
+
+
+def test_good_geoverum_requires_only_s01_and_lowers_advisory_gates(project):
     p = profiles.load("geoverum")
-    assert set(p.gates.require) == {"P01", "P02", "H01", "C01", "C02", "V01", "D01", "K01", "K02", "S01", "AS01"}
+    assert set(p.gates.require) == {"S01"}
+    assert {"R64", "E01", "R56", "T01", "R44", "AS04", "F03", "L02", "L09"} <= set(p.gates.advisory)
     assert p.gates.camera.min_drift_per_s == 0.06
     _, tl = project(two_maps())
     assert [f.level for f in style.p02_drift(tl, p.gates.camera)] == ["pass"]
 
 
-def test_bad_geoverum_editorial_fails_block_every_style_gate(project):
-    """A Geoverum cut-rate, duration, keyword and silence fail stays a fail through severity.apply."""
+def test_good_geoverum_style_and_advisory_fails_become_warn_while_s01_blocks(project):
+    """Non-required style gates and advisory gates lower to warn on Geoverum; S01 and core technical gates still fail."""
     _, tl = project(two_maps())
     fs = severity.apply([Finding("C01", "fail", "3 shot changes per 10 s"),
                          Finding("C02", "fail", "CTA on screen"),
@@ -116,8 +123,10 @@ def test_bad_geoverum_editorial_fails_block_every_style_gate(project):
                          Finding("K01", "fail", "no ending keyword"),
                          Finding("K02", "fail", "keyword gone on the final frame"),
                          Finding("V01", "fail", "hard cut between two maps"),
+                         Finding("R64", "fail", "Lc below target"),
+                         Finding("L02", "fail", "title tracking"),
                          Finding("S01", "fail", "silent gap 1.00 s at 1.00 s")], tl)
-    assert [f.level for f in fs] == ["fail"] * 7 and not Report(fs).ok
+    assert [f.level for f in fs] == ["warn"] * 8 + ["fail"] and not Report(fs).ok
 
 
 def test_bad_p02_drift_below_floor_fails(project, monkeypatch):
@@ -135,6 +144,7 @@ def test_bad_p02_drift_below_floor_fails(project, monkeypatch):
 
 def test_good_default_profile_hash_unchanged_by_empty_require():
     assert not profiles.load().gates.require
+    assert not profiles.load().gates.advisory
     assert profiles.load().blake3 == "6f0c27f0013377557dcd7c561b5aefc0a07b722a3a89f47080f0b72c76df1f64"
 
 

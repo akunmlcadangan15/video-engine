@@ -1,6 +1,6 @@
-"""P9: the Geoverum choices approved on 2026-11-01 stay locked in the tracked taste seed and in the profile, so the
+"""P9: the Geoverum choices stay locked in the tracked taste seed and in the profile, so the
 draft director and the renderer agree (caption 84 px white without a box at about 0.72 H, automatic flag fit,
-optional Stage 4, pacing and loudness)."""
+optional Stage 4, HyperFrames-First pacing without hard cut limits, and loudness)."""
 import json
 
 from video_engine import config, profiles
@@ -14,7 +14,7 @@ def test_good_taste_seed_records_the_approved_choices_with_reasons():
     t = _seed()
     liked = " | ".join(e["what"] for e in t["liked"])
     rejected = " | ".join(e["what"] for e in t["rejected"])
-    assert "84 px" in liked and "fit otomatis" in liked and "Stage 4" in liked and "2,5 s" in liked
+    assert "84 px" in liked and "fit otomatis" in liked and "Stage 4" in liked and "0,8 s" in liked
     assert "−14 LUFS" in liked
     assert "92/104" in rejected and "Stage 4 sekaligus" in rejected and "pecah" in rejected
     assert all(e["why"].strip() for e in t["liked"] + t["rejected"])
@@ -28,6 +28,6 @@ def test_good_geoverum_profile_matches_the_taste_lock():
     assert abs(cs["fixed_y"] / 1920 - 0.72) < 0.005
     assert p.data.flags.fit == "auto"
     d = p.data
-    assert d.draft.min_seg_s == 2.5
-    assert (d.gates.cuts.first_warn_s, d.gates.cuts.first_fail_s) == (12.0, 3.0)
+    assert d.draft.min_seg_s == 0.8
+    assert d.gates.cuts is None and d.gates.visual_type is None
     assert d.audio.target_lufs == -14.0 and d.audio.true_peak <= -1.0

@@ -1,4 +1,4 @@
-"""HyperFrames capture/encode profile: draft capture + low CRF intermediate, part of the segment cache key."""
+"""HyperFrames capture/encode profile: standard capture + low CRF intermediate, part of the segment cache key."""
 from video_engine import config, hyperframes
 
 
@@ -9,7 +9,7 @@ def _fake_render(monkeypatch, seen):
     monkeypatch.setattr(hyperframes, "run", fake_run)
 
 
-def test_good_render_uses_draft_capture_and_crf14(project, tmp_path, monkeypatch):
+def test_good_render_uses_standard_capture_and_crf14(project, tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CACHE_DIR", tmp_path / "cache")
     p, tl = project()
     seen = []
@@ -19,7 +19,7 @@ def test_good_render_uses_draft_capture_and_crf14(project, tmp_path, monkeypatch
     except RuntimeError:
         pass
     cmd = seen[0]
-    assert cmd[cmd.index("-q") + 1] == "draft" and cmd[cmd.index("--crf") + 1] == "14"
+    assert cmd[cmd.index("-q") + 1] == "standard" and cmd[cmd.index("--crf") + 1] == "14"
     assert cmd[cmd.index("--workers") + 1] == "2"
 
 
@@ -31,6 +31,6 @@ def test_bad_profile_change_without_key_change_is_impossible(project, tmp_path, 
     k1 = hyperframes.cache_key(seg, tl, p, scene)
     monkeypatch.setattr(hyperframes, "HF_CRF", 18)
     k2 = hyperframes.cache_key(seg, tl, p, scene)
-    monkeypatch.setattr(hyperframes, "HF_QUALITY", "standard")
+    monkeypatch.setattr(hyperframes, "HF_QUALITY", "high")
     k3 = hyperframes.cache_key(seg, tl, p, scene)
     assert len({k1, k2, k3}) == 3

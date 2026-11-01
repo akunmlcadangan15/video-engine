@@ -101,7 +101,9 @@ def cmd_build(a) -> int:
     if not r.ok:
         print(f"error: build failed, nothing published ({len(r.failed)} gate fail(s)); report: {r.report}", file=sys.stderr)
         return 1
-    print(f"final: {r.final} frames={r.frames}/{r.expected_frames} I={r.loudness.get('I')} TP={r.loudness.get('TP')}")
+    warns = sum(1 for ln in [*r.preflight.splitlines(), *r.qa] if "[WARN]" in ln)
+    warn_str = f" ({warns} warning(s); see {r.report})" if warns else ""
+    print(f"final: {r.final} frames={r.frames}/{r.expected_frames} I={r.loudness.get('I')} TP={r.loudness.get('TP')}{warn_str}")
     _print_cache(r.cache)
     return 0
 
@@ -114,26 +116,53 @@ def _print_cache(c: dict) -> None:
               + (f"\n  reclaimed stale leases: {', '.join(c['reclaimed_leases'])}" if c["reclaimed_leases"] else ""))
 
 
-def cmd_preview(a) -> int:
+def _preview_one(s, tl, p: Path, t_sec: float, out: Path, timeout: int | None) -> Path:
     from . import hyperframes, native
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fi = round(t_sec * tl.settings.fps)
+    if s.engine_type == "NATIVE_RUST_FFMPEG":
+        print(f"[preview] seg {s.seg_index} native frame {fi} …", file=sys.stderr, flush=True)
+        native.preview_frame(native.plan(s, tl, p), tl, fi, out)
+    else:
+        wd = config.workdir(f"preview_{tl.project_id}_{s.seg_index}")
+        try:
+            print(f"[preview] seg {s.seg_index} building HyperFrames dir …", file=sys.stderr, flush=True)
+            d, _ = hyperframes.build_dir(s, tl, p, wd / "hf")
+            seek_t = min(max(0.0, t_sec), (s.n_frames - 1) / tl.settings.fps)
+            print(f"[preview] seg {s.seg_index} probing DOM at t={seek_t:.2f}s …", file=sys.stderr, flush=True)
+            res = hyperframes.probe_dom(d, [seek_t], tl.settings.width, tl.settings.height, wd / "snaps",
+                                        timeout=timeout)
+            shutil.move(res["times"][0]["png"], out)
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+    return out
+
+
+def cmd_preview(a) -> int:
+    from . import sheet
     p, tl = _load(a.project)
+    if getattr(a, "all", False):
+        out_dir = Path(a.out) if a.out and not str(a.out).endswith(".png") else (config.SHM_ROOT / "preview" / tl.project_id)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        tiles: dict[int, Path] = {}
+        for s in tl.segments:
+            mid_t = ((s.n_frames - 1) / 2) / tl.settings.fps
+            dst = out_dir / f"{tl.project_id}_seg{s.seg_index:03d}_{mid_t:.2f}.png"
+            _preview_one(s, tl, p, mid_t, dst, getattr(a, "timeout", None))
+            tiles[s.seg_index] = dst
+            print(dst)
+        if getattr(a, "sheet", False):
+            sh_out = Path(a.out) if a.out and str(a.out).endswith(".png") else (p / "out" / "preview_sheet.png")
+            sheet.make_from_tiles(tl, tiles, sh_out)
+            print(sh_out)
+        return 0
+    if a.seg is None or a.time is None:
+        raise EngineError("preview requires --seg and --time (or --all)")
     if not 0 <= a.seg < len(tl.segments):
         raise EngineError(f"--seg must be 0..{len(tl.segments) - 1}")
     s = tl.segments[a.seg]
     out = Path(a.out or config.SHM_ROOT / "preview" / f"{tl.project_id}_seg{a.seg:03d}_{a.time:.2f}.png")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    fi = round(a.time * tl.settings.fps)
-    if s.engine_type == "NATIVE_RUST_FFMPEG":
-        native.preview_frame(native.plan(s, tl, p), tl, fi, out)
-    else:
-        wd = config.workdir(f"preview_{tl.project_id}")
-        try:
-            d, _ = hyperframes.build_dir(s, tl, p, wd / "hf")
-            res = hyperframes.probe_dom(d, [min(a.time, (s.n_frames - 1) / tl.settings.fps)], tl.settings.width,
-                                        tl.settings.height, wd / "snaps")
-            shutil.move(res["times"][0]["png"], out)
-        finally:
-            shutil.rmtree(wd, ignore_errors=True)
+    _preview_one(s, tl, p, a.time, out, getattr(a, "timeout", None))
     print(out)
     return 0
 
@@ -456,10 +485,13 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--keep-workdir", action="store_true", help="keep the scratch dir of this build (path in build_report.json)")
     x.add_argument("--relock", action="store_true", help="resolve music/SFX again instead of the files locked in "
                                                          "out/build_manifest.json")
-    x = add("preview", cmd_preview, "Render one frame of one segment to PNG without rendering the segment.")
+    x = add("preview", cmd_preview, "Render one frame of one segment (or all segments with --all) to PNG without rendering the video.")
     x.add_argument("project")
-    x.add_argument("--seg", type=int, required=True)
-    x.add_argument("--time", type=float, required=True, help="seconds from segment start")
+    x.add_argument("--seg", type=int, help="segment index (0..N-1)")
+    x.add_argument("--time", type=float, help="seconds from segment start")
+    x.add_argument("--all", action="store_true", help="render the middle frame of every segment")
+    x.add_argument("--sheet", action="store_true", help="with --all, also assemble a contact sheet PNG")
+    x.add_argument("--timeout", type=int, default=60, help="DOM probe timeout in seconds (default 60)")
     x.add_argument("--out")
     x = add("audio", cmd_audio, "Print caption words (pinned timeline words, else cached or transcribed; writes nothing).")
     x.add_argument("project")

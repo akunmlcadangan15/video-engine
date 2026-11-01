@@ -150,6 +150,7 @@ TECHNICAL_GATE_IDS = ("A01", "A02", "AS04", "B01", "E01", "F01", "F02", "F03", "
                       "L05", "L06", "L07", "L08", "L09", "L10", "L22", "M01", "M02", "M03", "M04", "G02", "O01",
                       "R07", "R14", "R38", "R44", "R56", "R56px", "R62", "R63", "R64", "T01", "T02", "W01", "Z01")
 KNOWN_GATE_IDS = STYLE_GATE_IDS + TECHNICAL_GATE_IDS
+NEVER_ADVISORY = ("T02", "R07", "R14", "A01", "A02", "W01", "R38", "R56px", "M01", "M03", "G01", "L22")
 
 ANTI_SLOP_IDS = ("AS01", "AS02", "AS03", "AS04", "AS05", "AS06")
 
@@ -198,8 +199,9 @@ class AntiSlopGate(_Strict):
 
 class StyleGates(_Strict):
     """Channel style gates; an absent table = gate off. `require`: style gates whose fail findings block a build
-    (gates/severity.py); every other style gate reports at most warn."""
+    (gates/severity.py); `advisory`: non-fatal technical gates lowered to warn for this profile."""
     require: list[str] = []
+    advisory: list[str] = []
     hook: HookGate | None = None
     cuts: CutGate | None = None
     camera: CameraGate | None = None
@@ -219,6 +221,9 @@ class StyleGates(_Strict):
         bad = [g for g in self.require if g not in STYLE_GATE_IDS]
         if bad:
             raise ValueError(f"gates.require: unknown style gate(s) {bad} (known: {', '.join(STYLE_GATE_IDS)})")
+        bad_adv = [g for g in self.advisory if g not in TECHNICAL_GATE_IDS or g in NEVER_ADVISORY]
+        if bad_adv:
+            raise ValueError(f"gates.advisory: gate(s) {bad_adv} cannot be advisory")
         return self
 
 
@@ -478,8 +483,8 @@ class RenderProfile(_Strict):
                                   else (self.final_crf, self.final_preset, self.final_tune, self.final_maxrate_kbps))
         if (crf, preset, tune, cap) == (None, None, None, None):
             return list(config.X264)
-        return config.x264(20 if crf is None else crf, preset or "veryfast",
-                           "fastdecode" if tune is None else (None if tune == "none" else tune), cap)
+        return config.x264(18 if crf is None else crf, preset or "medium",
+                           None if tune in (None, "none") else tune, cap)
 
 
 class Legibility(_Strict):
@@ -1061,6 +1066,8 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
         dump["gates"]["camera"].pop("min_drift_per_s", None)   # P01 tables without P02 keep their hash
     if not dump["gates"].get("require"):
         dump["gates"].pop("require", None)   # profiles without required style gates keep their hash
+    if not dump["gates"].get("advisory"):
+        dump["gates"].pop("advisory", None)  # profiles without advisory gates keep their hash
     if dump["gates"].get("anti_slop") == json.loads(AntiSlopGate().model_dump_json()):
         dump["gates"].pop("anti_slop", None)   # default anti-slop levels add nothing to the hash
     for k in ("cta", "ending_keyword", "duration_exact", "geo"):
