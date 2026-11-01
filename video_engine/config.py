@@ -16,6 +16,9 @@ GSAP_JS = VENDOR / "js" / "gsap.min.js"
 TEMPLATE_DIR = PKG / "template"
 PROFILES_DIR = Path(os.environ.get("VIDEO_ENGINE_PROFILES", ENGINE_ROOT / "profiles"))
 GEO_LIBRARY = Path(os.environ.get("VIDEO_ENGINE_GEO_LIBRARY", "/workspace/geo-library"))
+OPEN_ASSETS = Path(os.environ.get("VIDEO_ENGINE_OPEN_ASSETS", "/workspace/open-assets"))
+STOCK_DIRS = tuple(Path(p) for p in os.environ.get("VIDEO_ENGINE_STOCK_DIRS", "/workspace/asset-cache").split(":") if p)
+DOWNLOAD_DIR = Path(os.environ.get("VIDEO_ENGINE_DOWNLOAD_DIR", "/workspace/downloads"))
 
 # Persistent content-addressed cache (word timestamps, rendered segments) on disk; survives /dev/shm cleanup.
 CACHE_DIR = Path(os.environ.get("VIDEO_ENGINE_CACHE", ENGINE_ROOT / ".cache"))
@@ -27,7 +30,7 @@ THREADS = max(1, int(os.environ.get("VIDEO_ENGINE_THREADS", "6")))
 # Rust (rayon) pool: THREADS-2 by default so concurrent ffmpeg encoders/decoders keep headroom.
 RUST_THREADS = max(1, min(256, int(os.environ.get("VIDEO_ENGINE_RUST_THREADS", str(max(1, THREADS - 2))))))
 os.environ.setdefault("RAYON_NUM_THREADS", str(RUST_THREADS))
-import hypoverum_core_rs as _core  # noqa: E402  (after RAYON_NUM_THREADS so the pool size holds either way)
+import hypoverum_core_rs as _core  # after RAYON_NUM_THREADS so the pool size holds either way
 
 RUST_THREADS_ACTIVE = _core.set_threads(RUST_THREADS)
 

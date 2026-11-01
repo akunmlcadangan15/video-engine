@@ -56,8 +56,9 @@ def m01_source_length(tl: Timeline, project_dir: Path) -> list[Finding]:
 
 
 def m02_map_resolution(tl: Timeline, project_dir: Path) -> list[Finding]:
-    """Map source width / on-screen map width at the deepest camera zoom of each HyperFrames segment (keys, pulses
-    and drift included): warn below M02_WARN, fail below M02_FAIL."""
+    """Texels per screen px at the deepest camera zoom of each HyperFrames segment (keys, pulses, drift and the tilt
+    magnification included): width of the raster the page really draws (deep tiles, else the map derivative; never
+    more than the source) / on-screen map width; warn below M02_WARN, fail below M02_FAIL."""
     out = []
     for s in tl.segments:
         if s.engine_type != HYPERFRAMES or s.gsap_scene_config.globe:
@@ -65,14 +66,16 @@ def m02_map_resolution(tl: Timeline, project_dir: Path) -> list[Finding]:
         sc = s.gsap_scene_config
         try:
             scene = hyperframes.scene_data(s, tl, project_dir)
-            iw, _ = hyperframes.map_image_size(project_dir / sc.map_asset)
+            iw, ih = hyperframes.map_image_size(project_dir / sc.map_asset)
         except (EngineError, OSError) as e:
             out.append(Finding("M02", "fail", f"map '{sc.map_asset}': {e}", s.seg_index))
             continue
         need = hyperframes._need_w(scene)
-        r = iw / need
-        msg = (f"map '{sc.map_asset}' {iw} px wide, shown up to {need:.0f} px wide at zoom "
-               f"{need / scene['map_size'][0]:.2f} ({r:.2f}x)")
+        drawn = hyperframes.drawn_width(scene, (iw, ih))
+        r = drawn / need
+        via = "" if drawn >= iw else f", drawn from a {drawn} px raster"
+        msg = (f"map '{sc.map_asset}' {iw} px wide{via}, shown up to {need:.0f} px wide at zoom "
+               f"{need / scene['map_size'][0]:.2f} ({r:.2f} texels per screen px)")
         if r < M02_FAIL:
             out.append(Finding("M02", "fail", msg + f"; needs >= {M02_FAIL:g}x (a larger source or a lower zoom)", s.seg_index))
         elif r < M02_WARN:
@@ -312,7 +315,7 @@ def flying(scene: dict, t: float) -> set[str]:
 def mark_flying(res: dict, scene: dict) -> None:
     """Sets `fly` on the probed rects of texts in flight: a fly-through text crosses the frame by design, so the
     element checks (R63 safe area and overlaps, caption clearance, B01) read texts at scale 1 only."""
-    for item in res.get("times", []):
+    for item in {id(i): i for i in res.get("times", []) + res.get("all_times", [])}.values():
         ids = flying(scene, item["t"])
         for r in item["rects"]:
             if r["id"] in ids:
@@ -342,11 +345,21 @@ def probe_times(s: Segment, fps: int) -> list[float]:
     n = s.n_frames
     frames = {round(n * 0.3), round(n * 0.6), n - 1}
     if s.engine_type == HYPERFRAMES:
-        frames |= {min(n - 1, k.at_frame) for k in s.gsap_scene_config.camera_path or []}
+        sc = s.gsap_scene_config
+        frames |= {min(n - 1, k.at_frame) for k in sc.camera_path or []}
         for _, p, f_in, f_out in props.flat(s):
             a = f_in + (max(1, core.sec_to_frame(p.enter.s, fps)) if p.enter else 0)
             b = f_out - 1 - (max(1, core.sec_to_frame(p.exit.s, fps)) if p.exit else 0)
             frames |= {min(n - 1, max(0, f)) for f in (a, (f_in + f_out) // 2, b)}
+        for c in sc.flag_characters or []:
+            frames |= {min(n - 1, max(0, f)) for f in (c.at_frame + 5, (c.at_frame + (c.out_frame or n)) // 2,
+                                                       (c.out_frame or n) - 1)}
+        if sc.cutaway:
+            frames.add(min(n - 1, sc.cutaway.at_frame + 5))
+        for ins in sc.insets or []:
+            frames |= {min(n - 1, max(0, f)) for f in (ins.at_frame + 5,
+                                                       (ins.at_frame + (ins.out_frame or n)) // 2,
+                                                       (ins.out_frame or n) - 1)}
     return [f / fps for f in sorted(frames)]
 
 
@@ -416,6 +429,25 @@ def element_union(dom_res: dict) -> list[dict]:
     return [r for item in dom_res["times"] for r in visible(item["rects"])]
 
 
+def element_windows(dom_res: dict, s: Segment, fps: int) -> list[dict]:
+    """Visible element rects, each held for the absolute frame window `frames` from the previous to the next probed
+    seek time (segment start / end at the ends). Uses every probed time (R63 seeks and the R64 sample times), so a
+    caption is only checked against the elements on screen, where they are, around its own frames: a pin that
+    appears late, or that the camera carries through the caption band, no longer blocks every caption of the
+    segment. A probe item without a time falls back to the whole segment (element_union)."""
+    items = dom_res.get("all_times") or dom_res["times"]
+    if not items or any("t" not in i for i in items):
+        return element_union(dom_res)
+    items = sorted(items, key=lambda i: i["t"])
+    fr = [s.start_frame + round(i["t"] * fps) for i in items]
+    out = []
+    for k, item in enumerate(items):
+        lo = fr[k - 1] if k else s.start_frame
+        hi = fr[k + 1] + 1 if k + 1 < len(items) else s.end_frame
+        out += [dict(r, frames=(lo, hi)) for r in visible(item["rects"])]
+    return out
+
+
 def focus_rects(s: Segment, tl: Timeline, project_dir: Path) -> list[dict]:
     """camera_move.focus_box projected into output px through the start and end camera windows (clipped to frame)."""
     cm = s.camera_move
@@ -454,7 +486,8 @@ def element_boxes(tl: Timeline, project_dir: Path, dom: dict[int, dict]) -> dict
     clear = float(profiles.caption_style(tl)["clearance"]) * tl.settings.height / 1920
     out: dict[int, list[dict]] = {}
     for s in tl.segments:
-        boxes = [dict(r, clear=clear) for r in element_union(dom[s.seg_index])] if s.seg_index in dom else []
+        boxes = ([dict(r, clear=clear) for r in element_windows(dom[s.seg_index], s, tl.settings.fps)]
+                 if s.seg_index in dom else [])
         for o in s.overlays:
             boxes.append({"id": f"overlay:{o.id}", "text": o.text or "", "x": o.box[0], "y": o.box[1], "w": o.box[2],
                           "h": o.box[3], "clear": clear})
@@ -510,6 +543,8 @@ def place_captions(tl: Timeline, events: list[tuple], boxes: dict[int, list[dict
         lim = None   # Z01 reports the invalid value
     if lim is not None:
         bottom = min(bottom, lim)
+    band = profiles.caption_style(tl).get("place_band")   # [lo, hi] caption centre as a fraction of H
+    lo_c, hi_c = (band[0] * H, band[1] * H) if band else (-1e9, 1e9)
     ovs, out, pad = [], [], caption_pad(tl)
     for s in tl.segments:
         evs = [e for e in events if s.start_frame <= e[0] < s.end_frame]
@@ -527,11 +562,14 @@ def place_captions(tl: Timeline, events: list[tuple], boxes: dict[int, list[dict
         if ok(y0):
             continue
         half = max(e[3] for e in evs) * CAPTION_BAND_HALF
-        cands = sorted(range(int(top + half), int(bottom - half) + 1, PLACE_STEP), key=lambda y: (abs(y - y0), y))
+        lo, hi = max(int(top + half), math.ceil(lo_c)), min(int(bottom - half), math.floor(hi_c))
+        grid = set(range(lo, hi + 1, PLACE_STEP)) | ({lo, hi} if band and lo <= hi else set())
+        cands = sorted(grid, key=lambda y: (abs(y - y0), y))
         y = next((c for c in cands if ok(c)), None)
         if y is None:
-            out.append(Finding("R63", "fail", "no caption position satisfies R63 against all element boxes; move pins, "
-                               "cards, overlays or focus_box, or set caption_style.y_overrides", s.seg_index))
+            where = f" inside caption_style.place_band {lo_c:.0f}-{hi_c:.0f}px" if band else ""
+            out.append(Finding("R63", "fail", f"no caption position{where} satisfies R63 against all element boxes; "
+                               "move pins, cards, overlays or focus_box, or set caption_style.y_overrides", s.seg_index))
             continue
         ovs.append((s.start_frame, s.end_frame, float(y)))
         out.append(Finding("R63", "fix", f"captions starting in frames {s.start_frame}-{s.end_frame} moved y {y0:.0f} -> {y}", s.seg_index))

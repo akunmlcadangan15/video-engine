@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Literal, Optional
@@ -147,6 +148,35 @@ class CameraMove(Strict):
         return self
 
 
+class Flag(Strict):
+    code: str
+    fit: Literal["auto", "cover", "contain", "stretch"] | None = None
+    mask: Literal["polygon"] = "polygon"
+    alpha: float | None = Field(None, ge=0, le=1)
+    reveal_s: float | None = Field(None, ge=0.2, le=1.0)
+    edge_px: float | None = Field(None, ge=2, le=7)
+    glow_px: float | None = Field(None, ge=3, le=14)
+    variant: Literal["4x3", "1x1"] = "4x3"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _input(cls, value):
+        if isinstance(value, str):
+            value = {"code": value}
+        if isinstance(value, dict) and isinstance(value.get("code"), str):
+            value = {**value, "code": value["code"].lower()}
+            from .assets import flag_for
+            try:
+                flag_for(value["code"], value.get("variant", "4x3"))
+            except EngineError as exc:
+                if "closest:" in str(exc):
+                    raise
+                raise EngineError(f"{exc}; closest: none") from exc
+            if len(value["code"]) != 2:
+                raise EngineError(f"flag code {value['code']} must be ISO alpha-2; closest: none")
+        return value
+
+
 class Pin(Strict):
     label: str
     lat: Optional[float] = None
@@ -155,6 +185,8 @@ class Pin(Strict):
     y: Optional[float] = Field(None, ge=0, le=1)
     at_frame: Optional[int] = Field(None, ge=0)     # relative to segment start
     label_side: Optional[Literal["left", "right"]] = None   # teardrop pins: label beside the head (None = right)
+    box: Optional[bool] = None                      # None = profile label_style; True/False = solid box on/off
+    flag: Flag | None = Field(None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def _pos(self):
@@ -177,6 +209,7 @@ class RegionChange(Strict):
     crossfading over theme.block_change_s."""
     at_frame: int = Field(ge=0)
     entity: str = Field(min_length=1, max_length=60)
+    flag: Flag | None = Field(None, exclude_if=lambda value: value is None)
 
 
 class Region(Strict):
@@ -186,6 +219,7 @@ class Region(Strict):
     shadow, an inner bevel and a neon edge that draws itself on. Globe scenes: polygon points are normalised
     [x, y] of the whole-world texture (x = (lng + 180) / 360, y = (90 - lat) / 180)."""
     entity: str = Field(min_length=1, max_length=60)
+    flag: Flag | None = Field(None, exclude_if=lambda value: value is None)
     polygon: list[list[float]] = Field(min_length=3)   # normalised [x, y] map points
     at_frame: int = Field(0, ge=0)
     edge: Optional[Literal["white", "glow"]] = None    # None = profile theme.region_edge
@@ -196,7 +230,9 @@ class Region(Strict):
     label: Optional[str] = Field(None, min_length=1, max_length=40)   # box label in the region colour
     label_at: Optional[list[float]] = Field(None, min_length=2, max_length=2)   # normalised map point (None = centroid)
     label_at_frame: Optional[int] = Field(None, ge=0)  # None = at_frame
+    box: Optional[bool] = None                         # None = profile label_style; True/False = solid label box
     changes: list[RegionChange] = []                   # later owners, in frame order
+    hatch: Optional[Hatch] = None                      # diagonal pattern over the fill (P17)
 
     @model_validator(mode="after")
     def _poly(self):
@@ -285,6 +321,7 @@ class Figure(Strict):
     at_frame: int = Field(0, ge=0)
     position: list[float] = Field([0.5, 0.3], min_length=2, max_length=2)   # normalised [x, y] of the frame (centre)
     entity: Optional[str] = Field(None, min_length=1, max_length=60)        # colour = entity colour (default white)
+    box: Optional[bool] = None                                              # None = profile label_style; True/False
 
     @model_validator(mode="after")
     def _fig(self):
@@ -335,6 +372,7 @@ class AreaLabel(Strict):
     text: str = Field(min_length=1, max_length=40)
     region: int = Field(ge=0)                        # index into gsap_scene_config.regions
     water: bool = False                              # a sea, strait or river name: blue italic (legibility profiles)
+    box: Optional[bool] = None                       # None = profile label_style; True/False = solid box on/off
 
 
 class Note(Strict):
@@ -548,6 +586,7 @@ class Globe(Strict):
     """Blue Marble globe (three.js, video_engine/globe.py): map_asset is the whole-world equirectangular texture."""
     keys: list[GlobeKey] = Field(min_length=1)
     detail_tiles: Optional[str] = None   # project-relative dir of the NASA 8-tile set (*.A1.jpg ... *.D2.jpg, 90 deg each)
+    halo: Optional[GlobeHalo] = None     # soft atmospheric rim (P14)
 
     @model_validator(mode="after")
     def _order(self):
@@ -558,6 +597,210 @@ class Globe(Strict):
                 raise ValueError(f"globe.keys[{i}].at_frame must be > globe.keys[{i - 1}].at_frame")
             if self.keys[i - 1].at_frame + self.keys[i - 1].hold >= self.keys[i].at_frame:
                 raise ValueError(f"globe.keys[{i - 1}].at_frame + hold must be < globe.keys[{i}].at_frame")
+        return self
+
+
+class GridBackdrop(Strict):
+    """Screen-fixed blue grid behind the map/globe (P12). Values default from profile [fx.grid]; `graticule`
+    also draws latitude/longitude lines over the map in map coordinates (they follow the camera)."""
+    colour: Optional[str] = Field(None, pattern=HEX_RE)
+    bg: Optional[str] = Field(None, pattern=HEX_RE)
+    cell_pct: Optional[float] = Field(None, gt=0, le=50)
+    line_px: Optional[float] = Field(None, ge=1, le=20)
+    alpha: Optional[float] = Field(None, ge=0, le=1)
+    graticule: bool = False
+
+
+class StarsBackdrop(Strict):
+    """Deterministic starfield behind a globe (P14); positions come from `seed` or the project id + segment index."""
+    count: Optional[int] = Field(None, ge=0, le=5000)
+    seed: Optional[int] = Field(None, ge=0, le=2**31 - 1)
+    twinkle: Optional[float] = Field(None, ge=0, le=1)
+    parallax: Optional[float] = Field(None, ge=0, le=1)
+
+
+class Backdrop(Strict):
+    grid: Optional[GridBackdrop] = None
+    stars: Optional[StarsBackdrop] = None
+
+
+class GlobeHalo(Strict):
+    """Soft atmospheric rim around the sphere (P14); follows the globe radius on every frame."""
+    colour: Optional[str] = Field(None, pattern=HEX_RE)
+    width_pct: Optional[float] = Field(None, gt=0, le=20)
+    alpha: Optional[float] = Field(None, ge=0, le=1)
+
+
+class TimezoneBand(Strict):
+    from_lng: float = Field(ge=-180, le=180)
+    to_lng: float = Field(ge=-180, le=180)
+    label: str = Field(min_length=1, max_length=12)
+    colour: Optional[str] = Field(None, pattern=HEX_RE)
+
+    @model_validator(mode="after")
+    def _order(self):
+        if self.to_lng <= self.from_lng:
+            raise ValueError(f"timezone band {self.label}: to_lng {self.to_lng} must be > from_lng {self.from_lng}")
+        return self
+
+
+class Timezones(Strict):
+    """Vertical longitude bands on a flat map (P17); `alpha`/`at_frame` default from profile [fx.timezone]."""
+    bands: list[TimezoneBand] = Field(min_length=1)
+    alpha: Optional[float] = Field(None, ge=0, le=1)
+    at_frame: Optional[int] = Field(None, ge=0)
+
+
+class Hatch(Strict):
+    """Diagonal SVG pattern inside a region polygon (P17); values default from profile [fx.hatch]."""
+    angle: Optional[float] = Field(None, ge=0, le=180)
+    spacing_px: Optional[float] = Field(None, ge=2, le=100)
+    line_px: Optional[float] = Field(None, ge=1, le=20)
+    colour: Optional[str] = Field(None, pattern=HEX_RE)
+    alpha: Optional[float] = Field(None, ge=0, le=1)
+
+
+class BubbleAnchor(Strict):
+    pin: Optional[int] = Field(None, ge=0)
+    region: Optional[int] = Field(None, ge=0)
+    xy: Optional[list[float]] = Field(None, min_length=2, max_length=2)
+    overlay: Optional[int] = Field(None, ge=0)
+
+    @model_validator(mode="after")
+    def _one(self):
+        set_ = [k for k in ("pin", "region", "xy", "overlay") if getattr(self, k) is not None]
+        if len(set_) != 1:
+            raise ValueError("bubble anchor needs exactly one of pin, region, xy, overlay")
+        if self.xy is not None and not all(0.0 <= v <= 1.0 for v in self.xy):
+            raise ValueError(f"bubble anchor xy {self.xy} must be within 0..1")
+        return self
+
+
+class Bubble(Strict):
+    """Graphic dialogue bubble tied to a map element (P13). Never a caption: the text is short and the bubble
+    stays above the caption band."""
+    text: str = Field(min_length=1, max_length=60)
+    anchor: BubbleAnchor
+    side: Literal["auto", "left", "right", "top"] = "auto"
+    at_frame: int = Field(0, ge=0)
+    out_frame: Optional[int] = Field(None, ge=0)
+    style: Optional[Literal["light", "dark"]] = None
+
+    @model_validator(mode="after")
+    def _shape(self):
+        if not self.text.strip():
+            raise ValueError("bubble text must not be empty")
+        if self.out_frame is not None and self.out_frame <= self.at_frame:
+            raise ValueError(f"bubble out_frame {self.out_frame} must be > at_frame {self.at_frame}")
+        return self
+
+
+class FlagCharacter(Strict):
+    """A flag-icon SVG treated as a character (P15): soft deterministic cloth wave, two eyes with look direction and
+    a seeded blink schedule. Screen-anchored; sits above the map and below the captions."""
+    flag: Flag
+    xy: list[float] = Field(min_length=2, max_length=2)   # normalised frame centre
+    height_pct: float = Field(14, gt=0, le=60)            # character height as a share of the frame height
+    eyes: str = Field("blink", pattern=r"^(look_left|look_right|blink|look_at:\d+)$")
+    at_frame: int = Field(0, ge=0)
+    out_frame: Optional[int] = Field(None, ge=0)
+    wave: bool = True
+
+    @model_validator(mode="after")
+    def _shape(self):
+        if not all(0.0 <= v <= 1.0 for v in self.xy):
+            raise ValueError(f"flag character {self.flag.code}: xy {self.xy} must be within 0..1")
+        if self.out_frame is not None and self.out_frame <= self.at_frame:
+            raise ValueError(f"flag character {self.flag.code}: out_frame {self.out_frame} must be > at_frame {self.at_frame}")
+        return self
+
+
+class CutawayLayer(Strict):
+    label: str = Field(min_length=1, max_length=40)
+    colour: str = Field(pattern=HEX_RE)
+    thickness: float = Field(gt=0, le=1)                  # relative share of the section height
+
+
+class Cutaway(Strict):
+    """Stacked cross-section diagram (P16): layers listed top to bottom, revealed one after another. Labels sit
+    beside the section; no dark box (P10: boxes are for map labels and big numbers only)."""
+    layers: list[CutawayLayer] = Field(min_length=1, max_length=8)
+    xy: list[float] = Field([0.5, 0.5], min_length=2, max_length=2)   # normalised centre of the section
+    width_pct: float = Field(42, gt=0, le=90)             # section width as a share of the frame width
+    at_frame: int = Field(0, ge=0)
+    reveal_s: Optional[float] = Field(None, ge=0.05, le=5.0)   # None = profile [fx.cutaway] reveal_s
+
+    @model_validator(mode="after")
+    def _shape(self):
+        if not all(0.0 <= v <= 1.0 for v in self.xy):
+            raise ValueError(f"cutaway xy {self.xy} must be within 0..1")
+        return self
+
+
+class InsetAnchor(Strict):
+    pin: Optional[int] = Field(None, ge=0)
+    xy: Optional[list[float]] = Field(None, min_length=2, max_length=2)
+
+    @model_validator(mode="after")
+    def _one(self):
+        n = [k for k in ("pin", "xy") if getattr(self, k) is not None]
+        if len(n) != 1:
+            raise ValueError("inset anchor needs exactly one of pin, xy")
+        if self.xy is not None and not all(0.0 <= v <= 1.0 for v in self.xy):
+            raise ValueError(f"inset anchor xy {self.xy} must be within 0..1")
+        return self
+
+
+class Inset(Strict):
+    """Photo inset with a thin white frame and a leader line to its location (P16). The asset is resolved through the
+    asset registry, so its credit is added automatically."""
+    asset: str = Field(min_length=1)
+    anchor: InsetAnchor
+    size_pct: float = Field(28, gt=0, le=70)              # inset width as a share of the frame width
+    at_frame: int = Field(0, ge=0)
+    out_frame: Optional[int] = Field(None, ge=0)
+
+    @model_validator(mode="after")
+    def _shape(self):
+        if self.out_frame is not None and self.out_frame <= self.at_frame:
+            raise ValueError(f"inset '{self.asset}': out_frame {self.out_frame} must be > at_frame {self.at_frame}")
+        return self
+
+
+class Geoid(Strict):
+    """Exaggerated, coloured Earth model on a globe scene (P18). The displacement is a seeded sum of smooth waves;
+    values default from profile [fx.geoid]."""
+    exaggeration: Optional[float] = Field(None, ge=0, le=0.5)
+    colour_ramp: Optional[list[str]] = Field(None, min_length=2, max_length=8)
+    rotate_deg_s: Optional[float] = Field(None, ge=-360, le=360)
+    at_frame: int = Field(0, ge=0)
+
+    @model_validator(mode="after")
+    def _shape(self):
+        for c in self.colour_ramp or []:
+            if not re.fullmatch(HEX_RE, c):
+                raise ValueError(f"geoid colour {c!r} must be #rrggbb")
+        return self
+
+
+class Particle(Strict):
+    """Deterministic particle accent (P19): analytic in (seed, frame), so any seek renders the same positions.
+    `fireworks` is a radial burst with gravity; `fire` is an upward flame with seeded noise."""
+    kind: Literal["fireworks", "fire"]
+    xy: list[float] = Field(min_length=2, max_length=2)   # normalised frame position
+    at_frame: int = Field(0, ge=0)
+    duration_s: Optional[float] = Field(None, ge=0.2, le=10.0)   # None = profile [fx.particles] duration_s
+    seed: Optional[int] = Field(None, ge=0, le=2**31 - 1)        # None = project id + segment index
+    scale: float = Field(1.0, ge=0.2, le=4.0)
+    colours: Optional[list[str]] = Field(None, min_length=1, max_length=8)
+
+    @model_validator(mode="after")
+    def _shape(self):
+        if not all(0.0 <= v <= 1.0 for v in self.xy):
+            raise ValueError(f"particle {self.kind}: xy {self.xy} must be within 0..1")
+        for c in self.colours or []:
+            if not re.fullmatch(HEX_RE, c):
+                raise ValueError(f"particle colour {c!r} must be #rrggbb")
         return self
 
 
@@ -585,6 +828,39 @@ class GsapScene(Strict):
     props: Optional[list[Prop]] = None              # free-positioned images (map- or screen-anchored)
     layers: Optional[list[ParallaxLayer]] = None    # repeating depth layers over the map (parallax)
     globe: Optional[Globe] = None                   # 3D globe instead of the flat map (map_asset = its texture)
+    backdrop: Optional[Backdrop] = None             # screen-fixed grid/stars behind the map or globe (P12/P14)
+    timezones: Optional[Timezones] = None           # longitude bands on a flat map (P17)
+    bubbles: Optional[list[Bubble]] = None          # graphic dialogue bubbles, never captions (P13)
+    flag_characters: Optional[list[FlagCharacter]] = None   # flag-icon characters with eyes (P15)
+    cutaway: Optional[Cutaway] = None               # stacked cross-section diagram (P16)
+    insets: Optional[list[Inset]] = None            # framed photo insets with leader lines (P16)
+    geoid: Optional[Geoid] = None                   # exaggerated coloured Earth on a globe scene (P18)
+    particles: Optional[list[Particle]] = None      # deterministic fireworks / fire accents (P19)
+
+    @model_validator(mode="after")
+    def _bubbles(self):
+        n = {"pin": len(self.pins), "region": len(self.regions or [])}
+        for i, b in enumerate(self.bubbles or []):
+            for what in ("pin", "region"):
+                idx = getattr(b.anchor, what)
+                if idx is not None and idx >= n[what]:
+                    raise ValueError(f"bubbles[{i}]: {what} index {idx} out of range ({n[what]} {what}s)")
+        return self
+
+    @model_validator(mode="after")
+    def _fx(self):
+        pins = len(self.pins)
+        for i, c in enumerate(self.flag_characters or []):
+            if c.eyes.startswith("look_at:"):
+                idx = int(c.eyes.split(":", 1)[1])
+                if idx >= pins:
+                    raise ValueError(f"flag_characters[{i}]: look_at pin {idx} out of range ({pins} pins)")
+        for i, ins in enumerate(self.insets or []):
+            if ins.anchor.pin is not None and ins.anchor.pin >= pins:
+                raise ValueError(f"insets[{i}]: pin index {ins.anchor.pin} out of range ({pins} pins)")
+        if self.geoid is not None and self.globe is None:
+            raise ValueError("geoid needs a globe scene (gsap_scene_config.globe)")
+        return self
 
     @model_validator(mode="after")
     def _map_bounds(self):
@@ -701,6 +977,7 @@ class Segment(Strict):
     overlays: list[Overlay] = []
     gsap_scene_config: Optional[GsapScene] = None
     visual_type: Optional[VisualType] = None   # None = inferred: HyperFrames map, native still photo, native video
+    transition_in: Optional[Literal["cut", "crossfade", "state", "zoom_whip", "page_turn"]] = None   # overrides profile
     grade: Optional[Grade] = None              # full-frame grade (video_engine/grade.py); None = profile [grade]
     hold: Optional[Literal["read"]] = None     # intent: the viewer reads over the whole segment (gates/severity.py)
     goal: Optional[str] = Field(None, max_length=200)   # what the viewer must understand or feel (information)
@@ -738,6 +1015,10 @@ class Segment(Strict):
         else:
             if self.gsap_scene_config is None:
                 raise ValueError(f"segment {self.seg_index}: HYPERFRAMES_GSAP segment needs gsap_scene_config")
+            for i, b in enumerate(self.gsap_scene_config.bubbles or []):
+                if b.anchor.overlay is not None and b.anchor.overlay >= len(self.overlays):
+                    raise ValueError(f"segment {self.seg_index} bubbles[{i}]: overlay index {b.anchor.overlay} "
+                                     f"out of range ({len(self.overlays)} overlays)")
         return self
 
 
@@ -825,7 +1106,25 @@ class Timeline(Strict):
         from . import profiles
         from .util import EngineError
         try:
-            mz = profiles.load(self.profile).camera.max_zoom
+            prof = profiles.load(self.profile)
+            mz = prof.camera.max_zoom
+        except EngineError as e:
+            raise ValueError(str(e)) from e
+        for s in self.segments[1:]:
+            if s.transition_in == "page_turn" and not prof.transitions.page_turn:
+                raise ValueError(f"segment {s.seg_index}: transition_in 'page_turn' is not allowed by the profile "
+                                 "([transitions] page_turn = false)")
+        try:
+            cs = self.caption_style
+            if "forbid_box" in cs and not isinstance(cs["forbid_box"], bool):
+                raise EngineError("caption_style.forbid_box must be true or false")
+            ab = cs.get("ab_sizes")
+            if ab is not None and (not isinstance(ab, list) or not ab
+                                   or not all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in ab)):
+                raise EngineError("caption_style.ab_sizes must be a non-empty list of positive integers")
+            st = {**prof.caption_style, **cs}
+            if st.get("forbid_box") and st.get("box_bg") is True:
+                raise EngineError("caption_style.forbid_box = true but box_bg = true; captions never use a box")
         except EngineError as e:
             raise ValueError(str(e)) from e
         for s in self.segments:

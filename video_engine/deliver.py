@@ -173,6 +173,7 @@ def _metadata_text(tl: Timeline) -> str:
 def thumbnail(tl: Timeline, final: Path, out: Path) -> Path:
     """Middle frame of `final` as a JPEG thumbnail."""
     from PIL import Image
+
     from .sheet import frame_rgb
     S = tl.settings
     frame = max(0, tl.total_frames // 2)
@@ -204,6 +205,15 @@ def plan(tl: Timeline, project_dir: Path, final: Path, part_max: int = PART_MAX_
     files.append({"name": n["metadata"], "dir": n["final_dir"], "bytes": len(md.encode()), "source": "generated", "range": None})
     files.append({"name": n["thumbnail"], "dir": n["final_dir"], "bytes": None, "source": "generated", "range": None})
     credits = project_dir / "credits.txt"
+    report_path = Path(final).parent / "build_report.json"
+    if report_path.is_file():
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            report = {}
+        extra_credits = Path(final).parent / "credits.txt"
+        if report.get("additional_credits") and extra_credits.is_file():
+            credits = extra_credits
     if not credits.is_file():
         raise EngineError("credits.txt missing in project dir")
     files.append({"name": n["credits"], "dir": n["assets_dir"], "bytes": credits.stat().st_size, "source": str(credits), "range": None})

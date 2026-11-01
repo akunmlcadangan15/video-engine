@@ -1,11 +1,22 @@
 # Geoverum channel profile. Spec: Style Lab brand profile (brand/geoverum/brand-profile.md).
 description = "Geoverum: map-led geography shorts"
 
+# EXPERIMENTAL: flag settings inherit the engine defaults unless overridden.
+[flags]
+alpha = 0.85
+reveal_s = 0.45
+edge_px = 3
+glow_px = 6
+fit = "auto"           # per region: cover, contain where cropping would cut > auto_max_loss
+pin_height_pct = 4.5
+
 [caption_style]
-font = "Inter SemiBold"
-bold = false
-size = 72                     # ASS units at 1920 height: cap height 37 px, x-height 25 px (reference 37 / 26 px)
-outline = 2.5                 # thin black outline (outline_colour default 000000)
+# Approved 2026-11-01 (style-lab upgrade-v2 A/B): bold Inter 84 px, white, no outline, no box, at about 0.72 H.
+font = "Inter"                # family Inter; bold=true makes libass pick vendor/fonts/Inter-Bold.otf
+bold = true
+size = 84                     # chosen in the A/B (84 / 92 / 104); the others stay valid timeline overrides
+ab_sizes = [84, 92, 104]      # A/B size candidates (timeline caption_style.size picks one)
+outline = 0                   # no outline; the soft shadow carries readability
 soft_shadow = true            # drop shadow 0 3 px, blur, black at .55 (layer 0, no backing box)
 shadow_dx = 0
 shadow_dy = 3
@@ -14,9 +25,11 @@ shadow_alpha = 115            # ASS alpha 0x73 = 55 % opaque
 active_word_highlight = false
 emphasis_scale = 1.0
 max_words = 2
-fixed_y = 1190                # caption centre, px at 1920 height (box bottom 1244, rendered ink bottom 1239)
-max_bottom_y = 1250           # Z01: caption box bottom (glyphs + shadow) at or above 1250 px (Shorts safe zone)
-auto_place = false            # captions are never moved for clearance
+fixed_y = 1382                # caption centre, px at 1920 height (about 0.72 x 1920)
+max_bottom_y = 1480           # Z01: caption box bottom at or above the Shorts lower UI limit
+forbid_box = true             # captions never use a backing box (box_bg = true is rejected)
+auto_place = true             # a caption that would hit a pin, label or figure shifts (R63 fix) ...
+place_band = [0.68, 0.72]     # ... but only inside the approved band, centre 0.68-0.72 H (1306-1382 px)
 clearance = 0                 # captions must still not intersect any element box (R63)
 
 [audio]
@@ -27,18 +40,22 @@ tolerance_lu = 0.2
 require_source = "epidemic"   # A02: music and SFX from Epidemic Sound only (docs/SOUND.md)
 
 [draft]
-min_seg_s = 6.5
+min_seg_s = 2.5               # approved 2026-11-01: short map beats allowed; the pause segmenter follows this value
 max_seg_s = 30.0
 map_path = true               # map segments may carry a multi-key camera path
 rules = [
   "Open on a moving map (kind map, camera zoom_in or a pan) with a geographical paradox, visual pun, stark dividing line, or magnifying-glass mystery and the first pin, route, or card within 1.5 s; narration and the first caption start at 0.0-0.2 s.",
   "Hard cuts only where the visual type changes (satellite map to historical parchment map, 2D side-view cross-section diagram, 3D space globe, 3D horizon profile, Flightradar dark UI, photo, or video). Moving between places on one map stays inside one long map segment with a map_path (one key per place, 2-5 s apart, zooming up to 16x for enclaves/straits), never a cut between two segments of the same map.",
-  "At most 0.41 hard cuts per 10 s; the first hard cut at 21 s or later.",
+  "At most 0.41 hard cuts per 10 s; the first hard cut at 12 s or later (a shot change before 3 s fails). A map boundary that keeps the same base map is a short state change, not a cut.",
   "Something new on screen every 1-3 s: a pin with dot-and-leader label, a glowing or striped region fill, a white-bordered cutout sticker, a flag-character, a route or dimension bar (mi / km), an animated counter or stat pill, a true-scale polygon drag/tile comparison, or a new shot.",
   "Match typography to the surface: geometric sans-serif (Inter Bold / SemiBold) on dark satellite, globe, radar, and cross-section scenes (ALL CAPS for macro countries/mountains, Title Case for features/cities/peaks, yellow initial letters for acronyms), and serif/engraved type (EB Garamond / Playfair Display / Cinzel) strictly on historical parchment or blueprint maps.",
   "The last 5 s show a keyword or the title of the hook again on screen (pin label, card, icon equation, 3D globe summary, or overlay text).",
   "No call to action and no end card.",
 ]
+
+[motion]                     # EXPERIMENTAL (A/B): a slightly snappier small-overlay token
+overlay_frames = 5           # 5 frames at 30 fps (~167 ms); documented A/B range 4-6, default engine 7
+overlay_frames_range = [4, 6]
 
 [theme]
 camera_drift_per_s = 0.06     # scale growth / s of the drift between camera pulses: 0.06 ln/s at the start of a wait,
@@ -47,7 +64,7 @@ camera_start_speed = 0.75      # globe and camera_path: first-key speed as a sha
 camera_end_speed = 1.0         # globe and camera_path: last-key speed as a share of the last leg's mean when the shot ends there
 region_edge = "glow"          # same-colour edge; [legibility] sets fill alpha and a 3-4 px outline, no blur
 region_style = "block"        # saturated raised blocks: bevel, side, drop shadow, neon edge drawn on
-label_style = "box"           # solid label boxes (entity red / blue, near-black), white caps, elastic pop-in
+label_style = "plain"         # EXPERIMENTAL: plain adaptive labels; opt into a dark box per pin / region / figure
 year_box_colour = "#f6efe0"   # years on a bright cream box with paper grain, dark serif digits, about label size
 year_box_ink = "#2a231d"
 year_box_px = 88
@@ -127,9 +144,11 @@ pulse_anchor = [0.44, 0.41]   # screen point that stays put: centre of [layout.z
 pulse_direction = "in"        # push in, then back
 max_zoom = 16                 # deepest camera zoom: country-scale close-ups from a whole-map source
 
-[transitions]                 # every segment boundary: a short dissolve; never a page turn or a paper morph
-kind = "crossfade"            # 0.4 s crossfade centred on the boundary (map <-> photo, map <-> map alike)
-fade_s = 0.4
+[transitions]                 # EXPERIMENTAL (A/B): hard cut on a visual-type change, short state change on one map
+kind = "cut"                  # every boundary is a hard cut unless a rule or a segment transition_in says otherwise
+same_type = { map = "state" } # map -> map on the same map_asset: 0.2 s state dissolve, never a long crossfade
+state_s = 0.2                 # EXPERIMENTAL: state dissolve length (0.1-0.4 s)
+fade_s = 0.4                  # crossfade only when requested explicitly (timeline transition_in = "crossfade")
 page_turn = false             # Arundaya rejects page-turn / paper transitions (Siam revision 2)
 map_morph = false             # map segments stay on their satellite base (no satellite -> paper morph)
 
@@ -163,8 +182,8 @@ open_on_moving_map = true
 [gates.cuts]
 warn_per_10s = 0.41
 fail_per_10s = 1.65
-first_warn_s = 21.0
-first_fail_s = 6.5
+first_warn_s = 12.0           # approved 2026-11-01: earlier hard cuts allowed than the old 21 s
+first_fail_s = 3.0            # approved 2026-11-01: a shot change before 3 s blocks the build
 
 [gates.camera]                # P01: planned camera motion
 hold_warn_s = 1.7
@@ -262,6 +281,10 @@ shadow_dy_px = 2
 shadow_blur_px = 4
 shadow_alpha = 0.35
 shadow_colour = "#2a1c12"
+light_halo_alpha_min = 0.60     # plain light labels on bright imagery: dark warm glyph halo rungs (R64)
+light_halo_alpha_max = 0.85
+light_halo_steps = 3
+light_halo_ink = "#ffffff"      # last rung: white ink (cream at 0.85 left Laos over a white region at Lc 62-69 < 70)
 vignette_scale = 1.4
 vignette_feather = 0.6         # knock-back vignette (paper colour) behind ink that misses its target
 vignette_alpha_min = 0.10

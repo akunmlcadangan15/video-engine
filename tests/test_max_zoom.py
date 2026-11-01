@@ -178,8 +178,9 @@ def test_good_prune_keeps_the_deep_tiles(project, monkeypatch, tmp_path):
     assert not problems and deep and deep <= keep
 
 
-def test_good_deep_raster_is_capped_to_a_bounded_side():
+def test_good_deep_raster_follows_the_zoom_up_to_the_source_not_an_8192_cap():
     scene = {"map_size": [1000.0, 1000.0], "width": 216, "height": 384, "n_frames": 1,
              "camera": {"start": {"x": 0, "y": 0, "s": 20.0}, "end": {"x": 0, "y": 0, "s": 20.0}, "legs": []}}
-    dp = hyperframes.deep_plan(scene, (20000, 20000))
-    assert dp is not None and max(dp["w"], dp["h"]) == hyperframes.DEEP_MAX_SIDE
+    dp = hyperframes.deep_plan(scene, (20000, 20000))          # needs 20000 px: the whole source width
+    assert dp is not None and (dp["w"], dp["h"]) == (20000, 20000)
+    assert hyperframes.deep_plan(scene, (43200, 43200))["w"] == 20000   # never more than the zoom needs

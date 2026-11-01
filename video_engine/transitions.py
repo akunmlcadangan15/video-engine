@@ -5,6 +5,8 @@ first frame, under the captions and the watermark.
 crossfade at boundary b: frames [b - n // 2, b - n // 2 + n), n = fade_s x fps. A dissolve from the outgoing to the
 incoming shot (smoothstep weights (k + 1) / (n + 1)); segments do not overlap in time, so before b the incoming shot
 is its first frame and from b the outgoing shot is its last frame (both segments keep their own timing).
+state at boundary b: frames [b - n // 2, b - n // 2 + n), n = state_s x fps. A very short dissolve used only for
+map -> map boundaries whose two segments share the same base map (a state change on one map, not a cut).
 zoom_whip at boundary b: frames [b - whip_out_s, b + whip_in_s). The outgoing shot pushes in from 1 to whip_scale
 (ease in) with a radial blur rising to whip_blur; the incoming shot settles from whip_scale to 1 (ease out cubic,
 1 on the window's last frame) with the blur fading over its first whip_blur_in_s.
@@ -24,7 +26,7 @@ import numpy as np
 import hypoverum_core_rs as core
 
 from . import config, profiles
-from .timeline import Timeline
+from .timeline import HYPERFRAMES, Timeline
 from .util import EngineError
 
 TRANSITION_VERSION = "trans-1"   # bump when a transition clip's pixels change without a source-code change
@@ -40,19 +42,46 @@ PAGE_DIR = (-0.94, -0.34)   # fold travel: from the bottom-right corner towards 
 class Window:
     boundary: int     # first frame of the incoming segment
     seg: int          # incoming segment index
-    kind: str         # crossfade | zoom_whip | page_turn
+    kind: str         # cut | crossfade | state | zoom_whip | page_turn
     f0: int           # first frame drawn by the transition
     f1: int           # end frame (exclusive)
 
 
+def _base_map(s) -> str | None:
+    """Base map asset of a HyperFrames map segment (globe: its equirectangular texture), else None."""
+    if s.engine_type != HYPERFRAMES or s.gsap_scene_config is None:
+        return None
+    return s.gsap_scene_config.map_asset
+
+
+def same_base_map(a, b) -> bool:
+    """Both sides are map segments built on the same base map asset."""
+    ma, mb = _base_map(a), _base_map(b)
+    return ma is not None and ma == mb
+
+
 def kind_at(tl: Timeline, i: int) -> str:
-    """Transition into segment i (i >= 1): same_type[kind] when both sides share it, else by_type[incoming kind], else
-    by_type[outgoing kind], else kind."""
+    """Transition into segment i (i >= 1). A segment's explicit `transition_in` wins (page_turn still needs the
+    profile's page_turn = true; state needs both sides on the same base map). Otherwise same_type[kind] when both
+    sides share it, else by_type[incoming kind], else by_type[outgoing kind], else kind. A state rule that does not
+    qualify (different maps) falls back to a hard cut."""
     T = profiles.of(tl).transitions
     a, b = tl.segments[i - 1], tl.segments[i]
+    if b.transition_in is not None:
+        k = b.transition_in
+        if k == "page_turn" and not T.page_turn:
+            raise EngineError(f"segment {b.seg_index}: transition_in 'page_turn' is off in this profile")
+        if k == "state" and not same_base_map(a, b):
+            raise EngineError(f"segment {b.seg_index}: transition_in 'state' needs two map segments on the same "
+                              "map_asset")
+        return k
     if a.kind == b.kind and a.kind in T.same_type:
-        return T.same_type[a.kind]
-    return T.by_type.get(b.kind) or T.by_type.get(a.kind) or T.kind
+        k = T.same_type[a.kind]
+    else:
+        k = T.by_type.get(b.kind) or T.by_type.get(a.kind) or T.kind
+    if k == "state" and not same_base_map(a, b):
+        return "cut"
+    return k
 
 
 def _frames(s: float, fps: int) -> int:
@@ -62,14 +91,15 @@ def _frames(s: float, fps: int) -> int:
 def windows(tl: Timeline) -> list[Window]:
     """Every non-cut boundary with its frame window (empty when the profile draws no transitions)."""
     T = profiles.of(tl).transitions
-    if not T.active():
+    explicit = any(s.transition_in not in (None, "cut") for s in tl.segments[1:])
+    if not T.active() and not explicit:
         return []
     fps, out = tl.settings.fps, []
     for i in range(1, len(tl.segments)):
         k = kind_at(tl, i)
         b = tl.segments[i].start_frame
-        if k == "crossfade":
-            n = _frames(T.fade_s, fps)
+        if k in ("crossfade", "state"):
+            n = _frames(T.fade_s if k == "crossfade" else T.state_s, fps)
             out.append(Window(b, i, k, b - n // 2, b - n // 2 + n))
         elif k == "zoom_whip":
             out.append(Window(b, i, k, b - _frames(T.whip_out_s, fps), b + _frames(T.whip_in_s, fps)))
@@ -242,8 +272,8 @@ def render(tl: Timeline, seg_files: list[Path], workdir: Path, threads: int = 2)
     W, H, fps = S.width, S.height, S.fps
     out = []
     for w in windows(tl):
-        a, b = tl.segments[w.seg - 1], tl.segments[w.seg]
-        if w.kind == "crossfade":
+        a = tl.segments[w.seg - 1]
+        if w.kind in ("crossfade", "state"):
             n_out, n_in = w.boundary - w.f0, w.f1 - w.boundary
             tail = decode(seg_files[w.seg - 1], a.n_frames - n_out, n_out, W, H, threads)
             a_last = decode(seg_files[w.seg - 1], a.n_frames - 1, 1, W, H, threads)[0]

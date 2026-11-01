@@ -174,7 +174,9 @@ def test_R63_focus_box_projected(project):
 def test_R63_dom_demo_end_to_end(project, W, auto_place):
     p, tl = project(_pin_doc)
     tl.caption_style = {"auto_place": auto_place}
-    rep = run_preflight(tl, p, W(("habis", 150, 160), ("tepat", 160, 175)), snapshots=False)
+    # clearance is time-resolved (element_windows): the caption is shown late, while the zoom has carried
+    # 'Pusat Kota' down next to the caption slot
+    rep = run_preflight(tl, p, W(("habis", 215, 230), ("tepat", 230, 250)), snapshots=False)
     r63 = [f for f in rep.findings if f.gate == "R63"]
     if auto_place:
         assert rep.ok and any(f.level == "fix" and f.seg == 1 for f in r63)

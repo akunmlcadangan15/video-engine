@@ -246,7 +246,8 @@ def v01_visual_type(tl: Timeline) -> list[Finding]:
 def _change(tl: Timeline, b: Segment) -> str:
     """'hard cut' or the transition name of the boundary into segment b."""
     return "hard cut" if b.seg_index == 0 else {"cut": "hard cut", "crossfade": "crossfade",
-                                                 "zoom_whip": "zoom whip", "page_turn": "page turn"}[transitions.kind_at(tl, b.seg_index)]
+                                                 "zoom_whip": "zoom whip", "page_turn": "page turn",
+                                                 "state": "state dissolve"}[transitions.kind_at(tl, b.seg_index)]
 
 
 def n01_novelty(tl: Timeline, g: profiles.NoveltyGate) -> list[Finding]:

@@ -55,6 +55,20 @@ html,body{width:__W__px;height:__H__px;overflow:hidden;background:#0b1118}
 .card.box{min-width:0;padding:20px 36px 22px;box-shadow:0 10px 24px rgba(0,0,0,.5)}
 .card.box img{border-radius:0}
 .card.box .s{color:#fff;text-transform:none}
+.bubble{position:absolute;visibility:hidden;background:#fff;color:#14181c;font-family:EngInterS,sans-serif;font-weight:600;
+  line-height:1.22;border-radius:18px;padding:16px 22px;box-shadow:0 10px 26px rgba(0,0,0,.35);
+  white-space:pre-wrap;overflow-wrap:break-word;--tail-colour:#fff}
+.bubble.dark{background:#15181d;color:#fff;--tail-colour:#15181d}
+.bubble::after{content:'';position:absolute;width:0;height:0;border:16px solid transparent}
+.bubble.s-top::after{left:var(--tail,50%);top:100%;transform:translateX(-16px);
+  border-left:16px solid transparent;border-right:16px solid transparent;border-top:22px solid var(--tail-colour);border-bottom:0}
+.bubble.s-right::after{right:100%;top:var(--tail,50%);transform:translateY(-16px);
+  border-top:16px solid transparent;border-bottom:16px solid transparent;border-right:22px solid var(--tail-colour);border-left:0}
+.bubble.s-left::after{left:100%;top:var(--tail,50%);transform:translateY(-16px);
+  border-top:16px solid transparent;border-bottom:16px solid transparent;border-left:22px solid var(--tail-colour);border-right:0}
+.tzl{position:absolute;width:0;height:0;visibility:hidden}
+.tzl .pb{position:absolute;left:0;top:0;transform-origin:0 0;white-space:nowrap;font-family:EngInterS,sans-serif;font-weight:600;
+  font-size:26px;line-height:1;letter-spacing:.04em;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.75)}
 </style>
 </head>
 <body>
@@ -136,10 +150,18 @@ if(S.morph){const M=S.morph, mo=mapBox(), tone=mapBox(), im=document.createEleme
   if(M.at_frame)fade(0,1,M.at_frame);if(M.back_at_frame!==null)fade(1,0,M.back_at_frame);}
 // camera: legs of transforms computed by the engine (same math as the R56 gate); each leg tweens from the previous one
 const C=S.camera;
-gsap.set(cam,{x:C.start.x,y:C.start.y,scale:C.start.s});
+// tilted camera: #cam, the map and its deep tiles must not be composited layers of their own. Under #tilt's perspective
+// Chrome cannot read a 2D scale off a layer's screen transform and rasterizes it at scale 1, so a layer zoomed 5x
+// showed map, regions, flags and labels 5x upscaled (blocky edges). Painted into #tilt's layer instead (no
+// will-change, no translate3d: force3D false), they are drawn at the camera scale and only #tilt's own magnification
+// (camera3d.max_mag, at most about 1.4) is left to the compositor.
+const F3=C.tilt?{force3D:false}:{};
+if(C.tilt){cam.style.willChange='auto';cam.setAttribute('data-flat-raster','');
+  document.querySelectorAll('#map,#map>img,[data-deep]').forEach(e=>{e.style.willChange='auto';});}
+gsap.set(cam,{x:C.start.x,y:C.start.y,scale:C.start.s,...F3});
 const legs=window.__legs(C,FPS);
 legs.forEach(g=>tl.fromTo(cam,{x:g.from.x,y:g.from.y,scale:g.from.s},
-  {x:g.L.to.x,y:g.L.to.y,scale:g.L.to.s,duration:g.d,ease:g.ease,immediateRender:g.k===0},g.t0));
+  {x:g.L.to.x,y:g.L.to.y,scale:g.L.to.s,duration:g.d,ease:g.ease,immediateRender:g.k===0,...F3},g.t0));
 // perspective tilt (camera key `tilt`, camera3d.py): #cam and the map props layer sit in #tilt, which turns about the
 // frame centre under perspective(C.tilt.p) to each leg's tilt with the leg's ease
 if(C.tilt){const tw=document.createElement('div');tw.id='tilt';
@@ -204,6 +226,24 @@ if(S.regions&&S.regions.length){
   const svg=mapSvg(), P=S.print, paper=P&&P.surface==='paper',
     T=LG?Object.assign({},S.theme,{region_fill_opacity:LG.entity_fill_alpha,region_edge_px:LG.entity_outline_px,region_glow_px:0}):S.theme;
   const geo=(r,i)=>r.ll?{'data-geo':i}:{}, chg=(r,el,from,to,t)=>tl.fromTo(el,from,{...to,duration:TH.block_change_s,ease:MO.move,immediateRender:false},t);
+  // P5 flag fit, computed here: Chrome lays an <image>-referenced SVG out as `meet` and ignores `slice`,
+  // so cover/contain are explicit rects (preserveAspectRatio none) clipped by the region polygon.
+  function flagRect(x,y,w,h,f){const a=+(f.aspect||4/3);if(f.fit==='stretch'||!(w>0&&h>0))return {x,y,width:w,height:h};
+    const s=(f.fit==='cover'?Math.max:Math.min)(w/a,h), W=s*a;return {x:x+(w-W)/2,y:y+(h-s)/2,width:W,height:s};}
+  window.__flagRect=flagRect;
+  // P17 hatching: a diagonal SVG pattern clipped to the region polygon, over the fill (and under a flag / edge)
+  const hatch=(i,pts,parent,t0,R)=>{
+    if(!R.hatch)return null;
+    const H=R.hatch, s=H.spacing_px, id='hatch'+i, pat=mk('pattern',{id,width:s,height:s,patternUnits:'userSpaceOnUse',
+      patternTransform:'rotate('+H.angle+')'});
+    pat.appendChild(mk('line',{x1:0,y1:0,x2:s,y2:0,stroke:H.colour,'stroke-width':H.line_px}));
+    svg.appendChild(pat);
+    const hp=mk('polygon',{points:pts,fill:'url(#'+id+')','fill-opacity':0,...geo(R,i)});
+    parent.appendChild(hp);
+    tl.fromTo(hp,{attr:{'fill-opacity':0}},{attr:{'fill-opacity':H.alpha},duration:0.4,ease:MO.entrance,immediateRender:true},t0);
+    const m=document.createElement('div');m.setAttribute('data-qa','fx:hatch:'+i);
+    m.style.cssText='position:absolute;left:0;top:0;width:0;height:0';cam.appendChild(m);
+    return hp;};
   S.regions.forEach((R,i)=>{
     const pts=R.points.map(p=>p[0]+','+p[1]).join(' '), t0=f2t(R.at_frame);
     let prev=R;
@@ -266,15 +306,45 @@ if(S.regions&&S.regions.length){
       if(cased)chg(R,cg,{attr:{stroke:prev.casing}},{attr:{stroke:c.casing}},t);
       tl.set(pg,{attr:{'data-entity':c.entity,...(LG?{'data-line-ink':JSON.stringify(inks(c))}:{})}},t);prev=c;});
     }
+    if(R.flag||R.changes.some(c=>c.flag)){
+      const cp=mk('clipPath',{id:'flagclip'+i}), polygon=mk('polygon',{points:pts,...geo(R,i)});
+      cp.appendChild(polygon);svg.appendChild(cp);
+      const xs=R.points.map(p=>p[0]), ys=R.points.map(p=>p[1]), x=Math.min(...xs), y=Math.min(...ys),
+        w=Math.max(...xs)-x, h=Math.max(...ys)-y;
+      let previous=null;
+      [R,...R.changes].forEach((owner,k)=>{
+        const f=owner.flag, t=f2t(owner.at_frame);
+        if(previous)tl.to(previous.el,{opacity:0,duration:f?f.reveal_s:previous.f.reveal_s,ease:MO.entrance},t);
+        if(!f){previous=null;return;}
+        const img=mk('image',{href:f.href,...flagRect(x,y,w,h,f),'clip-path':'url(#flagclip'+i+')',
+          preserveAspectRatio:'none','data-fit':f.fit,'data-aspect':f.aspect||4/3,
+          ...(R.ll?{'data-flag-geo':i}:{})});
+        img.style.opacity=0;svg.appendChild(img);
+        tl.fromTo(img,{opacity:0,scale:0.98,transformOrigin:'center center'},
+          {opacity:f.alpha,scale:1,duration:f.reveal_s,ease:MO.entrance,immediateRender:true},t);
+        previous={el:img,f};
+      });
+      const f=R.flag||R.changes.find(c=>c.flag).flag;
+      const outline=mk('polygon',{points:pts,fill:'none',stroke:R.edge_colour||'#ffffff','stroke-linejoin':'round',...geo(R,i)});
+      outline.style.filter='drop-shadow(0 0 '+(f.glow_px*S.width/1080)+'px white)';svg.appendChild(outline);
+      tl.fromTo(outline,{opacity:0},{opacity:1,duration:f.reveal_s,ease:MO.entrance,immediateRender:true},t0);
+      legs.forEach(g=>tl.fromTo(outline,{attr:{'stroke-width':f.edge_px*S.width/1080/g.from.s}},
+        {attr:{'stroke-width':f.edge_px*S.width/1080/g.L.to.s},duration:g.d,ease:g.inv,immediateRender:g.k===0},g.t0));
+    }
+    hatch(i,pts,svg,t0,R);
     // region label: a solid box (owner's box colour) anchored on the map, counter-scaled, popping in
     if(R.label){const L=R.label, el=document.createElement('div');el.className='rl';
       el.style.left=L.x+'px';el.style.top=L.y+'px';if(L.ll)el.setAttribute('data-ll',L.ll.join(','));
       el.innerHTML='<div class="pb"><div data-qa="region:'+i+'"></div></div>';
-      const pb=el.firstChild, bx=pb.firstChild;bx.textContent=L.text;boxify(bx,R.box,TH.label_box_px);cam.appendChild(el);
+      const pb=el.firstChild, bx=pb.firstChild, boxed=!!R.box;bx.textContent=L.text;
+      if(boxed){boxify(bx,R.box,TH.label_box_px);}
+      else{bx.style.cssText+=';color:#fff;font-family:EngInter,sans-serif;font-weight:700;text-transform:uppercase;line-height:1;font-size:'+TH.label_box_px+'px;text-shadow:0 3px 8px rgba(0,0,0,.85),0 0 3px rgba(0,0,0,.9)';}
+      cam.appendChild(el);
       gsap.set(bx,{xPercent:-50,yPercent:-50});
       ZS.push(s=>pb.style.transform='scale('+(1/s)+')');
-      const lt=f2t(L.at_frame);tl.set(el,{visibility:'visible'},lt);pop(bx,lt);
-      let pv=R;R.changes.forEach(c=>{chg(R,bx,{backgroundColor:pv.box},{backgroundColor:c.box},f2t(c.at_frame));pv=c;});}
+      const lt=f2t(L.at_frame);tl.set(el,{visibility:'visible'},lt);
+      if(boxed){pop(bx,lt);let pv=R;R.changes.forEach(c=>{chg(R,bx,{backgroundColor:pv.box},{backgroundColor:c.box},f2t(c.at_frame));pv=c;});}
+      else{if(LG)adapt(bx,'region:'+i,LG.halo_width_em);tl.fromTo(bx,{opacity:0},{opacity:1,duration:0.3,ease:MO.entrance},lt);}}
   });
 }
 // borders: neon lines (open or closed, solid or dashed) drawn on along their length
@@ -358,7 +428,7 @@ function twinFaces(vs){for(const sh of document.styleSheets)for(const r of sh.cs
       featureSettings:fs.map(x=>'"'+x+'" 1').join(', ')});document.fonts.add(f);f.load().catch(()=>{});TWIN.set(fam+'|'+fs.join('-'),name);});}}
 function canvasFamily(cs){const fs=numFeats(cs.fontVariantNumeric).join('-');if(!fs)return cs.fontFamily;
   return cs.fontFamily.split(',').map(s=>{const t=TWIN.get(s.trim().replace(/['"]/g,'')+'|'+fs);return t?'"'+t+'"':s.trim();}).join(',');}
-function haloMask(el,hw,sd){
+function haloMask(el,hw,sd,fill){   // fill: light text on a dark halo keeps its counters dark (no holes)
   const cs=getComputedStyle(el), w=el.offsetWidth, h=el.offsetHeight, m=Math.ceil(hw+3*sd)+2, W=w+2*m, H=h+2*m;
   const k=document.createElement('div');
   k.style.cssText='position:absolute;left:0;top:0;visibility:hidden;width:'+w+'px;white-space:'+cs.whiteSpace+';line-height:'+cs.lineHeight+
@@ -381,7 +451,7 @@ function haloMask(el,hw,sd){
   const b=document.createElement('canvas');b.width=W;b.height=H;const bx=b.getContext('2d');
   if(sd>0)bx.filter='blur('+sd+'px)';bx.drawImage(s,0,0);
   const im=bx.getImageData(0,0,W,H);let holes=0;
-  for(let p=0;p<W*H;p++)if(!out[p]&&bgp(p)){im.data[4*p+3]=0;holes++;}
+  if(!fill)for(let p=0;p<W*H;p++)if(!out[p]&&bgp(p)){im.data[4*p+3]=0;holes++;}
   bx.putImageData(im,0,0);
   return {url:b.toDataURL(),m:m,holes:holes};
 }
@@ -399,7 +469,7 @@ function applyInk(a,t){
   el.style.color=st.ink;el.style.webkitTextStroke='0px transparent';
   const px=parseFloat(getComputedStyle(el).fontSize), hw=a.em*px, sd=LG.halo_blur_ratio*hw,
     key=[el.textContent,px,el.offsetWidth,el.offsetHeight,getComputedStyle(el).font].join('|');
-  if(a.key!==key&&el.offsetWidth>0&&document.fonts.status==='loaded'){a.key=key;const r=haloMask(el,hw,sd);
+  if(a.key!==key&&el.offsetWidth>0&&document.fonts.status==='loaded'){a.key=key;const r=haloMask(el,hw,sd,LG.light_halo_alpha_max>0&&a.sc.segs.every(g=>g.pol==='light'));
     el.style.setProperty('--hm',r.m+'px');el.style.setProperty('--halo-mask','url('+r.url+')');
     el.setAttribute('data-halo',JSON.stringify({w:hw,blur:sd,em:a.em,px:px,holes:r.holes}));}
   el.style.setProperty('--halo-c',rgba(st.halo,st.ha));
@@ -424,7 +494,8 @@ S.pins.forEach((p,i)=>{
   el.setAttribute('data-qa','anchor:pin:'+i);   // zero-size map point: probed position, ignored by R63 (no area)
   el.innerHTML='<div class="ring"></div><div class="dot"></div><div class="lab" data-qa="pin:'+i+'"></div>';
   el.querySelector('.lab').textContent=p.label;cam.appendChild(el);
-  if(BOXED)boxify(el.querySelector('.lab'),TH.label_box_colour);
+  if(p.flag)pinFlag(el.querySelector('.lab'),p.flag);
+  if(p.box===undefined?BOXED:p.box)boxify(el.querySelector('.lab'),TH.label_box_colour);
   const t0=f2t(p.at_frame);
   tl.set(el,{visibility:'visible'},t0);
   tl.fromTo(el.querySelector('.dot'),{scale:0},{scale:1,duration:0.35,ease:'back.out(2.5)'},t0);
@@ -439,20 +510,27 @@ function teardrop(p,i){
   const el=document.createElement('div');el.className='pin';el.style.left=p.px+'px';el.style.top=p.py+'px';
   el.setAttribute('data-qa','anchor:pin:'+i);
   el.innerHTML='<div class="pb"><div class="shadow"></div><div class="drop" data-qa="pinhead:'+i+'"><div class="tear"><i></i></div></div><div class="beside" data-qa="pin:'+i+'"></div></div>';
-  const lab=el.querySelector('.beside'), left=p.label_side==='left';
-  if(BOXED)boxify(lab,TH.label_box_colour);
-  if(LG){el.querySelector('.tear').style.boxShadow='0 0 0 '+LG.pin_outline_px+'px '+LG.paper_colour+',-3px 5px 10px rgba(0,0,0,.45)';if(!BOXED)adapt(lab,'pin:'+i,LG.label_halo_width_em);
+  const lab=el.querySelector('.beside'), left=p.label_side==='left', boxed=p.box===undefined?BOXED:p.box;
+  if(boxed)boxify(lab,TH.label_box_colour);
+  if(LG){el.querySelector('.tear').style.boxShadow='0 0 0 '+LG.pin_outline_px+'px '+LG.paper_colour+',-3px 5px 10px rgba(0,0,0,.45)';if(!boxed)adapt(lab,'pin:'+i,LG.label_halo_width_em);
     const dr=el.querySelector('.drop');dr.setAttribute('data-line','pin:'+i);lineInk(dr,[TH.pin_colour,LG.paper_colour]);}
   lab.textContent=p.label;lab.style[left?'right':'left']='34px';cam.appendChild(el);
+  if(p.flag)pinFlag(lab,p.flag);
   gsap.set(lab,{yPercent:-50,transformOrigin:(left?'100%':'0%')+' 50%'});
   const pb=el.querySelector('.pb'), t0=f2t(p.at_frame);
   tl.set(el,{visibility:'visible'},t0);
   tl.fromTo(el.querySelector('.drop'),{y:-150},{y:0,duration:0.6,ease:'bounce.out',immediateRender:true},t0);
   tl.fromTo(el.querySelector('.drop'),{opacity:0},{opacity:1,duration:0.12,ease:'none',immediateRender:true},t0);
   tl.fromTo(el.querySelector('.shadow'),{scale:0.3,opacity:0},{scale:1,opacity:1,duration:0.6,ease:MO.entrance,immediateRender:true},t0);
-  if(BOXED)pop(lab,t0+0.3);
+  if(boxed)pop(lab,t0+0.3);
   else tl.fromTo(lab,{opacity:0,x:left?14:-14},{opacity:1,x:0,duration:0.4,ease:MO.entrance,immediateRender:true},t0+0.3);
   legs.forEach(g=>tl.fromTo(pb,{scale:1/g.from.s},{scale:1/g.L.to.s,duration:g.d,ease:g.inv,immediateRender:g.k===0},g.t0));
+}
+function pinFlag(parent,f){
+  const img=document.createElement('img');img.src=f.href;img.alt='';
+  img.style.cssText='height:'+(S.height*f.pin_height_pct/100)+'px;width:auto;border-radius:3px;box-shadow:0 2px 5px #0008;vertical-align:middle;margin-right:8px';
+  parent.style.background='transparent';parent.style.boxShadow='none';
+  parent.prepend(img);
 }
 // big title: entity colour with a same-colour glow; years: bold white serif with a shadow; numbers: elastic bounce or
 // a counter (same rounding as hyperframes.figure_text)
@@ -624,7 +702,7 @@ const cam=q('#cam');
   const lab=el.querySelector('.beside'), lw=el.querySelector('.lw'), pb=el.querySelector('.pb');
   lab.textContent=a.text;
   lab.style.cssText+=";left:0;top:0;font-family:'EngTitle',EngInter,sans-serif;font-size:"+a.px+'px;letter-spacing:'+a.tracking+'em'+(a.water?';font-style:italic':'');
-  if(BOXED)window.__boxify(lab,TH.label_box_colour);
+  if(a.box===undefined?BOXED:a.box)window.__boxify(lab,TH.label_box_colour);
   if(window.__adapt)window.__adapt.el(lab,'area:'+a.key,S.legibility.halo_width_em);
   gsap.set(lab,{xPercent:-50,yPercent:-50,rotation:a.angle});
   cam.appendChild(el);

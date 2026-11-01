@@ -2,27 +2,22 @@
 from __future__ import annotations
 
 import re
+from contextvars import ContextVar
+from itertools import pairwise
 from pathlib import Path
 
 import hypoverum_core_rs as core
 
 from .. import hyperframes, profiles, props
-from ..util import EngineError
+from ..assets import flag_for
+from ..licence import LICENCE_ALLOW, OWN_LICENCES, norm_licence
 from ..timeline import HYPERFRAMES, NATIVE, CaptionWord, Timeline
+from ..util import EngineError
 from .core import Finding
 
-LICENCE_ALLOW = {
-    "publicdomain", "pd", "cc0", "cc010", "ccby", "ccby20", "ccby25", "ccby30", "ccby40", "ccbysa", "ccbysa20",
-    "ccbysa25", "ccbysa30", "ccbysa40", "pexelslicense", "pexels", "pixabaylicense", "pixabay", "unsplashlicense",
-    "unsplash", "mixkitlicense", "mixkit", "own", "generated",
-}
-OWN_LICENCES = {"own", "generated"}
 URL_RE = re.compile(r"^https?://[^\s/]+\.[^\s]+$")
 REPEAT_GAP_S = 1.0
-
-
-def norm_licence(s: str) -> str:
-    return re.sub(r"[\s_.\-]", "", s.lower())
+EXTRA_CREDIT_URLS: ContextVar[tuple[str, ...]] = ContextVar("extra_credit_urls", default=())
 
 
 def norm_text(s: str) -> list[str]:
@@ -45,6 +40,10 @@ def visual_refs(tl: Timeline) -> list[tuple[int | None, str | None, str | None, 
                 refs.append((s.seg_index, p.asset_id, p.asset, "prop"))
             for L in sc.layers or []:
                 refs.append((s.seg_index, L.asset_id, L.asset, "layer"))
+            for c in sc.flag_characters or []:
+                refs.append((s.seg_index, f"flag_{c.flag.code}", flag_for(c.flag.code, c.flag.variant), "flag character"))
+            for ins in sc.insets or []:
+                refs.append((s.seg_index, None, ins.asset, "inset image"))
     a = tl.audio_chain
     if a.bgm_path:
         refs.append((None, a.bgm_asset_id, a.bgm_path, "bgm"))
@@ -160,6 +159,8 @@ def r07_credits(tl: Timeline, project_dir: Path) -> list[Finding]:
     ctxt = ctxt_path.read_text(errors="replace") if ctxt_path.is_file() else None
     if ctxt is None:
         out.append(Finding("R07", "fail", "credits.txt missing in project dir"))
+    else:
+        ctxt += "\n" + "\n".join(EXTRA_CREDIT_URLS.get())
     for seg, ref, path, role in visual_refs(tl):
         c = tl.credit_for(ref=ref, path=path)
         if c is None:
@@ -191,7 +192,7 @@ def r44_duplicates(tl: Timeline, words: list[CaptionWord]) -> list[Finding]:
     out = []
     fps = tl.settings.fps
     nw = [(norm_text(w.word), w) for w in words]
-    for (a, wa), (b, wb) in zip(nw, nw[1:]):
+    for (a, wa), (b, wb) in pairwise(nw):
         if a and a == b and wb.start_frame - wa.end_frame <= REPEAT_GAP_S * fps:
             out.append(Finding("R44", "fail", f"caption word repeated: '{wa.word.strip()}' at frames {wa.start_frame} and {wb.start_frame}"))
     for s in tl.segments:

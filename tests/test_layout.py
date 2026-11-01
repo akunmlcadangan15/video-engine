@@ -232,7 +232,7 @@ def test_good_default_profile_has_no_layout_and_keeps_its_hash():
     p = profiles.load()
     assert p.layout is None and p.print is None
     dump = json.loads(p.data.model_dump_json())
-    for k in ("layout", "print", "camera", "motion", "transitions", "render", "grade", "resources"):   # off tables add nothing to the hash
+    for k in ("layout", "print", "camera", "motion", "transitions", "render", "grade", "resources", "flags", "fx"):   # off/default tables add nothing
         dump.pop(k)
     assert dump["gates"].pop("camera") is None
     assert dump["gates"].pop("anti_slop") is not None   # default rule levels add nothing to the hash
@@ -306,6 +306,13 @@ def test_good_layout_grid_and_label_offset_scale_with_width_and_height(project, 
 def test_good_label_style_box_reaches_layout_titles_and_figures(project, monkeypatch):
     """label_style box is no longer limited to scenes without a layout (print still owns the look when it is on)."""
     no_print(monkeypatch)
+    real = profiles.of
+
+    def boxed(tl):
+        p = real(tl)
+        th = p.data.theme.model_copy(update={"label_style": "box"})
+        return profiles.Profile(p.name, p.data.model_copy(update={"theme": th}), p.blake3 + "-box")
+    monkeypatch.setattr(profiles, "of", boxed)
     d, tl = project(beats_doc)
     from video_engine import hyperframes
     sc = hyperframes.scene_data(tl.segments[2], tl, d)

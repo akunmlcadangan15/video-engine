@@ -29,9 +29,8 @@ Work files: /dev/shm/video_engine/<project_id>/.
 """
 from __future__ import annotations
 
-import os
-
 import json
+import os
 import shutil
 import tempfile
 import time
@@ -39,12 +38,28 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import (
+    audio,
+    cache,
+    captions,
+    config,
+    grade,
+    hyperframes,
+    manifest,
+    mixer,
+    native,
+    profiles,
+    qa,
+    resources,
+    streams,
+    timeline,
+    transitions,
+)
 from .ai import AwaitingAgent
-from . import (audio, cache, captions, config, grade, hyperframes, manifest, mixer, native, profiles, qa, resources, streams,
-               timeline, transitions)
-from .sfx import kinds_used as sfx_kinds
 from .gates import audio_source, run_preflight, severity, style
-from .sound import cache as sound_cache, request as sound_request
+from .sfx import kinds_used as sfx_kinds
+from .sound import cache as sound_cache
+from .sound import request as sound_request
 from .timeline import HYPERFRAMES, NATIVE, Timeline
 from .util import EngineError, Timer, count_frames, video_info
 
@@ -170,7 +185,13 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
     lease = cache.session()
     held = lease.__enter__()
     gate_rows: dict | None = None
+    credit_token = None
     try:
+        from . import assets
+        from .gates.layer1 import EXTRA_CREDIT_URLS
+        tl, asset_credits = assets.ensure_credits(tl, project_dir)
+        tl = assets.resolve_timeline_paths(tl, project_dir)
+        credit_token = EXTRA_CREDIT_URLS.set(tuple(c["source_url"] for c in asset_credits if c["source_url"]))
         with timer.stage("captions") as st:
             words, src = audio.captions_for(tl, project_dir, use_cache=use_cache, pin=pin_words)
             st["note"] = f"{len(words)} words from {src}"
@@ -254,6 +275,8 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             "ok": not failed, "build_id": man["build_id"], "final": None if failed else str(out),
             "final_sha256": manifest.sha256(staged), "frames": frames, "expected_frames": tl.total_frames,
             "profile": profiles.of(tl).report(),
+            "credits_manifest": [c.model_dump() for c in tl.credits_manifest],
+            "additional_credits": bool(asset_credits),
             "video": video_info(staged),
             "loudness": {"target_lufs": L.target_lufs, "tolerance_lu": L.tolerance_lu,
                          "max_true_peak": L.true_peak, "measured_lufs": loud["I"], "measured_tp": loud["TP"],
@@ -277,6 +300,12 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             if raise_on_fail:
                 raise BuildFailed(msg, res, failed_report)
             return res
+        if asset_credits:
+            source = project_dir / "credits.txt"
+            text = source.read_text(encoding="utf-8") if source.is_file() else ""
+            urls = list(dict.fromkeys(c["source_url"] for c in asset_credits if c["source_url"] and c["source_url"] not in text))
+            extra = "\n\nAset tambahan\n" + "\n".join(urls) + "\n" if urls else ""
+            assets._atomic_text(out.parent / "credits.txt", text.rstrip() + extra)
         manifest.save(out.parent, man)
         os.replace(staged, out)
         res.report = write_json_atomic(out.parent / REPORT, report)
@@ -290,6 +319,8 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
                                           "timings": [list(r) for r in timer.rows]})
         raise
     finally:
+        if credit_token is not None:
+            EXTRA_CREDIT_URLS.reset(credit_token)
         timer.monitor.close()
         lease.__exit__(None, None, None)
         shutil.rmtree(stage, ignore_errors=True)

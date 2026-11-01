@@ -154,8 +154,11 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   camera fit as far as the map edge keeps the content centred in Z2. P01 (`[gates.camera]`) grades holds and the
   moving fraction of the planned camera.
 - Camera zoom limit (`[camera] max_zoom`, default 4, Geoverum 16): bounds camera keys, the layout fit and draft
-  `map_path` zooms. Map frames past the 3000 px derivative's density draw deep source tiles; M02 grades the source
-  width against the deepest zoom (warn < 1.0x, fail < 0.5x).
+  `map_path` zooms. Map frames past the 3000 px derivative's density draw deep source tiles, rastered at the width
+  the deepest zoom needs up to the full source width (JPEG rows below the deepest tile are not decoded; past a
+  640 Mpx decode budget the raster drops to half width). M02 grades that drawn raster's texels per screen px
+  (warn < 1.0x, fail < 0.5x). Tilted scenes drop will-change/force3D on the camera so Chrome rasters at the camera
+  scale instead of scale 1 under the perspective.
 - Colour grade (`grade` on a segment or beat, profile `[grade]`): lift/gamma/gain, saturation, tint, .cube LUT and
   strength baked into one 3D LUT, applied by ffmpeg lut3d to the rendered segment per frame range, under the captions.
   G01 checks every LUT file.

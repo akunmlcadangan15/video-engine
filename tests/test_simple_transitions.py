@@ -26,14 +26,15 @@ def _morph(d):
 
 
 # good ---------------------------------------------------------------------------------------------------------------
-def test_good_geoverum_crossfades_every_boundary_and_never_turns_a_page(project):
+def test_good_geoverum_cuts_type_changes_and_states_one_map(project):
     _, tl = project(tl_layout(("map", 10, None), ("photo", 10, None), ("map", 10, None), ("map", 10, None),
                               ("archive", 10, None), profile="geoverum"))
     T = profiles.of(tl).transitions
-    assert (T.kind, T.fade_s, T.page_turn, T.map_morph) == ("crossfade", 0.4, False, False)
+    assert (T.kind, T.same_type, T.fade_s, T.state_s, T.page_turn, T.map_morph) == \
+           ("cut", {"map": "state"}, 0.4, 0.2, False, False)
     ws = transitions.windows(tl)
-    assert [w.kind for w in ws] == ["crossfade"] * 4
-    assert [(w.f0, w.f1) for w in ws] == [(b - 6, b + 6) for b in (300, 600, 900, 1200)]
+    assert [w.kind for w in ws] == ["state"]                       # only the same-map boundary is not a cut
+    assert [(w.f0, w.f1) for w in ws] == [(897, 903)]
 
 
 def test_good_fade_frames_dissolve_monotonically_from_out_to_in():
@@ -58,10 +59,13 @@ def test_good_fade_frames_hold_the_outer_frames_across_the_boundary():
         assert np.abs(f.astype(float) - e).max() <= 1
 
 
-def test_good_crossfade_is_named_in_v01(project, monkeypatch):
-    _, tl = project(tl_layout(("photo", 10, None), ("photo", 10, None), profile="geoverum"))
+def test_good_explicit_crossfade_is_named_in_v01(project, monkeypatch):
+    def cross(d):
+        tl_layout(("photo", 10, None), ("photo", 10, None), profile="geoverum")(d)
+        d["segments"][1]["transition_in"] = "crossfade"
+    _, tl = project(cross)
     fs = [f for f in style.run_style(tl, Path("."), None) if f.gate == "V01" and f.level != "pass"]
-    assert not fs or "crossfade" in fs[0].message
+    assert fs and "crossfade" in fs[0].message
     assert levels(style.c01_cuts(tl, profiles.of(tl).gates.cuts), "C01")[0] == "pass"
 
 
