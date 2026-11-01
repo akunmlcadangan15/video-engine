@@ -76,7 +76,30 @@ def check(vendor: Path | None = None, run_binaries: bool = True) -> list[Check]:
     ch = x["chrome"]
     out.append(Check("chrome", ch.is_file() and bool(ch.stat().st_mode & 0o111), f"{p['chrome']['product']}@{p['chrome']['version']}",
                      "present" if ch.is_file() else "missing"))
+    if run_binaries:
+        out.append(check_ffmpeg())
     return out
+
+
+# ffmpeg is a system package (not vendored, not installed by --install); a build needs these from config.FFMPEG.
+FFMPEG_FILTERS = ("subtitles", "loudnorm", "sidechaincompress")
+FFMPEG_ENCODERS = ("libx264", "aac")
+
+
+def _ffmpeg_names(flag: str) -> set[str]:
+    """Names listed by `ffmpeg -hide_banner <flag>` (-filters / -encoders): the second column of each row."""
+    try:
+        out = subprocess.run([config.FFMPEG, "-hide_banner", flag], capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    return {p[1] for p in (line.split() for line in out.splitlines()) if len(p) > 1}
+
+
+def check_ffmpeg() -> Check:
+    filters, encoders = _ffmpeg_names("-filters"), _ffmpeg_names("-encoders")
+    missing = [f for f in FFMPEG_FILTERS if f not in filters] + [e for e in FFMPEG_ENCODERS if e not in encoders]
+    want = f"{config.FFMPEG} with {', '.join(FFMPEG_FILTERS + FFMPEG_ENCODERS)} (system package)"
+    return Check("ffmpeg", not missing, want, f"missing {', '.join(missing)}" if missing else "present")
 
 
 def _sha256(f: Path) -> str:

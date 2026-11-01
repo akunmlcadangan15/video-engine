@@ -65,6 +65,29 @@ def test_bad_missing_or_mismatched_component_fails(tmp_path, kw, bad):
     assert all(c.ok for n, c in res.items() if n != bad)
 
 
+def test_good_ffmpeg_with_required_filters_and_encoders_passes(monkeypatch):
+    names = {"-filters": {"subtitles", "loudnorm", "sidechaincompress", "scale"}, "-encoders": {"libx264", "aac"}}
+    monkeypatch.setattr(doctor, "_ffmpeg_names", names.__getitem__)
+    assert doctor.check_ffmpeg().ok
+
+
+@pytest.mark.parametrize("filters,encoders,gone", [
+    ({"subtitles", "loudnorm"}, {"libx264", "aac"}, "sidechaincompress"),
+    ({"subtitles", "loudnorm", "sidechaincompress"}, {"aac"}, "libx264"),
+    (set(), set(), "subtitles"),                                  # ffmpeg missing or unrunnable: nothing listed
+])
+def test_bad_ffmpeg_missing_filter_or_encoder_fails(monkeypatch, filters, encoders, gone):
+    monkeypatch.setattr(doctor, "_ffmpeg_names", {"-filters": filters, "-encoders": encoders}.__getitem__)
+    c = doctor.check_ffmpeg()
+    assert not c.ok and gone in c.got
+
+
+def test_good_ffmpeg_names_parses_real_listing():
+    if not (f := doctor._ffmpeg_names("-filters")):
+        pytest.skip("no runnable ffmpeg")
+    assert "scale" in f and "Filters:" not in f
+
+
 def test_bad_node_tarball_sha_mismatch_rejected(tmp_path, monkeypatch):
     v = _fake_vendor(tmp_path, node=False)
     monkeypatch.setattr(doctor.urllib.request, "urlretrieve", lambda url, dst: Path(dst).write_bytes(b"tampered"))
