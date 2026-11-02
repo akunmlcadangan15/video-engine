@@ -37,7 +37,7 @@ def is_active(g: reg.Gate, p) -> bool:
     """True when profile `p` (profiles.Profile) switches the gate on. Data-dependent gates (props, snapshots) count
     as on: whether they find anything depends on the timeline."""
     gt = p.gates
-    tables = {"H01": gt.hook, "C01": gt.cuts, "V01": gt.visual_type, "N01": gt.novelty, "P01": gt.camera,
+    tables = {"H01": gt.hook, "C01": gt.cuts, "V01": gt.visual_type, "N01": gt.novelty, "P01": gt.camera, "P03": gt.camera,
               "K01": gt.keyword_return, "K02": gt.ending_keyword, "C02": gt.cta, "D01": gt.duration,
               "D02": gt.duration_exact, "S01": gt.silence}
     if g.id in tables:

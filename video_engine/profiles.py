@@ -137,13 +137,15 @@ class EndingKeywordGate(_Strict):
 
 
 class CameraGate(_Strict):
-    """P01: camera motion over the timeline (moving fraction, longest hold) from the planned camera."""
+    """P01: camera motion over the timeline (moving fraction, longest hold) from the planned camera; P03: path
+    metrics per segment."""
     hold_warn_s: float = Field(1.7, gt=0)               # WARN when a hold (camera still) lasts longer
     hold_fail_s: float = Field(3.0, gt=0)               # FAIL when a hold lasts longer
     moving_warn: float = Field(0.8, ge=0, le=1)         # WARN when the moving fraction of the measured frames is lower
     still_zoom_ln_s: float = Field(0.05, gt=0)          # a frame is still when |zoom speed| < this (ln scale / s) ...
     still_pan_w_s: float = Field(0.02, gt=0)            # ... and the frame-centre speed < this (frame widths / s)
     min_drift_per_s: float | None = Field(None, gt=0)   # P02: theme camera_drift_per_s must reach this (None = off)
+    step_warn: float | None = Field(None, gt=0, le=1)   # P03: WARN above this one-frame relative speed change (None = info)
 
     @model_validator(mode="after")
     def _o(self):

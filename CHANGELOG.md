@@ -7,6 +7,9 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Ditambahkan
 
+- **Gate P03 (jalur kamera)**: per segmen melaporkan panjang lintasan kamera, kecepatan layar puncak, dan perubahan
+  kecepatan terbesar dalam satu frame (info). Dengan `[gates.camera] step_warn` gate ini memperingatkan lompatan
+  kecepatan; default mati karena whip memang berubah cepat.
 - **`[render] final_bit_depth`** (8 | 10): file akhir 10-bit (yuv420p10le, x264 High 10) untuk mengurangi banding pada
   gradasi. File antara tetap 8-bit. Build menolak dengan pesan jelas bila libx264 di ffmpeg tidak mendukung 10-bit.
 - **Profil `geoverum`**: file akhir kini 10-bit, preset `veryslow`, CRF 12, batas 40 Mb/s (sebelumnya 8-bit
