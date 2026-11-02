@@ -420,8 +420,8 @@ class CameraProfile(_Strict):
                 "dir": 1 if self.pulse_direction == "in" else -1}
 
 
-TRANSITION_KINDS = ("cut", "crossfade", "zoom_whip", "page_turn", "state")
-TransitionKind = Literal["cut", "crossfade", "zoom_whip", "page_turn", "state"]
+TRANSITION_KINDS = ("cut", "crossfade", "zoom_whip", "zoom_through", "page_turn", "state")
+TransitionKind = Literal["cut", "crossfade", "zoom_whip", "zoom_through", "page_turn", "state"]
 
 
 class TransitionsProfile(_Strict):
@@ -438,6 +438,13 @@ class TransitionsProfile(_Strict):
     whip_in_s: float = Field(0.4, ge=0.05, le=1.5)      # zoom_whip: incoming shot settles from whip_scale to 1
     whip_scale: float = Field(1.3, ge=1.0, le=2.0)      # zoom_whip: outgoing end scale and incoming start scale
     whip_blur: float = Field(0.12, ge=0.0, le=0.5)      # zoom_whip: peak radial blur length (fraction of the scale)
+    through_out_s: float = Field(0.4, ge=0.1, le=1.5)   # zoom_through: outgoing last frames accelerate (power2.in) to through_scale
+    through_scale: float = Field(4.0, ge=1.0, le=8.0)   # zoom_through: outgoing end scale (blur rising to through_blur)
+    through_blur: float = Field(0.25, ge=0.0, le=0.6)   # zoom_through: peak radial blur length (fraction of the scale)
+    through_in_s: float = Field(0.5, ge=0.05, le=3.0)   # zoom_through: incoming first frames settle from through_in_scale
+    through_in_scale: float = Field(1.0, ge=1.0, le=4.0)   # zoom_through: incoming start scale (1 = the scene's camera lands)
+    through_blur_in_s: float = Field(0.3, ge=0.0, le=3.0)  # zoom_through: radial blur fading on the incoming first frames
+    through_flash: float = Field(0.0, ge=0.0, le=1.0)   # zoom_through: white flash strength at the boundary (0 = none)
     page_s: float = Field(0.4, ge=0.1, le=1.5)          # page_turn: the outgoing last frame folds away over the incoming
     state_s: float = Field(0.2, ge=0.1, le=0.4)         # state: very short dissolve when both sides share the same base map
     page_turn: bool = True                              # false: page_turn is not allowed anywhere in this profile
@@ -453,6 +460,8 @@ class TransitionsProfile(_Strict):
             raise ValueError(f"transitions.by_type / same_type: unknown visual type(s) {', '.join(bad)} (known: {', '.join(known)})")
         if self.whip_blur_in_s > self.whip_in_s:
             raise ValueError("transitions.whip_blur_in_s must be <= whip_in_s")
+        if self.through_blur_in_s > self.through_in_s:
+            raise ValueError("transitions.through_blur_in_s must be <= through_in_s")
         if not self.page_turn and "page_turn" in self._kinds():
             raise ValueError("transitions: page_turn = false, but kind / by_type / same_type use page_turn")
         return self
@@ -1130,6 +1139,10 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
                    ("render", RenderProfile), ("flags", FlagsProfile), ("fx", FxProfile)):
         if dump.get(k) == json.loads(cls().model_dump_json()):
             dump.pop(k)            # profiles without [camera] / [motion] / [transitions] / [render] / [fx] values keep their hash
+    if isinstance(dump.get("transitions"), dict):   # zoom_through keys at their defaults add nothing to the hash
+        dflt = json.loads(TransitionsProfile().model_dump_json())
+        for k in [k for k in dump["transitions"] if k.startswith("through_") and dump["transitions"][k] == dflt[k]]:
+            dump["transitions"].pop(k)
     if dump.get("grade") is None:
         dump.pop("grade", None)    # profiles without [grade] keep their hash
     if dump["gates"].get("camera") is None:

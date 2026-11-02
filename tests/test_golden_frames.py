@@ -1,5 +1,5 @@
 """Golden frames: pixel regression tests for the paths that render without Chrome (native Ken Burns over a still,
-native footage with a pan, the crossfade, state, zoom whip and page turn transitions, a colour grade). Each case renders a few frames at a
+native footage with a pan, the crossfade, state, zoom whip, zoom through and page turn transitions, a colour grade). Each case renders a few frames at a
 small size and compares them with tests/golden/<name>.png.
 
 Tolerance (`_close`): mean absolute difference <= 1.5 levels and at most 0.5 % of the samples off by more than 24,
@@ -107,6 +107,13 @@ def test_golden_zoom_whip_frames():
     tail, head = [_scene(0)] * 6, [_scene(1)] * 6
     fr = transitions.whip_frames(tail, head, profiles.TransitionsProfile(), 30)
     _check("transition_zoom_whip", [fr[2], fr[5], fr[6], fr[9]])
+
+
+def test_golden_zoom_through_frames():
+    T = profiles.TransitionsProfile(through_flash=0.6, through_in_scale=1.5)
+    tail, head = _moving(0, 12), _moving(1, 15)
+    fr = transitions.through_frames(tail, head, T, 30)
+    _check("transition_zoom_through", [fr[5], fr[11], fr[12], fr[18], fr[26]])
 
 
 def test_golden_page_turn_frames():

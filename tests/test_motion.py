@@ -338,11 +338,38 @@ def test_bad_transition_window_longer_than_a_segment_fails_c01(project, monkeypa
         transitions.render(tl, [], Path("."))
 
 
+def test_good_zoom_through_window_and_frames(project, monkeypatch):
+    """zoom_through: through_out_s before the boundary, through_in_s after; the push-in and the blur grow to the
+    boundary, the flash peaks on the last outgoing frame and fades over through_blur_in_s."""
+    _, tl = project(tl_layout(("map", 10, None), ("photo", 10, None)))
+    T = profiles.TransitionsProfile(kind="zoom_through", through_flash=0.8)
+    _profile(monkeypatch, transitions=T)
+    (w,) = transitions.windows(tl)
+    assert (w.kind, w.f0, w.f1) == ("zoom_through", 300 - 12, 300 + 15)
+    grey = [np.full((64, 36, 3), 100, np.uint8)] * 12
+    fr = transitions.through_frames(grey, [np.full((64, 36, 3), 100, np.uint8)] * 15, T, 30)
+    mean = [float(f.mean()) for f in fr]
+    assert len(fr) == 27 and mean[11] == max(mean) and mean[11] == pytest.approx(100 + 155 * 0.8, abs=1)
+    assert mean[0] < 101 and mean[-1] == pytest.approx(100, abs=0.5)
+    assert [m for m in mean[12:21]] == sorted(mean[12:21], reverse=True)    # flash fading on the incoming frames
+
+
+def test_good_zoom_through_by_transition_in_and_its_keys_stay_out_of_the_profile_hash(project):
+    _, tl = project(lambda d: (tl_layout(("map", 10, None), ("photo", 10, None))(d),
+                               d["segments"][1].update(transition_in="zoom_through")))
+    assert transitions.kind_at(tl, 1) == "zoom_through" and transitions.windows(tl)[0].kind == "zoom_through"
+    assert profiles.load().blake3.startswith("6f0c27f00133")
+
+
 def test_bad_transitions_profile_values_rejected():
     with pytest.raises(ValidationError):
         profiles.TransitionsProfile(by_type={"cartoon": "page_turn"})
     with pytest.raises(ValidationError):
         profiles.TransitionsProfile(same_type={"cartoon": "zoom_whip"})
+    with pytest.raises(ValidationError, match="through_blur_in_s"):
+        profiles.TransitionsProfile(through_in_s=0.2, through_blur_in_s=0.4)
+    with pytest.raises(ValidationError):
+        profiles.TransitionsProfile(through_scale=9.0)
     with pytest.raises(ValidationError):
         profiles.TransitionsProfile(whip_blur_in_s=0.5, whip_in_s=0.2)
 
@@ -473,6 +500,13 @@ def test_good_layout_without_fly_keeps_its_hash(tmp_path, monkeypatch):
         dump.pop("flags")                     # default flag settings add nothing to the hash
     if dump.get("fx") == json.loads(profiles.FxProfile().model_dump_json()):
         dump.pop("fx")                        # default fx settings add nothing to the hash
+    dt = json.loads(profiles.TransitionsProfile().model_dump_json())
+    for k in [k for k in dump["transitions"] if k.startswith("through_") and dump["transitions"][k] == dt[k]]:
+        dump["transitions"].pop(k)            # default zoom_through values add nothing to the hash
+    if dump["theme"].get("reveal_ease") == list(profiles.REVEAL_EASE):
+        dump["theme"].pop("reveal_ease")      # nor does the default reveal ease
+    if dump["gates"]["camera"].get("step_warn") is None:
+        dump["gates"]["camera"].pop("step_warn", None)   # nor an unset P03 step_warn
     assert prof.blake3 == blake3_json(dump)   # an absent [layout.fly] adds nothing to the hash
 
 

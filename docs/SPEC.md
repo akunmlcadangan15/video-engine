@@ -215,8 +215,8 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   and exit scale applies to the label inside the counter-scaled box, and the boundary transitions (zoom whip, page
   turn) act on the rendered frames, so both keep their designed motion.
 - Transitions (`[transitions]`, off by default): crossfade (`fade_s`, centred on the boundary; before it the
-  incoming first frame is held, after it the outgoing last frame), zoom whip or page turn per segment boundary, by
-  visual type; drawn
+  incoming first frame is held, after it the outgoing last frame), zoom whip, zoom through (a larger push-in for
+  scene changes with an optional white flash) or page turn per segment boundary, by visual type; drawn
   as lossless clips from the segment files (`video_engine/transitions.py`) and overlaid frame-exactly in the final
   mux under captions and watermark; without transitions the mux command is unchanged. C01 grades hard cuts (warn
   levels) and shot changes (fail levels).

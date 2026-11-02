@@ -7,6 +7,10 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Ditambahkan
 
+- **Transisi `zoom_through`**: zoom-through besar untuk pergantian adegan (gaya Short referensi Antarctica). Adegan
+  lama zoom makin cepat sampai `through_scale` (default 4x) dengan blur radial, kilatan putih opsional
+  (`through_flash`), lalu adegan baru mendarat (power4.out). Bisa dipilih per batas segmen (`transition_in`) atau
+  lewat profil. Perilaku default tidak berubah.
 - **Gerakan kamera `reveal`** (`camera_path` move): satu gerakan sepanjang jarak antar-key yang cepat di awal lalu
   melambat panjang ke key, dengan kurva `theme.reveal_ease` yang dikalibrasi dari Short referensi Pan-American.
   Draft AI juga bisa memilihnya.

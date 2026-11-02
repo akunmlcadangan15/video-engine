@@ -977,7 +977,7 @@ class Segment(Strict):
     overlays: list[Overlay] = []
     gsap_scene_config: Optional[GsapScene] = None
     visual_type: Optional[VisualType] = None   # None = inferred: HyperFrames map, native still photo, native video
-    transition_in: Optional[Literal["cut", "crossfade", "state", "zoom_whip", "page_turn"]] = None   # overrides profile
+    transition_in: Optional[Literal["cut", "crossfade", "state", "zoom_whip", "zoom_through", "page_turn"]] = None   # overrides profile
     grade: Optional[Grade] = None              # full-frame grade (video_engine/grade.py); None = profile [grade]
     hold: Optional[Literal["read"]] = None     # intent: the viewer reads over the whole segment (gates/severity.py)
     goal: Optional[str] = Field(None, max_length=200)   # what the viewer must understand or feel (information)
