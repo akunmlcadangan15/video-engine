@@ -299,6 +299,35 @@ def cmd_taste(a) -> int:
     return 0
 
 
+def cmd_gates(a) -> int:
+    from . import gate_tools, profiles
+    if a.stats:
+        if a.profile or a.format == "md" or a.id:
+            raise EngineError("--stats takes report paths only; --profile, gate ids and --format md do not apply")
+        try:
+            files = gate_tools.collect_reports(a.stats)
+        except FileNotFoundError as e:
+            raise EngineError(str(e)) from None
+        s = gate_tools.stats(files)
+        print(json.dumps(s, indent=2) if a.format == "json" else gate_tools.render_stats(s))
+        return 0 if files else 1
+    try:
+        gates = gate_tools.select(a.id, a.layer, a.kind)
+    except ValueError as e:
+        raise EngineError(str(e)) from None
+    if a.format == "md":
+        if a.profile or a.id or a.layer or a.kind:
+            raise EngineError("--format md prints the whole registry; it takes no filters or --profile")
+        print(gate_tools.render_markdown())
+        return 0
+    rows = gate_tools.rows(gates, profiles.load(a.profile) if a.profile else None)
+    if a.format == "json":
+        print(json.dumps(rows, indent=2))
+    else:
+        print(gate_tools.render_detail(rows) if a.id else gate_tools.render_table(rows))
+    return 0 if rows else 1
+
+
 def cmd_import_shots(a) -> int:
     from . import importer
     subs = _pairs(a.substitute, "--substitute")
@@ -551,6 +580,19 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--like", help="what was liked")
     x.add_argument("--reject", help="what was rejected")
     x.add_argument("--why", help="the reason (required with --like / --reject)")
+    x = add("gates", cmd_gates, "List the gates (id, class, layer, rule); with --profile, what each does in that "
+                                "channel profile (off / warns / blocks); with --stats, how often each gate failed, warned "
+                                "or was waived in build reports. Read-only.")
+    x.add_argument("id", nargs="*", help="gate id(s) to describe (default: all)")
+    x.add_argument("--profile", help="show the effect of each gate under this channel profile (profiles/<name>.toml)")
+    x.add_argument("--layer", help="only this layer (static, math, dom, place, layout, props, visual, profile, post, "
+                                   "delivery, meta)")
+    x.add_argument("--kind", choices=["technical", "style"], help="only this class")
+    x.add_argument("--format", choices=["table", "json", "md"], default="table",
+                   help="md = the generated gate index of docs/GATES.md")
+    x.add_argument("--stats", nargs="+", metavar="PATH",
+                   help="count fails/warns/waived per gate in build reports: report files, project folders "
+                        "(out/build_report*.json) or a folder of projects")
     x = add("import-shots", cmd_import_shots, "Build a project (master_timeline.json, credits.txt, assets/) from a "
                                                 "shot-list CSV of an existing edit. Sources are only read.")
     x.add_argument("csv")

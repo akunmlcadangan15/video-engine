@@ -16,6 +16,13 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from . import config
+from .gate_registry import (  # noqa: F401  (re-exported: other modules read these from `profiles`)
+    ANTI_SLOP_IDS,
+    KNOWN_GATE_IDS,
+    NEVER_ADVISORY,
+    STYLE_GATE_IDS,
+    TECHNICAL_GATE_IDS,
+)
 from .grade import Grade
 from .layout import LayoutProfile
 from .util import EngineError, blake3_json
@@ -144,15 +151,8 @@ class CameraGate(_Strict):
         return self
 
 
-STYLE_GATE_IDS = ("H01", "C01", "C02", "V01", "N01", "P01", "P02", "K01", "K02", "D01", "D02", "S01",
-                  "AS01", "AS02", "AS03", "AS05", "AS06")
-TECHNICAL_GATE_IDS = ("A01", "A02", "AS04", "B01", "E01", "F01", "F02", "F03", "F04", "G01", "L01", "L02", "L03", "L04",
-                      "L05", "L06", "L07", "L08", "L09", "L10", "L22", "M01", "M02", "M03", "M04", "G02", "O01",
-                      "R07", "R14", "R38", "R44", "R56", "R56px", "R62", "R63", "R64", "T01", "T02", "W01", "Z01")
-KNOWN_GATE_IDS = STYLE_GATE_IDS + TECHNICAL_GATE_IDS
-NEVER_ADVISORY = ("T02", "R07", "R14", "A01", "A02", "W01", "R38", "R56px", "M01", "M03", "G01", "L22")
-
-ANTI_SLOP_IDS = ("AS01", "AS02", "AS03", "AS04", "AS05", "AS06")
+# Gate id lists: derived from the gate registry (video_engine/gate_registry.py), the single definition of every gate.
+# Imported above and re-exported here because timeline.py, severity.py and the gate modules read them from `profiles`.
 
 
 class GeoGate(_Strict):
