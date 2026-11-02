@@ -15,7 +15,7 @@ seterusnya), karena render yang gagal jauh lebih mahal daripada pemeriksaannya.
 
 ## Mulai cepat
 
-Syarat: Python 3.10 atau lebih baru, toolchain Rust, `ffmpeg` di `PATH`, dan sekitar 700 MB ruang disk untuk toolchain
+Syarat: Linux x64 (macOS belum didukung, lihat di bawah), Python 3.10 atau lebih baru, toolchain Rust, `ffmpeg` di `PATH`, dan sekitar 700 MB ruang disk untuk toolchain
 HyperFrames. Mesin render memakai ffmpeg 7.1; `engine doctor` memeriksa bahwa ffmpeg punya filter `subtitles`,
 `loudnorm`, `sidechaincompress` serta encoder `libx264` dan `aac`.
 
@@ -37,6 +37,9 @@ engine preflight .        # semua gate tanpa render
 engine build .            # out/final.mp4 dan out/build_report.json (sekitar 20 detik)
 engine sheet .            # out/sheet.png: satu kotak per segmen
 ```
+
+Toolchain HyperFrames terkunci untuk Linux x64: `engine doctor --install` mengunduh Node dan Chrome versi Linux, dan
+folder scratch bawaan ada di `/dev/shm`. Di macOS, tes dan build yang memakai Chrome belum bisa dijalankan.
 
 Di mesin render Hypoverum, jangan panggil `engine build` langsung. Pakai wrapper `engine-build` (kunci render, cek
 disk, environment). Lihat [AGENTS.md](AGENTS.md).

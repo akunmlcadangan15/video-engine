@@ -265,7 +265,7 @@ The full rule of each gate, with its thresholds. Where this list and the index d
   Props join the caption avoid-list (R63) for their frames.
 - **F04** (layer props): On every shown frame the prop box lies inside the safe area (60 px sides, 100 px top/bottom); fail otherwise.
 - **H01, C01, C02, V01, N01, P01, K01, K02, D01, D02** (layer profile): Channel style gates, after layer 2 (see [Style gate configuration](#style-gate-configuration))
-- **AS01-AS06** (layer profile): Anti-AI-slop gates: decorative side-strip panels, copy tics, motion tics, minimum readable on-screen time, composition source tells in project sources and built HTML, and tell-hue literals (see Profiles).
+- **AS01-AS06** (layer profile): Anti-AI-slop gates: decorative side-strip panels, copy tics, motion tics, minimum readable on-screen time, composition source tells in project sources and built HTML, and tell-hue literals (see [Style gate configuration](#style-gate-configuration)).
   AS01, AS02, AS03, AS05, AS06 are style-class and warn by default; AS04 is technical-class, warn by default.
   Geoverum has no `[gates.anti_slop]` table, so all six stay at warn (AS01 is not raised to fail).
 - **G02** (layer profile): Geo/fact gate on map regions and geographic pins (see [Style gate configuration](#style-gate-configuration)); technical class, always blocks on fail

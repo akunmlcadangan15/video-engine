@@ -22,7 +22,7 @@ Schema check only.
 All pre-flight gates without rendering.
 `--captions` transcribes the voiceover for caption gates.
 `--write-fixes` writes auto-fixes (camera intensity, caption y overrides) back into the timeline.
-`--mode draft` reports a fail of every technical gate that a profile may make advisory as a warning (see Draft builds in GATES.md); the default `release` changes nothing.
+`--mode draft` reports a fail of every technical gate that a profile may make advisory as a warning (see [Draft builds](GATES.md#draft-builds)); the default `release` changes nothing.
 
 ## `engine build P [--no-cache] [--relock] [--label L] [--timing-tsv F] [--ai-qa [--provider NAME]] [--resume] [--keep-workdir] [--mode release|draft] [--repin]`
 
@@ -36,7 +36,7 @@ Missing music or SFX of a profile `[sound]` (docs/SOUND.md): writes `P/out/sound
 When the build's cache evictions deleted or skipped files, the command prints `cache: evicted N, skipped M leased` with one `skipped (leased): <path>` line per skipped file and the reclaimed stale leases.
 Other directories under the cache root are kept.
 `--timing-tsv` appends per-stage wall times.
-`--mode draft` is a trial build: technical gates that a profile may make advisory only warn, and the output goes to `out/draft/final.draft.mp4` with its own `build_report.json` (marked `"mode": "draft"`) and `build_manifest.json`; `out/final.mp4` and its report stay untouched and `engine deliver` refuses a draft (see Draft builds in GATES.md).
+`--mode draft` is a trial build: technical gates that a profile may make advisory only warn, and the output goes to `out/draft/final.draft.mp4` with its own `build_report.json` (marked `"mode": "draft"`) and `build_manifest.json`; `out/final.mp4` and its report stay untouched and `engine deliver` refuses a draft (see [Draft builds](GATES.md#draft-builds)).
 `--repin` pins the caption words again before the pre-flight when they are stale (gate W01); it runs the same step as `engine words`. Without the flag a stale pin fails the build.
 `--relock` drops the sound lock of `out/build_manifest.json` and resolves music and SFX again (see [Build manifest](BUILD.md#build-manifest)).
 
@@ -69,10 +69,10 @@ No upload; the Projects Manager bot handles Google Drive delivery.
 
 ## `engine draft P [--out F] [--force] [--max-repairs 0-2] [--no-director] [--review [--review-rounds 1-2]] [--video-proxies N] [--voiceover F] [--script F] [--no-dom] [--provider NAME] [--resume]`
 
-The AI provider drafts a timeline (see Draft).
+The AI provider drafts a timeline (see [Draft](AI.md#draft)).
 Writes `master_timeline.draft.json` (or `.rejected.json` when gates still fail after the repair rounds) and `draft_report.json`.
 Never overwrites `master_timeline.json` unless `--out` points there and `--force` is given.
-`--no-director` skips the storyboard stage; `--review` adds the review pass (see Director stage).
+`--no-director` skips the storyboard stage; `--review` adds the review pass (see [Director stage](AI.md#director-stage-engine-draft)).
 
 ## `engine director SRC [--start S] [--seconds N] [--provider NAME] [--resume] [--bundle-root D]`
 

@@ -230,7 +230,7 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             words, src = audio.captions_for(tl, project_dir, use_cache=use_cache, pin=pin_words)
             st["note"] = f"{len(words)} words from {src}" + (" (stale pin replaced: --repin)" if repinned else "")
         with timer.stage("preflight") as st:
-            rep = run_preflight(tl, project_dir, words, workdir=workdir, ai_qa=ai_qa, draft=draft)
+            rep = run_preflight(tl, project_dir, words, workdir=workdir, ai_qa=ai_qa, **({"draft": True} if draft else {}))
             st["note"] = " ".join(f"{k}={v}" for k, v in rep.timings.items())
         gate_rows = severity.summary(rep.findings, tl)
         if not rep.ok:

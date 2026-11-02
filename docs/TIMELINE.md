@@ -19,7 +19,7 @@ The rules of `master_timeline.json` and of captions.
     Every other gate is rejected when the timeline loads; a gate may be listed once.
 - `hold: "read"` (optional, on a segment or a HyperFrames beat): the viewer reads there;
     P01 hold and N01 gap findings starting inside it become info unless the gate is required, and no camera pulse is placed on that beat's wait.
-- Time unit is the integer frame. `start_frame` inclusive, `end_frame` exclusive. Seconds are converted with `sec_to_frame` (rounds half away from zero, clamps negatives to 0; see RUST.md, Frame and time rules).
+- Time unit is the integer frame. `start_frame` inclusive, `end_frame` exclusive. Seconds are converted with `sec_to_frame` (rounds half away from zero, clamps negatives to 0; see [RUST.md, Frame and time rules](RUST.md#frame-and-time-rules)).
 - Segments are contiguous from frame 0 (gate T02).
 - `engine_type`:
   - `NATIVE_RUST_FFMPEG`: exactly one of `source_image` / `source_video`.

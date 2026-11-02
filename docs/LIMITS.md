@@ -1,5 +1,6 @@
 # Limits and not implemented
 
+- Platform: Linux x64 only (see [ENVIRONMENT.md](ENVIRONMENT.md)); macOS and Windows are not supported by the toolchain installer.
 - Engine upload: not implemented; the Projects Manager bot handles Google Drive delivery.
 - AI QA: covered by mock tests; not part of the default build.
 - OpenAI-compatible providers: covered by mock tests; `deepseek` is registered in `ai_providers.toml` as the Gemini fallback.

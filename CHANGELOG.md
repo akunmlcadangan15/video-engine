@@ -23,7 +23,10 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 - **`engine taste CHANNEL --lint`** dan `--check`: entri selera boleh membawa kondisi yang harus dipenuhi profil.
 - **`VIDEO_ENGINE_WORKSPACE`**: satu variabel untuk lokasi default geo library, open assets, stock, dan unduhan.
 - **Dokumentasi**: README ringkas berbahasa Indonesia, indeks `docs/README.md`, glosarium, `CONTRIBUTING.md`, dan
-  `scripts/check_docs.py`.
+  `scripts/check_docs.py` (tautan, anchor, indeks, indeks gate yang dibuat otomatis). Usulan yang belum dibangun ada
+  di `docs/proposals/` (format dan frame rate lain; kunci render).
+- **CI**: job `rust` (`cargo fmt --check`, `clippy -D warnings`, `cargo test`), job `docs`, dan ruff yang kini juga
+  menolak import dan variabel yang tidak terpakai.
 
 ### Diubah
 
@@ -34,6 +37,10 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
   page-turn dan perkamen dipindah ke daftar yang ditolak, dan true peak dinyatakan -1.5 dBTP.
 - **README lama** dipecah menjadi `docs/ENVIRONMENT.md`, `CLI.md`, `TIMELINE.md`, `PROFILES.md`, `GATES.md`, `BUILD.md`,
   `DELIVERY.md`, `AI.md`, `TESTING.md`, dan `LIMITS.md`. Peta pindahnya ada di README.
+
+- **Dokumentasi platform**: toolchain HyperFrames terkunci untuk Linux x64; `docs/ENVIRONMENT.md` dan
+  `docs/LIMITS.md` kini menyebutnya.
+- `cargo fmt` pada `ass.rs` (hanya format; output crate dan `ALGO_VERSION` tidak berubah).
 
 ### Diperbaiki
 

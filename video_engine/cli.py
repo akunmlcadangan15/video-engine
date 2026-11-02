@@ -70,7 +70,7 @@ def cmd_preflight(a) -> int:
         words = tl.captions
     elif a.captions:
         words, _ = audio.captions_for(tl, p)
-    rep = gates.run_preflight(tl, p, words, dom=not a.no_dom, ai_qa=_ai_qa(a, p), draft=a.mode == "draft")
+    rep = gates.run_preflight(tl, p, words, dom=not a.no_dom, ai_qa=_ai_qa(a, p), **({"draft": True} if a.mode == "draft" else {}))
     print(rep.summary())
     if a.write_fixes and (rep.fixes):
         if rep.caption_y_overrides:

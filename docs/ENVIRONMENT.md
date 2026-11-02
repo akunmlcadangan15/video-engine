@@ -7,6 +7,10 @@ Where the engine runs and which variables configure it.
 - Which tools and versions the engine needs, and how to check them (`engine doctor`).
 - Which `VIDEO_ENGINE_*` variables exist, their defaults and what they change.
 
+Platform: Linux x64 only.
+`engine doctor --install` downloads the Linux x64 Node and the `linux64` chrome-headless-shell, `config.CHROME` points at the Linux layout, and the default scratch root is `/dev/shm/video_engine`.
+Other platforms are not supported.
+
 | Item | Value |
 |---|---|
 | Python | `/workspace/engine-venv` (`source /workspace/engine-venv/bin/activate`) |

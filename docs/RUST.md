@@ -38,7 +38,7 @@ Windows (`W4`) are `(x, y, w, h)` floats in source pixels: finite, `w > 0`, `h >
 No function raises `PanicException`; the errors listed are the only ones.
 
 ```
-ALGO_VERSION: str                                  # "2"; part of every render cache key (see Cache-key rules)
+ALGO_VERSION: str                                  # "2"; part of every render cache key (see [Cache-key rules](#cache-key-rules))
 version() -> str                                   # CARGO_PKG_VERSION
 set_threads(n: int) -> int                         # size the global rayon pool once; returns size in effect
     # ValueError: n outside 1..=256. First call wins; if the pool already started, its size stays.
