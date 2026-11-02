@@ -55,6 +55,18 @@ def tree_hash(root: Path) -> str:
     return h
 
 
+@functools.lru_cache(maxsize=8)
+def x264_pix_fmts(exe: str) -> frozenset[str]:
+    """Pixel formats the libx264 encoder of an ffmpeg binary accepts (empty when it has none)."""
+    try:
+        out = subprocess.run([exe, "-hide_banner", "-h", "encoder=libx264"], capture_output=True, text=True,
+                             timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        return frozenset()
+    line = next((x for x in out.splitlines() if "pixel formats" in x.lower()), "")
+    return frozenset(line.split(":", 1)[1].split()) if ":" in line else frozenset()
+
+
 def ffmpeg_version(exe: str) -> str:
     """`-version` output of an ffmpeg binary, memoised per (resolved path, size, mtime_ns)."""
     path = shutil.which(str(exe)) or str(exe)

@@ -7,6 +7,10 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Ditambahkan
 
+- **`[render] final_bit_depth`** (8 | 10): file akhir 10-bit (yuv420p10le, x264 High 10) untuk mengurangi banding pada
+  gradasi. File antara tetap 8-bit. Build menolak dengan pesan jelas bila libx264 di ffmpeg tidak mendukung 10-bit.
+- **Profil `geoverum`**: file akhir kini 10-bit, preset `veryslow`, CRF 12, batas 40 Mb/s (sebelumnya 8-bit
+  `slower`, 25 Mb/s).
 - **Registry gate** (`video_engine/gate_registry.py`): satu definisi untuk setiap gate. Daftar id gate di
   `profiles.py` kini diturunkan darinya.
 - **`engine gates`**: daftar gate, efeknya di sebuah profil (`--profile`: off, warns, blocks), indeks Markdown

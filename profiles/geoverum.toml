@@ -122,10 +122,11 @@ hf_crf = 8
 segment_crf = 8               # intermediates: near-lossless, no fastdecode tune (keeps CABAC and deblocking)
 segment_preset = "medium"
 segment_tune = "none"
-final_crf = 12                # upload file: x264 slower, CRF 12, capped at 25 Mb/s
-final_preset = "slower"
+final_crf = 12                # upload file: x264 veryslow, CRF 12, 10-bit High 10, capped at 40 Mb/s
+final_preset = "veryslow"
 final_tune = "none"
-final_maxrate_kbps = 25000
+final_maxrate_kbps = 40000
+final_bit_depth = 10          # no encoder banding in sky, sea and glow gradients; YouTube accepts 10-bit uploads
 map_jpeg_quality = 95         # map derivatives and deep tiles
 
 [gates]                       # style gates whose fails block a build; every other style gate only warns

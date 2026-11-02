@@ -76,7 +76,7 @@ The format of a channel profile and the profiles that ship with the engine.
     SFX cues: pin and figure `pop`, label and region `tick`, route and whip `whoosh` (peak on the move), `counter_tick` per counter step, title `impact`.
   - Pacing: segments of 0.8-30 s with free cuts; hard cuts, with a 0.2 s state dissolve between segments on one map; no page turns and no map morphs.
   - Camera: zoom up to 16x; drift of 0.06 per second between moves (counts as P01 motion).
-  - Render: HyperFrames quality `high` at CRF 8; intermediates CRF 8 `medium`; final CRF 12 `slower`, capped at 25 Mb/s; map JPEG quality 95.
+  - Render: HyperFrames quality `high` at CRF 8; intermediates CRF 8 `medium`; final CRF 12 `veryslow`, 10-bit (High 10), capped at 40 Mb/s; map JPEG quality 95.
   - Gates: every style gate is on except C01 (cut rate), V01 (visual type) and D02 (exact duration).
     Only S01 is required.
     R64, E01, R56, T01, R44, AS04, F03 and L02-L10 (except L06) are advisory.

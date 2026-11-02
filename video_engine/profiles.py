@@ -463,7 +463,7 @@ class RenderProfile(_Strict):
     segment file (native renders, grades, HyperFrames normalisation); `final_*` = the one composite pass (x264 CRF,
     preset, tune "none" = no -tune, optional VBV cap); `hf_*` = the HyperFrames capture and its own encode
     (hyperframes.HF_QUALITY / HF_CRF; draft: JPEG q80 screenshots + x264 ultrafast, standard: q100 + medium, high:
-    q100 + slow); `map_jpeg_quality` = whole-map derivatives and deep tiles (maps.MAP_JPEG_QUALITY)."""
+    q100 + slow); `final_bit_depth` = 8 (default) or 10 for the final composite; `map_jpeg_quality` = whole-map derivatives and deep tiles (maps.MAP_JPEG_QUALITY)."""
     hf_quality: Literal["draft", "standard", "high"] | None = None
     hf_crf: int | None = Field(None, ge=0, le=51)
     segment_crf: int | None = Field(None, ge=0, le=51)
@@ -473,6 +473,7 @@ class RenderProfile(_Strict):
     final_preset: X264_PRESETS | None = None
     final_tune: X264_TUNES | None = None
     final_maxrate_kbps: int | None = Field(None, ge=1000, le=200000)
+    final_bit_depth: Literal[8, 10] | None = None   # 10 = yuv420p10le, x264 High 10 (less encoder banding)
     map_jpeg_quality: int | None = Field(None, ge=50, le=100)
 
     def x264(self, stage: Literal["segment", "final"]) -> list[str]:
@@ -482,11 +483,17 @@ class RenderProfile(_Strict):
         seg = stage == "segment"
         crf, preset, tune, cap = ((self.segment_crf, self.segment_preset, self.segment_tune, None) if seg
                                   else (self.final_crf, self.final_preset, self.final_tune, self.final_maxrate_kbps))
-        if (crf, preset, tune, cap) == (None, None, None, None):
+        depth = 8 if seg else (self.final_bit_depth or 8)
+        if (crf, preset, tune, cap, depth) == (None, None, None, None, 8):
             return list(config.X264_SEGMENT if seg else config.X264)
         d_crf, d_preset = (config.SEGMENT_CRF, config.SEGMENT_PRESET) if seg else (config.FINAL_CRF, config.FINAL_PRESET)
         return config.x264(d_crf if crf is None else crf, preset or d_preset,
-                           None if tune in (None, "none") else tune, cap)
+                           None if tune in (None, "none") else tune, cap, depth)
+
+    def final_pix_fmt(self) -> str:
+        """Pixel format of the final composite (intermediates stay 8-bit yuv420p)."""
+        from . import config
+        return config.pix_fmt(self.final_bit_depth or 8)
 
 
 class Legibility(_Strict):

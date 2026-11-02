@@ -6,7 +6,7 @@ import os
 import re
 from pathlib import Path
 
-from . import cache, config, profiles, streams
+from . import cache, config, profiles, streams, toolchain
 from .timeline import CaptionsMeta, CaptionWord, Timeline, sec_to_frame
 from .util import EngineError, blake3_files, blake3_json, code_hash, count_frames, probe, run
 
@@ -346,18 +346,23 @@ def composite_cmd(tl: Timeline, segments: list[Path], ass: Path | None, out: Pat
         vf, cwd = subtitle_filter(ass)
     wm_png = out.with_name(out.stem + ".watermark.png")
     pl = watermark.render(tl, wm_png)
+    R = profiles.of(tl).render
+    pf = R.final_pix_fmt()
+    if pf != "yuv420p" and pf not in toolchain.x264_pix_fmts(str(config.FFMPEG)):
+        raise EngineError(f"[render] final_bit_depth = {R.final_bit_depth}: {config.FFMPEG} libx264 has no {pf} "
+                          f"(needs an ffmpeg built with a multi-bit-depth x264)")
     if pl is None:
-        fv = f"{vsrc}{vf},format=yuv420p[v]"
+        fv = f"{vsrc}{vf},format={pf}[v]"
     else:
         cmd += ["-i", wm_png]
         fv = (f"{vsrc}{vf}[base];[{nv}:v]format=rgba,{config.OVERLAY_YUV_VF}[wm];"
-              f"[base][wm]overlay=x={pl.x}:y={pl.y}:format=yuv420,format=yuv420p[v]")
+              f"[base][wm]overlay=x={pl.x}:y={pl.y}:format=yuv420,format={pf}[v]")
     if transitions:
         chain, lab = trans.overlay_graph(transitions, nv + (pl is not None), S.fps, vsrc)
         for clip, _ in transitions:
             cmd += ["-i", clip.resolve()]
         fv = chain + ";" + lab + fv[len(vsrc):]
-    cmd += ["-filter_complex", vpre + fv, "-map", "[v]", *profiles.of(tl).render.x264("final"), "-threads", str(threads),
+    cmd += ["-filter_complex", vpre + fv, "-map", "[v]", *R.x264("final"), "-threads", str(threads),
             "-r", str(S.fps), "-frames:v", str(n), "-an", "-movflags", "+faststart", "-t", f"{dur:.6f}", out]
     return cmd, cwd, extra, [wm_png, concat_list]
 
