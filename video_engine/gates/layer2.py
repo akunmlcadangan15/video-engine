@@ -40,15 +40,18 @@ def m01_source_length(tl: Timeline, project_dir: Path) -> list[Finding]:
     out = []
     fps = tl.settings.fps
     for s in tl.segments:
-        if s.engine_type != NATIVE or s.is_still or not (project_dir / s.source).is_file():
+        if s.engine_type != NATIVE or s.is_still or not s.source:
+            continue
+        src = project_dir / s.source
+        if not src.is_file():
             continue
         try:
-            vi = video_info(project_dir / s.source)
+            vi = video_info(src)
         except EngineError as e:
             out.append(Finding("M01", "fail", f"cannot probe {s.source}: {e}", s.seg_index))
             continue
         try:
-            decode_colour(project_dir / s.source)   # an HDR (PQ/HLG) source cannot be decoded as SDR BT.709
+            decode_colour(src)   # an HDR (PQ/HLG) source cannot be decoded as SDR BT.709
         except EngineError as e:
             out.append(Finding("M01", "fail", str(e), s.seg_index))
             continue
