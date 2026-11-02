@@ -15,10 +15,13 @@ TEXTURES_DIR = VENDOR / "textures"
 GSAP_JS = VENDOR / "js" / "gsap.min.js"
 TEMPLATE_DIR = PKG / "template"
 PROFILES_DIR = Path(os.environ.get("VIDEO_ENGINE_PROFILES", ENGINE_ROOT / "profiles"))
-GEO_LIBRARY = Path(os.environ.get("VIDEO_ENGINE_GEO_LIBRARY", "/workspace/geo-library"))
-OPEN_ASSETS = Path(os.environ.get("VIDEO_ENGINE_OPEN_ASSETS", "/workspace/open-assets"))
-STOCK_DIRS = tuple(Path(p) for p in os.environ.get("VIDEO_ENGINE_STOCK_DIRS", "/workspace/asset-cache").split(":") if p)
-DOWNLOAD_DIR = Path(os.environ.get("VIDEO_ENGINE_DOWNLOAD_DIR", "/workspace/downloads"))
+# Folder that holds the machine's shared libraries (geo library, open assets, stock footage, downloads). Each default
+# below sits in it and each has its own override. Only the defaults depend on the workspace, nothing else.
+WORKSPACE = Path(os.environ.get("VIDEO_ENGINE_WORKSPACE", "/workspace"))
+GEO_LIBRARY = Path(os.environ.get("VIDEO_ENGINE_GEO_LIBRARY", WORKSPACE / "geo-library"))
+OPEN_ASSETS = Path(os.environ.get("VIDEO_ENGINE_OPEN_ASSETS", WORKSPACE / "open-assets"))
+STOCK_DIRS = tuple(Path(p) for p in os.environ.get("VIDEO_ENGINE_STOCK_DIRS", str(WORKSPACE / "asset-cache")).split(":") if p)
+DOWNLOAD_DIR = Path(os.environ.get("VIDEO_ENGINE_DOWNLOAD_DIR", WORKSPACE / "downloads"))
 
 # Persistent content-addressed cache (word timestamps, rendered segments) on disk; survives /dev/shm cleanup.
 CACHE_DIR = Path(os.environ.get("VIDEO_ENGINE_CACHE", ENGINE_ROOT / ".cache"))
