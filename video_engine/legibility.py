@@ -13,14 +13,15 @@ from pathlib import Path
 
 import numpy as np
 
-from .util import blake3_files
+from .util import source_digest
 
 
 @functools.cache
 def code_hash() -> str:
-    """Hash of this module's source: part of the HyperFrames segment cache key (scene["legibility"]["v"]), because
-    the painted inks are computed here and are not in the keyed scene."""
-    return blake3_files([Path(__file__)])[0]
+    """Digest of this module's source: part of the HyperFrames segment cache key (scene["legibility"]["v"]), because
+    the painted inks are computed here and are not in the keyed scene. Like util.code_hash it ignores comments,
+    docstrings and formatting."""
+    return source_digest(Path(__file__))
 
 
 # ---------------------------------------------------------------- colour math

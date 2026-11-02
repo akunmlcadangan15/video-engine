@@ -16,7 +16,7 @@ def chan(tmp_path, monkeypatch, body: str):
     d = tmp_path / "profiles"
     d.mkdir(exist_ok=True)
     (d / "default.toml").write_text((config.PROFILES_DIR / "default.toml").read_text())
-    (d / "geoverum.toml").write_text((config.PROFILES_DIR / "geoverum.toml").read_text())
+    (d / "geoverum.toml").write_text(profiles.flatten("geoverum"))
     (d / "chan.toml").write_text(body)
     monkeypatch.setattr(config, "PROFILES_DIR", d)
 

@@ -55,12 +55,41 @@
     {
       "what": "caption Inter bold 84 px putih tanpa box/outline di y≈0,72 H (fixed_y 1382)",
       "why": "A/B 2026-11-01: 84 paling bersih, tidak menutupi peta, tetap terbaca di layar HP (Arundaya)",
-      "at": "2026-11-01T11:12:55+07:00"
+      "at": "2026-11-01T11:12:55+07:00",
+      "check": [
+        {
+          "key": "caption_style.size",
+          "op": "==",
+          "value": 84
+        },
+        {
+          "key": "caption_style.fixed_y",
+          "op": "==",
+          "value": 1382
+        },
+        {
+          "key": "caption_style.forbid_box",
+          "op": "==",
+          "value": true
+        },
+        {
+          "key": "caption_style.outline",
+          "op": "==",
+          "value": 0
+        }
+      ]
     },
     {
       "what": "bendera di region dengan fit otomatis per region (cover; contain bila region sempit/tinggi seperti Myanmar)",
       "why": "A/B 2026-11-01: cover pada region sempit memotong bendera jadi strip tak dikenali; satu pilihan global salah di salah satu kasus (Arundaya)",
-      "at": "2026-11-01T11:12:55+07:00"
+      "at": "2026-11-01T11:12:55+07:00",
+      "check": [
+        {
+          "key": "flags.fit",
+          "op": "==",
+          "value": "auto"
+        }
+      ]
     },
     {
       "what": "visual Stage 4 (backdrop, halo, graticule, zona waktu, hatch, bubble, karakter bendera, cutaway, geoid, partikel) hanya bila memperjelas satu beat",
@@ -70,24 +99,62 @@
     {
       "what": "segmen fleksibel mulai 0,8 s; bebas melakukan cut sesuai ritme narasi tanpa batas jumlah cut",
       "why": "disetujui 2026-11-01: tidak ada batasan cut yang menghambat kreativitas atau memaksa penggabungan komposit (Arundaya)",
-      "at": "2026-11-01T11:12:55+07:00"
+      "at": "2026-11-01T11:12:55+07:00",
+      "check": [
+        {
+          "key": "draft.min_seg_s",
+          "op": "==",
+          "value": 0.8
+        },
+        {
+          "key": "gates.cuts",
+          "op": "exists",
+          "value": false
+        }
+      ]
     },
     {
       "what": "loudness −14 LUFS, true peak ≤ −1,5 dBTP",
       "why": "disetujui 2026-11-01: standar Shorts/YouTube, tanpa clipping (Arundaya)",
-      "at": "2026-11-01T11:12:55+07:00"
+      "at": "2026-11-01T11:12:55+07:00",
+      "check": [
+        {
+          "key": "audio.target_lufs",
+          "op": "==",
+          "value": -14.0
+        },
+        {
+          "key": "audio.true_peak",
+          "op": "<=",
+          "value": -1.5
+        }
+      ]
     }
   ],
   "rejected": [
     {
       "what": "static frame or camera hold over 1.7 s",
       "why": "violates P01/P02; the map or still must keep drifting",
-      "at": "2026-10-29T00:00:00+00:00"
+      "at": "2026-10-29T00:00:00+00:00",
+      "check": [
+        {
+          "key": "gates.camera.hold_warn_s",
+          "op": "<=",
+          "value": 1.7
+        }
+      ]
     },
     {
       "what": "call to action or subscribe end card",
       "why": "Geoverum ends on the final factual twist or keyword return",
-      "at": "2026-10-29T00:00:00+00:00"
+      "at": "2026-10-29T00:00:00+00:00",
+      "check": [
+        {
+          "key": "gates.cta",
+          "op": "exists",
+          "value": true
+        }
+      ]
     },
     {
       "what": "unquantified geographic claims without a line, dimension bar, counter, pill badge, or scale overlay on screen",
@@ -102,12 +169,38 @@
     {
       "what": "35mm film-strip, parchment roll, page-turn, atau transisi kertas lain ke peta atlas sejarah",
       "why": "Arundaya menolak transisi page-turn/kertas (revisi Siam 2); geoverum.toml mengatur page_turn = false dan map_morph = false. Pindah dari daftar 'liked' pada 2026-11-02 agar taste dan profil sejalan",
-      "at": "2026-11-02T00:00:00+07:00"
+      "at": "2026-11-02T00:00:00+07:00",
+      "check": [
+        {
+          "key": "transitions.page_turn",
+          "op": "==",
+          "value": false
+        },
+        {
+          "key": "transitions.map_morph",
+          "op": "==",
+          "value": false
+        }
+      ]
     },
     {
       "what": "caption 92/104 px atau caption dengan box latar",
       "why": "A/B 2026-11-01: terlalu berat dan menutupi peta (Arundaya memilih 84 tanpa box)",
-      "at": "2026-11-01T11:12:55+07:00"
+      "at": "2026-11-01T11:12:55+07:00",
+      "check": [
+        {
+          "key": "caption_style.ab_sizes",
+          "op": "==",
+          "value": [
+            84
+          ]
+        },
+        {
+          "key": "caption_style.forbid_box",
+          "op": "==",
+          "value": true
+        }
+      ]
     },
     {
       "what": "banyak efek Stage 4 sekaligus dalam satu video",

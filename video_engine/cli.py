@@ -288,13 +288,29 @@ def cmd_draft(a) -> int:
 
 
 def cmd_taste(a) -> int:
-    from . import director
+    from . import director, profiles, taste_lint
     if bool(a.like) + bool(a.reject) > 1:
         raise EngineError("pass one of --like / --reject")
+    if a.lint and (a.like or a.reject or a.check):
+        raise EngineError("--lint only reads; it cannot be combined with --like / --reject / --check")
+    if a.check and not (a.like or a.reject):
+        raise EngineError("--check belongs to --like / --reject")
+    if a.profile and not a.lint:
+        raise EngineError("--profile is for --lint")
+    if a.lint:
+        profile = a.profile or a.channel
+        report = taste_lint.lint(director.load_taste(a.channel),
+                                 json.loads(profiles.load(profile).data.model_dump_json()))
+        print(taste_lint.render(report, a.channel, profile))
+        return 0 if taste_lint.ok(report) else 1
     if a.like or a.reject:
         if not a.why:
             raise EngineError("--why is required with --like / --reject")
-        d = director.record_feedback(a.channel, "liked" if a.like else "rejected", a.like or a.reject, a.why)
+        try:
+            checks = [taste_lint.parse_check(c) for c in a.check]
+        except taste_lint.CheckError as e:
+            raise EngineError(str(e)) from None
+        d = director.record_feedback(a.channel, "liked" if a.like else "rejected", a.like or a.reject, a.why, checks)
     else:
         d = director.load_taste(a.channel)
     print(director.taste_text(d))
@@ -591,6 +607,12 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--like", help="what was liked")
     x.add_argument("--reject", help="what was rejected")
     x.add_argument("--why", help="the reason (required with --like / --reject)")
+    x.add_argument("--check", action="append", default=[], metavar='"KEY OP VALUE"',
+                   help='with --like / --reject: a condition the channel profile has to satisfy for the entry to be '
+                        'true, e.g. "caption_style.size == 84" (VALUE is JSON; repeatable); checked by --lint')
+    x.add_argument("--lint", action="store_true",
+                   help="compare the checks of the taste entries with the channel profile; exit 1 on a mismatch")
+    x.add_argument("--profile", help="with --lint: profile to check against (default: the channel name)")
     x = add("gates", cmd_gates, "List the gates (id, class, layer, rule); with --profile, what each does in that "
                                 "channel profile (off / warns / blocks); with --stats, how often each gate failed, warned "
                                 "or was waived in build reports. Read-only.")

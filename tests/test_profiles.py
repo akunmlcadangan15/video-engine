@@ -148,7 +148,7 @@ LEG_DEFAULTED = ("lc_area", "water_ink_l", "water_ink_c", "water_ink_hue", "halo
                  "light_halo_steps", "light_halo_colour", "light_halo_ink")
 
 
-GEO_TOML = (config.PROFILES_DIR / "geoverum.toml").read_text()
+GEO_TOML = profiles.flatten("geoverum")
 
 
 def _legibility_toml(drop=(), extra=""):

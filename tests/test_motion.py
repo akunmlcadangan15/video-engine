@@ -447,7 +447,7 @@ def test_good_geoverum_fly_values_reach_the_scene(project):
 
 def test_good_layout_without_fly_keeps_its_hash(tmp_path, monkeypatch):
     from video_engine.util import blake3_json
-    geo = (config.PROFILES_DIR / "geoverum.toml").read_text()
+    geo = profiles.flatten("geoverum")
     a, b = geo.index("[layout.fly]"), geo.index("ease_out")
     d = tmp_path / "p"
     d.mkdir()

@@ -1033,15 +1033,68 @@ def _check_safety(name: str, d: ProfileData, base: ProfileData) -> None:
                           f"limit {base.audio.tolerance_lu} LU")
 
 
+INCLUDE_KEY = "include"
+
+
+def _include_list(name: str, table: dict, where: Path) -> list[str]:
+    """The `include` key of a channel profile: a list of relative .toml paths (none when absent)."""
+    inc = table.get(INCLUDE_KEY, [])
+    if not isinstance(inc, list) or not all(isinstance(x, str) for x in inc):
+        raise EngineError(f"profile {where}: `{INCLUDE_KEY}` must be a list of file paths relative to the profiles "
+                          f"directory")
+    return inc
+
+
+def _read_include(name: str, rel: str) -> str:
+    """Text of the included file `rel` (relative to the profiles directory; it must stay inside it)."""
+    base = config.PROFILES_DIR.resolve()
+    if Path(rel).is_absolute() or not rel.endswith(".toml"):
+        raise EngineError(f"profile '{name}': include {rel!r} must be a relative path ending in .toml")
+    path = (base / rel).resolve()
+    if base not in path.parents:
+        raise EngineError(f"profile '{name}': include {rel!r} leaves the profiles directory {base}")
+    try:
+        return path.read_text()
+    except FileNotFoundError:
+        raise EngineError(f"profile '{name}': include {rel!r} not found: {path}") from None
+    except OSError as e:
+        raise EngineError(f"profile {path}: {e}") from e
+
+
 @lru_cache(maxsize=32)
 def _parse(name: str, texts: tuple[str, ...]) -> Profile:
-    """texts: default.toml (and the channel file) contents; the cache key is the file content, not a timestamp."""
+    """texts: default.toml, the channel file, then the files the channel `include`s, in that order (the cache key is
+    the file content, not a timestamp). Merge order: default < included files (in list order) < the channel file."""
+    includes: list[str] = []
+
     def toml(i: int) -> dict:
+        if i == 0:
+            where = path_of(DEFAULT)
+        elif i == 1:
+            where = path_of(name)
+        else:
+            where = config.PROFILES_DIR / (includes[i - 2] if i - 2 < len(includes) else "?")
         try:
             return tomllib.loads(texts[i])
         except tomllib.TOMLDecodeError as e:
-            raise EngineError(f"profile {path_of(DEFAULT if i == 0 else name)}: {e}") from e
-    raw = toml(0) if name == DEFAULT else merge(toml(0), toml(1))
+            raise EngineError(f"profile {where}: {e}") from e
+    if name == DEFAULT:
+        raw = toml(0)
+        if INCLUDE_KEY in raw:
+            raise EngineError(f"profile {path_of(DEFAULT)}: the default profile cannot `{INCLUDE_KEY}` other files")
+    else:
+        chan = toml(1)
+        includes = _include_list(name, chan, path_of(name))
+        chan.pop(INCLUDE_KEY, None)
+        if len(texts) != 2 + len(includes):
+            raise EngineError(f"profile '{name}': {len(includes)} include file(s) listed but {len(texts) - 2} given")
+        raw = toml(0)
+        for k in range(len(includes)):
+            part = toml(2 + k)
+            if INCLUDE_KEY in part:
+                raise EngineError(f"profile '{name}': included file {includes[k]!r} cannot include other files")
+            raw = merge(raw, part)
+        raw = merge(raw, chan)
     try:
         data = ProfileData.model_validate(raw)
         base = data if name == DEFAULT else ProfileData.model_validate(toml(0))
@@ -1093,7 +1146,30 @@ def load(name: str | None = None) -> Profile:
             raise EngineError(f"profile '{name}' not found: {f} (known: {known})") from None
         except OSError as e:
             raise EngineError(f"profile {f}: {e}") from e
+    if name != DEFAULT:
+        try:
+            listed = _include_list(name, tomllib.loads(texts[1]), path_of(name))
+        except tomllib.TOMLDecodeError as e:
+            raise EngineError(f"profile {path_of(name)}: {e}") from e
+        texts += [_read_include(name, rel) for rel in listed]
     return _parse(name, tuple(texts))
+
+
+_INCLUDE_LINE = re.compile(r"^include\s*=\s*\[.*\]\s*(#.*)?$", re.MULTILINE)
+
+
+def flatten(name: str) -> str:
+    """Channel profile `name` as one TOML text: the channel file without its `include = [...]` line (that line must
+    be a single-line list), followed by each included file. For tools and tests that read a profile as text; the
+    engine itself loads profiles through `load`."""
+    text = path_of(name).read_text()
+    listed = _include_list(name, tomllib.loads(text), path_of(name))
+    if not listed:
+        return text
+    text, n = _INCLUDE_LINE.subn("", text, count=1)
+    if n != 1:
+        raise EngineError(f"profile {path_of(name)}: write `{INCLUDE_KEY}` as a single-line list to flatten the profile")
+    return text.rstrip("\n") + "\n\n" + "\n\n".join(_read_include(name, rel).strip("\n") for rel in listed) + "\n"
 
 
 def of(tl: "Timeline") -> Profile:
