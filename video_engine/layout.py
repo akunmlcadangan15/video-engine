@@ -520,7 +520,7 @@ def camera_at(cam: dict, f: float) -> dict:
             p = (f - L["f0"]) / (L["f1"] - L["f0"])
             from .hyperframes import leg_ease
             e = leg_ease(L, prev["s"])(p)
-            return {k: prev[k] + (L["to"][k] - prev[k]) * e for k in (("x", "y", "s", "t") if "t" in prev else ("x", "y", "s"))}
+            return {k: prev[k] + (L["to"][k] - prev[k]) * e for k in ("x", "y", "s", "t", "r") if k in prev}
         prev = L["to"]
     return prev
 
@@ -533,7 +533,7 @@ def _quart_in_out(t):   # GSAP power3.inOut
     return 8 * t ** 4 if t < 0.5 else 1 - (-2 * t + 2) ** 4 / 2
 
 
-EASES = {"glide": _glide, "drift": lambda t: t, "whip": _quart_in_out}
+EASES = {"glide": _glide, "drift": lambda t: t, "whip": _quart_in_out, "lin": lambda t: t}
 PULSE_STEPS = (0.75, 0.5, 0.25, 0.0)    # pulse sizes (fractions of [camera] pulse_zoom) tried when a wait conflicts
 PULSE_FLOOR = 1e-3                      # ln zoom; a smaller pulse size is 0 (drift only)
 _LABEL_MOVE = re.compile(r"\bat frame (\d+)\b")

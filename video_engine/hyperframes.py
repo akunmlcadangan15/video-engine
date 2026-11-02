@@ -45,7 +45,7 @@ def tint(hex_colour: str, t: float) -> str:
 
 def font_roles(scene: dict) -> list[str]:
     """Font roles a scene uses: the theme's label and title fonts, the serif when it shows a year; with a profile
-    [print] the roles of its surface instead of the area-label title font."""
+    [print] the roles of its surface instead of the area-label title font; the title font for map texts."""
     th = scene.get("theme", {})
     used = {th.get("label_font"), th.get("title_font")}
     if any(f["kind"] == "year" for f in scene.get("figures", [])):
@@ -53,6 +53,8 @@ def font_roles(scene: dict) -> list[str]:
     if pr := scene.get("print"):
         used |= {r[0] for r in pr["roles"].values()}
     elif scene.get("layout", {}).get("areas"):
+        used.add("title")
+    if scene.get("map_texts"):
         used.add("title")
     return [r for r in THEME_FONTS if r in used]
 
@@ -162,9 +164,24 @@ def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, them
     legs, motion, prev = [], [], start
     if keys[0].hold:
         legs.append({"f0": 0, "f1": keys[0].hold, "to": start, "ease": "drift"})
-    for i, (k, (c, s)) in enumerate(zip(keys[1:], views[1:])):
+    i = 0
+    while i + 1 < len(keys):
+        k, (c, s) = keys[i + 1], views[i + 1]
         to = _state(c, s, W, H, mw, mh)
         f0 = legs[-1]["f1"] if legs else 0
+        if k.move == "flow":   # a run of flow keys: one spline from key i through the last consecutive flow key
+            j = i + 1
+            while j + 1 < len(keys) and keys[j + 1].move == "flow":
+                j += 1
+            legs += flow_legs(keys[i:j + 1], views[i:j + 1], f0, W, H, mw, mh, fps, theme.get("camera_bank"))
+            for a, b in zip(views[i:j], views[i + 1:j + 1]):
+                motion.append(round(motion_px(_state(*a, W, H, mw, mh), _state(*b, W, H, mw, mh), W, H), 2))
+            prev = legs[-1]["to"]
+            if keys[j].hold:
+                legs.append({"f0": keys[j].at_frame, "f1": min(n, keys[j].at_frame + keys[j].hold),
+                             "to": prev, "ease": "drift"})
+            i = j
+            continue
         if k.move in ("whip", "settle"):
             fw = max(f0, k.at_frame - max(1, round((k.move_s or theme["whip_s"]) * fps)))
             if fw > f0:
@@ -182,19 +199,100 @@ def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, them
         prev = to
         if k.hold:
             legs.append({"f0": k.at_frame, "f1": min(n, k.at_frame + k.hold), "to": to, "ease": "drift"})
+        i += 1
     last = min(n, keys[-1].at_frame + keys[-1].hold)
     if last < n:
         legs += drifts(len(keys) - 1, last, n)
-    if any(k.tilt for k in keys):   # tilt `t` (deg) of every transform: a leg ending at a key frame moves to its tilt
-        tilt = lambda f: next(k.tilt for k in reversed(keys) if k.at_frame <= f)
-        start = {**start, "t": keys[0].tilt}
-        legs = [{**L, "to": {**L["to"], "t": tilt(L["f1"])}} for L in legs]
-    if any(k.roll for k in keys):   # roll `r` (deg) the same way; the template turns #roll and scales it to cover
-        roll = lambda f: next(k.roll for k in reversed(keys) if k.at_frame <= f)
-        start = {**start, "r": keys[0].roll}
-        legs = [{**L, "to": {**L["to"], "r": roll(L["f1"])}} for L in legs]
+    # tilt `t` and roll `r` (deg) of every transform: a leg ending at a key frame moves to its key's value (flow legs
+    # carry their own spline and banking values); the template turns #tilt / #roll and scales #roll to cover
+    for ch, attr in (("t", "tilt"), ("r", "roll")):
+        if any(getattr(k, attr) for k in keys) or any(ch in L["to"] for L in legs):
+            val = lambda f, attr=attr: next(getattr(k, attr) for k in reversed(keys) if k.at_frame <= f)
+            start = {**start, ch: getattr(keys[0], attr)}
+            legs = [L if ch in L["to"] else {**L, "to": {**L["to"], ch: val(L["f1"])}} for L in legs]
     glide_speeds(legs, start, W, H, n, theme["camera_start_speed"], theme["camera_end_speed"])
     return {"start": start, "end": legs[-1]["to"], "legs": legs, "leg_motion": motion}
+
+
+def _monotone(ts: list[float], vs: list[float]):
+    """C1 monotone cubic Hermite (Fritsch-Carlson) through (ts, vs) with zero slope at both ends: never overshoots a
+    key, stops only where the channel turns (or holds) and keeps its speed through every other key."""
+    n = len(ts)
+    d = [(vs[i + 1] - vs[i]) / (ts[i + 1] - ts[i]) for i in range(n - 1)]
+    m = [0.0] * n
+    for i in range(1, n - 1):
+        if d[i - 1] * d[i] > 0:
+            w1, w2 = 2 * (ts[i + 1] - ts[i]) + (ts[i] - ts[i - 1]), (ts[i + 1] - ts[i]) + 2 * (ts[i] - ts[i - 1])
+            m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i])
+
+    def at(t: float) -> float:
+        if t <= ts[0]:
+            return vs[0]
+        if t >= ts[-1]:
+            return vs[-1]
+        i = max(j for j in range(n - 1) if ts[j] <= t)
+        h = ts[i + 1] - ts[i]
+        u = (t - ts[i]) / h
+        h00, h10, h01, h11 = 2 * u ** 3 - 3 * u ** 2 + 1, u ** 3 - 2 * u ** 2 + u, -2 * u ** 3 + 3 * u ** 2, u ** 3 - u ** 2
+        return h00 * vs[i] + h10 * h * m[i] + h01 * vs[i + 1] + h11 * h * m[i + 1]
+    return at
+
+
+def _smooth(xs: list[float], w: int) -> list[float]:
+    """Two passes of a centred moving average of half-width w (ends clamped)."""
+    for _ in range(2 if w > 0 else 0):
+        n = len(xs)
+        xs = [sum(xs[max(0, i - w):min(n, i + w + 1)]) / (min(n, i + w + 1) - max(0, i - w)) for i in range(n)]
+    return xs
+
+
+def flow_legs(keys: list, views: list, f0: int, W: int, H: int, mw: float, mh: float, fps: int,
+              bank: dict | None) -> list[dict]:
+    """One-frame linear legs of a flow run: keys[0] (reached at frame f0, after its hold) through keys[-1]. Focus x, y,
+    ln zoom, tilt and roll each follow a monotone cubic in time through the keys (a key's hold adds a still key), so the
+    camera eases in at the first key, keeps moving through every inner key and eases out at the last one. With `bank`
+    (profile [camera] bank_*) the camera leans into its motion: roll -bank.roll x sideways screen speed and tilt
+    +bank.tilt x screen speed (frame widths / s; the zoom part counts half the frame diagonal), bounded and smoothed. A frame's tilt is lowered
+    to the largest that still shows map in every corner (camera3d.corners_off_map, gate M03)."""
+    ts, rows = [float(f0)], [(*views[0][0], math.log(views[0][1]), keys[0].tilt, keys[0].roll)]
+    for k, ((cx, cy), s) in zip(keys[1:], views[1:]):
+        row = (cx, cy, math.log(s), k.tilt, k.roll)
+        if k.at_frame > ts[-1]:
+            ts.append(float(k.at_frame))
+            rows.append(row)
+        if k.hold and k is not keys[-1]:
+            ts.append(float(k.at_frame + k.hold))
+            rows.append(row)
+    ch = [_monotone(ts, [r[c] for r in rows]) for c in range(5)]
+    a, b = int(ts[0]), int(ts[-1])
+    v = [[c(f) for c in ch] for f in range(a, b + 1)]
+    if bank:
+        R = math.hypot(W, H) / 2
+        sx, sp = [0.0], [0.0]
+        for p, q in zip(v, v[1:]):
+            s = math.exp((p[2] + q[2]) / 2)
+            vx, vy = (q[0] - p[0]) * s * fps / W, (q[1] - p[1]) * s * fps / W
+            sx.append(vx)
+            sp.append(math.hypot(vx, vy) + abs(q[2] - p[2]) * R * fps / W)
+        w = round(bank["smooth_s"] * fps / 2)
+        sx, sp = _smooth(sx, w), _smooth(sp, w)
+        lim = lambda x, m: max(-m, min(m, x))
+        for row, x, g in zip(v, sx, sp):
+            row[3] = min(60.0, row[3] + min(bank["max_tilt"], bank["tilt"] * g))
+            row[4] = lim(row[4] - lim(bank["roll"] * x, bank["max_roll"]), 45.0)
+    out = []
+    for f in range(a, b):
+        q = v[f + 1 - a]
+        to = _state((q[0], q[1]), math.exp(q[2]), W, H, mw, mh)
+        t = q[3]
+        if t > 0 and camera3d.corners_off_map({**to, "t": t}, W, H, mw, mh):   # tilt no further than the map covers
+            lo, hi = 0.0, t
+            for _ in range(14):
+                mid = (lo + hi) / 2
+                lo, hi = (lo, mid) if camera3d.corners_off_map({**to, "t": mid}, W, H, mw, mh) else (mid, hi)
+            t = lo
+        out.append({"f0": f, "f1": f + 1, "to": {**to, "t": round(t, 4), "r": round(q[4], 4)}, "ease": "lin"})
+    return out
 
 
 def glide_speeds(legs: list[dict], start: dict, W: int, H: int, n: int, first: float, last: float) -> None:
@@ -575,7 +673,15 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     if sc.borders:
         out["borders"] = [{"points": [[round(x * mw, 2), round(y * mh, 2)] for x, y in b.points], "at_frame": b.at_frame,
                            "draw_s": theme["border_draw_s"] if b.draw_s is None else b.draw_s, "colour": b.colour.lower(),
-                           "dashed": b.dashed, "closed": b.closed} for b in sc.borders]
+                           "dashed": b.dashed, "closed": b.closed,
+                           **({"w": b.width_px} if b.width_px is not None else {}),
+                           **({"glow": b.glow_px} if b.glow_px is not None else {}),
+                           **({"grow": b.grow} if b.grow else {}),
+                           **({"nocase": True} if not b.casing else {})} for b in sc.borders]
+    if sc.map_texts:
+        out["map_texts"] = [{"text": m.text, "points": [[round(x * mw, 2), round(y * mh, 2)] for x, y in m.points],
+                             "at_frame": m.at_frame, "out_frame": m.out_frame, "reveal_s": m.reveal_s, "px": m.px,
+                             "colour": m.colour.lower(), "depth": m.depth_px} for m in sc.map_texts]
     if sc.title or sc.figures:
         col = entities.colours(tl)
     if sc.title:
@@ -586,7 +692,9 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
         out["figures"] = [{"kind": f.kind, "text": figure_text(f, f.value, theme), "value": f.value, "from": f.count_from,
                            "decimals": f.decimals, "prefix": f.prefix, "suffix": f.suffix, "motion": f.motion,
                            "count_s": f.count_s or theme["counter_s"], "at_frame": f.at_frame,
-                           "x": round(f.position[0] * S.width, 2), "y": round(f.position[1] * S.height, 2),
+                           "x": round(f.position[0] * (mw if f.anchor == "map" else S.width), 2),
+                           "y": round(f.position[1] * (mh if f.anchor == "map" else S.height), 2),
+                           **({"px": f.px} if f.px else {}), **({"map": True} if f.anchor == "map" else {}),
                            "entity": f.entity, "colour": col.get(f.entity, "#ffffff")} for f in sc.figures]
     if sc.thermometers:
         out["thermometers"] = [components.thermo_data(t, S.width, S.height) for t in sc.thermometers]

@@ -404,6 +404,12 @@ class CameraProfile(_Strict):
     pulse_anchor: tuple[float, float] = (0.5, 0.5)     # screen point (frame fractions) that stays put in a pulse
     pulse_direction: Literal["in", "out"] = "out"       # first pulse of a pair: push in or pull out
     max_zoom: float = Field(4.0, ge=1.0, le=64.0)       # largest camera zoom over the cover fit (keys, layout fit)
+    # banking of "flow" camera paths (hyperframes.flow_legs): the camera leans into its own motion like a drone
+    bank_roll: float = Field(0.0, ge=0, le=60)          # roll (deg) per frame width / s of sideways screen travel
+    bank_tilt: float = Field(0.0, ge=0, le=60)          # extra tilt (deg) per frame width / s of screen speed
+    bank_max_roll: float = Field(30.0, ge=0, le=45)     # bound of the banked roll either way (deg)
+    bank_max_tilt: float = Field(20.0, ge=0, le=60)     # bound of the banked extra tilt (deg)
+    bank_smooth_s: float = Field(0.4, ge=0, le=2.0)     # moving-average window of the banking (s)
 
     @model_validator(mode="after")
     def _b(self):
@@ -421,6 +427,13 @@ class CameraProfile(_Strict):
         return {"zoom": self.pulse_zoom, "s": self.pulse_s, "gap_s": self.pulse_gap_s, "pan": self.pulse_pan,
                 "ease": list(self.pulse_ease), "anchor": list(self.pulse_anchor),
                 "dir": 1 if self.pulse_direction == "in" else -1}
+
+    def bank(self) -> dict | None:
+        """Banking values for flow camera paths (HyperFrames scene theme key `camera_bank`); None when off."""
+        if self.bank_roll <= 0 and self.bank_tilt <= 0:
+            return None
+        return {"roll": self.bank_roll, "tilt": self.bank_tilt, "max_roll": self.bank_max_roll,
+                "max_tilt": self.bank_max_tilt, "smooth_s": self.bank_smooth_s}
 
 
 TRANSITION_KINDS = ("cut", "crossfade", "zoom_whip", "zoom_through", "page_turn", "state")
@@ -995,6 +1008,8 @@ class Profile:
         out = json.loads(self.data.theme.model_dump_json(exclude={"entities", "palette"}))
         if (cp := self.data.camera.scene()) is not None:
             out["camera_pulse"] = cp
+        if (cb := self.data.camera.bank()) is not None:
+            out["camera_bank"] = cb
         out["motion"] = self.data.motion.render_values()
         return out
 
@@ -1172,7 +1187,42 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
     return Profile(name, data, blake3_json(dump))
 
 
-def load(name: str | None = None) -> Profile:
+OVERRIDABLE = ("theme", "camera", "watermark", "motion", "grade", "render", "flags")   # project profile_overrides tables
+_OVERRIDDEN: dict[tuple[str, str], Profile] = {}
+
+
+def _drop_nulls(base: dict, over: dict) -> dict:
+    """merge() for project overrides: nested tables merge, every other value (None included: a project turns an
+    optional table such as [watermark] off) replaces the base value; validation rejects None where it is not allowed."""
+    out = dict(base)
+    for k, v in over.items():
+        out[k] = _drop_nulls(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
+def _override(base: Profile, over: dict) -> Profile:
+    """Profile `base` with a project's profile_overrides on top (only OVERRIDABLE tables; gates, audio and caption rules
+    stay the channel's). The hash covers the channel hash and the overrides, so caches follow both."""
+    bad = sorted(set(over) - set(OVERRIDABLE))
+    if bad:
+        raise EngineError(f"profile_overrides: {', '.join(bad)} cannot be overridden by a project "
+                          f"(allowed: {', '.join(OVERRIDABLE)})")
+    key = (base.blake3, json.dumps(over, sort_keys=True))
+    if (hit := _OVERRIDDEN.get(key)) is not None:
+        return hit
+    raw = _drop_nulls(json.loads(base.data.model_dump_json(by_alias=True)), over)
+    try:
+        data = ProfileData.model_validate(raw)
+    except ValidationError as e:
+        raise EngineError(f"profile '{base.name}' with profile_overrides: {e}") from e
+    prof = Profile(base.name, data, blake3_json({"profile": base.blake3, "overrides": over}))
+    _OVERRIDDEN[key] = prof
+    return prof
+
+
+def load(name: str | None = None, overrides: dict | None = None) -> Profile:
+    if overrides:
+        return _override(load(name), overrides)
     name = name or DEFAULT
     if not NAME_RE.match(name):
         raise EngineError(f"profile name {name!r} invalid (lowercase letters, digits, '_' and '-')")
@@ -1213,7 +1263,7 @@ def flatten(name: str) -> str:
 
 
 def of(tl: "Timeline") -> Profile:
-    return load(tl.profile)
+    return load(tl.profile, tl.profile_overrides)
 
 
 def caption_style(tl: "Timeline") -> dict:

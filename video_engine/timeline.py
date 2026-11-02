@@ -264,13 +264,21 @@ class Region(Strict):
 class Border(Strict):
     """A border line on the map (land, or sea when `dashed`) that draws itself along `points` from `at_frame` (relative
     to the segment start) over `draw_s` seconds, in `colour` with a neon glow; `closed` joins the last point to the
-    first. Width, glow and dashes keep their on-screen size while the camera zooms."""
+    first. Width, glow and dashes keep their on-screen size while the camera zooms, unless `grow` > 0 (a river, a
+    coastline): then they scale as zoom^grow (1 = drawn on the map like ink, 0 = constant on screen)."""
     points: list[list[float]] = Field(min_length=2)    # normalised [x, y] map points
     at_frame: int = Field(0, ge=0)
     draw_s: Optional[float] = Field(None, ge=0, le=8.0)   # None = profile theme.border_draw_s; 0 = at once
     colour: str = Field("#ffffff", pattern=HEX_RE)
     dashed: bool = False
     closed: bool = False
+    width_px: Optional[float] = Field(None, gt=0, le=60, exclude_if=lambda v: v is None)   # on-screen width at zoom 1
+                                                                                         # (None = theme border_px)
+    glow_px: Optional[float] = Field(None, ge=0, le=80, exclude_if=lambda v: v is None)    # glow radius at zoom 1
+                                                                                         # (None = theme block_glow_px)
+    grow: float = Field(0.0, ge=0.0, le=1.5, exclude_if=lambda v: v == 0.0)              # width ~ zoom^grow
+    casing: bool = Field(True, exclude_if=lambda v: v)   # dark casing under the line (theme block_casing_px); False =
+                                                         # glow only (a lit river on satellite)
 
     @model_validator(mode="after")
     def _pts(self):
@@ -298,6 +306,30 @@ class MapMorph(Strict):
     def _back(self):
         if self.back_at_frame is not None and self.back_at_frame <= self.at_frame:
             raise ValueError(f"morph back_at_frame {self.back_at_frame} must be > at_frame {self.at_frame}")
+        return self
+
+
+class MapText(Strict):
+    """A name written on the map along `points` (normalised map points, left to right): letters appear one after the
+    other over `reveal_s` from `at_frame`, in `colour` over `depth_px` of darker extrusion and a soft shadow, and fade
+    out over 0.3 s from `out_frame` (None = shown to the segment end). The text lies on the map: it pans, zooms, tilts
+    and rolls with it (`px` is its size at zoom 1)."""
+    text: str = Field(min_length=1, max_length=40)
+    points: list[list[float]] = Field(min_length=2)
+    at_frame: int = Field(0, ge=0)
+    out_frame: Optional[int] = Field(None, ge=1)
+    reveal_s: float = Field(0.6, ge=0.0, le=4.0)
+    px: float = Field(90.0, ge=8, le=400)
+    colour: str = Field("#7fae46", pattern=HEX_RE)
+    depth_px: float = Field(8.0, ge=0, le=40)
+
+    @model_validator(mode="after")
+    def _mt(self):
+        for pt in self.points:
+            if len(pt) != 2 or not all(0.0 <= v <= 1.0 for v in pt):
+                raise ValueError(f"map text '{self.text}': point {pt} must be [x, y] within 0..1")
+        if self.out_frame is not None and self.out_frame <= self.at_frame:
+            raise ValueError(f"map text '{self.text}': out_frame must be after at_frame")
         return self
 
 
@@ -334,6 +366,10 @@ class Figure(Strict):
     position: list[float] = Field([0.5, 0.3], min_length=2, max_length=2)   # normalised [x, y] of the frame (centre)
     entity: Optional[str] = Field(None, min_length=1, max_length=60)        # colour = entity colour (default white)
     box: Optional[bool] = None                                              # None = profile label_style; True/False
+    px: Optional[float] = Field(None, ge=16, le=400, exclude_if=lambda v: v is None)   # size (None = theme figure_px)
+    anchor: Literal["screen", "map"] = Field("screen", exclude_if=lambda v: v == "screen")   # map: `position` is a
+                                                  # normalised map point; the figure rides the camera (pan, tilt,
+                                                  # roll) at a constant on-screen size, like a label on the map
 
     @model_validator(mode="after")
     def _fig(self):
@@ -349,7 +385,7 @@ class Figure(Strict):
 ZOOM_MAX = 4.0     # default profile [camera] max_zoom: largest camera zoom over the cover fit (CameraKey.zoom, layout fit)
 ZOOM_LIMIT = 64.0  # largest [camera] max_zoom any profile may set
 TILT_MAX = 60.0    # largest camera tilt (deg)
-ROLL_MAX = 25.0    # largest camera roll either way (deg)
+ROLL_MAX = 45.0    # largest camera roll either way (deg)
 
 
 class CameraKey(Strict):
@@ -357,7 +393,8 @@ class CameraKey(Strict):
     at_frame: int = Field(ge=0)
     focus: list[float] = Field(min_length=2, max_length=2)   # normalised [x, y] map point at the frame centre
     zoom: float = Field(1.0, ge=1.0, le=ZOOM_LIMIT)          # scale over the cover fit, <= profile [camera] max_zoom
-    move: Literal["glide", "whip", "settle", "reveal"] = "glide"   # move from the previous key into this one
+    move: Literal["glide", "whip", "settle", "reveal", "flow"] = "glide"   # move from the previous key into this one;
+                                                  # "flow": one smooth spline through every consecutive flow key
     move_s: Optional[float] = Field(None, ge=0.1, le=3.0)    # "settle" length (None = theme whip_s)
     pulse: Optional[float | list[float]] = None   # ln zoom of the pulses while the camera waits on this view:
                                                   # one size or one per away pulse, last repeats (None = profile
@@ -484,6 +521,8 @@ class Prop(Strict):
     depth: float = Field(0.0, ge=0.0, le=PROP_DEPTH_MAX)   # 0 = on the map plane; map props only
     z: int = Field(0, ge=-100, le=100)               # stacking among props of the same anchor (higher on top)
     shadow: Optional[PropShadow] = None
+    offscreen: bool = Field(False, exclude_if=lambda v: not v)   # map props: the camera may carry it past the frame
+                                                                 # edge (gate F04 skips it); its entry stays inside
     path: Optional[list[list[float]]] = Field(None, min_length=2)   # map props: normalised map points the centre
                                                                      # travels along from t_in (replaces x/y)
     path_s: Optional[float] = Field(None, gt=0, le=120)  # travel time (None = t_in to t_out)
@@ -907,6 +946,7 @@ class GsapScene(Strict):
     borders: Optional[list[Border]] = None          # self-drawing neon border lines (dashed: sea borders)
     morph: Optional[MapMorph] = None                # second map texture crossfaded over the map
     routes: Optional[list[Route]] = None            # self-drawing dashed movement lines with an arrowhead
+    map_texts: Optional[list[MapText]] = Field(None, max_length=8)   # names written on the map along a curve
     figures: Optional[list[Figure]] = None          # big years and numbers
     beats: Optional[list[Beat]] = None              # layout profiles: beats replace camera_path and element frames
     props: Optional[list[Prop]] = None              # free-positioned images (map- or screen-anchored)
@@ -1256,13 +1296,15 @@ class Timeline(Strict):
     captions_meta: Optional[CaptionsMeta] = None
     caption_style: dict = {}
     gates: Optional[ProjectGates] = None   # project gate requests (None = channel rules as they are)
+    profile_overrides: dict = Field({}, exclude_if=lambda v: not v)   # project values over the channel profile
+                                                                       # (profiles.OVERRIDABLE tables; null removes)
 
     @model_validator(mode="after")
     def _profile_exists(self):
         from . import profiles
         from .util import EngineError
         try:
-            prof = profiles.load(self.profile)
+            prof = profiles.load(self.profile, self.profile_overrides)
             mz = prof.camera.max_zoom
         except EngineError as e:
             raise ValueError(str(e)) from e

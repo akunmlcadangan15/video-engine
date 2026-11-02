@@ -8,7 +8,8 @@ F03 clear: on every shown frame (opacity > 0.05) the prop box (props.box: rotate
     intersect (layer2.OVERLAP_TOL) a pin head, label, title, figure, card, heading, note or area label, nor a caption
     shown on that frame. Beats segments: the layout items of every frame; every segment: the DOM element rects at the
     probe seeks (layer2.probe_times holds three frames per prop); captions: the compiled caption events after placement.
-F04 safe area: on every shown frame the prop box lies inside the R63 safe area (layer2.SAFE_X, SAFE_TOP, SAFE_BOTTOM).
+F04 safe area: on every shown frame the prop box lies inside the R63 safe area (layer2.SAFE_X, SAFE_TOP, SAFE_BOTTOM); a map
+prop with `offscreen` only on its first shown frame (the camera may carry it out afterwards).
 Credits (R07) and licences (R14) cover props through layer1.visual_refs; timing through T02.
 """
 from __future__ import annotations
@@ -106,6 +107,8 @@ def check_segment(s: Segment, tl: Timeline, project_dir: Path, events: list[tupl
         elif ratio < RES_WARN:
             warn.append(msg + f"; below {RES_WARN:g}x")
         out_f = [(f, b) for f, _, b in shown if b[0] < sx or b[2] > W - sx or b[1] < st or b[3] > sb]
+        if p.offscreen and p.anchor == "map":   # carried off by the camera: only its first shown frame must be inside
+            out_f = out_f[:1] if out_f and out_f[0][0] == shown[0][0] else []
         if out_f:
             f, b = out_f[0]
             lines["F04"].append(f"{tag}: box {_fmt(b)} outside the safe area {_fmt((sx, st, W - sx, sb))} on "

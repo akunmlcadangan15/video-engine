@@ -344,12 +344,15 @@ def mark_flying(res: dict, scene: dict) -> None:
 
 
 def check_rects(rects: list[dict], W: int, H: int, t: float, seg: int) -> list[Finding]:
-    """R63 element checks on one seek time: inside the safe area, no pairwise overlap.
+    """R63 element checks on one seek time: inside the safe area (map texts excepted: they lie on the map, which the
+    camera may carry past the frame edge), no pairwise overlap.
     rects: {id, text, x, y, w, h, opacity}; elements with opacity <= 0.05 are ignored."""
     out = []
     sx, st, sb = SAFE_X * W / 1080, SAFE_TOP * H / 1920, H - SAFE_BOTTOM * H / 1920
     vis = visible(rects)
     for r in vis:
+        if r["id"].startswith("maptext:"):
+            continue
         if r["x"] < sx or r["x"] + r["w"] > W - sx or r["y"] < st or r["y"] + r["h"] > sb:
             out.append(Finding("R63", "fail", f"t={t:.2f}s {r['id']} '{r.get('text', '')[:30]}' at "
                                f"({r['x']:.0f},{r['y']:.0f},{r['w']:.0f}x{r['h']:.0f}) outside safe area", seg))

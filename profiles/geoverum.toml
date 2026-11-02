@@ -108,6 +108,13 @@ pulse_ease = [0.3, 0.0, 0.15, 1.0]
 pulse_anchor = [0.44, 0.41]   # screen point that stays put: centre of [layout.zones] z2
 pulse_direction = "in"        # push in, then back
 max_zoom = 16                 # deepest camera zoom: country-scale close-ups from a whole-map source
+# flow camera paths (camera key move "flow") lean into their motion like a drone: fitted to the Amazon reference
+# (UW3mWOVzWvU, 2026-11-02): perspective grows with screen speed, the map banks with sideways travel
+bank_roll = 12                # deg of roll per frame width / s sideways
+bank_tilt = 9                 # deg of extra tilt per frame width / s of screen speed
+bank_max_roll = 20
+bank_max_tilt = 16
+bank_smooth_s = 0.5
 
 [transitions]                 # EXPERIMENTAL (A/B): hard cut on a visual-type change, short state change on one map
 kind = "cut"                  # every boundary is a hard cut unless a rule or a segment transition_in says otherwise
