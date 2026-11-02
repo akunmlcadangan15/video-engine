@@ -25,7 +25,7 @@ from pydantic import ValidationError
 from . import ai
 from .ai import tasks
 from .ai.base import AwaitingAgent, Image, Media, Text
-from . import audio, config, pauses, profiles
+from . import assets, audio, config, draft_scene, pauses, profiles
 from .hyperframes import HF_PRESETS
 from .licence import is_licence_field
 from .timeline import (HYPERFRAMES, IMAGE_EXT, NATIVE, AudioChain, CaptionWord, CaptionsMeta, Settings, Timeline,
@@ -67,6 +67,7 @@ class AssetInfo:
     duration_s: float | None = None
     hints: list[str] = field(default_factory=list)
     credit_line: int | None = None   # deterministic match (manifest / sidecar / existing timeline URL)
+    map_bounds: list[float] | None = None   # sidecar "map_bounds" [south, west, north, east]: lat/lng pins on a flat map
 
 
 @dataclass
@@ -190,6 +191,10 @@ def inventory(pdir: Path, credit_lines: list[CreditLine], exclude: set[str], exi
         for k in ("title", "description", "objectname"):
             if isinstance(sc.get(k), str) and sc[k].strip():
                 a.hints.append(f"{k}: {re.sub(r'<[^>]+>', '', sc[k])[:160]}")
+        mb = sc.get("map_bounds")
+        if isinstance(mb, list) and len(mb) == 4 and all(isinstance(v, (int, float)) for v in mb):
+            a.map_bounds = [float(v) for v in mb]
+            a.hints.append(f"map_bounds [south, west, north, east]: {a.map_bounds}")
         for u in (row.get("source_url"), sc.get("url") if isinstance(sc.get("url"), str) else None,
                   sc.get("source_url") if isinstance(sc.get("source_url"), str) else None, old_urls.get(p.name)):
             if u and _norm_url(u) in by_url:
@@ -252,14 +257,17 @@ def schema(inp: Inputs) -> dict:
         "focus_box": {"type": "array", "items": n},
         "map_title": s, "map_camera": {"type": "string", "enum": list(HF_PRESETS)},
         "map_focus": {"type": "array", "items": n},
-        "map_pins": {"type": "array", "items": {"type": "object", "properties": {"label": s, "x": n, "y": n, "at_s": n},
-                                                "required": ["label", "x", "y"]}},
+        "map_pins": {"type": "array", "items": {"type": "object", "properties": {
+            "label": s, "x": n, "y": n, "lat": n, "lng": n, "at_s": n, "flag": s,
+            "label_side": {"type": "string", "enum": ["left", "right"]}}, "required": ["label"]}},
         "map_card": {"type": "object", "properties": {"title": s, "subtitle": s,
                                                       "position": {"type": "string", "enum": ["top", "bottom"]}},
                      "required": ["title"]},
         "overlays": {"type": "array", "items": overlay}},
         "required": ["start_frame", "end_frame", "kind", "asset", "narration", "why"]}
-    if profiles.load(inp.profile or profiles.DEFAULT).draft.map_path:
+    prof = profiles.load(inp.profile or profiles.DEFAULT)
+    seg["properties"].update(draft_scene.schema_props(prof.draft, prof.layout is not None))
+    if prof.draft.map_path:
         seg["properties"]["map_path"] = {"type": "array", "items": {
             "type": "object", "properties": {"at_s": n, "x": n, "y": n, "zoom": n, "move": {"type": "string", "enum": ["glide", "whip", "reveal"]}},
             "required": ["at_s", "x", "y"]}}
@@ -291,6 +299,8 @@ def prompt(inp: Inputs) -> str:
                  "\n   to key inside one segment (one map segment visits several places). move = how the camera reaches"
                  "\n   the key: glide (default) or whip (fast blurred move for a far jump; the camera drifts until it)."
                  if dp.map_path else "")
+    prof = profiles.load(inp.profile or profiles.DEFAULT)
+    scene_rule = draft_scene.prompt(prof.draft, prof.layout is not None)
     return f"""You are the editor of a vertical documentary short ({S.width}x{S.height}, {fps} fps, Indonesian narration).
 Draft the visual edit for the attached narration. Total length: frames 0..{inp.total_frames} (exclusive end).
 
@@ -319,7 +329,7 @@ RULES
    you saw in the thumbnail when the move should end on it). kind video -> source_in_s within the clip duration minus
    the segment length; camera_preset optional. kind map -> only for a map asset; map_pins x,y are 0..1 positions
    on the map image you saw (place each pin on the place it names), at_s relative to the segment start;
-   map_camera from the enum; optional map_card.{path_rule}
+   map_camera from the enum; optional map_card.{path_rule}{scene_rule}
 4. Overlays (optional, images/videos only): kind text_card (title + subtitle), label (short name), lower_third
    (person + role); position top or bottom. Text adds information not spoken in that segment (date, place, name);
    never repeat the spoken words. At most one overlay per segment; 2-6 words title.
@@ -428,11 +438,34 @@ def _camera_path(keys: list[dict], n: int, fps: int, max_zoom: float = 4.0) -> l
     return out
 
 
+PIN_KEYS = ("label", "x", "y", "lat", "lng", "at_s", "flag", "label_side")
+
+
+def _pin(p: dict, path: str, n: int, fps: int) -> dict:
+    """Model map pin -> Pin input. x/y clamped to 0..1 and at_s to the segment (the old behaviour); unknown keys and
+    an unknown flag code fail with the pin's location."""
+    draft_scene._keys(path, p, PIN_KEYS)
+    d = {"label": p.get("label")}
+    if p.get("x") is not None and p.get("y") is not None:
+        d.update(x=min(1.0, max(0.0, float(p["x"]))), y=min(1.0, max(0.0, float(p["y"]))))
+    for k in ("lat", "lng", "label_side"):
+        if p.get(k) is not None:
+            d[k] = p[k]
+    if p.get("at_s") is not None:
+        d["at_frame"] = min(n - 1, max(0, sec_to_frame(p["at_s"], fps)))
+    if p.get("flag"):
+        d["flag"] = draft_scene._flag(f"{path}.flag", p["flag"])
+    return d
+
+
 def assemble(inp: Inputs, data: dict) -> tuple[Timeline, list[str], list[dict]]:
     """Model JSON -> (Timeline, normalisation notes, per-segment rationale). Raises ValueError / ValidationError with a message fit for the repair prompt."""
     S, fps = inp.settings, inp.settings.fps
     by_id = {a.id: a for a in inp.assets}
-    max_zoom = profiles.load(inp.profile or profiles.DEFAULT).camera.max_zoom
+    prof = profiles.load(inp.profile or profiles.DEFAULT)
+    max_zoom, layout_on = prof.camera.max_zoom, prof.layout is not None
+    seg_keys = set(schema(inp)["properties"]["segments"]["items"]["properties"]) | set(draft_scene.FIELDS)   # gated
+                                                                         # scene keys: draft_scene names the profile
     lines = {c.n: c for c in inp.credit_lines}
     segs, notes = normalise(list(data.get("segments") or []), inp.total_frames)
     if not segs:
@@ -443,6 +476,9 @@ def assemble(inp: Inputs, data: dict) -> tuple[Timeline, list[str], list[dict]]:
         if a is None:
             raise ValueError(f"segment {i}: unknown asset {s.get('asset')!r}")
         used.append(a.id)
+        unknown = sorted(set(s) - seg_keys)
+        if unknown:
+            raise ValueError(f"segment {i}: {unknown[0]}: unknown field (allowed: {', '.join(sorted(seg_keys))})")
         d: dict = {"seg_index": i, "start_frame": s["start_frame"], "end_frame": s["end_frame"], "asset_id": a.id}
         if s.get("goal"):
             d["goal"] = str(s["goal"]).strip()[:200]
@@ -451,21 +487,27 @@ def assemble(inp: Inputs, data: dict) -> tuple[Timeline, list[str], list[dict]]:
         if kind == "map":
             if a.kind != "image":
                 raise ValueError(f"segment {i}: map segment needs an image asset, {a.id} is a {a.kind}")
-            pins = [{"label": p["label"], "x": min(1.0, max(0.0, float(p["x"]))), "y": min(1.0, max(0.0, float(p["y"]))),
-                     **({"at_frame": min(n - 1, max(0, sec_to_frame(p["at_s"], fps)))} if p.get("at_s") is not None else {})}
-                    for p in s.get("map_pins") or []]
+            pins = [_pin(p, f"segment {i}: map_pins[{k}]", n, fps) for k, p in enumerate(s.get("map_pins") or [])]
             cards = []
             if s.get("map_card"):
                 c = s["map_card"]
                 cards.append({"title": c["title"], **({"subtitle": c["subtitle"]} if c.get("subtitle") else {}),
                               "position": c.get("position", "top")})
-            d.update(engine_type=HYPERFRAMES, gsap_scene_config={
+            scene = {
                 "map_asset": a.path, "map_asset_id": a.id, "pins": pins, "cards": cards,
                 "camera_preset": s.get("map_camera") or "zoom_in",
                 **({"camera_path": _camera_path(s["map_path"], n, fps, max_zoom)} if s.get("map_path") else {}),
                 **({"title": s["map_title"]} if s.get("map_title") else {}),
-                **({"focus": [float(v) for v in s["map_focus"][:2]]} if len(s.get("map_focus") or []) >= 2 else {})})
+                **({"focus": [float(v) for v in s["map_focus"][:2]]} if len(s.get("map_focus") or []) >= 2 else {}),
+                **({"map_bounds": a.map_bounds} if a.map_bounds else {})}
+            scene = draft_scene.convert(s, i, n=n, fps=fps, assets=by_id, map_asset=a, used=used, dp=prof.draft,
+                                        layout_on=layout_on, scene=scene)
+            d.update(engine_type=HYPERFRAMES, gsap_scene_config=scene)
         else:
+            extra = [k for k in draft_scene.FIELDS if k in s] + [k for k in ("map_pins", "map_path", "map_card")
+                                                                   if s.get(k)]
+            if extra:
+                raise ValueError(f"segment {i}: {extra[0]} applies to a map segment (kind map), this is kind {kind}")
             d["engine_type"] = NATIVE
             if a.kind == "image":
                 d["source_image"] = a.path
@@ -512,6 +554,11 @@ def assemble(inp: Inputs, data: dict) -> tuple[Timeline, list[str], list[dict]]:
             credits.append(old)
     tl = Timeline(project_id=inp.project_id, profile=inp.profile, settings=S, credits_manifest=credits, audio_chain=inp.audio_chain,
                   segments=out, captions=inp.words, captions_meta=inp.words_meta, caption_style=dict(inp.caption_style))
+    try:   # open assets the scene names (flag-icons flags): credits from their registry rows, as the build adds them
+        tl, auto = assets.ensure_credits(tl, inp.pdir)
+    except EngineError as e:
+        raise ValueError(f"credits: {e}") from None
+    notes += [f"credit {r['asset_id']}: added from the open-asset registry ({r['license']})" for r in auto]
     why = [{"seg": i, "narration": s.get("narration"), "why": s.get("why"), **({"goal": s["goal"]} if s.get("goal") else {})}
            for i, s in enumerate(segs)]
     return tl, notes, why
@@ -528,9 +575,15 @@ def _existing_credit(inp: Inputs, aid: str) -> dict | None:
 
 # ----------------------------------------------------------------------------------------------------------- gates
 def check(tl: Timeline, pdir: Path, dom: bool = True):
+    """Pre-flight gates as the build runs them: open-asset credits (registry rows, e.g. flag-icons) count as listed,
+    like the build's ensure_credits step (EXTRA_CREDIT_URLS)."""
     from .gates import run_preflight
-    rep = run_preflight(tl, pdir, tl.captions, dom=dom)
-    return rep
+    from .gates.layer1 import EXTRA_CREDIT_URLS
+    token = EXTRA_CREDIT_URLS.set(tuple(c.source_url for c in tl.credits_manifest if (c.path or "").startswith("open:")))
+    try:
+        return run_preflight(tl, pdir, tl.captions, dom=dom)
+    finally:
+        EXTRA_CREDIT_URLS.reset(token)
 
 
 def _failures_text(errs: list[str]) -> str:
@@ -549,12 +602,14 @@ def _attempt(provider, inp, contents, sch, rid, files, pdir, dom):
     """One planning request -> (entry, tl, rep, why, data); entry["errors"] empty when the draft passes."""
     r = provider.generate_json("planning", contents, sch, rid, files)
     entry = {"request": rid, "ai": r.meta(), "notes": [], "errors": []}
-    tl, rep, why, errs = None, None, [], []
-    try:
-        tl, entry["notes"], why = assemble(inp, r.data)
-    except (ValueError, ValidationError, KeyError, TypeError) as e:
-        errs = [f"assembly: {e}"]
-        tl = None
+    tl, rep, why = None, None, []
+    errs = [f"schema: {e}" for e in ai.base.schema_errors(r.data, sch)][:20]   # structure first: JSON paths
+    if not errs:
+        try:
+            tl, entry["notes"], why = assemble(inp, r.data)
+        except (ValueError, ValidationError, KeyError, TypeError) as e:
+            errs = [f"assembly: {e}"]
+            tl = None
     if tl is not None:
         rep = check(tl, pdir, dom=dom)
         errs = [f.line() for f in rep.failed]

@@ -45,6 +45,7 @@ require_source = "epidemic"   # A02: music and SFX from Epidemic Sound only (doc
 min_seg_s = 0.8               # flexible segment pacing; short cuts and montages allowed
 max_seg_s = 30.0
 map_path = true               # map segments may carry a multi-key camera path
+scene = ["globe", "props", "beats"]   # draft map scene opt-ins (draft_scene.py); no "morph": [transitions] map_morph is off
 rules = [
   "Open on a moving map (kind map, camera zoom_in or a pan) with a geographical paradox, visual pun, stark dividing line, or magnifying-glass mystery and the first pin, route, or card within 1.5 s; narration and the first caption start at 0.0-0.2 s.",
   "Use HyperFrames scenes as the primary visual composer (satellite maps, historical parchment maps, 2D side-view cross-section diagrams, 3D space globes, cards, and props). Move between places on one map with a map_path (zooming up to 16x for enclaves/straits) or cut freely whenever the narrative rhythm calls for a new shot.",

@@ -234,6 +234,8 @@ class DraftProfile(_Strict):
     max_seg_s: float = Field(gt=0)
     rules: list[str] = []
     map_path: bool = False   # the model may give a map segment a multi-key camera path (map_path)
+    scene: list[Literal["globe", "props", "morph", "beats"]] = []   # opt-in map scene keys (draft_scene.py; beats
+                                                                    # also need [layout])
 
     @model_validator(mode="after")
     def _o(self):

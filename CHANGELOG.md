@@ -7,6 +7,11 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Ditambahkan
 
+- **Draft peta lengkap** (`video_engine/draft_scene.py`): `engine draft` kini meneruskan region berbendera, rute,
+  border, figure/counter, flag character dan bendera pin ke `gsap_scene_config`; globe, props, morph dan beats lewat
+  `[draft] scene` profil (Geoverum: globe, props, beats). Sebelumnya schema dan assembler membuang semua field ini
+  sehingga draft turun menjadi peta + pin + kartu. Field yang tidak bisa dieksekusi ditolak dengan lokasi field,
+  jawaban model dicek ke schema sebelum assembly, dan sidecar `map_bounds` peta mengizinkan pin lat/lng.
 - **Transisi `zoom_through`**: zoom-through besar untuk pergantian adegan (gaya Short referensi Antarctica). Adegan
   lama zoom makin cepat sampai `through_scale` (default 4x) dengan blur radial, kilatan putih opsional
   (`through_flash`), lalu adegan baru mendarat (power4.out). Bisa dipilih per batas segmen (`transition_in`) atau
