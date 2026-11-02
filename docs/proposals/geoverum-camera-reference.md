@@ -98,6 +98,16 @@ What differs:
 Items 1, 2, 4 and 6 are profile or authoring changes; 3 and 5 need engine code (a new ease in `layout.EASES` and the
 template's `__legs`, wider transition bounds and a flash in `transitions.py`), with golden frames for each.
 
+## Decisions and status (2026-11-02)
+
+- Owner: both styles, used as each Short needs ("kolaborasi"): one-map journeys (B) and scenes joined by
+  zoom-throughs (A). Nothing changes by default; the tools are chosen per video or per boundary.
+- Built: camera move `reveal` (proposal 3; `theme.reveal_ease`, fitted to B) and transition `zoom_through`
+  (proposal 5; optional white flash `through_flash`). Pulses stay available and can be switched off per key with
+  `pulse: 0` (proposal 2).
+- Not yet changed: the Geoverum profile values (whip length, P03 `step_warn`, `max_zoom`), which wait for renders of
+  real Shorts with the new tools.
+
 ## Open questions for the owner
 
 1. Should Geoverum Shorts become mainly one-map journeys (B), or keep several scenes joined by zoom-throughs (A)?
