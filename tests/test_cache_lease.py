@@ -194,8 +194,9 @@ def test_good_lease_of_a_reused_pid_is_reclaimed(root):
     pid = os.getppid()
     real = cache.proc_start(pid)
     assert real is not None
-    reused = f"{pid}-{int(real) + 1}.json"
-    (root / cache.LEASES / reused).write_text(json.dumps({"pid": pid, "start": str(int(real) + 1),
+    other = f"{real}-other"   # a start time is a number on Linux and a ps lstart string on macOS
+    reused = f"{pid}-{other}.json"
+    (root / cache.LEASES / reused).write_text(json.dumps({"pid": pid, "start": other,
                                                           "paths": ["segments/held.mp4"]}))
     res = cache.prune(max_bytes=0)
     assert res.reclaimed_leases == [reused] and res.deleted == ["segments/held.mp4"] and not held.exists()

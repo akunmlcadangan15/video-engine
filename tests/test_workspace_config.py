@@ -23,12 +23,14 @@ def paths(**env) -> list[str]:
     return out.split("|")
 
 
-def test_good_without_any_variable_the_defaults_are_the_render_machine_paths():
+def test_good_without_any_variable_the_defaults_are_the_platform_paths():
+    """Linux: the render machine's /workspace; elsewhere (macOS): ~/workspace."""
+    w = "/workspace" if sys.platform.startswith("linux") else str(Path.home() / "workspace")
     ws, geo, openassets, stock, dl, lib_open, lib_stock = paths()
-    assert (ws, geo, openassets, stock, dl) == ("/workspace", "/workspace/geo-library", "/workspace/open-assets",
-                                                "/workspace/asset-cache", "/workspace/downloads")
-    assert lib_open == "/workspace/open-assets"
-    assert lib_stock == "/workspace/asset-cache/footage:/workspace/asset-cache"
+    assert (ws, geo, openassets, stock, dl) == (w, f"{w}/geo-library", f"{w}/open-assets", f"{w}/asset-cache",
+                                                f"{w}/downloads")
+    assert lib_open == f"{w}/open-assets"
+    assert lib_stock == f"{w}/asset-cache/footage:{w}/asset-cache"
 
 
 def test_good_one_variable_moves_every_default(tmp_path):
