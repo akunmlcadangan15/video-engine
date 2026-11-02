@@ -1,5 +1,12 @@
 # Environment and variables
 
+Where the engine runs and which variables configure it.
+
+**What this document answers**
+
+- Which tools and versions the engine needs, and how to check them (`engine doctor`).
+- Which `VIDEO_ENGINE_*` variables exist, their defaults and what they change.
+
 | Item | Value |
 |---|---|
 | Python | `/workspace/engine-venv` (`source /workspace/engine-venv/bin/activate`) |
@@ -18,9 +25,14 @@
 | `VIDEO_ENGINE_CACHE` | `<repo>/.cache` | BLAKE3 content-addressed cache (words, segments, map renders) |
 | `VIDEO_ENGINE_CACHE_MAX_MB` | 4096 | cache size limit (LRU prune) |
 | `VIDEO_ENGINE_HF_WORKERS` | `workers // 4` | HyperFrames capture workers (overrides the budget's `hf_workers`) |
-| `VIDEO_ENGINE_WORKERS` | unset | build worker budget (overrides profile `[resources] workers`; see Resources) |
+| `VIDEO_ENGINE_WORKERS` | unset | build worker budget (overrides profile `[resources] workers`; see [Resources](BUILD.md#resources)) |
 | `VIDEO_ENGINE_TASTE_DIR` | `<profiles>/taste` | director taste store directory |
 | `VIDEO_ENGINE_VENDOR` | `<repo>/vendor` | toolchain directory |
 | `VIDEO_ENGINE_AI_PROVIDER` | unset | AI provider when `--provider` is not given |
 | `VIDEO_ENGINE_AI_CONFIG` | `<repo>/ai_providers.toml` | AI provider registry file |
 | `VIDEO_ENGINE_PROFILES` | `<repo>/profiles` | channel profile directory |
+| `VIDEO_ENGINE_WORKSPACE` | `/workspace` | folder that holds the shared libraries; the defaults of the four variables below sit in it |
+| `VIDEO_ENGINE_GEO_LIBRARY` | `<workspace>/geo-library` | Natural Earth `land` GeoJSON for gate G02 (absent: the land check skips) |
+| `VIDEO_ENGINE_OPEN_ASSETS` | `<workspace>/open-assets` | `open-assets/catalog.csv` and the files it lists |
+| `VIDEO_ENGINE_STOCK_DIRS` | `<workspace>/asset-cache` | stock and B-roll roots, separated by `:` |
+| `VIDEO_ENGINE_DOWNLOAD_DIR` | `<workspace>/downloads` | folder searched for assets downloaded earlier (asset resolver) |

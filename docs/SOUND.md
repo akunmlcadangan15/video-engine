@@ -1,5 +1,12 @@
 # Sound sourcing
 
+How music and sound effects reach a build.
+
+**What this document answers**
+
+- Which profile keys switch sound on, and what gate A02 enforces.
+- How the sound cache, the agent request and the Epidemic Sound connector work together.
+
 Music and SFX files for a profile with `[sound]` come from the sound cache (`video_engine/sound/`). The engine makes
 no network calls and holds no keys; an agent fills the cache through a file handoff and the Epidemic Sound connector.
 

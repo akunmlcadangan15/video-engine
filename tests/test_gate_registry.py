@@ -85,6 +85,13 @@ def test_good_markdown_block_lists_every_gate_once():
         assert len(re.findall(rf"^\| {g.id} \|", md, re.M)) == 1, g.id
 
 
+def test_good_docs_gates_embeds_the_generated_index_unchanged():
+    """docs/GATES.md holds `engine gates --format md` between its markers; regenerate it when the registry changes."""
+    text = (ROOT / "docs" / "GATES.md").read_text(encoding="utf-8")
+    a, b = text.index(gate_tools.MD_BEGIN), text.index(gate_tools.MD_END) + len(gate_tools.MD_END)
+    assert text[a:b] == gate_tools.render_markdown(), "docs/GATES.md is stale: run `engine gates --format md`"
+
+
 def _report(path: Path, ok: bool, fails=(), warns=(), waived=()):
     rows = lambda gs, key: [{"gate": g, "level": key, "message": "x"} for g in gs]   # noqa: E731
     path.parent.mkdir(parents=True, exist_ok=True)

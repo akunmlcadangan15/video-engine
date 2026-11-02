@@ -1,5 +1,15 @@
 # hypoverum_core_rs — guide for agents
 
+Rules for the native crate `hypoverum_core_rs`.
+
+**What this document answers**
+
+- Which modules the crate has and what each does.
+- The exact Python API of the crate: arguments, errors and limits.
+- How to build, test and install the crate.
+- The PyO3 rules (no panics across the boundary, GIL release, validation) and the frame, time and `.ass` rules.
+- Which inputs a cache key must include, and the checklist for committing a Rust change.
+
 Native core of `video_engine`. PyO3 0.27 (abi3, Python >= 3.10) + maturin + rayon + blake3. Built as `cdylib` (Python module) and `rlib` (Rust tests).
 
 ## Layout
@@ -22,7 +32,10 @@ Python callers: `video_engine/timeline.py` (sec_to_frame), `pauses.py` (detect_p
 
 ## Python API
 
-Frames are `int` (i64), `0 <= frame < 2^40`. Pixel buffers are `bytes`, RGB24, row-major, `len == w*h*3`, each side `1..=32768` and `w*h*3 <= 2^31`. Windows (`W4`) are `(x, y, w, h)` floats in source pixels: finite, `w > 0`, `h > 0`. No function raises `PanicException`; the errors listed are the only ones.
+Frames are `int` (i64), `0 <= frame < 2^40`.
+Pixel buffers are `bytes`, RGB24, row-major, `len == w*h*3`, each side `1..=32768` and `w*h*3 <= 2^31`.
+Windows (`W4`) are `(x, y, w, h)` floats in source pixels: finite, `w > 0`, `h > 0`.
+No function raises `PanicException`; the errors listed are the only ones.
 
 ```
 ALGO_VERSION: str                                  # "2"; part of every render cache key (see Cache-key rules)
@@ -100,8 +113,10 @@ cd /workspace/video-engine/rust/hypoverum_core_rs
 | Python tests | `cd /workspace/video-engine && /workspace/engine-venv/bin/python -m pytest -q` |
 
 Facts:
-- `cargo test` with default features fails to link (`cannot find -lpython3.13`): the system Python has no shared libpython. Run Rust tests with `--no-default-features`; keep logic out of `mod py` so it stays testable.
-- `maturin develop` installs an editable package into `/workspace/engine-venv` (`site-packages/hypoverum_core_rs/hypoverum_core_rs.abi3.so`, `__init__.pyi`, `py.typed`). Python imports the installed `.so`; source edits have no effect until rebuilt.
+- `cargo test` with default features fails to link (`cannot find -lpython3.13`): the system Python has no shared libpython.
+  Run Rust tests with `--no-default-features`; keep logic out of `mod py` so it stays testable.
+- `maturin develop` installs an editable package into `/workspace/engine-venv` (`site-packages/hypoverum_core_rs/hypoverum_core_rs.abi3.so`, `__init__.pyi`, `py.typed`).
+  Python imports the installed `.so`; source edits have no effect until rebuilt.
 - Use `--release` for installs: debug builds are much slower in warp/pixel code and panic on integer overflow.
 - When another agent may be building, use a private target dir: `CARGO_TARGET_DIR=/tmp/<name>-target`.
 - Scratch build without touching the venv: `cargo build --release --features pyo3/extension-module`, copy `target/release/libhypoverum_core_rs.so` to `<dir>/hypoverum_core_rs.abi3.so`, run with `PYTHONPATH=<dir>`.
@@ -110,63 +125,118 @@ Facts:
 ## PyO3 rules
 
 - API era: PyO3 0.27. Use `Bound<'py, T>`, `py.detach(..)` (not `allow_threads`), `FromPyObjectOwned`, `PyBytes::new`. No GIL Refs, no `&PyAny`.
-- No panic may cross the boundary. A Rust panic becomes `pyo3_runtime.PanicException`, which derives from `BaseException`, so `except Exception` does not catch it. Forbidden on user-controlled data: `unwrap`, `expect`, slice indexing without a prior bounds check, `f64::clamp` with possibly-NaN bounds, `par_chunks_mut(0)`, unchecked `*`/`+` on sizes or frames.
-- Validation lives in the core modules (so `cargo test --no-default-features` covers it); every core entry point returns `Result<_, String>` and every `#[pyfunction]` that takes caller data returns `PyResult`:
+- No panic may cross the boundary.
+  A Rust panic becomes `pyo3_runtime.PanicException`, which derives from `BaseException`, so `except Exception` does not catch it.
+  Forbidden on user-controlled data: `unwrap`, `expect`, slice indexing without a prior bounds check, `f64::clamp` with possibly-NaN bounds, `par_chunks_mut(0)`, unchecked `*`/`+` on sizes or frames.
+- Validation lives in the core modules (so `cargo test --no-default-features` covers it);
+    every core entry point returns `Result<_, String>` and every `#[pyfunction]` that takes caller data returns `PyResult`:
   - sizes: `num::rgb_len` (each side `1..=MAX_SIDE`, `checked_mul`, total `<= MAX_BUF`), buffer length equals `w*h*3`;
   - floats: `num::finite` / `num::positive`; clamp with `num::clampf`; convert with `num::f64_to_i64` / `f64_to_index` (never `as`);
   - fps: `frames::check_fps` (`1..=99`);
   - frames: `ass::check_words` (`0 <= start < end < MAX_FRAME`, sorted by start); frame arithmetic uses `checked_*` / `saturating_*`.
-- Error mapping: invalid argument -> `PyValueError`; missing file -> `PyFileNotFoundError`; other filesystem -> `PyIOError`, path in the message; wrong container type -> `PyTypeError`. `lib.rs` maps core `String` errors to `PyValueError`.
-- Release the GIL with `py.detach` around any work that can exceed ~1 ms: hashing, rayon loops, pixel work, I/O. Copy or borrow inputs before `detach`; build Python objects after it.
-- Rayon uses the global pool. `video_engine/config.py` sets `RAYON_NUM_THREADS` and calls `set_threads(RUST_THREADS)` at import, before any parallel call. `RUST_THREADS` = env `VIDEO_ENGINE_RUST_THREADS`, default `max(1, THREADS - 2)` (headroom for concurrent ffmpeg). Python may call several detached functions concurrently from threads; do not create per-call pools.
-- File hashing (`hash_file`) reads 4 MiB chunks (`update_rayon` for chunks >= 1 MiB). No mmap: a file truncated while hashed yields a normal result or `OSError`, never SIGBUS. blake3 is built without the `mmap` feature.
-- Type mapping: `int` <-> `i64` (frames) / `u32` (width, height, fps) / `usize` (pixel dims, counts); `float` <-> `f64`; `bytes` -> `&[u8]` (borrowed, zero-copy) or `Vec<u8>` (copied); `bytes` out via `PyBytes::new`; `tuple` <-> Rust tuple; `list` <-> `Vec`; `dict` -> `&Bound<PyDict>`; `None` <-> `Option`. Paths are extracted as `PathBuf`, so `str` and `pathlib.Path` (any `os.PathLike`) both work. Frame iterables are taken as `&Bound<PyAny>` and borrowed (no owned `Vec<Vec<u8>>` copy).
-- Style dicts: unknown keys raise `ValueError` (the `known` list in `lib.rs::style_from`). Adding a `Style` field means updating `ass::Style`, `Default`, `known`, `style_from`, and `video_engine/captions.py` docs.
+- Error mapping: invalid argument -> `PyValueError`;
+    missing file -> `PyFileNotFoundError`;
+    other filesystem -> `PyIOError`, path in the message;
+    wrong container type -> `PyTypeError`.
+  `lib.rs` maps core `String` errors to `PyValueError`.
+- Release the GIL with `py.detach` around any work that can exceed ~1 ms: hashing, rayon loops, pixel work, I/O.
+  Copy or borrow inputs before `detach`; build Python objects after it.
+- Rayon uses the global pool.
+  `video_engine/config.py` sets `RAYON_NUM_THREADS` and calls `set_threads(RUST_THREADS)` at import, before any parallel call.
+  `RUST_THREADS` = env `VIDEO_ENGINE_RUST_THREADS`, default `max(1, THREADS - 2)` (headroom for concurrent ffmpeg).
+  Python may call several detached functions concurrently from threads; do not create per-call pools.
+- File hashing (`hash_file`) reads 4 MiB chunks (`update_rayon` for chunks >= 1 MiB).
+  No mmap: a file truncated while hashed yields a normal result or `OSError`, never SIGBUS. blake3 is built without the `mmap` feature.
+- Type mapping: `int` <-> `i64` (frames) / `u32` (width, height, fps) / `usize` (pixel dims, counts);
+    `float` <-> `f64`;
+    `bytes` -> `&[u8]` (borrowed, zero-copy) or `Vec<u8>` (copied);
+    `bytes` out via `PyBytes::new`;
+    `tuple` <-> Rust tuple;
+    `list` <-> `Vec`;
+    `dict` -> `&Bound<PyDict>`;
+    `None` <-> `Option`.
+  Paths are extracted as `PathBuf`, so `str` and `pathlib.Path` (any `os.PathLike`) both work.
+  Frame iterables are taken as `&Bound<PyAny>` and borrowed (no owned `Vec<Vec<u8>>` copy).
+- Style dicts: unknown keys raise `ValueError` (the `known` list in `lib.rs::style_from`).
+  Adding a `Style` field means updating `ass::Style`, `Default`, `known`, `style_from`, and `video_engine/captions.py` docs.
 - No `unsafe`. The crate has none; keep it that way.
 
 ## Frame and time rules
 
-- All engine times are integer frames. `sec_to_frame` (Rust, called by `video_engine.timeline.sec_to_frame`) is the only seconds->frames conversion; it rounds half away from zero (`2.5 s @ 1 fps -> 3`, unlike Python `round`) and clamps negatives to 0.
-- `fps` is an integer (`u32`) in `1..=99`, enforced by `sec_to_frame` and `compile_ass` (and `Settings.fps` in the schema). At `fps >= 100` two frames would share a centisecond. Fractional rates (29.97) are not represented.
+- All engine times are integer frames.
+  `sec_to_frame` (Rust, called by `video_engine.timeline.sec_to_frame`) is the only seconds->frames conversion;
+    it rounds half away from zero (`2.5 s @ 1 fps -> 3`, unlike Python `round`) and clamps negatives to 0.
+- `fps` is an integer (`u32`) in `1..=99`, enforced by `sec_to_frame` and `compile_ass` (and `Settings.fps` in the schema).
+  At `fps >= 100` two frames would share a centisecond.
+  Fractional rates (29.97) are not represented.
 - Frame ranges are half-open `[start, end)`: `end` is the first frame not shown. Duration = `end - start`. `y_overrides` ranges use the same convention.
-- .ass time = `frame_to_cs(frame, fps) = floor(frame*100/fps)` centiseconds. For `fps < 100` this shows an event exactly from frame `start` through frame `end-1`. Consecutive events share the boundary value (`end_i == start_{i+1}`): no gap, no overlap. Never round to nearest; never subtract 1 cs from ends.
+- .ass time = `frame_to_cs(frame, fps) = floor(frame*100/fps)` centiseconds.
+  For `fps < 100` this shows an event exactly from frame `start` through frame `end-1`.
+  Consecutive events share the boundary value (`end_i == start_{i+1}`): no gap, no overlap.
+  Never round to nearest; never subtract 1 cs from ends.
 - `frame_to_cs` is integer-only: `frame.checked_mul(100)? / fps`; negative frames are an error. No floats in frame->cs.
 - Caption hold (`end + hold_frames`) saturates and is capped at `MAX_FRAME`.
-- Schema mirror (`video_engine/timeline.py`): `CaptionWord` requires `0 <= start_frame < end_frame < 2^40`; `Timeline.captions` must be sorted by `start_frame`. STT words are sorted in `audio.words_to_captions` before compile.
+- Schema mirror (`video_engine/timeline.py`): `CaptionWord` requires `0 <= start_frame < end_frame < 2^40`; `Timeline.captions` must be sorted by `start_frame`.
+  STT words are sorted in `audio.words_to_captions` before compile.
 
 ## .ass rules
 
 - Header: `PlayResX = width`, `PlayResY = height` of the output video; `ScaledBorderAndShadow: yes`; `WrapStyle: 2` (no auto wrap); `YCbCr Matrix: TV.709`.
-- One style `Cap`. Default: no backing box (`BorderStyle=1`), white bold Inter 84, outline 5 (`OutlineColour` `000000` alpha 0x20), `Alignment=5`, `MarginL/R = margin_x` (90).
-- Soft shadow (default): style `Shadow=0`; a separate layer-0 Dialogue with invisible fill (`\1a&HFF&`), blurred translucent outline, offset by (`shadow_dx`, `shadow_dy`), default (`shadow`, 1.5 x `shadow`). Layer 1 is the visible text. Tests: `ass::tests::good_shadow_dx_dy_offset_the_soft_shadow_straight_down`, `good_default_soft_shadow_offset_unchanged`.
-- `box_bg=true` -> `BorderStyle=3`. libass draws the box in `OutlineColour` and the box shadow in `BackColour`, so `OutlineColour = box_colour` (alpha 0x50) and `BackColour = outline_colour` (alpha `shadow_alpha`). Test: `ass::tests::box_colour_goes_to_outline_colour`.
+- One style `Cap`.
+  Default: no backing box (`BorderStyle=1`), white bold Inter 84, outline 5 (`OutlineColour` `000000` alpha 0x20), `Alignment=5`, `MarginL/R = margin_x` (90).
+- Soft shadow (default): style `Shadow=0`;
+    a separate layer-0 Dialogue with invisible fill (`\1a&HFF&`), blurred translucent outline, offset by (`shadow_dx`, `shadow_dy`), default (`shadow`, 1.5 x `shadow`).
+  Layer 1 is the visible text.
+  Tests: `ass::tests::good_shadow_dx_dy_offset_the_soft_shadow_straight_down`, `good_default_soft_shadow_offset_unchanged`.
+- `box_bg=true` -> `BorderStyle=3`. libass draws the box in `OutlineColour` and the box shadow in `BackColour`, so `OutlineColour = box_colour` (alpha 0x50) and `BackColour = outline_colour` (alpha `shadow_alpha`).
+  Test: `ass::tests::box_colour_goes_to_outline_colour`.
 - Colours in style: `&HAABBGGRR`; in override tags: `&HBBGGRR&`. Inputs are `RRGGBB` (optional `#`).
-- Every caption is one line. Font size is reduced (`\fs`) so `est_width <= width - 2*margin_x`. Position is `\an5\pos(width/2, y)`, with `y = round(height * slot)` or a matching `y_overrides` value.
-- Text escaping (`ass::esc`, applied to every caption word): `{` -> `(`, `}` -> `)`; `\` -> `＼` (U+FF3C; libass has no `\\` escape, so a literal backslash could form `\N`, `\n`, `\h`); every control character (`char::is_control`: CR, LF, tab, NUL, ESC, U+0085, ...) -> space. Result: one Dialogue line per layer per caption, no user-controlled override codes.
+- Every caption is one line.
+  Font size is reduced (`\fs`) so `est_width <= width - 2*margin_x`.
+  Position is `\an5\pos(width/2, y)`, with `y = round(height * slot)` or a matching `y_overrides` value.
+- Text escaping (`ass::esc`, applied to every caption word): `{` -> `(`, `}` -> `)`;
+    `\` -> `＼` (U+FF3C; libass has no `\\` escape, so a literal backslash could form `\N`, `\n`, `\h`);
+    every control character (`char::is_control`: CR, LF, tab, NUL, ESC, U+0085, ...) -> space.
+  Result: one Dialogue line per layer per caption, no user-controlled override codes.
 - Style rules (`Style::validate`, ValueError otherwise): `size > 0`, `emphasis_scale > 0`, `outline >= 0`, `shadow_blur >= 0`, `shadow` finite, `shadow_dx` / `shadow_dy` finite when set, `0 <= margin_x < width/2`, `max_words >= 1`, `max_chars >= 1`, `gap_break_frames >= 0`, `hold_frames >= 0`, `font` non-empty without `,` or control characters, slot in `lower|mid|upper`, colours `RRGGBB`.
-- Burning (`audio.final_mux` via `audio.subtitle_filter`): ffmpeg runs with `cwd` = the .ass folder; the filter is the fixed `subtitles=filename=captions.ass:fontsdir=fonts` (`fonts` = symlink to `config.FONTS_DIR`). No path is escaped into the filter graph; every other path given to that ffmpeg call is absolute.
-- Output is UTF-8; Python writes it with `encoding="utf-8"`. Width estimate and `max_chars` count Unicode scalar values (`chars()`), not bytes. `uppercase` uses Unicode `to_uppercase`.
-- Grouping: <= `max_words` words and <= `max_chars` chars per caption; split at gaps > `gap_break_frames` and after phrase punctuation `.,!?;:…`; each caption is held `hold_frames` longer but never past the next caption start.
+- Burning (`audio.final_mux` via `audio.subtitle_filter`): ffmpeg runs with `cwd` = the .ass folder;
+    the filter is the fixed `subtitles=filename=captions.ass:fontsdir=fonts` (`fonts` = symlink to `config.FONTS_DIR`).
+  No path is escaped into the filter graph; every other path given to that ffmpeg call is absolute.
+- Output is UTF-8; Python writes it with `encoding="utf-8"`.
+  Width estimate and `max_chars` count Unicode scalar values (`chars()`), not bytes.
+  `uppercase` uses Unicode `to_uppercase`.
+- Grouping: <= `max_words` words and <= `max_chars` chars per caption;
+    split at gaps > `gap_break_frames` and after phrase punctuation `.,!?;:…`;
+    each caption is held `hold_frames` longer but never past the next caption start.
 
 ## Cache-key rules
 
-Cache keys are built in Python: `blake3_json(dict)` = BLAKE3 of `json.dumps(sort_keys=True, separators=(",", ":"))`; file identity = `blake3_files` (full content hash, not size/mtime).
+Cache keys are built in Python: `blake3_json(dict)` = BLAKE3 of `json.dumps(sort_keys=True, separators=(",", ":"))`;
+  file identity = `blake3_files` (full content hash, not size/mtime).
 
 A key must include every input that changes the output:
 - content hash of every source file read, including fonts, templates and JS libraries copied into the render;
 - every parameter: frames (`in`, `n`), `W`, `H`, `fps`, camera move, encoder args (`config.X264`), model names, prompts;
 - a stage version constant (`NATIVE_VERSION`, `HF_VERSION`, `MAP_VERSION`, `STT_VERSION`), bumped on any change in code that affects output;
-- the content hash of the engine sources that shape the product (`util.code_hash`): native `native.CODE` (`native.py`, `overlays.py`), HyperFrames `hyperframes.CODE` (`hyperframes.py`; `legibility.py` through the scene), grade `grade.py`, audio pass `audio.py`. Gate (checker) modules are in no key: gate results are never cached;
-- `core.ALGO_VERSION` (Rust `lib.rs::ALGO_VERSION`) for every key whose output depends on the crate: native segment key (`native.plan`, key `"algo"`), HyperFrames segment key (`hyperframes.cache_key`), map copy key (`hyperframes._map_copy`). Bump it in the same commit as any output-changing Rust edit (camera windows, warp, .ass text). Old cache entries then miss and are re-rendered; they are evicted by the cache size limit.
+- the content hash of the engine sources that shape the product (`util.code_hash`): native `native.CODE` (`native.py`, `overlays.py`), HyperFrames `hyperframes.CODE` (`hyperframes.py`; `legibility.py` through the scene), grade `grade.py`, audio pass `audio.py`.
+  Gate (checker) modules are in no key: gate results are never cached;
+- `core.ALGO_VERSION` (Rust `lib.rs::ALGO_VERSION`) for every key whose output depends on the crate: native segment key (`native.plan`, key `"algo"`), HyperFrames segment key (`hyperframes.cache_key`), map copy key (`hyperframes._map_copy`).
+  Bump it in the same commit as any output-changing Rust edit (camera windows, warp, .ass text).
+  Old cache entries then miss and are re-rendered; they are evicted by the cache size limit.
 - HyperFrames builds also hash the fonts copied into the build dir (`hyperframes.HF_FONTS` plus the `hyperframes.THEME_FONTS` roles the scene theme uses, from `config.FONTS_DIR`).
 - HyperFrames segment key (`hyperframes._key`): `HF_VERSION`, capture/encode settings (`HF_QUALITY`, `HF_CRF`, `config.X264`), `core.ALGO_VERSION`, the scene (every profile value that reaches the template: `theme`, `print` with the map grade, `layout`, `legibility` with `legibility.code_hash()`; card images as `assets/card_<content hash>.<ext>`), the map derivative key, content hashes of the textures and fonts copied into the build dir, and `toolchain.hf_identity()`.
 - Native segment key (`native.plan`): `NATIVE_VERSION`, source content hash, mode, `in`, `n`, camera move, `W`, `H`, `fps`, `config.X264`, `resources.X264_THREADS`, `-version` output of `config.FFMPEG`, `native.CODE`, `core.ALGO_VERSION`, the copy layout in copy mode, drawn overlays (`overlays.key_part`: spec, font hashes, Pillow version), the native profile values.
 - Grade key (`grade._key`): `GRADE_VERSION`, `grade.py`, rendered file content hash, frame count, baked LUT text per range, `config.X264`, x264 threads, ffmpeg `-version`.
-- Composite key (`audio.composite_key`) and audio key (`audio.audio_key`): `manifest.cmd_key` of the ffmpeg command (every input file as its sha256: segment files, transition clips, watermark PNG, `.ass`) plus the segment hashes and thread count; the composite adds every font file when captions are burned, the audio key adds the loudness-correction values and `audio.py`. Transition clips are drawn from both neighbouring segment files on every build and written bit-exact (`-fflags +bitexact`, no metadata), so equal frames give an equal clip hash.
+- Composite key (`audio.composite_key`) and audio key (`audio.audio_key`): `manifest.cmd_key` of the ffmpeg command (every input file as its sha256: segment files, transition clips, watermark PNG, `.ass`) plus the segment hashes and thread count;
+    the composite adds every font file when captions are burned, the audio key adds the loudness-correction values and `audio.py`.
+  Transition clips are drawn from both neighbouring segment files on every build and written bit-exact (`-fflags +bitexact`, no metadata), so equal frames give an equal clip hash.
 - Words key (`audio.words_key`): `STT_VERSION`, voiceover content hash, language, model, keyterms.
 - Map derivative key (`hyperframes.map_key`): `MAP_VERSION`, `core.ALGO_VERSION`, source map content hash, output width (after the `MAP_MAX_SIDE` cap), `MAP_MAX_SIDE`, resample filter, `MAP_JPEG_QUALITY`, Pillow version.
-- DOM probe key (`hyperframes.probe_key`, cache kind `dom`, entry name `<segment key>.<probe key>`): `PROBE_VERSION`, `hyperframes.CODE`, `toolchain.hf_identity()`, every file of the built segment dir (relative path, content hash), the probe times (4 dp), viewport, screenshot flag and bg mode. It holds measurements only; gates judge them on every run.
-- Toolchain identity (`toolchain.hf_identity()`): content of `vendor/VERSIONS.json`, the node binary, every file of the headless Chrome dir, every file of `vendor/npm/node_modules`, `vendor/js/gsap.min.js`, every file of `video_engine/template/`, `video_engine/hf/dom_probe.mjs`, and the `-version` output of `config.FFMPEG` and of the ffmpeg the HyperFrames CLI encodes with. Directory hashes use paths relative to the directory. Computed once per process; directory content hashes are memoised in `<cache>/toolchain/`, keyed by every file's path, size, mtime_ns, inode and device.
+- DOM probe key (`hyperframes.probe_key`, cache kind `dom`, entry name `<segment key>.<probe key>`): `PROBE_VERSION`, `hyperframes.CODE`, `toolchain.hf_identity()`, every file of the built segment dir (relative path, content hash), the probe times (4 dp), viewport, screenshot flag and bg mode.
+  It holds measurements only; gates judge them on every run.
+- Toolchain identity (`toolchain.hf_identity()`): content of `vendor/VERSIONS.json`, the node binary, every file of the headless Chrome dir, every file of `vendor/npm/node_modules`, `vendor/js/gsap.min.js`, every file of `video_engine/template/`, `video_engine/hf/dom_probe.mjs`, and the `-version` output of `config.FFMPEG` and of the ffmpeg the HyperFrames CLI encodes with.
+  Directory hashes use paths relative to the directory.
+  Computed once per process; directory content hashes are memoised in `<cache>/toolchain/`, keyed by every file's path, size, mtime_ns, inode and device.
 
 Do not put absolute paths or timestamps in keys: they change without changing output.
 
