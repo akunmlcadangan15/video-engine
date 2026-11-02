@@ -8,7 +8,7 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 ### Ditambahkan
 
 - **Tes golden-frame** (`tests/test_golden_frames.py`, `tests/golden/`): regresi piksel untuk Ken Burns native,
-  pan footage, transisi zoom whip dan page turn, serta grade warna, dengan toleransi untuk beda build ffmpeg.
+  pan footage, transisi crossfade, state, zoom whip dan page turn, serta grade warna, dengan toleransi untuk beda build ffmpeg.
 - **Gate P03 (jalur kamera)**: per segmen melaporkan panjang lintasan kamera, kecepatan layar puncak, dan perubahan
   kecepatan terbesar dalam satu frame (info). Dengan `[gates.camera] step_warn` gate ini memperingatkan lompatan
   kecepatan; default mati karena whip memang berubah cepat.

@@ -31,7 +31,7 @@ A build test that fails because Node is missing only skips when the error reache
 ## Golden frames
 
 `tests/test_golden_frames.py` renders a few small frames (216 x 384) of the paths that need no Chrome (native Ken Burns
-over a still, a native footage pan, the zoom whip and page turn transitions, a colour grade) and compares them with
+over a still, a native footage pan, the crossfade, state, zoom whip and page turn transitions, a colour grade) and compares them with
 the PNGs in `tests/golden/`.
 A case passes when the mean absolute difference is at most 1.5 levels and at most 0.5 % of the samples differ by more
 than 24, so rounding differences between ffmpeg builds pass and a moved, re-coloured or re-timed picture fails.

@@ -1,5 +1,5 @@
 """Golden frames: pixel regression tests for the paths that render without Chrome (native Ken Burns over a still,
-native footage with a pan, zoom whip and page turn transitions, a colour grade). Each case renders a few frames at a
+native footage with a pan, the crossfade, state, zoom whip and page turn transitions, a colour grade). Each case renders a few frames at a
 small size and compares them with tests/golden/<name>.png.
 
 Tolerance (`_close`): mean absolute difference <= 1.5 levels and at most 0.5 % of the samples off by more than 24,
@@ -84,6 +84,23 @@ def _scene(kind: int) -> np.ndarray:
     img[40 + 60 * kind:120 + 60 * kind, 30:110] = (230, 40 + 100 * kind, 30)
     img[:, W - 20 - 40 * kind:W - 10 - 40 * kind] = 245
     return img
+
+
+def _moving(kind: int, n: int) -> list[np.ndarray]:
+    """n frames of _scene(kind) sliding 3 px per frame, so a held frame differs from the live ones."""
+    return [np.roll(_scene(kind), 3 * i, axis=1) for i in range(n)]
+
+
+@pytest.mark.parametrize("kind, seconds", [("crossfade", profiles.TransitionsProfile().fade_s),
+                                           ("state", profiles.TransitionsProfile().state_s)])
+def test_golden_dissolve_frames(kind, seconds):
+    """crossfade (0.4 s) and state (0.2 s) at 30 fps, split around the boundary as transitions.windows does."""
+    n = round(seconds * 30)
+    n_out, n_in = n // 2, n - n // 2
+    tail, head = _moving(0, n_out), _moving(1, n_in)
+    fr = transitions.fade_frames(tail, tail[-1], head[0], head)
+    assert len(fr) == n
+    _check(f"transition_{kind}", [fr[0], fr[n_out - 1], fr[n_out], fr[-1]])
 
 
 def test_golden_zoom_whip_frames():
