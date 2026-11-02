@@ -77,7 +77,7 @@ def test_good_default_profile_runs_no_style_gates(project, W):
 def test_good_geoverum_runs_active_style_gates_and_no_cut_or_cadence_gate(project):
     d, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, None)))
     fs = style.run_style(tl, d, words(("Pagi", 0, 10), ("Titik", 10, 20)))
-    assert {f.gate for f in fs} == {"H01", "C02", "N01", "K01", "K02", "D01", "P01", "P02"}
+    assert {f.gate for f in fs} == {"H01", "C02", "N01", "K01", "K02", "D01", "P01", "P02", "P03"}
     assert not any("caption" in f.message and "per 10" in f.message for f in fs)
 
 

@@ -55,12 +55,19 @@ SEGMENT_CRF, SEGMENT_PRESET = 16, "veryfast"
 FINAL_CRF, FINAL_PRESET = 18, "medium"
 
 
+def pix_fmt(bit_depth: int = 8) -> str:
+    """Engine encode pixel format: 4:2:0 at 8 or 10 bits."""
+    return "yuv420p10le" if bit_depth == 10 else "yuv420p"
+
+
 def x264(crf: int = FINAL_CRF, preset: str = FINAL_PRESET, tune: str | None = None,
-         maxrate_kbps: int | None = None) -> list[str]:
-    """libx264 encoder arguments (yuv420p, bt709 tags); maxrate_kbps caps the CRF rate (VBV, bufsize 2x)."""
+         maxrate_kbps: int | None = None, bit_depth: int = 8) -> list[str]:
+    """libx264 encoder arguments (yuv420p, or yuv420p10le + High 10 at bit_depth 10; bt709 tags); maxrate_kbps caps
+    the CRF rate (VBV, bufsize 2x)."""
     return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf), *(["-tune", tune] if tune else []),
             *(["-maxrate", f"{maxrate_kbps}k", "-bufsize", f"{2 * maxrate_kbps}k"] if maxrate_kbps else []),
-            "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]
+            "-pix_fmt", pix_fmt(bit_depth), *(["-profile:v", "high10"] if bit_depth == 10 else []),
+            "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]
 
 
 # Colour conversion of every engine encode: RGB frames -> BT.709 limited-range yuv420p (matches the x264 bt709 tags).

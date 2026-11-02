@@ -289,3 +289,50 @@ def test_good_r56_and_p01_measure_globe_legs(project):
     d, tl = _globe_proj(project, keys=keys, pins=[])
     r = [x for x in layer2.r56_camera(tl, d)[0] if x.seg == 2]
     assert r[0].level == "fail"
+
+
+# great-circle legs ------------------------------------------------------------------------------------------------------
+def _gc(keys, n=91):
+    return {"keys": [{"f": f, "lat": la, "lng": lo, "alt": 1.5, "tilt": 0} for f, la, lo in keys], "n": n,
+            "start": 0.0, "end": 0.0, "drift": 0.0, "alt_min": 0.005}
+
+
+def _travel(G, n):
+    vs = [globe._v(v["lat"], v["lng"]) for v in (globe.camera_at(G, f, 30) for f in range(n + 1))]
+    return sum(math.acos(max(-1.0, min(1.0, globe._dot(a, b)))) for a, b in zip(vs, vs[1:]))
+
+
+def test_good_leg_follows_the_great_circle():
+    """New York -> Tokyo: the camera travels the great-circle angle (~97.6 deg), not the longer lat/lng line, and every
+    view lies on the plane of that great circle."""
+    G = _gc([(0, 40.71, -74.01), (90, 35.68, 139.69)])
+    A, B = globe._v(40.71, -74.01), globe._v(35.68, 139.69)
+    theta = math.degrees(math.acos(globe._dot(A, B)))
+    assert math.degrees(_travel(G, 90)) == pytest.approx(theta, rel=1e-3) and 97 < theta < 98.5
+    n = globe._norm(globe._cross(A, B))
+    for f in range(0, 91, 9):
+        v = globe.camera_at(G, f, 30)
+        assert abs(globe._dot(globe._v(v["lat"], v["lng"]), n)) < 1e-9
+    assert globe.camera_at(G, 45, 30)["lat"] > 60          # over the Arctic side, like the real flight path
+
+
+def test_good_short_leg_matches_the_old_lat_lng_path_closely():
+    G = _gc([(0, -6.2, 106.8), (60, -7.25, 112.75)], n=61)   # Jakarta -> Surabaya: a few degrees
+    mid = globe.camera_at(G, 30, 30)
+    assert mid["lat"] == pytest.approx(-6.75, abs=0.05) and mid["lng"] == pytest.approx(109.78, abs=0.05)
+
+
+def test_good_leg_near_the_pole_falls_back_to_lat_lng():
+    """(80, 0) -> (80, 180) would cross the pole, where the north-up camera has no heading: lat/lng interpolation."""
+    G = _gc([(0, 80.0, 0.0), (60, 80.0, 180.0)], n=61)
+    assert all(abs(globe.camera_at(G, f, 30)["lat"] - 80.0) < 1e-9 for f in range(61))
+
+
+def test_good_turning_key_stops_and_straight_key_keeps_speed():
+    def speed_at_key(keys):
+        G = _gc(keys, n=121)
+        a, b = globe._v(**{k: globe.camera_at(G, 59.5, 30)[k] for k in ("lat", "lng")}), \
+            globe._v(**{k: globe.camera_at(G, 60.5, 30)[k] for k in ("lat", "lng")})
+        return math.acos(max(-1.0, min(1.0, globe._dot(a, b))))
+    assert speed_at_key([(0, 0.0, 0.0), (60, 0.0, 30.0), (120, 0.0, 0.0)]) < 1e-6        # back the way it came
+    assert speed_at_key([(0, 0.0, 0.0), (60, 0.0, 30.0), (120, 0.0, 60.0)]) > 1e-3        # straight on

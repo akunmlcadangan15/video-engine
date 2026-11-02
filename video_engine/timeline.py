@@ -344,7 +344,7 @@ class CameraKey(Strict):
     at_frame: int = Field(ge=0)
     focus: list[float] = Field(min_length=2, max_length=2)   # normalised [x, y] map point at the frame centre
     zoom: float = Field(1.0, ge=1.0, le=ZOOM_LIMIT)          # scale over the cover fit, <= profile [camera] max_zoom
-    move: Literal["glide", "whip", "settle"] = "glide"       # move from the previous key into this one
+    move: Literal["glide", "whip", "settle", "reveal"] = "glide"   # move from the previous key into this one
     move_s: Optional[float] = Field(None, ge=0.1, le=3.0)    # "settle" length (None = theme whip_s)
     pulse: Optional[float | list[float]] = None   # ln zoom of the pulses while the camera waits on this view:
                                                   # one size or one per away pulse, last repeats (None = profile
@@ -977,7 +977,7 @@ class Segment(Strict):
     overlays: list[Overlay] = []
     gsap_scene_config: Optional[GsapScene] = None
     visual_type: Optional[VisualType] = None   # None = inferred: HyperFrames map, native still photo, native video
-    transition_in: Optional[Literal["cut", "crossfade", "state", "zoom_whip", "page_turn"]] = None   # overrides profile
+    transition_in: Optional[Literal["cut", "crossfade", "state", "zoom_whip", "zoom_through", "page_turn"]] = None   # overrides profile
     grade: Optional[Grade] = None              # full-frame grade (video_engine/grade.py); None = profile [grade]
     hold: Optional[Literal["read"]] = None     # intent: the viewer reads over the whole segment (gates/severity.py)
     goal: Optional[str] = Field(None, max_length=200)   # what the viewer must understand or feel (information)

@@ -204,3 +204,41 @@ def test_bad_leg_without_motion_fails_R56(project):
 def test_bad_draft_map_path_without_two_distinct_keys():
     with pytest.raises(ValueError, match="at least 2 keys"):
         draft._camera_path([{"at_s": 0, "x": 0.5, "y": 0.5}, {"at_s": 0.0, "x": 0.6, "y": 0.5}], 180, 30)
+
+
+# move "reveal" ---------------------------------------------------------------------------------------------------------
+REVEAL = [{"at_frame": 0, "focus": [0.3, 0.3], "zoom": 1.2},
+          {"at_frame": 20, "focus": [0.45, 0.4], "zoom": 1.6},
+          {"at_frame": 59, "focus": [0.6, 0.6], "zoom": 2.4, "move": "reveal"}]
+
+
+def test_good_reveal_is_one_front_loaded_leg_under_the_theme_bezier(project):
+    p, tl = project(_path(REVEAL))
+    sc = _scene(tl, p)
+    L = sc["camera"]["legs"][1]
+    bez = list(profiles.of(tl).data.theme.reveal_ease)
+    assert (L["f0"], L["f1"], L["ease"], L["bez"]) == (20, 59, "reveal", bez) and "v" not in L
+    e = hyperframes.leg_ease(L, sc["camera"]["legs"][0]["to"]["s"])
+    assert e(0.0) == 0 and e(1.0) == 1 and all(e(a / 20) < e((a + 1) / 20) for a in range(20))
+    steps = [e((a + 1) / 40) - e(a / 40) for a in range(40)]
+    assert steps.index(max(steps)) < 14               # fastest in the first third (the fit peaks at 19 %)
+    assert sum(steps[:20]) > 0.6                       # most of the travel in the first half: a long settle after
+
+
+def test_good_glide_into_a_reveal_keeps_the_screen_speed_continuous(project):
+    p, tl = project(_path(REVEAL))
+    W, H = tl.settings.width, tl.settings.height
+    mf = style.motion_frames(tl, p)
+    f = tl.segments[2].start_frame + 20
+    speed = lambda m: m[1] + m[0] * math.hypot(W, H) / 2 / W
+    assert speed(mf[f - 1]) == pytest.approx(speed(mf[f]), rel=0.2)   # no step at the key
+
+
+def test_good_draft_keeps_a_model_reveal(project):
+    keys = draft._camera_path([{"at_s": 0, "x": 0.3, "y": 0.3}, {"at_s": 1.0, "x": 0.6, "y": 0.5, "move": "reveal"}], 60, 30)
+    assert keys[1]["move"] == "reveal"
+
+
+def test_bad_reveal_ease_with_x_outside_0_1_rejected():
+    with pytest.raises(ValidationError, match="reveal_ease"):
+        profiles.Theme.model_validate({**profiles.load().data.theme.model_dump(), "reveal_ease": [1.2, 0.3, 0.3, 1.0]})

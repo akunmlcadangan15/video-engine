@@ -338,11 +338,38 @@ def test_bad_transition_window_longer_than_a_segment_fails_c01(project, monkeypa
         transitions.render(tl, [], Path("."))
 
 
+def test_good_zoom_through_window_and_frames(project, monkeypatch):
+    """zoom_through: through_out_s before the boundary, through_in_s after; the push-in and the blur grow to the
+    boundary, the flash peaks on the last outgoing frame and fades over through_blur_in_s."""
+    _, tl = project(tl_layout(("map", 10, None), ("photo", 10, None)))
+    T = profiles.TransitionsProfile(kind="zoom_through", through_flash=0.8)
+    _profile(monkeypatch, transitions=T)
+    (w,) = transitions.windows(tl)
+    assert (w.kind, w.f0, w.f1) == ("zoom_through", 300 - 12, 300 + 15)
+    grey = [np.full((64, 36, 3), 100, np.uint8)] * 12
+    fr = transitions.through_frames(grey, [np.full((64, 36, 3), 100, np.uint8)] * 15, T, 30)
+    mean = [float(f.mean()) for f in fr]
+    assert len(fr) == 27 and mean[11] == max(mean) and mean[11] == pytest.approx(100 + 155 * 0.8, abs=1)
+    assert mean[0] < 101 and mean[-1] == pytest.approx(100, abs=0.5)
+    assert [m for m in mean[12:21]] == sorted(mean[12:21], reverse=True)    # flash fading on the incoming frames
+
+
+def test_good_zoom_through_by_transition_in_and_its_keys_stay_out_of_the_profile_hash(project):
+    _, tl = project(lambda d: (tl_layout(("map", 10, None), ("photo", 10, None))(d),
+                               d["segments"][1].update(transition_in="zoom_through")))
+    assert transitions.kind_at(tl, 1) == "zoom_through" and transitions.windows(tl)[0].kind == "zoom_through"
+    assert profiles.load().blake3.startswith("6f0c27f00133")
+
+
 def test_bad_transitions_profile_values_rejected():
     with pytest.raises(ValidationError):
         profiles.TransitionsProfile(by_type={"cartoon": "page_turn"})
     with pytest.raises(ValidationError):
         profiles.TransitionsProfile(same_type={"cartoon": "zoom_whip"})
+    with pytest.raises(ValidationError, match="through_blur_in_s"):
+        profiles.TransitionsProfile(through_in_s=0.2, through_blur_in_s=0.4)
+    with pytest.raises(ValidationError):
+        profiles.TransitionsProfile(through_scale=9.0)
     with pytest.raises(ValidationError):
         profiles.TransitionsProfile(whip_blur_in_s=0.5, whip_in_s=0.2)
 
@@ -473,6 +500,13 @@ def test_good_layout_without_fly_keeps_its_hash(tmp_path, monkeypatch):
         dump.pop("flags")                     # default flag settings add nothing to the hash
     if dump.get("fx") == json.loads(profiles.FxProfile().model_dump_json()):
         dump.pop("fx")                        # default fx settings add nothing to the hash
+    dt = json.loads(profiles.TransitionsProfile().model_dump_json())
+    for k in [k for k in dump["transitions"] if k.startswith("through_") and dump["transitions"][k] == dt[k]]:
+        dump["transitions"].pop(k)            # default zoom_through values add nothing to the hash
+    if dump["theme"].get("reveal_ease") == list(profiles.REVEAL_EASE):
+        dump["theme"].pop("reveal_ease")      # nor does the default reveal ease
+    if dump["gates"]["camera"].get("step_warn") is None:
+        dump["gates"]["camera"].pop("step_warn", None)   # nor an unset P03 step_warn
     assert prof.blake3 == blake3_json(dump)   # an absent [layout.fly] adds nothing to the hash
 
 
@@ -726,3 +760,34 @@ def test_bad_text_after_exit_end_is_not_skipped_when_it_reenters():
     layer2.mark_flying(res, sc)
     assert [f.level for f in layer2.check_rects(res["times"][0]["rects"], 1080, 1920, 4.6, 0)] == ["fail"]
 
+
+
+
+def test_good_overlay_graph_keeps_bt709_colour(tmp_path):
+    """A transition clip lands with the colours the BT.709 segment encode gives the same RGB (an auto-negotiated
+    overlay converted the clip with a BT.601 matrix: about 15 levels off on saturated red)."""
+    rgb, to_rgb = "0xE03020", "scale=in_color_matrix=bt709:in_range=tv,format=rgb24"
+    seg = tmp_path / "seg.mp4"
+    subprocess.run([config.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", f"color=c={rgb}:s=32x32:r=30",
+                    "-frames:v", "20", "-vf", config.BT709_VF, *config.x264(crf=0), str(seg)], check=True)
+    tr = _clip(tmp_path / "tr.mkv", rgb, 10)
+    chain, lab = transitions.overlay_graph([(tr, 5)], 1, FPS)
+
+    def centre(args):
+        out = subprocess.run([config.FFMPEG, "-v", "error", *args, "-frames:v", "20", "-f", "rawvideo", "-"],
+                             capture_output=True, check=True).stdout
+        return np.frombuffer(out, np.uint8).reshape(-1, 32, 32, 3)[8, 16, 16].astype(int)
+    base = centre(["-i", str(seg), "-vf", to_rgb])
+    over = centre(["-i", str(seg), "-i", str(tr), "-filter_complex", f"{chain};{lab}{to_rgb}[o]", "-map", "[o]"])
+    assert np.abs(over - base).max() <= 3, (base, over)
+
+
+def test_good_reveal_leg_ease_matches_engine_in_the_template():
+    from video_engine import hyperframes
+    L = {"f0": 0, "f1": 60, "to": {"s": 3.0}, "ease": "reveal", "bez": list(profiles.REVEAL_EASE)}
+    out = _node("const C=" + json.dumps({"start": {"s": 1.2}, "legs": [L]}) + """;
+      console.log(JSON.stringify(window.__legs(C,30).map(g=>[0,0.1,0.19,0.4,0.7,1].map(p=>[g.ease(p),g.inv(p)]))));""")[0]
+    e = hyperframes.leg_ease(L, 1.2)
+    for p, (ge, gi) in zip((0, 0.1, 0.19, 0.4, 0.7, 1), out):
+        z = 1.2 + 1.8 * ge
+        assert ge == pytest.approx(e(p), abs=1e-9) and z * (1 / 1.2 + (1 / 3.0 - 1 / 1.2) * gi) == pytest.approx(1)

@@ -10,6 +10,11 @@ map -> map boundaries whose two segments share the same base map (a state change
 zoom_whip at boundary b: frames [b - whip_out_s, b + whip_in_s). The outgoing shot pushes in from 1 to whip_scale
 (ease in) with a radial blur rising to whip_blur; the incoming shot settles from whip_scale to 1 (ease out cubic,
 1 on the window's last frame) with the blur fading over its first whip_blur_in_s.
+zoom_through at boundary b: frames [b - through_out_s, b + through_in_s). A bigger zoom-through for scene changes
+(docs/proposals/geoverum-camera-reference.md): the outgoing shot accelerates (power2.in) into a push-in to
+through_scale with a radial blur rising to through_blur and an optional white flash (through_flash) peaking on its last
+frame; the incoming shot settles from through_in_scale to 1 (power4.out) while blur and flash fade over
+through_blur_in_s. through_in_scale 1 leaves the landing to the incoming scene's own camera (sharp, e.g. a reveal).
 page_turn at boundary b: frames [b, b + page_s). The outgoing last frame lies over the incoming shot and folds away
 from the bottom-right corner along a straight fold (power2.inOut); the folded flap shows the page back (lightened
 mirror), the incoming shot is shaded along the fold with the shade fading as the page turns; the window's last frame
@@ -103,6 +108,8 @@ def windows(tl: Timeline) -> list[Window]:
             out.append(Window(b, i, k, b - n // 2, b - n // 2 + n))
         elif k == "zoom_whip":
             out.append(Window(b, i, k, b - _frames(T.whip_out_s, fps), b + _frames(T.whip_in_s, fps)))
+        elif k == "zoom_through":
+            out.append(Window(b, i, k, b - _frames(T.through_out_s, fps), b + _frames(T.through_in_s, fps)))
         elif k == "page_turn":
             out.append(Window(b, i, k, b, b + _frames(T.page_s, fps)))
     return out
@@ -130,6 +137,41 @@ def _ease_in_cubic(t: float) -> float:
 
 def _ease_out_cubic(t: float) -> float:
     return 1 - (1 - t) ** 3
+
+
+def _power2_in(t: float) -> float:
+    return t * t
+
+
+def _power4_out(t: float) -> float:
+    return 1 - (1 - t) ** 4
+
+
+def _flash(rgb: np.ndarray, w: float) -> np.ndarray:
+    """`rgb` mixed toward white by w (0..1)."""
+    if w <= 1e-4:
+        return rgb
+    return np.clip(rgb.astype(np.float32) * (1 - w) + 255.0 * w + 0.5, 0, 255).astype(np.uint8)
+
+
+def through_frames(tail: list[np.ndarray], head: list[np.ndarray], T: "profiles.TransitionsProfile",
+                   fps: int) -> list[np.ndarray]:
+    """zoom_through frames: the outgoing `tail` accelerates into a push-in (power2.in) to through_scale with a radial
+    blur rising to through_blur and the flash rising to through_flash on its last frame; the incoming `head` settles
+    from through_in_scale to 1 (power4.out, 1 on the window's last frame) while the blur and the flash fade over
+    through_blur_in_s."""
+    out, n_out, n_in = [], len(tail), len(head)
+    nb = max(1, round(T.through_blur_in_s * fps))
+    for i, fr in enumerate(tail):
+        p = _power2_in((i + 1) / n_out)
+        f = radial_blur(fr, 1 + (T.through_scale - 1) * p, T.through_blur * p)
+        out.append(_flash(f, T.through_flash * p * p))
+    for j, fr in enumerate(head):
+        q = _power4_out((j + 1) / n_in)
+        fade = max(0.0, 1 - (j + 1) / nb)
+        f = radial_blur(fr, T.through_in_scale - (T.through_in_scale - 1) * q, T.through_blur * fade)
+        out.append(_flash(f, T.through_flash * fade * fade))
+    return out
 
 
 def _power2_in_out(t: float) -> float:
@@ -224,9 +266,9 @@ def page_frames(last: np.ndarray, head: list[np.ndarray]) -> list[np.ndarray]:
 # ------------------------------------------------------------------------------------------------ files
 
 def decode(path: Path, first: int, count: int, W: int, H: int, threads: int = 2) -> list[np.ndarray]:
-    """Frames [first, first + count) of a segment file as RGB arrays."""
+    """Frames [first, first + count) of a segment file as RGB arrays (engine segments are BT.709 limited range)."""
     cmd = [config.FFMPEG, "-v", "error", "-threads", str(threads), "-i", str(path),
-           "-vf", f"select=gte(n\\,{first}),scale={W}:{H}",
+           "-vf", f"select=gte(n\\,{first}),scale={W}:{H}:in_color_matrix=bt709:in_range=limited",
            "-frames:v", str(count), "-vsync", "0", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
     buf = subprocess.run(cmd, capture_output=True, check=True).stdout
     n = len(buf) // (W * H * 3)
@@ -279,11 +321,11 @@ def render(tl: Timeline, seg_files: list[Path], workdir: Path, threads: int = 2)
             a_last = decode(seg_files[w.seg - 1], a.n_frames - 1, 1, W, H, threads)[0]
             head = decode(seg_files[w.seg], 0, n_in, W, H, threads)
             frames = fade_frames(tail, a_last, head[0], head)
-        elif w.kind == "zoom_whip":
+        elif w.kind in ("zoom_whip", "zoom_through"):
             n_out = w.boundary - w.f0
             tail = decode(seg_files[w.seg - 1], a.n_frames - n_out, n_out, W, H, threads)
             head = decode(seg_files[w.seg], 0, w.f1 - w.boundary, W, H, threads)
-            frames = whip_frames(tail, head, T, fps)
+            frames = (whip_frames if w.kind == "zoom_whip" else through_frames)(tail, head, T, fps)
         else:
             last = decode(seg_files[w.seg - 1], a.n_frames - 1, 1, W, H, threads)[0]
             frames = page_frames(last, decode(seg_files[w.seg], 0, w.f1 - w.f0, W, H, threads))
@@ -294,10 +336,13 @@ def render(tl: Timeline, seg_files: list[Path], workdir: Path, threads: int = 2)
 def overlay_graph(clips: list[tuple[Path, int]], first_input: int, fps: int, src: str = "[0:v]") -> tuple[str, str]:
     """(filter chain, output label) laying every clip over `src` from its first frame (input indices from
     first_input, in clip order). Clip frame k gets timestamp f0 + k in a 1/fps time base, so it covers output frame
-    f0 + k whatever the time bases of the clip file and of `src`. Empty chain when there are no clips."""
+    f0 + k whatever the time bases of the clip file and of `src`. Empty chain when there are no clips.
+    The RGB clip is converted on its own to BT.709 limited-range (config.OVERLAY_YUV_VF) and blended with
+    overlay=format=yuv420: an auto-negotiated overlay converts the clip with a BT.601 matrix, so saturated colours
+    jumped by ~15 levels for the length of every transition."""
     parts, cur = [], src
     for j, (_, f0) in enumerate(clips):
-        parts.append(f"[{first_input + j}:v]settb=1/{fps},setpts=N+{f0}[tr{j}];"
-                     f"{cur}[tr{j}]overlay=eof_action=pass:repeatlast=0[tv{j}]")
+        parts.append(f"[{first_input + j}:v]settb=1/{fps},setpts=N+{f0},format=rgba,{config.OVERLAY_YUV_VF}[tr{j}];"
+                     f"{cur}[tr{j}]overlay=eof_action=pass:repeatlast=0:format=yuv420[tv{j}]")
         cur = f"[tv{j}]"
     return ";".join(parts), cur

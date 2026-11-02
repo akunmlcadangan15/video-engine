@@ -84,9 +84,10 @@ def test_good_geoverum_render_quality_values():
     fin, seg = r.x264("final"), r.x264("segment")
     pick = lambda a, k: a[a.index(k) + 1]
     assert (pick(fin, "-preset"), pick(fin, "-crf"), pick(fin, "-maxrate"), pick(fin, "-bufsize")) == \
-           ("slower", "12", "25000k", "50000k")
+           ("veryslow", "12", "40000k", "80000k")
     assert (pick(seg, "-preset"), pick(seg, "-crf")) == ("medium", "8")
-    assert "-tune" not in fin and "-tune" not in seg and pick(fin, "-pix_fmt") == "yuv420p"
+    assert "-tune" not in fin and "-tune" not in seg
+    assert (pick(fin, "-pix_fmt"), pick(fin, "-profile:v"), pick(seg, "-pix_fmt")) == ("yuv420p10le", "high10", "yuv420p")
     assert (r.hf_quality, r.hf_crf, r.map_jpeg_quality) == ("high", 8, 95)
 
 

@@ -13,7 +13,7 @@ pub mod silence;
 
 /// Version of every algorithm whose output lands in a cache (caption .ass text, camera windows, warp).
 /// Bump on any output-changing edit; Python mixes it into native-segment, HyperFrames and map cache keys.
-pub const ALGO_VERSION: &str = "2";
+pub const ALGO_VERSION: &str = "3";
 
 /// Accepted range for [`py::set_threads`].
 pub const THREADS_RANGE: std::ops::RangeInclusive<usize> = 1..=256;

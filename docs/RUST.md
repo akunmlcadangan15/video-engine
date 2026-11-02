@@ -63,7 +63,7 @@ camera_plan(preset: str, intensity: float, src_w: float, src_h: float, out_w: fl
     # focus_box = [ymin, xmin, ymax, xmax] on a 0..=1000 grid
     # ValueError: unknown preset; intensity not finite or < 0; any size not finite or <= 0;
     #   focus_box value not finite / outside 0..=1000 / ymin >= ymax / xmin >= xmax
-camera_windows(start: W4, end: W4, n: int) -> list[W4]   # n windows, log-space zoom, glide ease
+camera_windows(start: W4, end: W4, n: int) -> list[W4]   # n windows, log-space zoom, glide ease, pivoted centre
     # ValueError: a window not finite or w/h <= 0; n > 2^24
 warp_frame(src: bytes, src_w: int, src_h: int, win: W4, out_w: int, out_h: int) -> bytes   # GIL released
     # ValueError: any size 0 or > 32768; buffer > 2^31; len(src) != src_w*src_h*3; bad window.

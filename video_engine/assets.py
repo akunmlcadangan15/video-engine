@@ -296,6 +296,9 @@ def flag_for(code: str, variant: str = '4x3') -> str:
         raise EngineError(f'invalid flag code or variant: {code}, {variant}')
     rel = f'2d/flags/flag-icons/flags/{variant}/{code}.svg'
     directory = config.OPEN_ASSETS / '2d/flags/flag-icons/flags' / variant
+    if not directory.is_dir():
+        raise EngineError(f'flag assets not installed: {directory} is missing '
+                          f'(set VIDEO_ENGINE_OPEN_ASSETS to the open-assets folder)')
     if not (directory / f'{code}.svg').is_file():
         suggestions = difflib.get_close_matches(code, [p.stem for p in directory.glob('*.svg')], n=3, cutoff=0.4)
         raise EngineError(f'unknown flag {code}; closest: {", ".join(suggestions) or "none"}')

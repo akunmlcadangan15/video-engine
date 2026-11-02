@@ -215,8 +215,8 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   and exit scale applies to the label inside the counter-scaled box, and the boundary transitions (zoom whip, page
   turn) act on the rendered frames, so both keep their designed motion.
 - Transitions (`[transitions]`, off by default): crossfade (`fade_s`, centred on the boundary; before it the
-  incoming first frame is held, after it the outgoing last frame), zoom whip or page turn per segment boundary, by
-  visual type; drawn
+  incoming first frame is held, after it the outgoing last frame), zoom whip, zoom through (a larger push-in for
+  scene changes with an optional white flash) or page turn per segment boundary, by visual type; drawn
   as lossless clips from the segment files (`video_engine/transitions.py`) and overlaid frame-exactly in the final
   mux under captions and watermark; without transitions the mux command is unchanged. C01 grades hard cuts (warn
   levels) and shot changes (fail levels).
@@ -227,7 +227,9 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   x264 crf 16 veryfast for intermediates, crf 18 medium for the final composite, map JPEG q90): `hf_quality`
   (draft | standard | high), `hf_crf`, `segment_crf` / `segment_preset` / `segment_tune`, `final_crf` /
   `final_preset` / `final_tune` (`none` = no -tune) / `final_maxrate_kbps` (VBV cap, bufsize 2x),
-  `map_jpeg_quality`. Every value is part of the cache key of the stage it reaches.
+  `final_bit_depth` (8 | 10; 10 = final composite in yuv420p10le, x264 High 10, which avoids encoder banding in
+  gradients; intermediates stay 8-bit; needs an ffmpeg whose libx264 has 10-bit, else the composite stage fails with
+  that message), `map_jpeg_quality`. Every value is part of the cache key of the stage it reaches.
 - HyperFrames `regions`: entity highlights; one colour per entity from profile `[theme.entities]` then
   `theme.palette`; E01 checks the painted region fill colours in the DOM probe. Region `style` (default
   `theme.region_style`; beats scenes default to `tint`): `tint` = fill + white or glow edge; `block` = a raised slab in

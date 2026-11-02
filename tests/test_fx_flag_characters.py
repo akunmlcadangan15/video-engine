@@ -2,8 +2,11 @@
 import pytest
 from pydantic import ValidationError
 
-from video_engine import assets, hyperframes, timeline
+from video_engine import assets, config, hyperframes, timeline
 from video_engine.gates import layer1
+
+FLAG_DIR = config.OPEN_ASSETS / "2d/flags/flag-icons/flags/4x3"
+pytestmark = pytest.mark.skipif(not FLAG_DIR.is_dir(), reason=f"flag-icons assets not installed ({FLAG_DIR})")
 
 
 def _scene(d):

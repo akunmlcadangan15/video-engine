@@ -55,8 +55,43 @@ def _norm(a):
     return (a[0] / n, a[1] / n, a[2] / n)
 
 
+POLE_LAT = 85.0   # a great-circle leg that would pass closer to a pole than this interpolates lat/lng instead
+
+
+def _slerp(A, B, theta: float, u: float):
+    if theta < 1e-9:
+        return A
+    sa = math.sin(theta)
+    return _norm(_add(_mul(A, math.sin((1 - u) * theta) / sa), _mul(B, math.sin(u * theta) / sa)))
+
+
+def _leg_paths(K: list[dict]) -> list[tuple]:
+    """Per leg (A, B, theta, polar): end points as unit vectors, arc angle (rad) and whether the great circle passes
+    beyond POLE_LAT (or is antipodal), in which case the leg interpolates lat/lng as before."""
+    out = []
+    for a, b in zip(K, K[1:]):
+        A, B = _v(a["lat"], a["lng"]), _v(b["lat"], b["lng"])
+        theta = math.acos(max(-1.0, min(1.0, _dot(A, B))))
+        polar = math.pi - theta < 1e-6 or any(abs(_ll(_slerp(A, B, theta, j / 32))[0]) > POLE_LAT + 1e-9
+                                             for j in range(1, 32))
+        out.append((A, B, theta, polar))
+    return out
+
+
+def _turns(paths: list[tuple], j: int) -> bool:
+    """The great-circle direction turns by 90 deg or more at interior key j (or a neighbouring leg has no length)."""
+    (A, B, t1, _), (_, C, t2, _) = paths[j - 1], paths[j]
+    if t1 < 1e-9 or t2 < 1e-9:
+        return True
+    d_in, d_out = _cross(_cross(A, B), B), _cross(_cross(B, C), B)
+    return _dot(d_in, d_out) <= 0
+
+
 def camera_at(G: dict, f: float, fps: int) -> dict:
-    """Globe view {lat, lng, alt, tilt} at frame f of scene globe block G."""
+    """Globe view {lat, lng, alt, tilt} at frame f of scene globe block G. Position travels along the great circle of
+    each key-to-key leg (shortest path on the sphere); its timing, the log altitude and the tilt are cubic Hermite
+    curves whose interior tangents are the slower neighbouring leg's rate (0 at a hold, and for the position where the
+    path turns by 90 deg or more)."""
     K = G["keys"]
     def view(k, alt):
         return {"lat": k["lat"], "lng": (k["lng"] + 180) % 360 - 180, "alt": alt, "tilt": k["tilt"]}
@@ -72,10 +107,12 @@ def camera_at(G: dict, f: float, fps: int) -> dict:
             return view(a, a["alt"])
         if f < b["f"]:
             break
-    points = []
-    for k in K:
-        lng = k["lng"] if not points else points[-1][1] + (k["lng"] - points[-1][1] + 180) % 360 - 180
-        points.append((k["lat"], lng, math.log(k["alt"]), k["tilt"]))
+    paths = _leg_paths(K)
+    arc = [0.0]
+    for _, _, theta, _ in paths:
+        arc.append(arc[-1] + theta)
+    # channels: 0 = arc coordinate along the chain of great circles (rad), 1 = ln altitude, 2 = tilt
+    points = [(arc[j], math.log(k["alt"]), k["tilt"]) for j, k in enumerate(K)]
     lengths = [b["f"] - a["f"] - a.get("hold", 0) for a, b in zip(K, K[1:])]
     slopes = [[(q - p) / h for p, q in zip(x, y)] for x, y, h in zip(points, points[1:], lengths)]
 
@@ -88,7 +125,9 @@ def camera_at(G: dict, f: float, fps: int) -> dict:
             s = slopes[-1][c]
             if G.get("n") is None or last["f"] >= G["n"] - 1:
                 return G["end"] * s
-            return -G["drift"] / fps if c == 2 and s < 0 else 0.0
+            return -G["drift"] / fps if c == 1 and s < 0 else 0.0
+        if c == 0 and _turns(paths, j):
+            return 0.0
         x, y = slopes[j - 1][c], slopes[j][c]
         return 0.0 if x * y <= 0 else math.copysign(min(abs(x), abs(y)), x)
 
@@ -96,8 +135,15 @@ def camera_at(G: dict, f: float, fps: int) -> dict:
     t = (f - a["f"] - a.get("hold", 0)) / h
     h00, h10, h01, h11 = 2*t**3 - 3*t**2 + 1, t**3 - 2*t**2 + t, -2*t**3 + 3*t**2, t**3 - t**2
     p = [h00 * points[i][c] + h10 * h * tangent(i, c) + h01 * points[i + 1][c] + h11 * h * tangent(i + 1, c)
-         for c in range(4)]
-    return {"lat": p[0], "lng": (p[1] + 180) % 360 - 180, "alt": math.exp(p[2]), "tilt": p[3]}
+         for c in range(3)]
+    A, B, theta, polar = paths[i]
+    u = 0.0 if theta < 1e-9 else (p[0] - arc[i]) / theta
+    if polar:   # lat/lng interpolation (shorter longitude way), timed by the same arc fraction
+        lng = a["lng"] + ((b["lng"] - a["lng"] + 180) % 360 - 180) * u
+        lat = a["lat"] + (b["lat"] - a["lat"]) * u
+    else:
+        lat, lng = _ll(_slerp(A, B, theta, u))
+    return {"lat": lat, "lng": (lng + 180) % 360 - 180, "alt": math.exp(p[1]), "tilt": p[2]}
 
 
 def pose(v: dict) -> tuple[tuple, tuple, tuple, tuple]:

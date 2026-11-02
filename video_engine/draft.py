@@ -261,7 +261,7 @@ def schema(inp: Inputs) -> dict:
         "required": ["start_frame", "end_frame", "kind", "asset", "narration", "why"]}
     if profiles.load(inp.profile or profiles.DEFAULT).draft.map_path:
         seg["properties"]["map_path"] = {"type": "array", "items": {
-            "type": "object", "properties": {"at_s": n, "x": n, "y": n, "zoom": n, "move": {"type": "string", "enum": ["glide", "whip"]}},
+            "type": "object", "properties": {"at_s": n, "x": n, "y": n, "zoom": n, "move": {"type": "string", "enum": ["glide", "whip", "reveal"]}},
             "required": ["at_s", "x", "y"]}}
     cred = {"type": "object", "properties": {"asset": {"type": "string", "enum": ids}, "credit_line": i,
                                              "watermark_free": b}, "required": ["asset", "credit_line", "watermark_free"]}
@@ -414,7 +414,7 @@ def normalise(segs: list[dict], total: int) -> tuple[list[dict], list[str]]:
 
 def _camera_path(keys: list[dict], n: int, fps: int, max_zoom: float = 4.0) -> list[dict]:
     """Model map_path -> camera_path keys: frames from at_s (first key at 0, strictly increasing, < n), x/y and zoom
-    clamped to their ranges, move "whip" kept (glide otherwise). Raises ValueError when fewer than 2 distinct key frames remain."""
+    clamped to their ranges, move "whip" or "reveal" kept (glide otherwise). Raises ValueError when fewer than 2 distinct key frames remain."""
     out = []
     for k in sorted(keys, key=lambda k: float(k.get("at_s") or 0.0)):
         f = 0 if not out else min(n - 1, max(0, sec_to_frame(float(k.get("at_s") or 0.0), fps)))
@@ -422,7 +422,7 @@ def _camera_path(keys: list[dict], n: int, fps: int, max_zoom: float = 4.0) -> l
             continue
         out.append({"at_frame": f, "focus": [min(1.0, max(0.0, float(k["x"]))), min(1.0, max(0.0, float(k["y"])))],
                     "zoom": min(max_zoom, max(1.0, float(k.get("zoom") or 1.0))),
-                    **({"move": "whip"} if k.get("move") == "whip" and out else {})})
+                    **({"move": k["move"]} if k.get("move") in ("whip", "reveal") and out else {})})
     if len(out) < 2:
         raise ValueError(f"map_path needs at least 2 keys at distinct times inside the segment, got {keys!r}")
     return out

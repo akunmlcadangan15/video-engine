@@ -179,11 +179,12 @@ def motion_frames(tl: Timeline, project_dir: Path) -> list[tuple[float, float] |
     return out
 
 
-def p01_camera(tl: Timeline, project_dir: Path, g: profiles.CameraGate) -> list[Finding]:
+def p01_camera(tl: Timeline, project_dir: Path, g: profiles.CameraGate,
+               mf: list[tuple[float, float] | None] | None = None) -> list[Finding]:
     """Moving fraction of the planned frames and the longest hold (consecutive still frames; an unplanned frame
     ends a hold). Still = zoom speed < still_zoom_ln_s and centre speed < still_pan_w_s."""
     fps = tl.settings.fps
-    mf = motion_frames(tl, project_dir)
+    mf = motion_frames(tl, project_dir) if mf is None else mf
     still = [None if m is None else (m[0] < g.still_zoom_ln_s and m[1] < g.still_pan_w_s) for m in mf]
     planned = [x for x in still if x is not None]
     if not planned:
@@ -208,6 +209,45 @@ def p01_camera(tl: Timeline, project_dir: Path, g: profiles.CameraGate) -> list[
     lv = "warn" if moving < g.moving_warn - 1e-9 else "pass"
     out.append(Finding("P01", lv, f"camera moving {moving:.0%} of {len(planned)} planned frames "
                                   f"({'<' if lv == 'warn' else '>='} {g.moving_warn:.0%}); longest hold {longest:.1f} s"))
+    return out
+
+
+def camera_path_metrics(tl: Timeline, mf: list[tuple[float, float] | None]) -> list[dict]:
+    """Per segment with a planned camera: screen speed v(f) = centre speed + |zoom speed| x half the frame diagonal
+    (frame widths / s: how fast the frame corners travel), over the segment's frames except its last (whose next
+    window is not planned) and transition frames. Returns {seg, length_fw (path length, frame widths), peak_fw_s,
+    max_step (largest one-frame speed change relative to the faster of the two frames, frames above 0.02 fw/s),
+    step_frame (absolute frame of that change)}."""
+    W, H, fps = tl.settings.width, tl.settings.height, tl.settings.fps
+    zk = math.hypot(W, H) / 2 / W
+    out = []
+    for s in tl.segments:
+        fr = range(s.start_frame, s.end_frame - 1)
+        v = [None if (m := mf[f]) is None or math.isinf(m[0]) else m[1] + m[0] * zk for f in fr]
+        vv = [x for x in v if x is not None]
+        if not vv:
+            continue
+        step, at = 0.0, None
+        for f, a, b in zip(fr, v, v[1:]):
+            if a is not None and b is not None and max(a, b) > 0.02 and abs(b - a) / max(a, b) > step:
+                step, at = abs(b - a) / max(a, b), f + 1
+        out.append({"seg": s.seg_index, "length_fw": sum(vv) / fps, "peak_fw_s": max(vv), "max_step": step,
+                    "step_frame": at})
+    return out
+
+
+def p03_camera_path(tl: Timeline, g: profiles.CameraGate, mf: list[tuple[float, float] | None]) -> list[Finding]:
+    """P03: camera path metrics per segment (info); WARN when `step_warn` is set and the largest one-frame speed
+    change exceeds it (a speed jump; whips change speed fast on purpose, so it is off by default)."""
+    out = []
+    for m in camera_path_metrics(tl, mf):
+        lv = "warn" if g.step_warn is not None and m["max_step"] > g.step_warn + 1e-9 else "info"
+        jump = f"; largest speed change {m['max_step']:.0%} in one frame at frame {m['step_frame']}" \
+            if m["step_frame"] is not None else ""
+        lim = f" (> step_warn {g.step_warn:.0%})" if lv == "warn" else ""
+        out.append(Finding("P03", lv, f"camera path {m['length_fw']:.2f} frame widths, peak {m['peak_fw_s']:.2f} "
+                                      f"frame widths/s{jump}{lim}", m["seg"],
+                           frames=(m["step_frame"], m["step_frame"] + 1) if lv == "warn" else None))
     return out
 
 
@@ -245,7 +285,7 @@ def v01_visual_type(tl: Timeline) -> list[Finding]:
 def _change(tl: Timeline, b: Segment) -> str:
     """'hard cut' or the transition name of the boundary into segment b."""
     return "hard cut" if b.seg_index == 0 else {"cut": "hard cut", "crossfade": "crossfade",
-                                                 "zoom_whip": "zoom whip", "page_turn": "page turn",
+                                                 "zoom_whip": "zoom whip", "zoom_through": "zoom through", "page_turn": "page turn",
                                                  "state": "state dissolve"}[transitions.kind_at(tl, b.seg_index)]
 
 
@@ -341,8 +381,10 @@ def run_style(tl: Timeline, project_dir: Path, words: list[CaptionWord] | None,
     if g.cuts:
         out += c01_cuts(tl, g.cuts)
     if g.camera:
-        out += p01_camera(tl, project_dir, g.camera)
+        mf = motion_frames(tl, project_dir)
+        out += p01_camera(tl, project_dir, g.camera, mf)
         out += p02_drift(tl, g.camera)
+        out += p03_camera_path(tl, g.camera, mf)
     if g.visual_type:
         out += v01_visual_type(tl)
     if g.novelty:

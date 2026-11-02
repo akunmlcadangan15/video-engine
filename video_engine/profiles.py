@@ -137,13 +137,15 @@ class EndingKeywordGate(_Strict):
 
 
 class CameraGate(_Strict):
-    """P01: camera motion over the timeline (moving fraction, longest hold) from the planned camera."""
+    """P01: camera motion over the timeline (moving fraction, longest hold) from the planned camera; P03: path
+    metrics per segment."""
     hold_warn_s: float = Field(1.7, gt=0)               # WARN when a hold (camera still) lasts longer
     hold_fail_s: float = Field(3.0, gt=0)               # FAIL when a hold lasts longer
     moving_warn: float = Field(0.8, ge=0, le=1)         # WARN when the moving fraction of the measured frames is lower
     still_zoom_ln_s: float = Field(0.05, gt=0)          # a frame is still when |zoom speed| < this (ln scale / s) ...
     still_pan_w_s: float = Field(0.02, gt=0)            # ... and the frame-centre speed < this (frame widths / s)
     min_drift_per_s: float | None = Field(None, gt=0)   # P02: theme camera_drift_per_s must reach this (None = off)
+    step_warn: float | None = Field(None, gt=0, le=1)   # P03: WARN above this one-frame relative speed change (None = info)
 
     @model_validator(mode="after")
     def _o(self):
@@ -239,6 +241,10 @@ class DraftProfile(_Strict):
         return self
 
 
+REVEAL_EASE = (0.28, 0.37, 0.29, 0.91)   # fitted to the reveals of the Pan-American reference Short (peak speed at
+                                         # 19 % of the move; docs/proposals/geoverum-camera-reference.md)
+
+
 class Theme(_Strict):
     """Renderer values (HyperFrames scene `theme`; part of the HyperFrames segment cache key)."""
     camera_drift_per_s: float = Field(ge=0, le=0.1)   # zoom growth per second after the last camera_path key
@@ -246,6 +252,8 @@ class Theme(_Strict):
     camera_end_speed: float = Field(ge=0, le=1)        # globe and camera_path: last-key speed as a share of the last leg's mean
     whip_s: float = Field(ge=0.1, le=1.5)             # length of a whip move (ends on its key)
     whip_blur_px: float = Field(ge=0, le=40)          # peak motion blur (Gaussian deviation, px) at mid-whip
+    reveal_ease: list[float] = Field(default_factory=lambda: list(REVEAL_EASE), min_length=4, max_length=4)
+    # camera_path move "reveal": CSS cubic-bezier of the key-to-key leg (fast early, long settle; x1, x2 in 0..1)
     region_fill_opacity: float = Field(gt=0, le=1)    # region highlight fill opacity
     region_edge: Literal["white", "glow"]              # region edge when the region sets none
     region_edge_px: float = Field(gt=0, le=20)        # on-screen edge width (constant while the camera zooms)
@@ -321,6 +329,8 @@ class Theme(_Strict):
                 raise ValueError(f"theme colour {c!r} must be #rrggbb")
         if self.year_box_texture and not self.year_box_colour:
             raise ValueError("theme year_box_texture needs year_box_colour")
+        if not (0 <= self.reveal_ease[0] <= 1 and 0 <= self.reveal_ease[2] <= 1):
+            raise ValueError(f"theme reveal_ease {self.reveal_ease}: x1 and x2 must lie in 0..1 (cubic-bezier)")
         return self
 
 
@@ -410,8 +420,8 @@ class CameraProfile(_Strict):
                 "dir": 1 if self.pulse_direction == "in" else -1}
 
 
-TRANSITION_KINDS = ("cut", "crossfade", "zoom_whip", "page_turn", "state")
-TransitionKind = Literal["cut", "crossfade", "zoom_whip", "page_turn", "state"]
+TRANSITION_KINDS = ("cut", "crossfade", "zoom_whip", "zoom_through", "page_turn", "state")
+TransitionKind = Literal["cut", "crossfade", "zoom_whip", "zoom_through", "page_turn", "state"]
 
 
 class TransitionsProfile(_Strict):
@@ -428,6 +438,13 @@ class TransitionsProfile(_Strict):
     whip_in_s: float = Field(0.4, ge=0.05, le=1.5)      # zoom_whip: incoming shot settles from whip_scale to 1
     whip_scale: float = Field(1.3, ge=1.0, le=2.0)      # zoom_whip: outgoing end scale and incoming start scale
     whip_blur: float = Field(0.12, ge=0.0, le=0.5)      # zoom_whip: peak radial blur length (fraction of the scale)
+    through_out_s: float = Field(0.4, ge=0.1, le=1.5)   # zoom_through: outgoing last frames accelerate (power2.in) to through_scale
+    through_scale: float = Field(4.0, ge=1.0, le=8.0)   # zoom_through: outgoing end scale (blur rising to through_blur)
+    through_blur: float = Field(0.25, ge=0.0, le=0.6)   # zoom_through: peak radial blur length (fraction of the scale)
+    through_in_s: float = Field(0.5, ge=0.05, le=3.0)   # zoom_through: incoming first frames settle from through_in_scale
+    through_in_scale: float = Field(1.0, ge=1.0, le=4.0)   # zoom_through: incoming start scale (1 = the scene's camera lands)
+    through_blur_in_s: float = Field(0.3, ge=0.0, le=3.0)  # zoom_through: radial blur fading on the incoming first frames
+    through_flash: float = Field(0.0, ge=0.0, le=1.0)   # zoom_through: white flash strength at the boundary (0 = none)
     page_s: float = Field(0.4, ge=0.1, le=1.5)          # page_turn: the outgoing last frame folds away over the incoming
     state_s: float = Field(0.2, ge=0.1, le=0.4)         # state: very short dissolve when both sides share the same base map
     page_turn: bool = True                              # false: page_turn is not allowed anywhere in this profile
@@ -443,6 +460,8 @@ class TransitionsProfile(_Strict):
             raise ValueError(f"transitions.by_type / same_type: unknown visual type(s) {', '.join(bad)} (known: {', '.join(known)})")
         if self.whip_blur_in_s > self.whip_in_s:
             raise ValueError("transitions.whip_blur_in_s must be <= whip_in_s")
+        if self.through_blur_in_s > self.through_in_s:
+            raise ValueError("transitions.through_blur_in_s must be <= through_in_s")
         if not self.page_turn and "page_turn" in self._kinds():
             raise ValueError("transitions: page_turn = false, but kind / by_type / same_type use page_turn")
         return self
@@ -463,7 +482,7 @@ class RenderProfile(_Strict):
     segment file (native renders, grades, HyperFrames normalisation); `final_*` = the one composite pass (x264 CRF,
     preset, tune "none" = no -tune, optional VBV cap); `hf_*` = the HyperFrames capture and its own encode
     (hyperframes.HF_QUALITY / HF_CRF; draft: JPEG q80 screenshots + x264 ultrafast, standard: q100 + medium, high:
-    q100 + slow); `map_jpeg_quality` = whole-map derivatives and deep tiles (maps.MAP_JPEG_QUALITY)."""
+    q100 + slow); `final_bit_depth` = 8 (default) or 10 for the final composite; `map_jpeg_quality` = whole-map derivatives and deep tiles (maps.MAP_JPEG_QUALITY)."""
     hf_quality: Literal["draft", "standard", "high"] | None = None
     hf_crf: int | None = Field(None, ge=0, le=51)
     segment_crf: int | None = Field(None, ge=0, le=51)
@@ -473,6 +492,7 @@ class RenderProfile(_Strict):
     final_preset: X264_PRESETS | None = None
     final_tune: X264_TUNES | None = None
     final_maxrate_kbps: int | None = Field(None, ge=1000, le=200000)
+    final_bit_depth: Literal[8, 10] | None = None   # 10 = yuv420p10le, x264 High 10 (less encoder banding)
     map_jpeg_quality: int | None = Field(None, ge=50, le=100)
 
     def x264(self, stage: Literal["segment", "final"]) -> list[str]:
@@ -482,11 +502,17 @@ class RenderProfile(_Strict):
         seg = stage == "segment"
         crf, preset, tune, cap = ((self.segment_crf, self.segment_preset, self.segment_tune, None) if seg
                                   else (self.final_crf, self.final_preset, self.final_tune, self.final_maxrate_kbps))
-        if (crf, preset, tune, cap) == (None, None, None, None):
+        depth = 8 if seg else (self.final_bit_depth or 8)
+        if (crf, preset, tune, cap, depth) == (None, None, None, None, 8):
             return list(config.X264_SEGMENT if seg else config.X264)
         d_crf, d_preset = (config.SEGMENT_CRF, config.SEGMENT_PRESET) if seg else (config.FINAL_CRF, config.FINAL_PRESET)
         return config.x264(d_crf if crf is None else crf, preset or d_preset,
-                           None if tune in (None, "none") else tune, cap)
+                           None if tune in (None, "none") else tune, cap, depth)
+
+    def final_pix_fmt(self) -> str:
+        """Pixel format of the final composite (intermediates stay 8-bit yuv420p)."""
+        from . import config
+        return config.pix_fmt(self.final_bit_depth or 8)
 
 
 class Legibility(_Strict):
@@ -1113,12 +1139,23 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
                    ("render", RenderProfile), ("flags", FlagsProfile), ("fx", FxProfile)):
         if dump.get(k) == json.loads(cls().model_dump_json()):
             dump.pop(k)            # profiles without [camera] / [motion] / [transitions] / [render] / [fx] values keep their hash
+    if isinstance(dump.get("transitions"), dict):   # zoom_through keys at their defaults add nothing to the hash
+        dflt = json.loads(TransitionsProfile().model_dump_json())
+        for k in [k for k in dump["transitions"] if k.startswith("through_") and dump["transitions"][k] == dflt[k]]:
+            dump["transitions"].pop(k)
     if dump.get("grade") is None:
         dump.pop("grade", None)    # profiles without [grade] keep their hash
     if dump["gates"].get("camera") is None:
         dump["gates"].pop("camera", None)
-    elif dump["gates"]["camera"].get("min_drift_per_s") is None:
-        dump["gates"]["camera"].pop("min_drift_per_s", None)   # P01 tables without P02 keep their hash
+    else:
+        if dump["gates"]["camera"].get("min_drift_per_s") is None:
+            dump["gates"]["camera"].pop("min_drift_per_s", None)   # P01 tables without P02 keep their hash
+        if dump["gates"]["camera"].get("step_warn") is None:
+            dump["gates"]["camera"].pop("step_warn", None)         # ... and without a P03 step_warn
+    if dump["theme"].get("reveal_ease") == list(REVEAL_EASE):
+        dump["theme"].pop("reveal_ease")   # the default reveal ease adds nothing to the hash
+    if isinstance(dump.get("render"), dict) and dump["render"].get("final_bit_depth") is None:
+        dump["render"].pop("final_bit_depth", None)   # [render] without final_bit_depth keeps its hash
     if not dump["gates"].get("require"):
         dump["gates"].pop("require", None)   # profiles without required style gates keep their hash
     if not dump["gates"].get("advisory"):

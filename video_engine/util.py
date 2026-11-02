@@ -59,6 +59,42 @@ def video_info(path: str | Path) -> dict:
             "pix_fmt": v.get("pix_fmt"), "r_frame_rate": v.get("r_frame_rate")}
 
 
+# Source colour (decode): ffprobe color_space -> swscale in_color_matrix. Untagged sources follow the H.273/ffmpeg
+# convention by size: HD and larger are BT.709, SD is BT.601 (swscale alone assumes BT.601 for every untagged file,
+# which turned untagged HD stock footage ~18 levels darker in saturated reds).
+_MATRIX = {"bt709": "bt709", "bt470bg": "bt601", "smpte170m": "bt601", "bt2020nc": "bt2020", "bt2020c": "bt2020",
+           "fcc": "fcc", "smpte240m": "smpte240m"}
+HDR_TRANSFERS = {"smpte2084": "PQ (HDR10)", "arib-std-b67": "HLG"}
+
+
+def source_matrix(stream: dict) -> str:
+    """swscale in_color_matrix of a YUV video stream (ffprobe stream dict): its tag, else bt709 from 1280x720 up."""
+    m = _MATRIX.get(stream.get("color_space") or "")
+    if m:
+        return m
+    w, h = int(stream.get("width") or 0), int(stream.get("height") or 0)
+    return "bt709" if max(w, h) >= 1280 or min(w, h) >= 720 else "bt601"
+
+
+def decode_colour(path: str | Path) -> str:
+    """scale-filter options naming the YUV matrix and range of the first video stream of `path` (empty for RGB or
+    palette sources, where they do not apply). Raises EngineError for an HDR (PQ/HLG) source: the engine is SDR
+    BT.709 end to end and does not tone-map."""
+    d = probe(path)
+    v = next((s for s in d["streams"] if s.get("codec_type") == "video"), None)
+    if v is None:
+        raise EngineError(f"{path}: no video stream")
+    trc = v.get("color_transfer") or ""
+    if trc in HDR_TRANSFERS:
+        raise EngineError(f"{path}: HDR source ({HDR_TRANSFERS[trc]}); convert it to SDR BT.709 before use "
+                          f"(e.g. a tone-mapped export from the editing app)")
+    pix = v.get("pix_fmt") or ""
+    if not pix.startswith(("yuv", "nv", "p0", "p2", "p4")):
+        return ""
+    full = v.get("color_range") == "pc" or pix.startswith("yuvj")
+    return f"in_color_matrix={source_matrix(v)}:in_range={'full' if full else 'limited'}"
+
+
 def count_frames(path: str | Path) -> int:
     """Exact decoded video frame count (packet count; cheap, exact for our CFR h264 outputs)."""
     out = run([config.FFPROBE, "-v", "error", "-select_streams", "v:0", "-count_packets",

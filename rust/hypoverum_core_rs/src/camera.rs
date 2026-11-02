@@ -157,7 +157,8 @@ pub fn endpoints(
     Ok(r)
 }
 
-/// `n` per-frame windows: zoom interpolated in log space, centre linear, both with the glide ease.
+/// `n` per-frame windows: zoom interpolated in log space with the glide ease; the centre follows the zoom so the
+/// pivot point of the two windows stays put on screen (a pure pan: centre linear with the ease).
 /// Errors: a window not finite or with `w <= 0` / `h <= 0`; `n > MAX_WINDOWS`.
 pub fn windows(s: Win, e: Win, n: usize) -> Result<Vec<Win>, String> {
     let s = s.check("start window")?;
@@ -181,7 +182,15 @@ pub fn windows(s: Win, e: Win, n: usize) -> Result<Vec<Win>, String> {
             };
             let w = (lw0 + (lw1 - lw0) * t).exp();
             let h = w * ar;
-            let c = (cs.0 + (ce.0 - cs.0) * t, cs.1 + (ce.1 - cs.1) * t);
+            // Pivoted zoom: the centre moves with the zoom, q = (ws - w) / (ws - we), so the point that stays
+            // fixed on screen (the pivot of the two windows) does not slide; a pure pan moves the centre with t.
+            // Every window edge is affine in q (and in t for a pan), so the path stays inside both end windows' hull.
+            let q = if (s.w - e.w).abs() > 1e-9 * s.w {
+                (s.w - w) / (s.w - e.w)
+            } else {
+                t
+            };
+            let c = (cs.0 + (ce.0 - cs.0) * q, cs.1 + (ce.1 - cs.1) * q);
             Win {
                 x: c.0 - w / 2.0,
                 y: c.1 - h / 2.0,
@@ -399,5 +408,72 @@ mod tests {
         let one = windows(good, good, 1).unwrap();
         assert_eq!(one.len(), 1);
         assert!((one[0].w - 10.0).abs() < 1e-9 && one[0].x.abs() < 1e-9);
+    }
+}
+
+#[cfg(test)]
+mod pivot_tests {
+    use super::{windows, Win};
+
+    /// Screen position (fraction of the frame) of source point p in window w.
+    fn screen(w: &Win, p: (f64, f64)) -> (f64, f64) {
+        ((p.0 - w.x) / w.w, (p.1 - w.y) / w.h)
+    }
+
+    #[test]
+    fn zoom_keeps_the_pivot_fixed_on_screen() {
+        let s = Win {
+            x: 0.0,
+            y: 0.0,
+            w: 1000.0,
+            h: 1778.0,
+        };
+        let e = Win {
+            x: 300.0,
+            y: 500.0,
+            w: 600.0,
+            h: 1066.8,
+        };
+        // pivot p* = (ws*ce - we*cs) / (ws - we)
+        let (cs, ce) = ((500.0, 889.0), (600.0, 1033.4));
+        let p = (
+            (s.w * ce.0 - e.w * cs.0) / (s.w - e.w),
+            (s.w * ce.1 - e.w * cs.1) / (s.w - e.w),
+        );
+        let v = windows(s, e, 61).unwrap();
+        let p0 = screen(&v[0], p);
+        for w in &v {
+            let q = screen(w, p);
+            assert!(
+                (q.0 - p0.0).abs() < 1e-9 && (q.1 - p0.1).abs() < 1e-9,
+                "{q:?} vs {p0:?}"
+            );
+            assert!(
+                w.x >= -1e-9
+                    && w.y >= -1e-9
+                    && w.x + w.w <= 1000.0 + 1e-9
+                    && w.y + w.h <= 1778.0 + 1e-6
+            );
+        }
+        let l = v.last().unwrap();
+        assert!((l.x - e.x).abs() < 1e-9 && (l.w - e.w).abs() < 1e-9);
+    }
+
+    #[test]
+    fn pure_pan_moves_the_centre_with_the_ease() {
+        let s = Win {
+            x: 0.0,
+            y: 0.0,
+            w: 500.0,
+            h: 900.0,
+        };
+        let e = Win {
+            x: 400.0,
+            y: 0.0,
+            w: 500.0,
+            h: 900.0,
+        };
+        let v = windows(s, e, 31).unwrap();
+        assert!((v[15].x - 200.0).abs() < 1e-9 && v.iter().all(|w| (w.w - 500.0).abs() < 1e-9));
     }
 }

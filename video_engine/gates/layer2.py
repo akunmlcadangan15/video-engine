@@ -1,4 +1,4 @@
-"""Layer 2 gates. Math: M01 source length, M02 map resolution at the deepest zoom, M04 globe texture resolution, G01 grade LUTs, R56 camera motion with automatic intensity raise, R62 caption safe margins.
+"""Layer 2 gates. Math: M01 source length (and no HDR source), M02 map resolution at the deepest zoom, M04 globe texture resolution, G01 grade LUTs, R56 camera motion with automatic intensity raise, R62 caption safe margins.
 DOM: R63 HyperFrames element margins and collisions at 3 seek times (plus camera_path key frames) per segment
 (headless Chrome, dynamic port); E01 entity colours as painted."""
 from __future__ import annotations
@@ -14,7 +14,7 @@ import hypoverum_core_rs as core
 
 from .. import captions, entities, hyperframes, legibility, maps, native, profiles, props, watermark
 from ..timeline import HYPERFRAMES, NATIVE, CaptionWord, Segment, Timeline
-from ..util import EngineError, video_info
+from ..util import EngineError, decode_colour, video_info
 from .core import Finding
 
 R56_MIN_PX_1080P = 100.0     # minimum camera motion over a segment, output px, for a 1080x1920 frame
@@ -40,12 +40,20 @@ def m01_source_length(tl: Timeline, project_dir: Path) -> list[Finding]:
     out = []
     fps = tl.settings.fps
     for s in tl.segments:
-        if s.engine_type != NATIVE or s.is_still or not (project_dir / s.source).is_file():
+        if s.engine_type != NATIVE or s.is_still or not s.source:
+            continue
+        src = project_dir / s.source
+        if not src.is_file():
             continue
         try:
-            vi = video_info(project_dir / s.source)
+            vi = video_info(src)
         except EngineError as e:
             out.append(Finding("M01", "fail", f"cannot probe {s.source}: {e}", s.seg_index))
+            continue
+        try:
+            decode_colour(src)   # an HDR (PQ/HLG) source cannot be decoded as SDR BT.709
+        except EngineError as e:
+            out.append(Finding("M01", "fail", str(e), s.seg_index))
             continue
         have = math.floor(vi["duration"] * fps + 1e-6)
         need = s.source_in_frame + s.n_frames
