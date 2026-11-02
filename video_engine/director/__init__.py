@@ -287,13 +287,16 @@ def chosen_text(inp, c: dict) -> str:
              "a beat may span several segments, and segments may be split for timing, but keep its goal, pattern and "
              "assets. Copy the beat goal into each segment's \"goal\".",
              f"Opener (first 1.5 s): {c.get('opener')}", f"Hero moment: {c.get('hero_moment') or '-'}"]
+    pats = patterns()
     for k, b in enumerate(c["beats"]):
         w0, w1 = inp.words[b["from_word"]], inp.words[b["to_word"]]
+        rec = pats.get(b["pattern"], {}).get("recipe")
         lines.append(f"{k}. frames {w0.start_frame}-{w1.end_frame} ({w0.start_frame / fps:.1f}-{w1.end_frame / fps:.1f} s) "
                      f"\"{beat_narration(inp, b)}\" | goal: {b['goal']} | pattern: {b['pattern']} | assets: "
                      f"{', '.join(b.get('assets') or [])}" + (f" | text: {b['on_screen_text']}" if b.get("on_screen_text") else "")
                      + (f" | camera: {b['camera']}" if b.get("camera") else "")
-                     + (f" | enter: {b['transition']}" if b.get("transition") else ""))
+                     + (f" | enter: {b['transition']}" if b.get("transition") else "")
+                     + (f" | on a map: map_recipe {rec}" if rec else ""))
     return "\n".join(lines)
 
 

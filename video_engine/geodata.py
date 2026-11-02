@@ -15,6 +15,7 @@ import json
 import math
 from pathlib import Path
 
+from . import config
 from .projection import MERC_LAT_MAX, merc_y, to_map
 
 DATA_URL = ("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/"
@@ -23,6 +24,16 @@ OCEAN, LAND, BORDER = (14, 32, 52), (58, 74, 66), (110, 128, 118)
 ISO_KEYS = ("ISO_A2_EH", "ISO_A2", "iso_a2")
 NAME_KEYS = ("NAME", "NAME_LONG", "ADMIN", "name")
 MIN_AREA = 1e-7   # rings smaller than this (map fraction squared) after clipping are dropped
+
+
+def admin0() -> Path:
+    """Natural Earth admin-0 countries in the geo library ($VIDEO_ENGINE_GEO_LIBRARY, layout of the render server)."""
+    base = config.GEO_LIBRARY / "natural-earth" / "natural-earth-vector" / "geojson"
+    for name in ("ne_50m_admin_0_countries.geojson", "ne_10m_admin_0_countries.geojson",
+                 "ne_110m_admin_0_countries.geojson"):
+        if (base / name).is_file():
+            return base / name
+    raise ValueError(f"Natural Earth admin-0 GeoJSON not found under {base} (set VIDEO_ENGINE_GEO_LIBRARY)")
 
 
 @functools.lru_cache(maxsize=4)

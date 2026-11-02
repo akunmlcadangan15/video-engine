@@ -25,7 +25,7 @@ from pydantic import ValidationError
 from . import ai
 from .ai import tasks
 from .ai.base import AwaitingAgent, Image, Media, Text
-from . import assets, audio, config, draft_scene, pauses, profiles
+from . import assets, audio, config, draft_scene, geodata, pauses, profiles, recipes
 from .hyperframes import HF_PRESETS
 from .licence import is_licence_field
 from .timeline import (HYPERFRAMES, IMAGE_EXT, NATIVE, AudioChain, CaptionWord, CaptionsMeta, Settings, Timeline,
@@ -271,6 +271,7 @@ def schema(inp: Inputs) -> dict:
         "required": ["start_frame", "end_frame", "kind", "asset", "narration", "why"]}
     prof = profiles.load(inp.profile or profiles.DEFAULT)
     seg["properties"].update(draft_scene.schema_props(prof.draft, prof.layout is not None))
+    seg["properties"]["map_recipe"] = RECIPE_SCHEMA
     if prof.draft.map_path:
         seg["properties"]["map_path"] = {"type": "array", "items": {
             "type": "object", "properties": {"at_s": n, "x": n, "y": n, "zoom": n, "move": {"type": "string", "enum": ["glide", "whip", "reveal"]}},
@@ -305,6 +306,7 @@ def prompt(inp: Inputs) -> str:
                  if dp.map_path else "")
     prof = profiles.load(inp.profile or profiles.DEFAULT)
     scene_rule = draft_scene.prompt(prof.draft, prof.layout is not None)
+    recipes_rule = RECIPE_RULE
     return f"""You are the editor of a vertical documentary short ({S.width}x{S.height}, {fps} fps, Indonesian narration).
 Draft the visual edit for the attached narration. Total length: frames 0..{inp.total_frames} (exclusive end).
 
@@ -333,7 +335,7 @@ RULES
    you saw in the thumbnail when the move should end on it). kind video -> source_in_s within the clip duration minus
    the segment length; camera_preset optional. kind map -> only for a map asset; map_pins x,y are 0..1 positions
    on the map image you saw (place each pin on the place it names), at_s relative to the segment start;
-   map_camera from the enum (intensity 0.3-2.0 scales its zoom and travel); optional map_card.{path_rule}{scene_rule}
+   map_camera from the enum (intensity 0.3-2.0 scales its zoom and travel); optional map_card.{path_rule}{scene_rule}{recipes_rule}
 4. Overlays (optional, images/videos only): kind text_card (title + subtitle), label (short name), lower_third
    (person + role); position top or bottom. Text adds information not spoken in that segment (date, place, name);
    never repeat the spoken words. At most one overlay per segment; 2-6 words title.
@@ -442,6 +444,48 @@ def _camera_path(keys: list[dict], n: int, fps: int, max_zoom: float = 4.0) -> l
     return out
 
 
+_PLACE = {"type": "object", "properties": {"label": {"type": "string"}, "lat": {"type": "number"},
+                                          "lng": {"type": "number"}, "value": {"type": "number"},
+                                          "unit": {"type": "string"}, "decimals": {"type": "integer"}},
+          "required": ["lat", "lng"]}
+_LL = {"type": "array", "items": {"type": "number"}}
+RECIPE_SCHEMA = {"type": "object", "properties": {
+    "pattern": {"type": "string", "enum": list(recipes.PATTERNS)},
+    "countries": {"type": "array", "items": {"type": "string"}}, "labels": {"type": "array", "items": {"type": "string"}},
+    "points": {"type": "array", "items": _LL}, "paths": {"type": "array", "items": {"type": "array", "items": _LL}},
+    "a": _PLACE, "b": _PLACE, "place": _PLACE, "value": {"type": "number"}, "unit": {"type": "string"},
+    "decimals": {"type": "integer"}, "source": {"type": "string"}, "label": {"type": "string"},
+    "legend": {"type": "string"}, "legend_note": {"type": "string"}, "at_s": {"type": "number"},
+    "draw_s": {"type": "number"}}, "required": ["pattern"]}
+RECIPE_RULE = """
+   map_recipe (optional, kind map; needs a map asset with map_bounds): name the story pattern and its facts, the engine
+   computes geometry, camera, timing and text placement: country_reveal {countries: ISO codes, labels}; follow_route
+   {points: [[lat, lng], ...] start -> end, labels: [start, end]}; compare_places {a, b: {label, lat, lng, value, unit,
+   decimals}, source}; explain_flow {paths: [[[lat, lng], ...], ...], legend}; stat_emphasis {value, unit, decimals,
+   source, label, place {label, lat, lng}}; at_s = when it starts. Do not also give the map_* fields it fills
+   (camera, regions, routes, pins, figures, cards). Values you cannot source are shown as illustrative."""
+RECIPE_FIELDS = {"camera_path": "map_path", "regions": "map_regions", "routes": "map_routes", "pins": "map_pins",
+                 "figures": "map_figures", "cards": "map_card"}
+
+
+def _recipe(s: dict, i: int, a, inp: Inputs, n: int, prof) -> recipes.Built:
+    """Draft map_recipe -> recipes.Built on this segment's map (bounds and projection from the map's sidecar)."""
+    path = f"segment {i}: map_recipe"
+    if not a.map_bounds:
+        raise ValueError(f"{path}: the map {a.id} has no sidecar map_bounds; a recipe places lat/lng on the map")
+    for target, key in RECIPE_FIELDS.items():
+        if s.get(key):
+            raise ValueError(f"{path}: drop {key}; the recipe fills {target}")
+    m = recipes.MapInfo(a.path, a.id, a.width, a.height, a.map_bounds, a.map_projection or "equirectangular")
+    f = recipes.Frame(inp.settings.width, inp.settings.height, inp.settings.fps, n, prof.camera.max_zoom)
+    r = s["map_recipe"]
+    try:
+        geo = geodata.admin0() if isinstance(r, dict) and r.get("pattern") in recipes.GEO_PATTERNS else None
+        return recipes.compile(r, m, f, geojson=geo)
+    except (ValueError, KeyError, TypeError) as e:
+        raise ValueError(f"{path}: {e}") from None
+
+
 PIN_KEYS = ("label", "x", "y", "lat", "lng", "at_s", "flag", "label_side")
 
 
@@ -506,11 +550,15 @@ def assemble(inp: Inputs, data: dict) -> tuple[Timeline, list[str], list[dict]]:
                 **({"focus": [float(v) for v in s["map_focus"][:2]]} if len(s.get("map_focus") or []) >= 2 else {}),
                 **({"map_bounds": a.map_bounds} if a.map_bounds else {}),
                 **({"map_projection": a.map_projection} if a.map_bounds and a.map_projection == "mercator" else {})}
+            if s.get("map_recipe") is not None:
+                built = _recipe(s, i, a, inp, n, prof)
+                scene.update(built.scene)
+                notes.append(f"segment {i}: {built.why}")
             scene = draft_scene.convert(s, i, n=n, fps=fps, assets=by_id, map_asset=a, used=used, dp=prof.draft,
                                         layout_on=layout_on, scene=scene)
             d.update(engine_type=HYPERFRAMES, gsap_scene_config=scene)
         else:
-            extra = [k for k in draft_scene.FIELDS if k in s] + [k for k in ("map_pins", "map_path", "map_card")
+            extra = [k for k in draft_scene.FIELDS if k in s] + [k for k in ("map_pins", "map_path", "map_card", "map_recipe")
                                                                    if s.get(k)]
             if extra:
                 raise ValueError(f"segment {i}: {extra[0]} applies to a map segment (kind map), this is kind {kind}")

@@ -7,6 +7,10 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Ditambahkan
 
+- **Compiler pola cerita** (`video_engine/recipes.py`, draft `map_recipe`): `country_reveal`, `follow_route`,
+  `compare_places`, `explain_flow`, `stat_emphasis` menyusun scene HyperFrames native dari fakta (ISO, lat/lng, nilai,
+  waktu). Zoom, fokus kamera, pita teks dan layout perbandingan dihitung dari geometri, safe area, resolusi peta dan
+  gerak minimum; geometri yang tidak muat ditolak. Pola director menyebut resepnya ke draft.
 - **Paket geografi** (`video_engine/projection.py`, `video_engine/geodata.py`): scene punya `map_projection`
   (`equirectangular` atau `mercator`); pin, props, gate G02 dan garis graticule memakai satu fungsi transformasi.
   Region bisa punya `rings` (pulau lain dan holes, aturan even-odd) dengan satu fill, tepi dan domain bendera untuk

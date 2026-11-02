@@ -48,6 +48,8 @@ def test_good_storyboard_chosen_and_fed_to_draft(proj):
     draft_req = c.models.calls[0][1]
     chosen = next(x for x in draft_req if isinstance(x, str) and x.startswith("CHOSEN STORYBOARD"))
     assert '"Surabaya" | goal: where: Surabaya | pattern: establish' in chosen
+    assert "pattern: establish | assets: still" in chosen and "map_recipe country_reveal" in chosen   # pattern -> recipe
+    assert "footage_beat" in chosen and chosen.count("map_recipe") == 1                            # none for footage
     tl = timeline.load(r.timeline_path)
     assert [s.goal for s in tl.segments] == ["where: Surabaya", "what happened to Mallaby"]
     assert r.report["segments"][0]["goal"] == "where: Surabaya"

@@ -148,6 +148,18 @@ Every version is saved as `draft/timeline.v<N>.json` and `draft/review.v<N>.json
   `video_engine/geodata.py` writes such a base map (`base_map`) and turns a Natural Earth country into a region
   (`country_region`: every part and hole, clipped to the bounds, simplified, flag from the ISO code; `label_anchor`). Open-asset credits the scene needs (flag-icons) are added from the asset registry at
   assembly, as the build does.
+- `map_recipe` (any profile; needs a map with sidecar `map_bounds`): the model names a story pattern and its facts and the
+  engine compiles the scene (`video_engine/recipes.py`): `country_reveal {countries, labels}`, `follow_route {points,
+  labels}`, `compare_places {a, b, source}`, `explain_flow {paths, legend, legend_note}`, `stat_emphasis {value, unit,
+  decimals, source, label, place}`, each with `at_s`. Camera keys come from the geometry: the deepest zoom that keeps the
+  bbox (and its pin label boxes) inside the R63 safe area minus the text bands, capped by the map resolution (1.2 source
+  px per screen px, gate M02) and the profile `max_zoom`, checked through the renderer's own transform; every camera leg
+  moves >= 110 px (R56). Text bands and the compare layout (`bands` or `adjacent`) are chosen from where the geometry
+  lands on screen. Geometry that must stay whole and cannot fit at zoom 1 is a repair error, not a crop. A recipe and
+  the `map_*` fields it fills (camera, regions, routes, pins, figures, card) are exclusive. `country_reveal` reads Natural
+  Earth admin-0 from `$VIDEO_ENGINE_GEO_LIBRARY` (`natural-earth/natural-earth-vector/geojson/`). `recipes.map_extent`
+  gives a portrait map extent for a scene's points. Director patterns name their recipe (`patterns.toml` `recipe`) and
+  the chosen storyboard passes it to the draft as `on a map: map_recipe <name>`.
 - Before assembly the answer is checked against the request schema (`ai.base.schema_errors`): type errors come back as
   `schema: $.segments[i]...` repair errors.
 - Model output: JSON matching a schema whose `asset` field is an enum of inventory ids and whose credit field is a credits.txt line number.

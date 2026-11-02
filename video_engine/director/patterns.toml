@@ -6,6 +6,7 @@
 purpose = "Orient the viewer in place and time on a single strong visual before any detail is added."
 params = ["place_or_subject", "time_marker"]
 render_cost = 1
+recipe = "country_reveal"      # map scenes: draft map_recipe compiles it (video_engine/recipes.py)
 needs = { min_assets = 1, kinds = ["map", "image", "video"] }
 
 [patterns.progressive_reveal]
@@ -18,12 +19,14 @@ needs = { min_assets = 1, kinds = ["map", "image"] }
 purpose = "Hold two places, forces, or states in contrast — side by side or in a quick A-then-B on the same frame."
 params = ["side_a", "side_b", "contrast_point"]
 render_cost = 2
+recipe = "compare_places"      # map scenes: draft map_recipe compiles it (video_engine/recipes.py)
 needs = { min_assets = 2, kinds = ["image", "video", "map"] }
 
 [patterns.tracing]
 purpose = "Follow a route, border, or movement across a map so distance and direction are felt, not just named."
 params = ["from_point", "to_point", "route_or_region"]
 render_cost = 3
+recipe = "follow_route"      # map scenes: draft map_recipe compiles it (video_engine/recipes.py)
 needs = { min_assets = 1, kinds = ["map"], map = true }
 
 [patterns.meaningful_repetition]
@@ -36,6 +39,7 @@ needs = { min_assets = 1, kinds = ["map", "image", "video"] }
 purpose = "Let a turning point, number, or name land by holding a clean frame with slow drift and one focal element."
 params = ["focal_text_or_figure", "hold_s"]
 render_cost = 1
+recipe = "stat_emphasis"      # map scenes: draft map_recipe compiles it (video_engine/recipes.py)
 needs = { min_assets = 1, kinds = ["image", "map", "video"] }
 
 [patterns.paradox_hook]
@@ -60,6 +64,7 @@ needs = { min_assets = 1, kinds = ["map", "image"] }
 purpose = "Show how a mountain range, strait, or climate boundary blocks clouds, aircraft, animals, or travellers using 3D terrain tilt, cutout stickers, directional arrows, and animated counters."
 params = ["barrier_feature", "blocked_flow", "resulting_effect"]
 render_cost = 3
+recipe = "explain_flow"      # map scenes: draft map_recipe compiles it (video_engine/recipes.py)
 needs = { min_assets = 1, kinds = ["map"], map = true }
 
 [patterns.cross_section_depth]
