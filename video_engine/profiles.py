@@ -1089,10 +1089,10 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
         if len(texts) != 2 + len(includes):
             raise EngineError(f"profile '{name}': {len(includes)} include file(s) listed but {len(texts) - 2} given")
         raw = toml(0)
-        for k in range(len(includes)):
-            part = toml(2 + k)
+        for n in range(len(includes)):
+            part = toml(2 + n)
             if INCLUDE_KEY in part:
-                raise EngineError(f"profile '{name}': included file {includes[k]!r} cannot include other files")
+                raise EngineError(f"profile '{name}': included file {includes[n]!r} cannot include other files")
             raw = merge(raw, part)
         raw = merge(raw, chan)
     try:

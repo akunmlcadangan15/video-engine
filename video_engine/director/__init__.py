@@ -15,6 +15,7 @@ import re
 import tomllib
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from .. import config
 from ..ai.base import Image, Text
@@ -78,7 +79,7 @@ def record_feedback(channel: str, verdict: str, what: str, why: str, checks: lis
     d = load_taste(channel)
     for k in ("liked", "rejected"):
         d[k] = [x for x in d[k] if x.get("what") != what]
-    entry = {"what": what, "why": why, "at": datetime.now().astimezone().isoformat(timespec="seconds")}
+    entry: dict[str, Any] = {"what": what, "why": why, "at": datetime.now().astimezone().isoformat(timespec="seconds")}
     if checks:
         from ..taste_lint import validate
         entry["check"] = [validate(c) for c in checks]

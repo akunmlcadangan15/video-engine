@@ -9,6 +9,7 @@ import shlex
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 from . import config
 from .util import EngineError
@@ -70,7 +71,8 @@ def cmd_preflight(a) -> int:
         words = tl.captions
     elif a.captions:
         words, _ = audio.captions_for(tl, p)
-    rep = gates.run_preflight(tl, p, words, dom=not a.no_dom, ai_qa=_ai_qa(a, p), **({"draft": True} if a.mode == "draft" else {}))
+    extra: dict[str, Any] = {"draft": True} if a.mode == "draft" else {}   # release calls stay exactly as they were
+    rep = gates.run_preflight(tl, p, words, dom=not a.no_dom, ai_qa=_ai_qa(a, p), **extra)
     print(rep.summary())
     if a.write_fixes and (rep.fixes):
         if rep.caption_y_overrides:

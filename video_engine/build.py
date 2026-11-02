@@ -39,6 +39,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from . import (
     audio,
@@ -230,7 +231,8 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             words, src = audio.captions_for(tl, project_dir, use_cache=use_cache, pin=pin_words)
             st["note"] = f"{len(words)} words from {src}" + (" (stale pin replaced: --repin)" if repinned else "")
         with timer.stage("preflight") as st:
-            rep = run_preflight(tl, project_dir, words, workdir=workdir, ai_qa=ai_qa, **({"draft": True} if draft else {}))
+            pf_kwargs: dict[str, Any] = {"draft": True} if draft else {}   # release calls stay exactly as they were
+            rep = run_preflight(tl, project_dir, words, workdir=workdir, ai_qa=ai_qa, **pf_kwargs)
             st["note"] = " ".join(f"{k}={v}" for k, v in rep.timings.items())
         gate_rows = severity.summary(rep.findings, tl)
         if not rep.ok:
