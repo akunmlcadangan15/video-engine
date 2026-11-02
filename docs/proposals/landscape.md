@@ -382,6 +382,15 @@ Per AGENTS.md: no code, commit, merge or push without the owner's explicit permi
 
 ## 7. Open questions for the owner
 
+**Decided by the owner (2026-11-02):**
+
+- Q1: every size (1080p, 1440p, 4K) is rendered natively; no upscale path. 60 fps is required (x264 level 5.2 at 4K60).
+- Q2: a landscape version of Geoverum, usable for a new channel as well (so landscape values live in their own
+  profile that other channels can include).
+- Q4: no file-size limit; quality targets decide the bitrate caps.
+
+Still open: Q3 and Q5 to Q14 below.
+
 1. **Formats in scope.** 1080p, 1440p and 4K all native, or 1080p native and 4K as an upscale delivery option first (5.2)? Is 60 fps required (level 5.2, doubling cost)?
 2. **Which channel and look.** A landscape Geoverum (map-led, same brand) or a new channel? Are the landscape values in 2.3 acceptable as a starting point (safe area 96/54, caption 56..60, watermark bottom right)?
 3. **Square and 4:5.** Should 1080x1080 or 1080x1350 be supported as a format, or rejected with an error instead of the advisory `U01`?
