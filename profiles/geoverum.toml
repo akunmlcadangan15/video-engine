@@ -14,8 +14,8 @@ pin_height_pct = 4.5
 # Approved 2026-11-01 (style-lab upgrade-v2 A/B): bold Inter 84 px, white, no outline, no box, at about 0.72 H.
 font = "Inter"                # family Inter; bold=true makes libass pick vendor/fonts/Inter-Bold.otf
 bold = true
-size = 84                     # chosen in the A/B (84 / 92 / 104); the others stay valid timeline overrides
-ab_sizes = [84, 92, 104]      # A/B size candidates (timeline caption_style.size picks one)
+size = 84                     # approved in the 2026-11-01 A/B (84 / 92 / 104); 92 and 104 were rejected as too heavy
+ab_sizes = [84]               # approved size; a timeline caption_style.size can still override it technically
 outline = 0                   # no outline; the soft shadow carries readability
 soft_shadow = true            # drop shadow 0 3 px, blur, black at .55 (layer 0, no backing box)
 shadow_dx = 0

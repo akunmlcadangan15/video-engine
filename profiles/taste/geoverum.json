@@ -43,11 +43,6 @@
       "at": "2026-10-29T00:00:00+00:00"
     },
     {
-      "what": "35mm film-strip or parchment roll transition into a warm historical atlas map with serif century/year titles and animated flag-characters",
-      "why": "cleanly separates historical origin stories (15th/19th Century, 1809, 1934) from modern satellite geography",
-      "at": "2026-10-29T00:00:00+00:00"
-    },
-    {
       "what": "white-bordered cutout stickers (animals, tractors, ships, planes) and interactive tool props (magnifying glass, pencil redrawing border, crossed-out badges)",
       "why": "adds tactile motion and humor while keeping the map uncluttered",
       "at": "2026-10-29T00:00:00+00:00"
@@ -78,7 +73,7 @@
       "at": "2026-11-01T11:12:55+07:00"
     },
     {
-      "what": "loudness −14 LUFS, true peak ≤ −1 dBTP",
+      "what": "loudness −14 LUFS, true peak ≤ −1,5 dBTP",
       "why": "disetujui 2026-11-01: standar Shorts/YouTube, tanpa clipping (Arundaya)",
       "at": "2026-11-01T11:12:55+07:00"
     }
@@ -103,6 +98,11 @@
       "what": "cluttered multi-line paragraphs or backing boxes on captions",
       "why": "obscures the satellite map and violates Geoverum's clean lower-zone caption style",
       "at": "2026-10-29T00:00:00+00:00"
+    },
+    {
+      "what": "35mm film-strip, parchment roll, page-turn, atau transisi kertas lain ke peta atlas sejarah",
+      "why": "Arundaya menolak transisi page-turn/kertas (revisi Siam 2); geoverum.toml mengatur page_turn = false dan map_morph = false. Pindah dari daftar 'liked' pada 2026-11-02 agar taste dan profil sejalan",
+      "at": "2026-11-02T00:00:00+07:00"
     },
     {
       "what": "caption 92/104 px atau caption dengan box latar",

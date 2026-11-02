@@ -31,3 +31,18 @@ def test_good_geoverum_profile_matches_the_taste_lock():
     assert d.draft.min_seg_s == 0.8
     assert d.gates.cuts is None and d.gates.visual_type is None
     assert d.audio.target_lufs == -14.0 and d.audio.true_peak <= -1.0
+
+
+def test_good_taste_and_profile_agree_on_transitions_peak_and_caption_sizes():
+    """The taste seed and geoverum.toml state the same facts (they disagreed before 2026-11-02)."""
+    t = _seed()
+    liked = " | ".join(e["what"] for e in t["liked"])
+    rejected = " | ".join(e["what"] for e in t["rejected"])
+    d = profiles.load("geoverum")
+    # page-turn / paper transitions: rejected in the taste store, disabled in the profile
+    assert "page-turn" in rejected and "parchment" not in liked and "film-strip" not in liked
+    assert d.data.transitions.page_turn is False and d.data.transitions.map_morph is False
+    # true peak: the taste store quotes the profile value
+    assert "−1,5 dBTP" in liked and d.data.audio.true_peak == -1.5
+    # caption size: 92 / 104 rejected, so only 84 is a profile candidate
+    assert "92/104" in rejected and d.caption_style["ab_sizes"] == [84]
