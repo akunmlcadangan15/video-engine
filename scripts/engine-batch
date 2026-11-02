@@ -1,0 +1,6 @@
+#!/bin/sh
+# engine-batch: guarded `engine batch` (same lock, disk check, environment and nice as engine-build).
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 2
+VIDEO_ENGINE_WRAPPER_SUBCMD=batch
+export VIDEO_ENGINE_WRAPPER_SUBCMD
+exec "$here/engine-build" "$@"

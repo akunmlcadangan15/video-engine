@@ -1,0 +1,97 @@
+#!/bin/sh
+# engine-build: guarded `engine build` for Linux and macOS (the portable twin of the render server's wrapper).
+#   1. loads the environment file  ($VIDEO_ENGINE_ENV_FILE, else ./engine.env when it exists)
+#   2. refuses when the filesystem of the project's out/ has less than $VIDEO_ENGINE_MIN_FREE_GB free (default 8)
+#   3. takes the global render lock  ($VIDEO_ENGINE_RENDER_LOCK) without waiting, and holds it for the whole run
+#   4. runs `nice -n 10 engine build "$@"`; the exit code of the engine is the exit code of this script
+# Own exit codes: 75 lock busy, 74 disk too low, 127 `engine` not found, 2 bad environment file or threshold.
+# Lock: python3 + fcntl.flock, because macOS has no flock(1). On Linux, `flock -n "$VIDEO_ENGINE_RENDER_LOCK" true`
+# sees the same lock. Plain POSIX sh: no bashisms.
+# scripts/engine-batch runs this file with the subcommand `batch`.
+
+SUB=${VIDEO_ENGINE_WRAPPER_SUBCMD:-build}
+me=engine-$SUB
+die() { code=$1; shift; printf '%s: %s\n' "$me" "$*" >&2; exit "$code"; }
+
+# 1. environment file
+envfile=${VIDEO_ENGINE_ENV_FILE:-}
+if [ -n "$envfile" ]; then
+    [ -f "$envfile" ] || die 2 "VIDEO_ENGINE_ENV_FILE=$envfile does not exist"
+elif [ -f ./engine.env ]; then
+    envfile=./engine.env
+fi
+if [ -n "$envfile" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "$envfile" || die 2 "cannot load $envfile"
+    set +a
+fi
+
+command -v engine >/dev/null 2>&1 || die 127 "'engine' is not on PATH (activate the venv: source .venv/bin/activate)"
+
+# 2. disk check on the filesystem that holds out/ of every project named on the command line
+min_gb=${VIDEO_ENGINE_MIN_FREE_GB:-8}
+case $min_gb in
+    ''|*[!0-9.]*|*.*.*) die 2 "VIDEO_ENGINE_MIN_FREE_GB must be a number of GB, got '$min_gb'" ;;
+esac
+targets=""
+for arg in "$@"; do
+    case $arg in -*) continue ;; esac
+    if [ -d "$arg/out" ]; then
+        targets="$targets
+$arg/out"
+    elif [ -d "$arg" ]; then
+        targets="$targets
+$arg"
+    fi
+done
+[ -n "$targets" ] || targets=.
+OLDIFS=$IFS
+IFS='
+'
+for t in $targets; do
+    [ -n "$t" ] || continue
+    IFS=$OLDIFS
+    free_kb=$(df -Pk "$t" 2>/dev/null | awk 'NR==2 {print $4}')
+    case $free_kb in
+        ''|*[!0-9]*) die 2 "cannot read the free disk space of $t (df -Pk)" ;;
+    esac
+    if awk -v kb="$free_kb" -v gb="$min_gb" 'BEGIN { exit !(kb < gb * 1048576) }'; then
+        die 74 "refusing to build: only $((free_kb / 1048576)) GB free on the filesystem of $t, need at least $min_gb GB (VIDEO_ENGINE_MIN_FREE_GB)"
+    fi
+    IFS='
+'
+done
+IFS=$OLDIFS
+
+# 3. render lock (default: /workspace/.render.lock on the render server, else a per-user runtime path)
+if [ -n "${VIDEO_ENGINE_RENDER_LOCK:-}" ]; then
+    lock=$VIDEO_ENGINE_RENDER_LOCK
+elif [ -d /workspace ]; then
+    lock=/workspace/.render.lock
+else
+    lock=${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/video-engine.render.lock
+fi
+lock=${lock%/}
+
+# 4. lock, then exec `nice engine <sub> ...` in the same process: the lock lives as long as the build
+exec python3 -c '
+import fcntl, os, sys
+lock, sub, args = sys.argv[1], sys.argv[2], sys.argv[3:]
+try:
+    fd = os.open(lock, os.O_CREAT | os.O_RDWR, 0o644)
+except OSError as e:
+    sys.exit("engine-%s: cannot open the render lock %s: %s" % (sub, lock, e.strerror))
+try:
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except OSError:
+    sys.stderr.write("engine-%s: another render holds the lock %s (check: flock -n %s true)\n" % (sub, lock, lock))
+    sys.exit(75)
+os.ftruncate(fd, 0)
+os.write(fd, ("%d\n" % os.getpid()).encode())
+os.set_inheritable(fd, True)
+try:
+    os.execvp("nice", ["nice", "-n", "10", "engine", sub] + args)
+except OSError as e:
+    sys.exit("engine-%s: cannot run nice/engine: %s" % (sub, e.strerror))
+' "$lock" "$SUB" "$@"
