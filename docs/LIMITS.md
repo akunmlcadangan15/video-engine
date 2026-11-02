@@ -1,6 +1,7 @@
 # Limits and not implemented
 
-- Platform: Linux x64 only (see [ENVIRONMENT.md](ENVIRONMENT.md)); macOS and Windows are not supported by the toolchain installer.
+- Platforms: Linux x64 and macOS Apple Silicon (arm64) are equal, supported platforms (see [ENVIRONMENT.md](ENVIRONMENT.md#platforms)). Intel Macs, Linux arm64 and Windows are not supported by the toolchain installer.
+- Output across platforms has the same spec and passes the same gates, but is not bit-identical (different ffmpeg and Chrome builds); the cache is not shared between platforms.
 - Engine upload: not implemented; the Projects Manager bot handles Google Drive delivery.
 - AI QA: covered by mock tests; not part of the default build.
 - OpenAI-compatible providers: covered by mock tests; `deepseek` is registered in `ai_providers.toml` as the Gemini fallback.

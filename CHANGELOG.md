@@ -43,9 +43,21 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
   di `docs/proposals/` (format dan frame rate lain; kunci render).
 - **CI**: job `rust` (`cargo fmt --check`, `clippy -D warnings`, `cargo test`), job `docs`, dan ruff yang kini juga
   menolak import dan variabel yang tidak terpakai.
+- **macOS Apple Silicon sebagai platform setara Linux x64**: keduanya bisa membangun dan menyerahkan video final,
+  gate yang sama berlaku, keluaran punya spesifikasi yang sama (tidak identik bit demi bit), dan cache dipisah
+  menurut identitas toolchain. `engine doctor --install` memasang Node `darwin-arm64` dan Chrome `mac_arm`,
+  `engine doctor` mencetak baris platform dan mensyaratkan ffmpeg mayor 7, folder scratch bawaan di macOS adalah
+  `$TMPDIR/video_engine`. Panduan instalasi ada di README dan [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#platforms).
+- **Wrapper `scripts/engine-build` dan `scripts/engine-batch`**: versi portabel (POSIX `sh`, Linux dan macOS) dari
+  wrapper server render. Memuat `engine.env` (`VIDEO_ENGINE_ENV_FILE`), menolak bila disk bebas kurang dari
+  `VIDEO_ENGINE_MIN_FREE_GB` (bawaan 8), mengambil kunci render global `VIDEO_ENGINE_RENDER_LOCK` lewat
+  `fcntl.flock` (macOS tidak punya `flock(1)`), lalu menjalankan engine di bawah `nice`. Kode keluar engine
+  diteruskan. Tes: `tests/test_wrapper_scripts.py`.
 
 ### Diubah
 
+- **Dokumentasi platform**: pernyataan "hanya Linux x64" di README, `docs/LIMITS.md` dan `docs/ENVIRONMENT.md`
+  diganti dengan kebijakan paritas Linux x64 dan macOS Apple Silicon.
 - **Globe**: kamera kini bergerak di busur great-circle (jalur terpendek di bola) antar key, bukan garis lurus
   lintang/bujur. Contoh New York–Tokyo: 97,6° lewat Arktik, bukan 115°. Leg yang akan melewati kutub (> 85°)
   tetap memakai lintang/bujur. R56 dan P01 kini mengukur jalur yang benar-benar ditempuh. Segmen globe dirender ulang.

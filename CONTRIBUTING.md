@@ -70,6 +70,6 @@ dokumentasi dalam commit yang sama dengan kodenya.
 
 Hanya berlaku di mesin render, bukan di checkout biasa:
 
-- Jalankan build lewat `engine-build` dan `engine-batch`, bukan `engine build`.
+- Jalankan build lewat `engine-build` dan `engine-batch`, bukan `engine build`. Versi portabel (Linux dan macOS) ada di `scripts/`; tesnya `tests/test_wrapper_scripts.py`.
 - Jangan menjalankan `engine clean` atau `engine cache --prune` tanpa izin pemilik repo.
 - Render uji ke `/workspace/_scratch/`.

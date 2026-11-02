@@ -15,7 +15,7 @@ seterusnya), karena render yang gagal jauh lebih mahal daripada pemeriksaannya.
 
 ## Mulai cepat
 
-Syarat: Linux x64 (macOS belum didukung, lihat di bawah), Python 3.10 atau lebih baru, toolchain Rust, `ffmpeg` di `PATH`, dan sekitar 700 MB ruang disk untuk toolchain
+Syarat: Linux x64 atau macOS Apple Silicon (keduanya platform setara, lihat di bawah), Python 3.10 atau lebih baru, toolchain Rust, `ffmpeg` di `PATH`, dan sekitar 700 MB ruang disk untuk toolchain
 HyperFrames. Mesin render memakai ffmpeg 7.1; `engine doctor` memeriksa bahwa ffmpeg punya filter `subtitles`,
 `loudnorm`, `sidechaincompress` serta encoder `libx264` dan `aac`.
 
@@ -38,8 +38,38 @@ engine build .            # out/final.mp4 dan out/build_report.json (sekitar 20 
 engine sheet .            # out/sheet.png: satu kotak per segmen
 ```
 
-Toolchain HyperFrames terkunci untuk Linux x64: `engine doctor --install` mengunduh Node dan Chrome versi Linux, dan
-folder scratch bawaan ada di `/dev/shm`. Di macOS, tes dan build yang memakai Chrome belum bisa dijalankan.
+### Instalasi di macOS (Apple Silicon)
+
+macOS arm64 dan Linux x64 adalah platform setara: gate yang sama berlaku di keduanya, dan keduanya bisa membangun
+serta menyerahkan video final (`engine deliver`). Spesifikasi keluaran sama (H.264 1080×1920, AAC 48 kHz, loudness
+dan QA yang sama), tetapi file tidak identik bit demi bit antar-platform. Python harus build arm64 asli (bukan di
+bawah Rosetta).
+
+```bash
+xcode-select --install                                       # compiler dan git
+# Homebrew: https://brew.sh
+brew install python@3.12 ffmpeg@7 rustup
+export PATH="$(brew --prefix ffmpeg@7)/bin:$PATH"            # ffmpeg@7 keg-only; atau set VIDEO_ENGINE_FFMPEG / VIDEO_ENGINE_FFPROBE
+rustup-init -y && source ~/.cargo/env
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -e ".[test]" maturin
+(cd rust/hypoverum_core_rs && maturin develop --release)     # ekstensi Rust
+engine doctor --install                                      # Node arm64, HyperFrames, Chrome mac-arm64 (versi terkunci di vendor/)
+engine doctor                                                # baris platform, ffmpeg mayor 7, filter dan encoder
+```
+
+Beda dengan Linux: folder scratch bawaan adalah `$TMPDIR/video_engine` (macOS tidak punya `/dev/shm`; atur dengan
+`VIDEO_ENGINE_SHM`), dan Homebrew `ffmpeg@7` tidak masuk `PATH` sendiri. Tetap pakai ffmpeg mayor 7 karena `engine
+doctor` menolak versi lain. Catatan platform lengkap ada di [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#platforms).
+
+### Wrapper build
+
+`scripts/engine-build` dan `scripts/engine-batch` menjalankan `engine build` dan `engine batch` dengan penjagaan yang
+sama di Linux dan macOS: muat `engine.env` (atau `VIDEO_ENGINE_ENV_FILE`), tolak bila ruang disk bebas di
+filesystem `out/` kurang dari `VIDEO_ENGINE_MIN_FREE_GB` (bawaan 8), ambil kunci render global
+(`VIDEO_ENGINE_RENDER_LOCK`) tanpa menunggu, lalu jalankan di bawah `nice -n 10`. Kode keluar engine diteruskan.
+Letakkan folder `scripts/` di `PATH` atau panggil dengan path-nya. Detail dan variabelnya ada di
+[docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#build-wrappers).
 
 Di mesin render Hypoverum, jangan panggil `engine build` langsung. Pakai wrapper `engine-build` (kunci render, cek
 disk, environment). Lihat [AGENTS.md](AGENTS.md).

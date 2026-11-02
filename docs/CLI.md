@@ -78,7 +78,7 @@ Never overwrites `master_timeline.json` unless `--out` points there and `--force
 
 Footage analysis of a 360p 5 fps proxy by the AI provider.
 Prints `provider`, `model`, `tried`, `usage`, `data` as JSON.
-Agent bundles go under `--bundle-root` (default `/dev/shm/video_engine/ai_request`).
+Agent bundles go under `--bundle-root` (default `<VIDEO_ENGINE_SHM>/ai_request`: `/dev/shm/video_engine/ai_request` on Linux, `$TMPDIR/video_engine/ai_request` on macOS).
 
 ## `engine pauses P [--threshold-db D] [--min-pause S] [--min-seg S] [--max-seg S] [--json]`
 

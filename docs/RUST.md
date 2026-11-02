@@ -108,7 +108,7 @@ cd /workspace/video-engine/rust/hypoverum_core_rs
 | Type check | `cargo check -j 4` |
 | Format | `cargo fmt --check` (fix: `cargo fmt`) |
 | Lint | `cargo clippy -j 4 --all-targets -- -D warnings` (audit: add `-W clippy::pedantic`; remaining pedantic items are doc/style only, no casts) |
-| Rust tests | `TMPDIR=/dev/shm/video_engine/tmp cargo test -j 4 --no-default-features` (tests write temp files under `TMPDIR`; `proxy_and_pcm_roundtrip` needs ffmpeg on PATH and skips without it) |
+| Rust tests | `TMPDIR=/dev/shm/video_engine/tmp cargo test -j 4 --no-default-features` (Linux; on macOS use any writable `TMPDIR`; tests write temp files under `TMPDIR`; `proxy_and_pcm_roundtrip` needs ffmpeg on PATH and skips without it) |
 | Install into venv | `source /workspace/engine-venv/bin/activate && maturin develop --release` |
 | Python tests | `cd /workspace/video-engine && /workspace/engine-venv/bin/python -m pytest -q` |
 

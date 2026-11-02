@@ -10,3 +10,4 @@ vendor/npm/node_modules/
 **/ai_request/
 **/out/sound_request/
 **/out/*.mp4
+.venv/

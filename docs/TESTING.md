@@ -18,7 +18,7 @@ pytest -q                          # everything, one process
 ```
 
 The suite has about 1700 tests.
-The Rust crate has its own: `cd rust/hypoverum_core_rs && cargo test --release --no-default-features` (49 tests; set `TMPDIR=/dev/shm/video_engine/tmp`).
+The Rust crate has its own: `cd rust/hypoverum_core_rs && cargo test --release --no-default-features` (49 tests; set `TMPDIR` to a scratch folder: `/dev/shm/video_engine/tmp` on Linux, any writable folder such as `$TMPDIR/video_engine/tmp` on macOS).
 `python scripts/check_docs.py` checks the documentation (tests/test_check_docs.py runs it too).
 
 ## Toolchain-dependent tests
