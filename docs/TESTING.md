@@ -28,6 +28,18 @@ While the toolchain is missing they skip with that hint.
 `VIDEO_ENGINE_REQUIRE_TOOLCHAIN=1` makes them fail instead, as in the nightly CI job.
 A build test that fails because Node is missing only skips when the error reaches pytest; a CLI test that calls `cli.main` turns the error into exit code 1 and fails.
 
+## Golden frames
+
+`tests/test_golden_frames.py` renders a few small frames (216 x 384) of the paths that need no Chrome (native Ken Burns
+over a still, a native footage pan, the zoom whip and page turn transitions, a colour grade) and compares them with
+the PNGs in `tests/golden/`.
+A case passes when the mean absolute difference is at most 1.5 levels and at most 0.5 % of the samples differ by more
+than 24, so rounding differences between ffmpeg builds pass and a moved, re-coloured or re-timed picture fails.
+On a failure the rendered frames are written next to the golden as `<name>.actual.png` (ignored by git).
+After an intended visual change, refresh with `VIDEO_ENGINE_UPDATE_GOLDENS=1 pytest -q tests/test_golden_frames.py`
+and look at the new PNGs before committing them.
+HyperFrames scenes have no goldens yet: they need the vendored Chrome (a later step).
+
 ## Scratch files
 
 All test scratch (scratch root, cache, generated assets, `tmp_path` base) lives in `/tmp/video_engine_test_shm/pytest-<pid>/`; override the parent with `VIDEO_ENGINE_SHM_TEST`.
