@@ -5,7 +5,8 @@ to write is leased before its existence is checked, under a shared lock of the c
 `clear`, `engine cache --prune` and the sound cache prune hold the exclusive lock while they scan and delete, skip
 every leased file and report it. A lease lives in <root>/.leases/<pid>-<start>.json as JSON lines, one
 {"pid", "start", "paths": [path relative to the root]} per acquired path (append-only, so a store never rewrites
-the whole set); start = field 22 of /proc/<pid>/stat (process start time in clock ticks). The session removes its
+the whole set); start = field 22 of /proc/<pid>/stat (process start time in clock ticks; on macOS, with no /proc, the `ps -o lstart=`
+time with whitespace as "_" — an opaque token either way, written and compared on the same OS). The session removes its
 file on exit (success, failure, exception, AwaitingAgent). A pruner reclaims (deletes) a lease file whose pid is
 gone or runs a different process (other start time).
 """
@@ -16,6 +17,7 @@ import fcntl
 import json
 import os
 import shutil
+import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
@@ -36,8 +38,35 @@ _prune_state: dict[str, dict] = {}   # root -> {puts, last monotonic time}; per 
 
 # ---------------------------------------------------------------------------------------------------- leases
 
+def _have_proc() -> bool:
+    return Path("/proc/self/stat").exists()
+
+
+_own_ps_start: dict[int, str | None] = {}   # darwin: this process's start token (ps is spawned once per pid)
+
+
+def _ps_start(pid: int) -> str | None:
+    """Start time of pid from `ps -o lstart=` ("Mon Nov  2 10:00:00 2026", whitespace joined by "_": no spaces in the
+    lease file name), None when no such process or ps is unavailable. Used where there is no /proc (macOS)."""
+    own = pid == os.getpid()
+    if own and pid in _own_ps_start:
+        return _own_ps_start[pid]
+    try:
+        out = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True, timeout=5,
+                             env={**os.environ, "LC_ALL": "C"}).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None                     # not cached: ps may work next time
+    start = "_".join(out.split()) or None
+    if own:
+        _own_ps_start[pid] = start
+    return start
+
+
 def proc_start(pid: int) -> str | None:
-    """Start time of process pid (field 22 of /proc/<pid>/stat), None when no such process."""
+    """Start time of process pid (field 22 of /proc/<pid>/stat; without /proc the `ps` lstart), None when no such
+    process (or, without /proc, when ps cannot tell)."""
+    if not _have_proc():
+        return _ps_start(pid)
     try:
         stat = Path(f"/proc/{pid}/stat").read_text()
     except (FileNotFoundError, ProcessLookupError, PermissionError):
@@ -46,9 +75,13 @@ def proc_start(pid: int) -> str | None:
 
 
 def holder_alive(pid: int, start: str) -> bool:
-    """The process that wrote a lease (pid, start) still runs: same pid with the same start time (without /proc:
-    the pid exists)."""
-    if not Path("/proc/self/stat").exists():
+    """The process that wrote a lease (pid, start) still runs: same pid with the same start time. Without /proc
+    (macOS) the start is the ps lstart; when it is unknown on either side (lease written while ps failed: "None")
+    the pid merely has to exist."""
+    if not _have_proc():
+        cur = _ps_start(pid)
+        if cur is not None and str(start) not in ("None", ""):
+            return cur == str(start)
         try:
             os.kill(pid, 0)
         except ProcessLookupError:

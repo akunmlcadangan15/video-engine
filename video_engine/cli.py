@@ -576,7 +576,8 @@ def parser() -> argparse.ArgumentParser:
     x = add("director", cmd_director, "Footage analysis of a 360p proxy by the AI provider (planning models).")
     x.add_argument("src")
     ai_args(x, "the analysis")
-    x.add_argument("--bundle-root", help="agent provider: bundle root (default /dev/shm/video_engine/ai_request)")
+    x.add_argument("--bundle-root", help="agent provider: bundle root (default <SHM_ROOT>/ai_request: /dev/shm/video_engine on Linux, "
+                                         "$TMPDIR/video_engine on macOS)")
     x.add_argument("--start", type=float, default=0.0)
     x.add_argument("--seconds", type=float, default=5.0)
     x = add("pauses", cmd_pauses, "Narration pauses (Rust energy detector) and suggested segment boundaries in frames.")

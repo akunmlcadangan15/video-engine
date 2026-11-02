@@ -381,3 +381,77 @@ def test_good_acquire_appends_one_lease_line_per_path(root):
     rows = [json.loads(line) for line in after.splitlines()]
     assert [{p for p in row["paths"]} for row in rows] == [{"segments/a.mp4"}, {"segments/b.mp4"}]
     assert a.exists() and b.exists() and leases(root) == []
+
+
+# ---------------------------------------------------------------------------------------- no /proc (macOS)
+
+class PsRun:
+    """Canned `ps -o lstart= -p PID`: {pid: output}; pids not listed are gone (empty output)."""
+    def __init__(self, table): self.table, self.calls = table, []
+
+    def __call__(self, cmd, **kw):
+        assert cmd[:3] == ["ps", "-o", "lstart="], cmd
+        self.calls.append(int(cmd[-1]))
+        return subprocess.CompletedProcess(cmd, 0, stdout=self.table.get(int(cmd[-1]), ""), stderr="")
+
+
+@pytest.fixture
+def darwin(monkeypatch):
+    monkeypatch.setattr(cache, "_have_proc", lambda: False)
+    monkeypatch.setattr(cache, "_own_ps_start", {})
+    def install(table):
+        r = PsRun(table)
+        monkeypatch.setattr(cache.subprocess, "run", r)
+        return r
+    return install
+
+
+def test_good_darwin_proc_start_is_the_ps_lstart_without_spaces(darwin):
+    darwin({4242: "Mon Nov  2 10:00:00 2026\n"})
+    assert cache.proc_start(4242) == "Mon_Nov_2_10:00:00_2026"
+    assert cache.proc_start(999) is None
+
+
+def test_good_darwin_own_start_is_asked_once(darwin):
+    r = darwin({os.getpid(): "Mon Nov  2 10:00:00 2026\n"})
+    assert cache.proc_start(os.getpid()) == cache.proc_start(os.getpid())
+    assert r.calls == [os.getpid()]
+
+
+def test_good_darwin_holder_alive_compares_start_times(darwin):
+    darwin({4242: "Mon Nov  2 10:00:00 2026\n"})
+    assert cache.holder_alive(4242, "Mon_Nov_2_10:00:00_2026")
+    assert not cache.holder_alive(4242, "Sun_Nov_1_09:00:00_2026")      # pid reused by another process
+
+
+def test_good_darwin_holder_alive_without_a_start_checks_the_pid(darwin, monkeypatch):
+    darwin({})                                                          # ps knows nothing (or is broken)
+    assert cache.holder_alive(os.getpid(), "None")                      # live pid, lease written while ps failed
+    assert not cache.holder_alive(2 ** 22 + 12345, "None")              # gone
+    darwin({os.getpid(): "Mon Nov  2 10:00:00 2026\n"})
+    assert cache.holder_alive(os.getpid(), "None")                      # unknown lease start: the pid exists
+
+
+def test_good_darwin_ps_missing_degrades_to_kill_check(darwin, monkeypatch):
+    def boom(*a, **k):
+        raise FileNotFoundError("ps")
+    monkeypatch.setattr(cache.subprocess, "run", boom)
+    assert cache.proc_start(os.getpid()) is None
+    assert cache.holder_alive(os.getpid(), "None") and not cache.holder_alive(2 ** 22 + 12345, "None")
+
+
+def test_good_darwin_lease_roundtrip_and_reuse_reclaim(root, darwin):
+    me = os.getpid()
+    darwin({me: "Mon Nov  2 10:00:00 2026\n", 4242: "Tue Nov  3 11:00:00 2026\n"})
+    held = entry(root, "segments", "held.mp4")
+    stale = entry(root, "segments", "stale.mp4")
+    with cache.session():
+        cache.acquire(held)
+        files = leases(root)
+        assert files == [f"{me}-Mon_Nov_2_10:00:00_2026.json"]
+        pid_reused = root / cache.LEASES / "4242-Mon_Nov_2_09:00:00_2026.json"      # same pid, other start
+        pid_reused.write_text(json.dumps({"pid": 4242, "start": "Mon_Nov_2_09:00:00_2026", "paths": ["segments/stale.mp4"]}))
+        res = cache.prune(max_bytes=0)
+        assert res.skipped_leased == ["segments/held.mp4"] and res.deleted == ["segments/stale.mp4"]
+        assert res.reclaimed_leases == [pid_reused.name] and held.exists() and not stale.exists()
+    assert leases(root) == []

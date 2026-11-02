@@ -21,7 +21,9 @@ TEMPLATE_DIR = PKG / "template"
 PROFILES_DIR = Path(os.environ.get("VIDEO_ENGINE_PROFILES", ENGINE_ROOT / "profiles"))
 # Folder that holds the machine's shared libraries (geo library, open assets, stock footage, downloads). Each default
 # below sits in it and each has its own override. Only the defaults depend on the workspace, nothing else.
-WORKSPACE = Path(os.environ.get("VIDEO_ENGINE_WORKSPACE", "/workspace"))
+# Default: /workspace on Linux (render server layout), ~/workspace on macOS (its root is read-only).
+_DEFAULT_WORKSPACE = Path("/workspace") if sys.platform.startswith("linux") else Path.home() / "workspace"
+WORKSPACE = Path(os.environ.get("VIDEO_ENGINE_WORKSPACE", _DEFAULT_WORKSPACE))
 GEO_LIBRARY = Path(os.environ.get("VIDEO_ENGINE_GEO_LIBRARY", WORKSPACE / "geo-library"))
 OPEN_ASSETS = Path(os.environ.get("VIDEO_ENGINE_OPEN_ASSETS", WORKSPACE / "open-assets"))
 STOCK_DIRS = tuple(Path(p) for p in os.environ.get("VIDEO_ENGINE_STOCK_DIRS", str(WORKSPACE / "asset-cache")).split(":") if p)
