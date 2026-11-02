@@ -7,6 +7,9 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Ditambahkan
 
+- **Gerakan kamera `reveal`** (`camera_path` move): satu gerakan sepanjang jarak antar-key yang cepat di awal lalu
+  melambat panjang ke key, dengan kurva `theme.reveal_ease` yang dikalibrasi dari Short referensi Pan-American.
+  Draft AI juga bisa memilihnya.
 - **Tes golden-frame** (`tests/test_golden_frames.py`, `tests/golden/`): regresi piksel untuk Ken Burns native,
   pan footage, transisi crossfade, state, zoom whip dan page turn, serta grade warna, dengan toleransi untuk beda build ffmpeg.
 - **Gate P03 (jalur kamera)**: per segmen melaporkan panjang lintasan kamera, kecepatan layar puncak, dan perubahan

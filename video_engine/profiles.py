@@ -241,6 +241,10 @@ class DraftProfile(_Strict):
         return self
 
 
+REVEAL_EASE = (0.28, 0.37, 0.29, 0.91)   # fitted to the reveals of the Pan-American reference Short (peak speed at
+                                         # 19 % of the move; docs/proposals/geoverum-camera-reference.md)
+
+
 class Theme(_Strict):
     """Renderer values (HyperFrames scene `theme`; part of the HyperFrames segment cache key)."""
     camera_drift_per_s: float = Field(ge=0, le=0.1)   # zoom growth per second after the last camera_path key
@@ -248,6 +252,8 @@ class Theme(_Strict):
     camera_end_speed: float = Field(ge=0, le=1)        # globe and camera_path: last-key speed as a share of the last leg's mean
     whip_s: float = Field(ge=0.1, le=1.5)             # length of a whip move (ends on its key)
     whip_blur_px: float = Field(ge=0, le=40)          # peak motion blur (Gaussian deviation, px) at mid-whip
+    reveal_ease: list[float] = Field(default_factory=lambda: list(REVEAL_EASE), min_length=4, max_length=4)
+    # camera_path move "reveal": CSS cubic-bezier of the key-to-key leg (fast early, long settle; x1, x2 in 0..1)
     region_fill_opacity: float = Field(gt=0, le=1)    # region highlight fill opacity
     region_edge: Literal["white", "glow"]              # region edge when the region sets none
     region_edge_px: float = Field(gt=0, le=20)        # on-screen edge width (constant while the camera zooms)
@@ -323,6 +329,8 @@ class Theme(_Strict):
                 raise ValueError(f"theme colour {c!r} must be #rrggbb")
         if self.year_box_texture and not self.year_box_colour:
             raise ValueError("theme year_box_texture needs year_box_colour")
+        if not (0 <= self.reveal_ease[0] <= 1 and 0 <= self.reveal_ease[2] <= 1):
+            raise ValueError(f"theme reveal_ease {self.reveal_ease}: x1 and x2 must lie in 0..1 (cubic-bezier)")
         return self
 
 
@@ -1126,8 +1134,15 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
         dump.pop("grade", None)    # profiles without [grade] keep their hash
     if dump["gates"].get("camera") is None:
         dump["gates"].pop("camera", None)
-    elif dump["gates"]["camera"].get("min_drift_per_s") is None:
-        dump["gates"]["camera"].pop("min_drift_per_s", None)   # P01 tables without P02 keep their hash
+    else:
+        if dump["gates"]["camera"].get("min_drift_per_s") is None:
+            dump["gates"]["camera"].pop("min_drift_per_s", None)   # P01 tables without P02 keep their hash
+        if dump["gates"]["camera"].get("step_warn") is None:
+            dump["gates"]["camera"].pop("step_warn", None)         # ... and without a P03 step_warn
+    if dump["theme"].get("reveal_ease") == list(REVEAL_EASE):
+        dump["theme"].pop("reveal_ease")   # the default reveal ease adds nothing to the hash
+    if isinstance(dump.get("render"), dict) and dump["render"].get("final_bit_depth") is None:
+        dump["render"].pop("final_bit_depth", None)   # [render] without final_bit_depth keeps its hash
     if not dump["gates"].get("require"):
         dump["gates"].pop("require", None)   # profiles without required style gates keep their hash
     if not dump["gates"].get("advisory"):

@@ -135,7 +135,8 @@ def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, them
     move "whip" a drift (zoom at a constant ln rate theme camera_drift_per_s about the drift anchor) that waits until
     theme whip_s before the key, then a fast in-out leg with motion blur `blur` [sx, sy] (peak Gaussian deviation along
     the screen motion; absent when theme whip_blur_px is 0). Move "settle" = the same drift and in-out leg over the
-    key's move_s, without blur. leg_motion = the visible motion of each key's move (checked by R56). After the last key
+    key's move_s, without blur. Move "reveal" = one leg over the whole key-to-key time under the cubic-bezier theme
+    `reveal_ease` (fast early, long settle onto the key). leg_motion = the visible motion of each key's move (checked by R56). After the last key
     a drift runs to the segment end so the camera never stops. With theme `camera_pulse` (profile [camera]) every
     drift is split by `drift_legs` into drifts and pulses; a key's `pulse` sets the pulse sizes of the wait on its view
     (0 = drift only) and its `drift_max` bounds the drift of that wait. A key's `hold` adds a still leg on its view
@@ -171,6 +172,9 @@ def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, them
             blur = theme["whip_blur_px"] if k.move == "whip" else 0
             legs.append({"f0": fw, "f1": k.at_frame, "to": to, "ease": "whip",
                          **({"blur": whip_blur(prev, to, W, H, blur)} if blur > 0 else {})})
+        elif k.move == "reveal":
+            legs.append({"f0": f0, "f1": k.at_frame, "to": to, "ease": "reveal",
+                         "bez": list(theme.get("reveal_ease") or profiles.REVEAL_EASE)})
         else:
             legs.append({"f0": f0, "f1": k.at_frame, "to": to, "ease": "glide"})
         motion.append(round(motion_px(prev, to, W, H), 2))

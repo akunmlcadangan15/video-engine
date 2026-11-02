@@ -746,3 +746,14 @@ def test_good_overlay_graph_keeps_bt709_colour(tmp_path):
     base = centre(["-i", str(seg), "-vf", to_rgb])
     over = centre(["-i", str(seg), "-i", str(tr), "-filter_complex", f"{chain};{lab}{to_rgb}[o]", "-map", "[o]"])
     assert np.abs(over - base).max() <= 3, (base, over)
+
+
+def test_good_reveal_leg_ease_matches_engine_in_the_template():
+    from video_engine import hyperframes
+    L = {"f0": 0, "f1": 60, "to": {"s": 3.0}, "ease": "reveal", "bez": list(profiles.REVEAL_EASE)}
+    out = _node("const C=" + json.dumps({"start": {"s": 1.2}, "legs": [L]}) + """;
+      console.log(JSON.stringify(window.__legs(C,30).map(g=>[0,0.1,0.19,0.4,0.7,1].map(p=>[g.ease(p),g.inv(p)]))));""")[0]
+    e = hyperframes.leg_ease(L, 1.2)
+    for p, (ge, gi) in zip((0, 0.1, 0.19, 0.4, 0.7, 1), out):
+        z = 1.2 + 1.8 * ge
+        assert ge == pytest.approx(e(p), abs=1e-9) and z * (1 / 1.2 + (1 / 3.0 - 1 / 1.2) * gi) == pytest.approx(1)
