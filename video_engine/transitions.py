@@ -294,10 +294,13 @@ def render(tl: Timeline, seg_files: list[Path], workdir: Path, threads: int = 2)
 def overlay_graph(clips: list[tuple[Path, int]], first_input: int, fps: int, src: str = "[0:v]") -> tuple[str, str]:
     """(filter chain, output label) laying every clip over `src` from its first frame (input indices from
     first_input, in clip order). Clip frame k gets timestamp f0 + k in a 1/fps time base, so it covers output frame
-    f0 + k whatever the time bases of the clip file and of `src`. Empty chain when there are no clips."""
+    f0 + k whatever the time bases of the clip file and of `src`. Empty chain when there are no clips.
+    The RGB clip is converted on its own to BT.709 limited-range (config.OVERLAY_YUV_VF) and blended with
+    overlay=format=yuv420: an auto-negotiated overlay converts the clip with a BT.601 matrix, so saturated colours
+    jumped by ~15 levels for the length of every transition."""
     parts, cur = [], src
     for j, (_, f0) in enumerate(clips):
-        parts.append(f"[{first_input + j}:v]settb=1/{fps},setpts=N+{f0}[tr{j}];"
-                     f"{cur}[tr{j}]overlay=eof_action=pass:repeatlast=0[tv{j}]")
+        parts.append(f"[{first_input + j}:v]settb=1/{fps},setpts=N+{f0},format=rgba,{config.OVERLAY_YUV_VF}[tr{j}];"
+                     f"{cur}[tr{j}]overlay=eof_action=pass:repeatlast=0:format=yuv420[tv{j}]")
         cur = f"[tv{j}]"
     return ";".join(parts), cur

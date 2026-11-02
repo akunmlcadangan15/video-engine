@@ -134,3 +134,20 @@ def test_bad_stage_or_gate_failure_keeps_the_previous_output_byte_identical(proj
     assert _published(proj) == good and _leftovers(proj) == []
     rep = json.loads((proj / "out" / FAILED).read_text())
     assert rep["ok"] is False and rep["final"] is None and error in rep["error"]
+
+
+def test_bad_report_write_failure_keeps_the_previous_output_byte_identical(proj, monkeypatch):
+    """The report is staged before the video is replaced: a failing report write (e.g. disk full) publishes nothing."""
+    good = _previous(proj)
+    real = build.stage_json
+
+    def stage(path, data):
+        if Path(path).name == "build_report.json":
+            raise OSError(28, "injected: No space left on device")
+        return real(path, data)
+    monkeypatch.setattr(build, "stage_json", stage)
+    with pytest.raises(OSError, match="No space left"):
+        build.build(proj)
+    assert _published(proj) == good and _leftovers(proj) == []
+    rep = json.loads((proj / "out" / FAILED).read_text())
+    assert rep["ok"] is False and rep["final"] is None and "No space left" in rep["error"]

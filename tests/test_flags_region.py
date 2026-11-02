@@ -9,9 +9,13 @@ from video_engine import assets, config, hyperframes, profiles
 from video_engine.timeline import Flag, Pin, Region
 from video_engine.util import EngineError
 
+FLAG_DIR = config.OPEN_ASSETS / '2d/flags/flag-icons/flags/4x3'
+needs_flags = pytest.mark.skipif(not FLAG_DIR.is_dir(), reason=f'flag-icons assets not installed ({FLAG_DIR})')
+
 SQ = [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]]
 
 
+@needs_flags
 def test_flag_normalization_and_invalid_code():
     assert Flag.model_validate('GB').code == 'gb'
     with pytest.raises(EngineError, match='closest'):
@@ -20,6 +24,7 @@ def test_flag_normalization_and_invalid_code():
     assert Region(entity='X', polygon=SQ, flag='th').flag.code == 'th'
 
 
+@needs_flags
 @pytest.mark.parametrize('field,value', [('alpha', 1.1), ('reveal_s', 0.1), ('edge_px', 8), ('glow_px', 15)])
 def test_flag_bounds(field, value):
     with pytest.raises(ValidationError):
@@ -32,6 +37,7 @@ def test_pin_height_bounds(value):
         profiles.FlagsProfile(pin_height_pct=value)
 
 
+@needs_flags
 def test_scene_copy_and_credits(project, tmp_path):
     def mutate(d):
         sc = d['segments'][2]['gsap_scene_config']
@@ -58,6 +64,7 @@ def test_scene_copy_and_credits(project, tmp_path):
     assert result['times']
 
 
+@needs_flags
 def test_unset_flag_scene_and_key(project):
     def mutate(d):
         d['segments'][2]['gsap_scene_config']['regions'] = [{'entity': 'Sekutu', 'polygon': SQ}]
@@ -71,6 +78,7 @@ def test_unset_flag_scene_and_key(project):
     assert (hyperframes.scene_data(seg, tl, path), hyperframes.keys(seg, tl, path)) == before
 
 
+@needs_flags
 @pytest.mark.parametrize('globe', [False, True])
 def test_flag_dom_clip(project, tmp_path, globe):
     from PIL import Image
@@ -118,6 +126,7 @@ def test_svg_aspect_reads_viewbox(tmp_path):
 TALL = [[0.45, 0.2], [0.55, 0.2], [0.55, 0.8], [0.45, 0.8]]
 
 
+@needs_flags
 @pytest.mark.parametrize('fit', ['cover', 'contain', 'stretch'])
 def test_flag_fit_rect_on_tall_region(project, tmp_path, fit):
     """Chrome draws an <image>-referenced SVG as `meet` whatever preserveAspectRatio says, so the template
@@ -171,6 +180,7 @@ def test_good_region_aspect_uses_cos_latitude_on_the_globe():
     assert hyperframes.region_aspect(SQ, 1000, 500, False) == pytest.approx(2.0)   # flat map px
 
 
+@needs_flags
 @pytest.mark.parametrize('globe', [False, True])
 def test_good_scene_resolves_auto_fit_per_region(project, globe):
     from PIL import Image
@@ -203,3 +213,9 @@ def test_good_scene_resolves_auto_fit_per_region(project, globe):
 def test_good_geoverum_and_default_profiles_choose_fit_automatically():
     for name in ('default', 'geoverum'):
         assert profiles.load(name).data.flags.fit == 'auto'
+
+
+def test_bad_missing_flag_assets_name_the_folder_not_a_flag(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, 'OPEN_ASSETS', tmp_path / 'no-open-assets')
+    with pytest.raises(EngineError, match='flag assets not installed.*VIDEO_ENGINE_OPEN_ASSETS'):
+        assets.flag_for('gb')

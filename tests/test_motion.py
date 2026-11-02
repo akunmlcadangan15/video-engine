@@ -726,3 +726,23 @@ def test_bad_text_after_exit_end_is_not_skipped_when_it_reenters():
     layer2.mark_flying(res, sc)
     assert [f.level for f in layer2.check_rects(res["times"][0]["rects"], 1080, 1920, 4.6, 0)] == ["fail"]
 
+
+
+
+def test_good_overlay_graph_keeps_bt709_colour(tmp_path):
+    """A transition clip lands with the colours the BT.709 segment encode gives the same RGB (an auto-negotiated
+    overlay converted the clip with a BT.601 matrix: about 15 levels off on saturated red)."""
+    rgb, to_rgb = "0xE03020", "scale=in_color_matrix=bt709:in_range=tv,format=rgb24"
+    seg = tmp_path / "seg.mp4"
+    subprocess.run([config.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", f"color=c={rgb}:s=32x32:r=30",
+                    "-frames:v", "20", "-vf", config.BT709_VF, *config.x264(crf=0), str(seg)], check=True)
+    tr = _clip(tmp_path / "tr.mkv", rgb, 10)
+    chain, lab = transitions.overlay_graph([(tr, 5)], 1, FPS)
+
+    def centre(args):
+        out = subprocess.run([config.FFMPEG, "-v", "error", *args, "-frames:v", "20", "-f", "rawvideo", "-"],
+                             capture_output=True, check=True).stdout
+        return np.frombuffer(out, np.uint8).reshape(-1, 32, 32, 3)[8, 16, 16].astype(int)
+    base = centre(["-i", str(seg), "-vf", to_rgb])
+    over = centre(["-i", str(seg), "-i", str(tr), "-filter_complex", f"{chain};{lab}{to_rgb}[o]", "-map", "[o]"])
+    assert np.abs(over - base).max() <= 3, (base, over)

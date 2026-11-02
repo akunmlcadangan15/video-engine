@@ -107,15 +107,26 @@ class BuildFailed(EngineError):
         self.result, self.report = result, report
 
 
-def write_json_atomic(path: Path, data) -> Path:
-    """Write JSON through a unique temp file in the same dir and os.replace it onto `path`."""
+def stage_json(path: Path, data) -> Path:
+    """Write JSON to a unique temp file next to `path` (same filesystem, so os.replace onto `path` is atomic) and
+    return the temp file; the caller replaces it onto `path` or unlinks it."""
     fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(fd, "w") as f:
             f.write(json.dumps(data, indent=2))
-        os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
+        raise
+    return Path(tmp)
+
+
+def write_json_atomic(path: Path, data) -> Path:
+    """Write JSON through a unique temp file in the same dir and os.replace it onto `path`."""
+    tmp = stage_json(path, data)
+    try:
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
         raise
     return path
 
@@ -216,6 +227,7 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
     held = lease.__enter__()
     gate_rows: dict | None = None
     credit_token = None
+    report_tmp: Path | None = None
     try:
         from . import assets
         from .gates.layer1 import EXTRA_CREDIT_URLS
@@ -337,6 +349,9 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             if raise_on_fail:
                 raise BuildFailed(msg, res, failed_report)
             return res
+        # Every write that can fail on content or disk space happens before final.mp4 is replaced: the report is
+        # staged next to its target first, then published with a rename right after the video.
+        report_tmp = stage_json(out.parent / REPORT, report)
         if asset_credits:
             source = project_dir / "credits.txt"
             text = source.read_text(encoding="utf-8") if source.is_file() else ""
@@ -345,7 +360,8 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             assets._atomic_text(out.parent / "credits.txt", text.rstrip() + extra)
         manifest.save(out.parent, man)
         os.replace(staged, out)
-        res.report = write_json_atomic(out.parent / REPORT, report)
+        os.replace(report_tmp, out.parent / REPORT)
+        res.report = out.parent / REPORT
         failed_report.unlink(missing_ok=True)
         return res
     except (AwaitingAgent, BuildFailed):
@@ -358,6 +374,8 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
     finally:
         if credit_token is not None:
             EXTRA_CREDIT_URLS.reset(credit_token)
+        if report_tmp is not None:
+            report_tmp.unlink(missing_ok=True)            # gone after a publish; left over after a failure
         timer.monitor.close()
         lease.__exit__(None, None, None)
         shutil.rmtree(stage, ignore_errors=True)
