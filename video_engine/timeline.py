@@ -1070,12 +1070,35 @@ class CaptionsMeta(Strict):
         return d
 
 
+MIN_WAIVER_REASON = 10   # characters; a waiver has to say why
+
+
+class GateWaiver(Strict):
+    """One `gates.waive_with_reason` entry: a technical layout or overlay gate the project lowers to info, with the
+    reason recorded in build_report.json."""
+    gate: str
+    reason: str
+
+    @model_validator(mode="after")
+    def _w(self):
+        from .gate_registry import WAIVABLE_WITH_REASON
+        if self.gate not in WAIVABLE_WITH_REASON:
+            raise ValueError(f"gates.waive_with_reason: {self.gate!r} cannot be waived "
+                             f"(waivable with a reason: {', '.join(WAIVABLE_WITH_REASON)})")
+        if len(self.reason.strip()) < MIN_WAIVER_REASON:
+            raise ValueError(f"gates.waive_with_reason: the reason for {self.gate} must say why "
+                             f"(at least {MIN_WAIVER_REASON} characters)")
+        return self
+
+
 class ProjectGates(Strict):
     """Project gate requests (gates/severity.py). `require` adds style gates to the channel's required set; `waive`
-    lowers findings of style gates the channel does not require to info. Neither can lower a channel-required gate
-    or any technical gate."""
+    lowers findings of style gates the channel does not require to info. `waive_with_reason` lowers the findings of
+    the few technical gates marked waivable in the gate registry (L01, L06, O01), with a written reason that the build
+    report keeps. Nothing here can lower a channel-required gate or any other technical gate."""
     require: list[str] = []
     waive: list[str] = []
+    waive_with_reason: list[GateWaiver] = []
 
     @model_validator(mode="after")
     def _ids(self):
@@ -1086,6 +1109,10 @@ class ProjectGates(Strict):
         bad = [g for g in self.waive if g not in KNOWN_GATE_IDS]
         if bad:
             raise ValueError(f"gates.waive: unknown gate(s) {bad} (known: {', '.join(KNOWN_GATE_IDS)})")
+        names = [w.gate for w in self.waive_with_reason]
+        dup = sorted({g for g in names if names.count(g) > 1})
+        if dup:
+            raise ValueError(f"gates.waive_with_reason: {', '.join(dup)} listed more than once")
         return self
 
 

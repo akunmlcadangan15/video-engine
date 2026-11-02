@@ -58,7 +58,7 @@ from . import (
     transitions,
 )
 from .ai import AwaitingAgent
-from .gates import audio_source, run_preflight, severity, style
+from .gates import audio_source, layer1, run_preflight, severity, style
 from .sfx import kinds_used as sfx_kinds
 from .sound import cache as sound_cache
 from .sound import request as sound_request
@@ -91,6 +91,7 @@ class BuildResult:
     loudness: dict = field(default_factory=dict)
     timer: Timer | None = None
     ok: bool = True                    # False when any gate reported "fail"; nothing was published
+    mode: str = "release"              # "draft": technical gates lowered, output in out/draft/ (never deliverable)
     failed: list[str] = field(default_factory=list)
     report: Path | None = None         # build_report.json, or build_report.failed.json when not ok
     cache: dict = field(default_factory=dict)   # cache lease session: leased count, evicted, skipped_leased, reclaimed
@@ -176,14 +177,28 @@ def render_segments(tl: Timeline, project_dir: Path, workdir: Path, use_cache: b
     return res
 
 
+MODES = ("release", "draft")
+DRAFT_DIR = "draft"
+
+
 def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build", ai_qa=None,
           out: Path | None = None, keep_workdir: bool = False, pin_words: bool = True, resume: bool = False,
-          resume_cmd: str | None = None, raise_on_fail: bool = True, relock: bool = False) -> BuildResult:
+          resume_cmd: str | None = None, raise_on_fail: bool = True, relock: bool = False,
+          mode: str = "release", repin: bool = False) -> BuildResult:
     """Build and publish `out` (default <project>/out/final.mp4). Any "fail" finding means a failed build: with
     raise_on_fail it raises BuildFailed, else it returns a BuildResult with ok=False and final=None. A stage error
     raises its exception. Every failed build keeps the published final and build_report.json byte-identical and
     writes build_report.failed.json next to them. The whole build runs in one cache lease session: every cache file
-    it resolves stays leased (safe from eviction by this or any other process) until the build returns or raises."""
+    it resolves stays leased (safe from eviction by this or any other process) until the build returns or raises.
+
+    mode "draft": the fail of every technical gate that a profile may make advisory becomes a warning (gates/
+    severity.py), and the default output is <project>/out/draft/final.draft.mp4 with its own build_report.json (marked
+    "mode": "draft") and build_manifest.json, so out/final.mp4 and its report stay untouched; `engine deliver`
+    refuses a draft. Segment, composite and audio cache keys do not depend on the mode.
+    repin: when the pinned caption words are stale (gate W01), pin them again before the pre-flight."""
+    if mode not in MODES:
+        raise EngineError(f"unknown build mode {mode!r} (known: {', '.join(MODES)})")
+    draft = mode == "draft"
     project_dir = Path(project_dir).resolve()
     timer = Timer(run_label)
     t_all = time.perf_counter()
@@ -191,7 +206,7 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
     budget = resources.budget(tl)
     timer.monitor = resources.Monitor()
     workdir = project_workdir(tl)
-    out = out or project_dir / "out" / "final.mp4"
+    out = out or (project_dir / "out" / DRAFT_DIR / "final.draft.mp4" if draft else project_dir / "out" / "final.mp4")
     out.parent.mkdir(parents=True, exist_ok=True)
     failed_report = out.parent / FAILED_REPORT
     stage = Path(tempfile.mkdtemp(prefix=f".{out.stem}.staging-", dir=out.parent))
@@ -207,10 +222,15 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
         tl = assets.resolve_timeline_paths(tl, project_dir)
         credit_token = EXTRA_CREDIT_URLS.set(tuple(c["source_url"] for c in asset_credits if c["source_url"]))
         with timer.stage("captions") as st:
+            repinned = False
+            if repin and tl.captions and layer1.pins_stale(tl, project_dir):
+                fresh, meta = audio.pin_captions(project_dir, use_cache=use_cache)
+                tl.captions, tl.captions_meta = fresh.captions, meta
+                repinned = True
             words, src = audio.captions_for(tl, project_dir, use_cache=use_cache, pin=pin_words)
-            st["note"] = f"{len(words)} words from {src}"
+            st["note"] = f"{len(words)} words from {src}" + (" (stale pin replaced: --repin)" if repinned else "")
         with timer.stage("preflight") as st:
-            rep = run_preflight(tl, project_dir, words, workdir=workdir, ai_qa=ai_qa)
+            rep = run_preflight(tl, project_dir, words, workdir=workdir, ai_qa=ai_qa, draft=draft)
             st["note"] = " ".join(f"{k}={v}" for k, v in rep.timings.items())
         gate_rows = severity.summary(rep.findings, tl)
         if not rep.ok:
@@ -275,18 +295,19 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             findings, info = qa.pixel_gates(staged, tl, threads=budget.mux_threads)
             s01 = style.silence_findings(staged, tl)
             a02 = audio_source.build_findings(tl, mix)
-            findings = severity.apply(findings + a01 + s01 + a02, tl)
+            findings = severity.apply(findings + a01 + s01 + a02, tl, draft=draft)
             loud = loud_hist[-1]
             st["note"] = (f"frames={frames} samples={info['samples']} I={loud['I']} TP={loud['TP']} "
                           f"loudness_passes={len(loud_hist)}")
         timer.add("total", time.perf_counter() - t_all)
         failed = [f for f in findings if f.level == "fail"]
         res = BuildResult(None if failed else out, frames, tl.total_frames, segs, rep.summary(),
-                          [f.line() for f in findings], loud, timer, ok=not failed, failed=[f.line() for f in failed],
-                          cache=held.report())
+                          [f.line() for f in findings], loud, timer, ok=not failed, mode=mode,
+                          failed=[f.line() for f in failed], cache=held.report())
         L = profiles.loudness(tl)
         report = {
             "ok": not failed, "build_id": man["build_id"], "final": None if failed else str(out),
+            **({"mode": "draft"} if draft else {}),
             "final_sha256": manifest.sha256(staged), "frames": frames, "expected_frames": tl.total_frames,
             "profile": profiles.of(tl).report(),
             "credits_manifest": [c.model_dump() for c in tl.credits_manifest],

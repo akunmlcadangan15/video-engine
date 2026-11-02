@@ -70,7 +70,7 @@ def cmd_preflight(a) -> int:
         words = tl.captions
     elif a.captions:
         words, _ = audio.captions_for(tl, p)
-    rep = gates.run_preflight(tl, p, words, dom=not a.no_dom, ai_qa=_ai_qa(a, p))
+    rep = gates.run_preflight(tl, p, words, dom=not a.no_dom, ai_qa=_ai_qa(a, p), draft=a.mode == "draft")
     print(rep.summary())
     if a.write_fixes and (rep.fixes):
         if rep.caption_y_overrides:
@@ -93,7 +93,7 @@ def cmd_build(a) -> int:
     with ProjectLock(p):   # one build per project at a time (shared with `engine batch`)
         r = build.build(p, use_cache=True, run_label=a.label, ai_qa=_ai_qa(a, p), keep_workdir=a.keep_workdir,
                         resume=a.resume, resume_cmd=shlex.join(["engine", *argv, "--resume"]), raise_on_fail=False,
-                        relock=a.relock)
+                        relock=a.relock, mode=a.mode, repin=a.repin)
     for row in r.timer.rows:
         print("\t".join(str(x) for x in row))
     if a.timing_tsv:
@@ -106,6 +106,9 @@ def cmd_build(a) -> int:
     warns = sum(1 for ln in [*r.preflight.splitlines(), *r.qa] if "[WARN]" in ln)
     warn_str = f" ({warns} warning(s); see {r.report})" if warns else ""
     print(f"final: {r.final} frames={r.frames}/{r.expected_frames} I={r.loudness.get('I')} TP={r.loudness.get('TP')}{warn_str}")
+    if r.mode == "draft":
+        print("draft build: technical gates were lowered to warnings; out/final.mp4 is untouched and this file "
+              "cannot be delivered (build again without --mode draft)")
     _print_cache(r.cache)
     return 0
 
@@ -508,6 +511,8 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--ai-qa", action="store_true", help="send gate snapshots to the AI provider's QA models")
     ai_args(x, "--ai-qa")
     x.add_argument("--write-fixes", action="store_true", help="persist automatic fixes (R56 intensity, caption y) to the timeline")
+    x.add_argument("--mode", choices=["release", "draft"], default="release",
+                   help="draft: fails of technical gates that a profile may make advisory are reported as warnings")
     x = add("build", cmd_build, "Captions, pre-flight, segment render, caption burn, mux, QA. Output <project>/out/final.mp4, "
             "published only when every gate passes; a failed build writes out/build_report.failed.json and exits 1.",
             aliases=["render"])
@@ -520,6 +525,12 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--keep-workdir", action="store_true", help="keep the scratch dir of this build (path in build_report.json)")
     x.add_argument("--relock", action="store_true", help="resolve music/SFX again instead of the files locked in "
                                                          "out/build_manifest.json")
+    x.add_argument("--mode", choices=["release", "draft"], default="release",
+                   help="draft: technical gates a profile may make advisory only warn; the output goes to "
+                        "out/draft/final.draft.mp4 (out/final.mp4 is untouched) and cannot be delivered")
+    x.add_argument("--repin", action="store_true",
+                   help="when the pinned caption words are stale (gate W01), pin them again before the pre-flight "
+                        "(the same step as `engine words`)")
     x = add("preview", cmd_preview, "Render one frame of one segment (or all segments with --all) to PNG without rendering the video.")
     x.add_argument("project")
     x.add_argument("--seg", type=int, help="segment index (0..N-1)")

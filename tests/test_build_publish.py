@@ -44,8 +44,9 @@ def _published(p):
 
 
 def _leftovers(p):
-    """Staging dirs and temp files the build left in the output dir."""
-    return sorted(x.name for x in (p / "out").iterdir() if x.name.startswith("."))
+    """Staging dirs and temp files the build left in the output dir. `.batch.lock` is the project lock file that
+    `engine build` takes (batch.ProjectLock); it stays on purpose, because unlinking a flock file races."""
+    return sorted(x.name for x in (p / "out").iterdir() if x.name.startswith(".") and x.name != ".batch.lock")
 
 
 def _pixel_fail(monkeypatch):

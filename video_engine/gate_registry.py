@@ -40,10 +40,11 @@ class Gate:
     switch: str = ""                # profile / timeline key that turns it on or configures it ("" = always on)
     never_advisory: bool = False    # no profile can lower its fail to warn
     known: bool = True              # valid in `gates.waive` / `gates.advisory` / `gates.require`
+    waivable: bool = False          # a project may lower it with `gates.waive_with_reason` (reason required)
 
 
-def _t(id_, title, summary, layer, switch="", never=False, known=True) -> Gate:
-    return Gate(id_, title, summary, layer, "technical", switch, never, known)
+def _t(id_, title, summary, layer, switch="", never=False, known=True, waivable=False) -> Gate:
+    return Gate(id_, title, summary, layer, "technical", switch, never, known, waivable)
 
 
 def _s(id_, title, summary, switch) -> Gate:
@@ -67,7 +68,7 @@ GATES: tuple[Gate, ...] = (
     _t("O01", "Drawn overlays",
        "Overlay text fits its box (at least 26 px at 1920 height), the box is inside the safe area, and no two "
        "overlays overlap. Native segments only.",
-       "static"),
+       "static", waivable=True),
     _t("W01", "Pinned captions are current",
        "Pinned caption words match the voiceover bytes, `caption_fixes`, STT model and keyterms, language and fps.",
        "static", never=True),
@@ -128,7 +129,7 @@ GATES: tuple[Gate, ...] = (
     _t("L01", "Overlap",
        "No text box (halo included) comes closer than `text_clear` to another text, head or leader; rendered boxes "
        "match the plan within 3 px.",
-       "layout", "[layout]"),
+       "layout", "[layout]", waivable=True),
     _t("L02", "Boundary",
        "Pin labels stay `edge_clear` away from region edges; area labels sit inside their region.",
        "layout", "[layout]"),
@@ -144,7 +145,7 @@ GATES: tuple[Gate, ...] = (
        "layout", "[layout]"),
     _t("L06", "Zones",
        "Texts stay inside the safe area, zone 1 texts inside zone 1, map labels, heads and routes inside zone 2.",
-       "layout", "[layout]"),
+       "layout", "[layout]", waivable=True),
     _t("L07", "Route anchors",
        "A route starts on its map anchor, ends on its anchor or just short of its pin head, and keeps away from text.",
        "layout", "[layout]"),
@@ -262,6 +263,7 @@ STYLE_GATE_IDS: tuple[str, ...] = tuple(g.id for g in GATES if g.kind == "style"
 TECHNICAL_GATE_IDS: tuple[str, ...] = tuple(g.id for g in GATES if g.kind == "technical" and g.known)
 KNOWN_GATE_IDS: tuple[str, ...] = STYLE_GATE_IDS + TECHNICAL_GATE_IDS
 NEVER_ADVISORY: tuple[str, ...] = tuple(g.id for g in GATES if g.never_advisory)
+WAIVABLE_WITH_REASON: tuple[str, ...] = tuple(g.id for g in GATES if g.waivable)
 ANTI_SLOP_IDS: tuple[str, ...] = tuple(g.id for g in GATES if g.id.startswith("AS"))
 
 # profile `[gates.anti_slop]` switch of each anti-slop rule
