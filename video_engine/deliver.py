@@ -3,8 +3,8 @@ the tree an operator uploads or opens in Drive.
 
 Build check (check_build, before any plan): the final must come from the last build. Refused when, next to the
 final, build_report.failed.json exists, build_report.json is missing or not ok, its build_id differs from
-build_manifest.json (a later build started and did not publish), or the final's sha256 differs from the report's
-final_sha256.
+build_manifest.json (a later build started and did not publish), the final's sha256 differs from the report's
+final_sha256, or the report says "mode": "draft" (a draft build, `engine build --mode draft`, is never delivered).
 
 Naming (NN = settings.project_number, Topik = settings.topic, date = settings.date):
   Drive folder  "NN - YYYY-MM-DD - Topik/05 Final"   final video (+ parts), JOIN.txt, SRT, thumbnail, metadata
@@ -97,6 +97,9 @@ def check_build(final: Path) -> dict:
         man = json.loads((d / MANIFEST).read_text())
     except (OSError, json.JSONDecodeError) as e:
         raise EngineError(f"no build report/manifest next to {final}: {e}") from None
+    if rep.get("mode") == "draft":
+        raise EngineError(f"{Path(final).name} is a draft build (--mode draft: technical gates were lowered to "
+                          f"warnings); build again without --mode draft and deliver out/final.mp4")
     if not rep.get("ok") or not rep.get("build_id"):
         raise EngineError("build_report.json is not a successful build with a build_id; rebuild before delivering")
     if rep["build_id"] != man.get("build_id"):

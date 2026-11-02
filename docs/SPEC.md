@@ -1,13 +1,31 @@
 # Video Engine — Specification
 
-- Location: /workspace/video-engine (package + CLI `engine`).
-- Scope: standalone system. Code, configuration and toolchain (`vendor/`) live inside this repository; no path outside it is read except project inputs given on the command line.
+The specification of the engine: goal, architecture, components, gates, profiles and the data contract.
+
+**What this document answers**
+
+- What the engine must do, and the four layers it is built from (Goal, Architecture).
+- How each component is specified: Rust crate, AI providers, gates, infrastructure, director, profiles (Components A to E).
+- How adaptive legibility, printed typography and the beats layout work (Components F, F2, G).
+- What `master_timeline.json` looks like (Data contract).
+
+- Location: this repository (package + CLI `engine`); on the render machine it is checked out at /workspace/video-engine.
+- Scope: standalone system.
+  Code, configuration and toolchain (`vendor/`) live inside this repository; no path outside it is read except project inputs given on the command line.
 
 ## Documentation style (applies to every doc in this repo)
-- Audience: AI agents. Write declarative rules, facts, inputs, outputs, limits.
-- No conversational tone, no decision history, no comparisons to past versions in normative text.
+- Audience: people and AI agents.
+  README, CONTRIBUTING, the glossary and the index are written in Indonesian for the team.
+  The technical reference documents (SPEC, RUST, SOUND, RATIONALE, CLI, ENVIRONMENT, TIMELINE, PROFILES, GATES, BUILD, DELIVERY, AI, TESTING, LIMITS) are written in concise English.
+  Code, comments and error messages are English.
+  English prose uses British spelling (licence, colour, centre, normalise); field and key names keep the spelling of the code (`license` in `credits_manifest`).
+- Reference documents state rules, facts, inputs, outputs and limits in a declarative tone: no conversational tone, no decision history, no comparison with past versions in normative text.
 - Docs hold final, ready-to-use content only: no change reports, revision reasons or old-vs-new comparisons.
-- Rationale goes in [RATIONALE.md](RATIONALE.md), never as a section of another doc.
+  Rationale goes in [RATIONALE.md](RATIONALE.md), and changes go in [CHANGELOG.md](../CHANGELOG.md).
+- Every fact has one home; other documents link to it instead of repeating it.
+- A long reference document opens with a "What this document answers" block of at most 5 bullets.
+- Prose is written one sentence per line, and wide tables become lists, so that diffs and terminals stay readable.
+- A document changes in the same commit as the code it describes; `python scripts/check_docs.py` checks links, anchors and generated tables.
 
 ## Goal
 - Function: produce a finished vertical video from a master_timeline.json plus project assets.
@@ -90,7 +108,8 @@
   per segment, getBoundingClientRect() to detect pin/card/text collisions and margins (R62/R63).
 - Layer 3 Visual snapshot QA (~3 s): 1 screenshot per segment (from those seeks or 1 frame via ffmpeg); R38 pixel
   distribution in Rust; optional (--ai-qa) snapshots to the AI provider's QA models to verify nothing overlaps.
-- Severity: technical gates block on fail. Style gates (H01, C01, C02, V01, N01, P01, P02, K01, K02, D01, D02, S01, AS01, AS02, AS03, AS05, AS06) block only when the
+- Severity: technical gates block on fail.
+  Style gates (H01, C01, C02, V01, N01, P01, P02, K01, K02, D01, D02, S01, AS01, AS02, AS03, AS05, AS06) block only when the
   channel profile `[gates] require` or the timeline `gates.require` lists them; otherwise fail -> warn. Timeline
   `gates.waive` and `hold: "read"` (segment or beat; P01/N01 findings) lower non-required style findings to info.
   build_report.json `gates`: required, fails, warns, waived. AS04 (readable on-screen time) is a technical-class
@@ -106,7 +125,9 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 4. Delivery: after segments render in /dev/shm, concat, burn captions.ass, normalise audio, name per project
    convention. Delivery goes to Google Drive; the Projects Manager bot arranges and handles the upload. Hypoverum Drive convention:
    per-project folder `NN - YYYY-MM-DD - Topik/05 Final`, files `NN - Topik - final.mp4[.partN]` (files over 100 MB are split into parts of at most 100,000,000 bytes, never re-encoded),
-   `NN - credits.txt` (into `03 Aset`), `NN - JOIN.txt`. The JOIN text carries the join command. Once a project is finished, delete every asset downloaded for it; assets already on the box stay.
+   `NN - credits.txt` (into `03 Aset`), `NN - JOIN.txt`.
+   The JOIN text carries the join command.
+   Once a project is finished, delete every asset downloaded for it; assets already on the box stay.
 
 ### D2. Director stage (`engine draft`)
 - 3 storyboard concepts (beats from_word/to_word, goal, pattern, assets, on-screen text, camera, transition) before the
@@ -123,7 +144,8 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 - Merge: default < channel profile < project values (caption_style keys, audio_chain loudness fields).
 - Channel-styleable: caption style and placement (incl. fixed caption y and a lowest caption bottom), loudness target, draft segment length and
   prompt rules, channel style gates (H01 hook, C01 hard cuts and shot changes, V01 visual type at shot changes, N01
-  novelty, P01 camera motion, K01/K02 keyword return, D01/D02 duration, C02 no call-to-action, S01 silence on the final file, AS01-AS06 anti-slop rules with their per-rule levels). Absent gate table = gate off.
+  novelty, P01 camera motion, K01/K02 keyword return, D01/D02 duration, C02 no call-to-action, S01 silence on the final file, AS01-AS06 anti-slop rules with their per-rule levels).
+  Absent gate table = gate off.
 - Caption timing comes from the voiceover word timestamps for every profile; captions per 10 s is reported only.
 - Caption bottom limit (`caption_style.max_bottom_y`, px at 1920 height; default profile: none): gate Z01 fails when
   any caption box bottom (centre y + 0.75 x font size + `caption_pad`; contains glyphs, descenders, outline and
@@ -133,7 +155,7 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   box bottom 1445 px at Inter Bold 84, pad 0; rendered ink and shadow included, inside it); `auto_place` moves a
   caption only inside `place_band` 0.60-0.76 H.
 - Caption soft shadow offset: `shadow_dx`, `shadow_dy` (px; absent = `shadow`, 1.5 x `shadow`). Geoverum captions:
-  white Inter Bold 84 (A/B 84 / 92 / 104), at most 2 words, no outline, soft shadow 0 3 px, `shadow_blur` 4 (libass
+  white Inter Bold 84 (the approved size; 92 and 104 were rejected in the 2026-11-01 A/B), at most 2 words, no outline, soft shadow 0 3 px, `shadow_blur` 4 (libass
   Gaussian, about a CSS 8 px blur), black at 55 % (`shadow_alpha` 115), no backing box.
 - No captions (no voiceover): every caption gate passes or skips on the empty list.
 - Segment field `visual_type` (map / photo / video / diagram / archive / illustration; inferred when absent).
@@ -149,7 +171,10 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   Python path carries no easing literal to rewire.
 - HyperFrames `camera_path`: several camera keys in one map segment (legs tweened key to key, glide end speeds continuous
   across keys, optional key holds, drift after the last key);
-  key move `glide` or `whip` (drift, then a fast in-out move with directional motion blur); R56 per leg; DOM probe also at every key frame; drafts may return `map_path` when the profile enables it.
+  key move `glide` or `whip` (drift, then a fast in-out move with directional motion blur);
+    R56 per leg;
+    DOM probe also at every key frame;
+    drafts may return `map_path` when the profile enables it.
 - Camera pulses (`[camera]`, off by default): every HyperFrames drift holds evenly spaced cubic-bezier pulses away
   from the drift and back (push in or pull out about `pulse_anchor`, optional alternating pan); camera key `pulse`
   sets per-wait pulse sizes; beats scenes shrink pulses that break a layout rule and leave push-in headroom in the
@@ -176,7 +201,13 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   last hold; globe.py supplies per-frame views to hf/globe.js (projection, pins).
   T02 checks the tile set, M04 the texel density, R56 and P01 measure the globe legs; the probe browser runs
   SwiftShader WebGL for globe scenes.
-- Props (`props` on a map scene or a beat): PNG or WebP images with alpha, or owned glTF / GLB / OBJ models rendered by `models.py` (three.js, pinned in vendor/npm, on SwiftShader in the vendored Chrome) to a deterministic RGBA sprite at a given yaw, pitch and fov, or to a looping turntable sprite sheet, cached by content hash (kind `models`), map-anchored (map point or lat/lng, moves and scales with the camera; `depth` 0-2 adds scale (s / s_in)^(1+depth) and parallax) or screen-anchored (frame px), with fade, pop or slide enter and exit, bob or rotate idle, z order and drop shadow. Map props may travel a `path` of normalised map points from `t_in` over `path_s` (default to `t_out`): glide eased arc length (`props.path_at`, mirrored by `pathAt` in hf/props.js); `heading` adds the segment direction to `rotation`. `hf/props.js` positions them every frame from the shared camera legs; `props.state` is the same math in Python (DOM within 1 px). Gates F01 alpha, F02 resolution (fail < 1.0x, warn < 1.5x of the largest on-screen width), F03 clear of texts, pins, cards and captions, F04 safe area; R07 credits, T02 timing; props join the caption avoid-list for their frames.
+- Props (`props` on a map scene or a beat): PNG or WebP images with alpha, or owned glTF / GLB / OBJ models rendered by `models.py` (three.js, pinned in vendor/npm, on SwiftShader in the vendored Chrome) to a deterministic RGBA sprite at a given yaw, pitch and fov, or to a looping turntable sprite sheet, cached by content hash (kind `models`), map-anchored (map point or lat/lng, moves and scales with the camera; `depth` 0-2 adds scale (s / s_in)^(1+depth) and parallax) or screen-anchored (frame px), with fade, pop or slide enter and exit, bob or rotate idle, z order and drop shadow.
+  Map props may travel a `path` of normalised map points from `t_in` over `path_s` (default to `t_out`): glide eased arc length (`props.path_at`, mirrored by `pathAt` in hf/props.js);
+    `heading` adds the segment direction to `rotation`.
+  `hf/props.js` positions them every frame from the shared camera legs; `props.state` is the same math in Python (DOM within 1 px).
+  Gates F01 alpha, F02 resolution (fail < 1.0x, warn < 1.5x of the largest on-screen width), F03 clear of texts, pins, cards and captions, F04 safe area;
+    R07 credits, T02 timing;
+    props join the caption avoid-list for their frames.
 - Counter-scale under the camera: pin labels and heads, area labels, hand notes, region edges and casings, and route
   lines, casings, dashes and arrowheads scale by v / (camera scale of the same frame) on every frame of every camera
   leg (drift, glide, whip, pulse), so the camera adds nothing to their on-screen size (DOM size within 1 % of plan
@@ -373,7 +404,9 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   offending offset, floor 0.03). Whip and pulse legs carry the drift rate at both ends and never reverse inside a leg.
 - R64 (pre-flight DOM layer, every probed sample time in each element's interval at opacity >= 0.9): measures the
   painted text colour, the painted halo (`data-halo` width and blur, `::after` colour and alpha) and the
-  `data-ink-state` vignette alpha over the background probe. Fail: Lc < target - `lc_fail_margin` or adjacent Lc < `lc_floor`. Warn: WCAG below its backup, or a flagged
+  `data-ink-state` vignette alpha over the background probe.
+  Fail: Lc < target - `lc_fail_margin` or adjacent Lc < `lc_floor`.
+  Warn: WCAG below its backup, or a flagged
   element. Pass reports the lowest Lc relative to target. R63 overlap and margin checks keep their own probe times.
   Dark ink also fails on a painted halo (`data-halo`, `::after` colour) with width outside
   `halo_width_min_em`-`halo_width_max_em`, blur > `halo_blur_max_ratio` x width or alpha outside

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 from contextvars import ContextVar
 from itertools import pairwise
 from pathlib import Path
@@ -244,6 +245,14 @@ def l22_captions(tl: Timeline, words: list[CaptionWord]) -> list[Finding]:
     return out or [Finding("L22", "pass", f"slot '{slot}', {len(words)} words monotone inside 0..{total}")]
 
 
+def repin_hint(project_dir: Path, *, cached: bool) -> str:
+    """How to refresh stale pinned captions. `cached`: only the caption fixes or the fps changed, so the speech-to-text
+    cache is reused and nothing is transcribed again."""
+    cmd = f"engine words {shlex.quote(str(project_dir))}"
+    reuse = " (the transcription cache is reused; nothing is transcribed again)" if cached else ""
+    return f"fix: run `{cmd}`{reuse}, or add --repin to `engine build`; never edit captions_meta by hand"
+
+
 def w01_pinned_words(tl: Timeline, project_dir: Path) -> list[Finding]:
     """Pinned captions must match the narration they were transcribed from (no silent drift)."""
     m, ac = tl.captions_meta, tl.audio_chain
@@ -254,17 +263,26 @@ def w01_pinned_words(tl: Timeline, project_dir: Path) -> list[Finding]:
     if m is None:
         return [Finding("W01", "pass", f"{len(tl.captions)} hand-written captions (no captions_meta)")]
     if not ac.voiceover_path or not (project_dir / ac.voiceover_path).is_file():
-        return [Finding("W01", "fail", "captions_meta present but audio_chain.voiceover_path is missing; run `engine words .` (grok-stt writes captions + captions_meta); never edit captions_meta by hand")]
+        return [Finding("W01", "fail", "captions_meta is present but audio_chain.voiceover_path is missing or the file "
+                                       "does not exist; restore the voiceover, then run "
+                                       f"`engine words {shlex.quote(str(project_dir))}`; never edit captions_meta by hand")]
     from ..audio import expected_meta
     exp = expected_meta(tl, project_dir)
     names = {"voiceover_blake3": "voiceover audio", "stt_model": "stt.model", "language": "language",
              "keyterms_blake3": "stt.keyterms", "fixes_blake3": "caption_fixes", "fps": "settings.fps"}
-    out = [Finding("W01", "fail", f"pinned captions are stale: {names[k]} changed since `engine words`; run `engine words .` (grok-stt writes captions + captions_meta); never edit captions_meta by hand")
+    out = [Finding("W01", "fail", f"pinned captions are stale: {names[k]} changed since the words were pinned; "
+                                  + repin_hint(project_dir, cached=k in ("fixes_blake3", "fps")))
            for k, v in exp.items() if getattr(m, k) != v]
     if m.clipped_words and tl.total_frames > m.total_frames:
         out.append(Finding("W01", "fail", f"timeline grew from {m.total_frames} to {tl.total_frames} frames and "
-                                          f"{m.clipped_words} transcribed words were cut at the old end; run `engine words .`"))
+                                          f"{m.clipped_words} transcribed words were cut at the old end; "
+                                          + repin_hint(project_dir, cached=True)))
     return out or [Finding("W01", "pass", f"{len(tl.captions)} pinned words match voiceover, fixes and fps")]
+
+
+def pins_stale(tl: Timeline, project_dir: Path) -> bool:
+    """True when gate W01 would fail on the pinned captions of `tl` (a rebuild with --repin pins them again)."""
+    return any(f.level == "fail" for f in w01_pinned_words(tl, project_dir))
 
 
 def o01_overlays(tl: Timeline) -> list[Finding]:

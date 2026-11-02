@@ -1,14 +1,14 @@
 """P20: page curl and map morph stay off in every built-in profile; Stage 4b components stay off unless a scene sets them."""
 import re
 
-from video_engine import config, hyperframes, profiles, timeline
+from video_engine import hyperframes, profiles, timeline
 
 
 def test_default_and_geoverum_profiles_keep_page_turn_and_morph_off():
     for name in ("default", "geoverum"):
         t = profiles.load(name).transitions
         assert "page_turn" not in {t.kind, *t.by_type.values(), *t.same_type.values()}, name
-    text = (config.PROFILES_DIR / "geoverum.toml").read_text()
+    text = profiles.flatten("geoverum")
     assert re.search(r"^page_turn\s*=\s*false\b", text, re.MULTILINE)
     assert re.search(r"^map_morph\s*=\s*false\b", text, re.MULTILINE)
 

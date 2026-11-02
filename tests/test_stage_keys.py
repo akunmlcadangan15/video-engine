@@ -21,15 +21,16 @@ def hf_key(p, tl):
     return hyperframes.keys(tl.segments[2], tl, p)[0]
 
 
-def edited_copies(tmp_path, files):
-    """Copies of engine source files with one appended comment line."""
+def edited_copies(tmp_path, files, line="_EDITED = 1"):
+    """Copies of engine source files with one appended line. The default line is a statement (a change of behaviour);
+    cache keys ignore comments, docstrings and formatting (util.code_hash)."""
     out = []
     for f in files:
         dst = tmp_path / "code" / Path(f).name
         dst.parent.mkdir(exist_ok=True)
         shutil.copyfile(f, dst)
         with open(dst, "a") as fh:
-            fh.write("\n# edited\n")
+            fh.write(f"\n{line}\n")
         out.append(dst)
     return tuple(out)
 

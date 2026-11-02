@@ -9,6 +9,7 @@ import shlex
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 from . import config
 from .util import EngineError
@@ -70,7 +71,8 @@ def cmd_preflight(a) -> int:
         words = tl.captions
     elif a.captions:
         words, _ = audio.captions_for(tl, p)
-    rep = gates.run_preflight(tl, p, words, dom=not a.no_dom, ai_qa=_ai_qa(a, p))
+    extra: dict[str, Any] = {"draft": True} if a.mode == "draft" else {}   # release calls stay exactly as they were
+    rep = gates.run_preflight(tl, p, words, dom=not a.no_dom, ai_qa=_ai_qa(a, p), **extra)
     print(rep.summary())
     if a.write_fixes and (rep.fixes):
         if rep.caption_y_overrides:
@@ -93,7 +95,7 @@ def cmd_build(a) -> int:
     with ProjectLock(p):   # one build per project at a time (shared with `engine batch`)
         r = build.build(p, use_cache=True, run_label=a.label, ai_qa=_ai_qa(a, p), keep_workdir=a.keep_workdir,
                         resume=a.resume, resume_cmd=shlex.join(["engine", *argv, "--resume"]), raise_on_fail=False,
-                        relock=a.relock)
+                        relock=a.relock, mode=a.mode, repin=a.repin)
     for row in r.timer.rows:
         print("\t".join(str(x) for x in row))
     if a.timing_tsv:
@@ -106,6 +108,9 @@ def cmd_build(a) -> int:
     warns = sum(1 for ln in [*r.preflight.splitlines(), *r.qa] if "[WARN]" in ln)
     warn_str = f" ({warns} warning(s); see {r.report})" if warns else ""
     print(f"final: {r.final} frames={r.frames}/{r.expected_frames} I={r.loudness.get('I')} TP={r.loudness.get('TP')}{warn_str}")
+    if r.mode == "draft":
+        print("draft build: technical gates were lowered to warnings; out/final.mp4 is untouched and this file "
+              "cannot be delivered (build again without --mode draft)")
     _print_cache(r.cache)
     return 0
 
@@ -285,18 +290,63 @@ def cmd_draft(a) -> int:
 
 
 def cmd_taste(a) -> int:
-    from . import director
+    from . import director, profiles, taste_lint
     if bool(a.like) + bool(a.reject) > 1:
         raise EngineError("pass one of --like / --reject")
+    if a.lint and (a.like or a.reject or a.check):
+        raise EngineError("--lint only reads; it cannot be combined with --like / --reject / --check")
+    if a.check and not (a.like or a.reject):
+        raise EngineError("--check belongs to --like / --reject")
+    if a.profile and not a.lint:
+        raise EngineError("--profile is for --lint")
+    if a.lint:
+        profile = a.profile or a.channel
+        report = taste_lint.lint(director.load_taste(a.channel),
+                                 json.loads(profiles.load(profile).data.model_dump_json()))
+        print(taste_lint.render(report, a.channel, profile))
+        return 0 if taste_lint.ok(report) else 1
     if a.like or a.reject:
         if not a.why:
             raise EngineError("--why is required with --like / --reject")
-        d = director.record_feedback(a.channel, "liked" if a.like else "rejected", a.like or a.reject, a.why)
+        try:
+            checks = [taste_lint.parse_check(c) for c in a.check]
+        except taste_lint.CheckError as e:
+            raise EngineError(str(e)) from None
+        d = director.record_feedback(a.channel, "liked" if a.like else "rejected", a.like or a.reject, a.why, checks)
     else:
         d = director.load_taste(a.channel)
     print(director.taste_text(d))
     print(f"store -> {director.taste_dir() / (a.channel + '.json')}")
     return 0
+
+
+def cmd_gates(a) -> int:
+    from . import gate_tools, profiles
+    if a.stats:
+        if a.profile or a.format == "md" or a.id:
+            raise EngineError("--stats takes report paths only; --profile, gate ids and --format md do not apply")
+        try:
+            files = gate_tools.collect_reports(a.stats)
+        except FileNotFoundError as e:
+            raise EngineError(str(e)) from None
+        s = gate_tools.stats(files)
+        print(json.dumps(s, indent=2) if a.format == "json" else gate_tools.render_stats(s))
+        return 0 if files else 1
+    try:
+        gates = gate_tools.select(a.id, a.layer, a.kind)
+    except ValueError as e:
+        raise EngineError(str(e)) from None
+    if a.format == "md":
+        if a.profile or a.id or a.layer or a.kind:
+            raise EngineError("--format md prints the whole registry; it takes no filters or --profile")
+        print(gate_tools.render_markdown())
+        return 0
+    rows = gate_tools.rows(gates, profiles.load(a.profile) if a.profile else None)
+    if a.format == "json":
+        print(json.dumps(rows, indent=2))
+    else:
+        print(gate_tools.render_detail(rows) if a.id else gate_tools.render_table(rows))
+    return 0 if rows else 1
 
 
 def cmd_import_shots(a) -> int:
@@ -479,6 +529,8 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--ai-qa", action="store_true", help="send gate snapshots to the AI provider's QA models")
     ai_args(x, "--ai-qa")
     x.add_argument("--write-fixes", action="store_true", help="persist automatic fixes (R56 intensity, caption y) to the timeline")
+    x.add_argument("--mode", choices=["release", "draft"], default="release",
+                   help="draft: fails of technical gates that a profile may make advisory are reported as warnings")
     x = add("build", cmd_build, "Captions, pre-flight, segment render, caption burn, mux, QA. Output <project>/out/final.mp4, "
             "published only when every gate passes; a failed build writes out/build_report.failed.json and exits 1.",
             aliases=["render"])
@@ -491,6 +543,12 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--keep-workdir", action="store_true", help="keep the scratch dir of this build (path in build_report.json)")
     x.add_argument("--relock", action="store_true", help="resolve music/SFX again instead of the files locked in "
                                                          "out/build_manifest.json")
+    x.add_argument("--mode", choices=["release", "draft"], default="release",
+                   help="draft: technical gates a profile may make advisory only warn; the output goes to "
+                        "out/draft/final.draft.mp4 (out/final.mp4 is untouched) and cannot be delivered")
+    x.add_argument("--repin", action="store_true",
+                   help="when the pinned caption words are stale (gate W01), pin them again before the pre-flight "
+                        "(the same step as `engine words`)")
     x = add("preview", cmd_preview, "Render one frame of one segment (or all segments with --all) to PNG without rendering the video.")
     x.add_argument("project")
     x.add_argument("--seg", type=int, help="segment index (0..N-1)")
@@ -551,6 +609,25 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--like", help="what was liked")
     x.add_argument("--reject", help="what was rejected")
     x.add_argument("--why", help="the reason (required with --like / --reject)")
+    x.add_argument("--check", action="append", default=[], metavar='"KEY OP VALUE"',
+                   help='with --like / --reject: a condition the channel profile has to satisfy for the entry to be '
+                        'true, e.g. "caption_style.size == 84" (VALUE is JSON; repeatable); checked by --lint')
+    x.add_argument("--lint", action="store_true",
+                   help="compare the checks of the taste entries with the channel profile; exit 1 on a mismatch")
+    x.add_argument("--profile", help="with --lint: profile to check against (default: the channel name)")
+    x = add("gates", cmd_gates, "List the gates (id, class, layer, rule); with --profile, what each does in that "
+                                "channel profile (off / warns / blocks); with --stats, how often each gate failed, warned "
+                                "or was waived in build reports. Read-only.")
+    x.add_argument("id", nargs="*", help="gate id(s) to describe (default: all)")
+    x.add_argument("--profile", help="show the effect of each gate under this channel profile (profiles/<name>.toml)")
+    x.add_argument("--layer", help="only this layer (static, math, dom, place, layout, props, visual, profile, post, "
+                                   "delivery, meta)")
+    x.add_argument("--kind", choices=["technical", "style"], help="only this class")
+    x.add_argument("--format", choices=["table", "json", "md"], default="table",
+                   help="md = the generated gate index of docs/GATES.md")
+    x.add_argument("--stats", nargs="+", metavar="PATH",
+                   help="count fails/warns/waived per gate in build reports: report files, project folders "
+                        "(out/build_report*.json) or a folder of projects")
     x = add("import-shots", cmd_import_shots, "Build a project (master_timeline.json, credits.txt, assets/) from a "
                                                 "shot-list CSV of an existing edit. Sources are only read.")
     x.add_argument("csv")

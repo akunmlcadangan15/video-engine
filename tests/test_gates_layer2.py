@@ -1,7 +1,7 @@
 """Layer 2 gates (math + DOM + caption placement): labelled GOOD and BAD cases."""
 import pytest
 
-from video_engine import captions, profiles, timeline
+from video_engine import captions, profiles
 from video_engine.gates import layer2, run_preflight
 from video_engine.gates.core import Finding
 

@@ -15,6 +15,7 @@ import re
 import tomllib
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from .. import config
 from ..ai.base import Image, Text
@@ -68,8 +69,9 @@ def save_taste(d: dict) -> Path:
     return p
 
 
-def record_feedback(channel: str, verdict: str, what: str, why: str) -> dict:
-    """verdict liked|rejected; the same `what` replaces its older entry (in either list)."""
+def record_feedback(channel: str, verdict: str, what: str, why: str, checks: list[dict] | None = None) -> dict:
+    """verdict liked|rejected; the same `what` replaces its older entry (in either list). `checks`: conditions the
+    channel profile has to satisfy for the entry to be true (taste_lint.py; `engine taste CHANNEL --lint`)."""
     if verdict not in ("liked", "rejected"):
         raise ValueError("verdict must be liked or rejected")
     if not what.strip() or not why.strip():
@@ -77,7 +79,11 @@ def record_feedback(channel: str, verdict: str, what: str, why: str) -> dict:
     d = load_taste(channel)
     for k in ("liked", "rejected"):
         d[k] = [x for x in d[k] if x.get("what") != what]
-    d[verdict].append({"what": what, "why": why, "at": datetime.now().astimezone().isoformat(timespec="seconds")})
+    entry: dict[str, Any] = {"what": what, "why": why, "at": datetime.now().astimezone().isoformat(timespec="seconds")}
+    if checks:
+        from ..taste_lint import validate
+        entry["check"] = [validate(c) for c in checks]
+    d[verdict].append(entry)
     save_taste(d)
     return d
 

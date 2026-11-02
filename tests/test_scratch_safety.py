@@ -1,9 +1,7 @@
 """Scratch dirs: project ids cannot name SHM_ROOT or anything outside it, every invocation gets its own dir under
 SHM_ROOT, a build removes only the dir it created, and timeline writes use writer-unique temp files."""
-import json
 import os
 import threading
-from pathlib import Path
 
 import pytest
 from pydantic import ValidationError

@@ -26,10 +26,10 @@ pub struct Style {
     pub shadow: f64,
     pub soft_shadow: bool,
     pub shadow_blur: f64,
-    pub shadow_alpha: u8, // 0 opaque .. 255 invisible
+    pub shadow_alpha: u8,       // 0 opaque .. 255 invisible
     pub shadow_dx: Option<f64>, // soft shadow offset x (px); None = `shadow`
     pub shadow_dy: Option<f64>, // soft shadow offset y (px); None = 1.5 x `shadow`
-    pub box_bg: bool,     // BorderStyle 3 (opaque box). Default false.
+    pub box_bg: bool,           // BorderStyle 3 (opaque box). Default false.
     pub box_colour: String,
     pub slot: String,  // lower | mid | upper
     pub margin_x: f64, // safe side margin (px)
@@ -533,7 +533,13 @@ mod tests {
     fn shadow_pos(st: &Style) -> String {
         let (a, _) = compile(&[w("Halo", 0, 30)], st, 1080, 1920, 30, &[(0, 30, 1190.0)]).unwrap();
         let l = a.lines().find(|l| l.starts_with("Dialogue: 0,")).unwrap();
-        l.split("\\pos(").nth(1).unwrap().split(')').next().unwrap().to_string()
+        l.split("\\pos(")
+            .nth(1)
+            .unwrap()
+            .split(')')
+            .next()
+            .unwrap()
+            .to_string()
     }
     #[test]
     fn good_shadow_dx_dy_offset_the_soft_shadow_straight_down() {

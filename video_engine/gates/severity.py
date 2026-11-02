@@ -12,10 +12,15 @@ Intent and waivers (only for style/advisory gates outside the required set):
   - a finding of a gate listed in timeline `gates.waive` -> info.
 A waive or a hold intent on a required gate changes nothing; a waive naming a required or technical gate adds one
 warn finding (gate GW01) saying it was ignored. Lowered findings keep their original level in `waived`.
+Two more ways to lower a technical gate:
+  - timeline `gates.waive_with_reason`: the gates the registry marks waivable (L01, L06, O01) -> info, with the written
+    reason in `waived` and in build_report.json `gates.waivers`;
+  - draft mode (`engine build --mode draft`): a fail of any technical gate outside profiles.NEVER_ADVISORY -> warn.
 """
 from __future__ import annotations
 
 from .. import profiles
+from ..gate_registry import WAIVABLE_WITH_REASON
 from ..timeline import HYPERFRAMES, Timeline
 from .core import Finding
 
@@ -46,18 +51,34 @@ def hold_ranges(tl: Timeline) -> list[tuple[int, int]]:
     return out
 
 
-def apply(findings: list[Finding], tl: Timeline) -> list[Finding]:
-    """Findings with the severity rules applied (new list; Finding objects are updated in place)."""
+def waivers(tl: Timeline) -> dict[str, str]:
+    """Technical gates the project lowers with a written reason (`gates.waive_with_reason`): gate -> reason."""
+    return {w.gate: w.reason.strip() for w in (tl.gates.waive_with_reason if tl.gates else ())}
+
+
+def apply(findings: list[Finding], tl: Timeline, *, draft: bool = False) -> list[Finding]:
+    """Findings with the severity rules applied (new list; Finding objects are updated in place).
+    draft: a draft build also lowers the fail of every technical gate that a profile could make advisory."""
     req = required(tl)
     holds = hold_ranges(tl)
     waive = set(tl.gates.waive if tl.gates else ())
+    reasons = waivers(tl)
     out = list(findings)
     for g in sorted(waive):
         if g in req or not is_style(g, tl):
             why = "required by the channel" if g in req else "a technical gate"
-            out.append(Finding("GW01", "warn", f"project waive of {g} ignored: {g} is {why}"))
+            hint = f"; use gates.waive_with_reason (with a reason) for {g}" if g in WAIVABLE_WITH_REASON else ""
+            out.append(Finding("GW01", "warn", f"project waive of {g} ignored: {g} is {why}{hint}"))
     for f in findings:
-        if not is_style(f.gate, tl) or f.gate in req or f.level not in ("fail", "warn"):
+        if f.level not in ("fail", "warn"):
+            continue
+        if f.gate in reasons and f.gate not in req:
+            f.level, f.waived = "info", f"{f.level}: waived by the project with a reason (gates.waive_with_reason): {reasons[f.gate]}"
+            continue
+        if draft and f.level == "fail" and not is_style(f.gate, tl) and f.gate not in profiles.NEVER_ADVISORY:
+            f.level, f.waived = "warn", "fail: technical gate lowered in a draft build (--mode draft)"
+            continue
+        if not is_style(f.gate, tl) or f.gate in req:
             continue
         orig = f.level
         if f.gate in waive:
@@ -75,7 +96,9 @@ def summary(findings: list[Finding], tl: Timeline) -> dict:
         return {"gate": f.gate, "class": "style" if is_style(f.gate, tl) else "technical", "level": f.level,
                 "message": f.message, **({"seg": f.seg} if f.seg is not None else {}),
                 **({"frames": list(f.frames)} if f.frames else {}), **({"waived": f.waived} if f.waived else {})}
+    reasons = waivers(tl)
     return {"required": sorted(required(tl)),
             "fails": [row(f) for f in findings if f.level == "fail"],
             "warns": [row(f) for f in findings if f.level == "warn"],
-            "waived": [row(f) for f in findings if f.waived]}
+            "waived": [row(f) for f in findings if f.waived],
+            **({"waivers": [{"gate": g, "reason": r} for g, r in sorted(reasons.items())]} if reasons else {})}

@@ -1,6 +1,7 @@
 """Small shared helpers: subprocess, ffprobe, hashing, timing."""
 from __future__ import annotations
 
+import ast
 import json
 import shutil
 import subprocess
@@ -69,9 +70,46 @@ def blake3_files(paths: list) -> list[str]:
     return core.blake3_files(paths)
 
 
+AST_DIGEST_TAG = "ast-v1"   # bump if the normalisation in `_ast_digest` changes (every code-derived cache key changes)
+
+
+def _drop_docstrings(tree: ast.AST) -> None:
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            first = node.body[0] if node.body else None
+            if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                    and isinstance(first.value.value, str)):
+                node.body = node.body[1:] or [ast.Pass()]
+
+
+@lru_cache(maxsize=256)
+def _source_digest(path: str, mtime_ns: int, size: int) -> str:
+    """Digest of one source file. A Python file is hashed as its syntax tree without docstrings, so comments, blank
+    lines, formatting and docstrings do not change it while every change of behaviour does. Any other file, and
+    Python that does not parse, is hashed byte for byte. `mtime_ns` and `size` only key the memo."""
+    data = Path(path).read_bytes()
+    if path.endswith(".py"):
+        try:
+            tree = ast.parse(data)
+        except (SyntaxError, ValueError):
+            return core.blake3_bytes(data)
+        _drop_docstrings(tree)
+        return core.blake3_bytes(f"{AST_DIGEST_TAG}:{ast.dump(tree)}".encode())
+    return core.blake3_bytes(data)
+
+
+def source_digest(path: str | Path) -> str:
+    p = Path(path)
+    st = p.stat()
+    return _source_digest(str(p), st.st_mtime_ns, st.st_size)
+
+
 def code_hash(files) -> str:
-    """Content hash of the engine source files that shape a cached product (part of its cache key)."""
-    return blake3_json(blake3_files([Path(f) for f in files]))
+    """Digest of the engine source files that shape a cached product (part of its cache key). Python files count by
+    behaviour, not by text (see `_source_digest`): editing a comment, a docstring or the formatting of a keyed module
+    does not discard cached renders. The tree dump depends on the Python minor version, so caches are not shared
+    between Python versions."""
+    return blake3_json([source_digest(f) for f in files])
 
 
 def blake3_json(obj) -> str:

@@ -1,5 +1,12 @@
 # Sound sourcing
 
+How music and sound effects reach a build.
+
+**What this document answers**
+
+- Which profile keys switch sound on, and what gate A02 enforces.
+- How the sound cache, the agent request and the Epidemic Sound connector work together.
+
 Music and SFX files for a profile with `[sound]` come from the sound cache (`video_engine/sound/`). The engine makes
 no network calls and holds no keys; an agent fills the cache through a file handoff and the Epidemic Sound connector.
 
@@ -29,7 +36,7 @@ Root: `<VIDEO_ENGINE_CACHE>/sound/` (default `.cache/sound/`, gitignored).
 - Brief key: blake3 of the validated `music_brief` (mood lowercased and trimmed, duration rounded).
 - A hit needs the index line, a non-empty file and the sidecar; it touches all three (LRU recency).
 - `video_engine.cache.prune()` (LRU by size) covers `sound/`; an evicted file is a miss. Lookups and stores lease the
-  index file, the audio file and the sidecar (README, Cache leases); eviction keeps leased files.
+  index file, the audio file and the sidecar ([BUILD.md, Cache leases](BUILD.md#cache-leases)); eviction keeps leased files.
 - `video_engine.sound.cache.prune(dry_run=False, cache_dir=None)` (also run by `engine cache --prune`, paths
   reported as `sound/...`) removes index lines without a file, orphan files and sidecars,
   and `.tmp` files, except leased files (`skipped_leased`; a writer leases its `.tmp` file). It runs under the

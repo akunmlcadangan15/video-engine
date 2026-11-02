@@ -15,22 +15,23 @@ from .core import Report
 
 def run_preflight(tl: Timeline, project_dir: Path, words: list[CaptionWord] | None = None, *,
                   workdir: Path | None = None, dom: bool = True, snapshots: bool = True, ai_qa=None,
-                  stop_on_layer1: bool = True) -> Report:
+                  stop_on_layer1: bool = True, draft: bool = False) -> Report:
     """Runs all gates. Mutates `tl` in memory for R56 fixes (listed in report.fixes).
     words: caption words (None = captions not available yet; caption gates report skip).
     ai_qa: AI provider for Layer 3 visual QA on the snapshots (None = off).
-    workdir: scratch dir for DOM builds and snapshots; None = a dir of this call, removed before it returns."""
+    workdir: scratch dir for DOM builds and snapshots; None = a dir of this call, removed before it returns.
+    draft: draft mode (gates/severity.py): fails of technical gates that a profile may make advisory become warnings."""
     if workdir is not None:
-        return _run(tl, Path(project_dir), words, workdir, dom, snapshots, ai_qa, stop_on_layer1)
+        return _run(tl, Path(project_dir), words, workdir, dom, snapshots, ai_qa, stop_on_layer1, draft)
     own = config.workdir(tl.project_id)
     try:
-        return _run(tl, Path(project_dir), words, own, dom, snapshots, ai_qa, stop_on_layer1)
+        return _run(tl, Path(project_dir), words, own, dom, snapshots, ai_qa, stop_on_layer1, draft)
     finally:
         shutil.rmtree(own, ignore_errors=True)
 
 
 def _run(tl: Timeline, project_dir: Path, words, workdir: Path, dom: bool, snapshots: bool, ai_qa,
-         stop_on_layer1: bool) -> Report:
+         stop_on_layer1: bool, draft: bool = False) -> Report:
     layout.apply(tl, project_dir)   # beats scenes: derived camera_path and element frames before any gate reads them
     rep = Report()
     with rep.timed("layer1"):
@@ -94,6 +95,6 @@ def _run(tl: Timeline, project_dir: Path, words, workdir: Path, dom: bool, snaps
             from ..ai import tasks
             with rep.timed("layer3_ai"):
                 rep.extend(tasks.qa_snapshots(paths, ai_qa, meta=rep.ai))
-    rep.findings = severity.apply(rep.findings, tl)
+    rep.findings = severity.apply(rep.findings, tl, draft=draft)
     rep.timings["total"] = round(sum(v for k, v in rep.timings.items()), 3)
     return rep

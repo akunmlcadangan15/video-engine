@@ -2,10 +2,8 @@
 cache without a browser and restores its screenshots byte-identical; any change of what Chrome would see (scene,
 probe times, viewport, bg mode, toolchain identity) or a broken entry is a miss. `engine cache --prune` keeps the
 entries of referenced segment keys only. layer2.dom_timing sums the probe phases and counts cache hits."""
-import json
 from pathlib import Path
 
-import pytest
 
 from video_engine import cache, cache_prune, config, hyperframes, toolchain
 from video_engine.gates import layer2

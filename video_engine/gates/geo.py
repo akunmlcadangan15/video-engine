@@ -1,6 +1,7 @@
 """G02 geo/fact gate: region polygons are sane and closed, beat pins lie inside their beat's region, a pin label
 never names a different region than the one it sits in, and (when the geo library is present) a geographic pin is on
-land. The land check needs the Natural Earth `land` GeoJSON of /workspace/geo-library; without it that part skips."""
+land. The land check needs the Natural Earth `land` GeoJSON of the geo library (config.GEO_LIBRARY, default
+<workspace>/geo-library); without it that part skips."""
 from __future__ import annotations
 
 import json

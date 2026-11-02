@@ -32,9 +32,11 @@ def test_good_geoverum_inter_bold_no_outline_no_box_fixed_y(project):
 
 
 def test_good_ab_sizes_reach_the_ass_compiler_but_stay_python_only(project):
+    # The profile lists only the approved size (92 and 104 were rejected in the 2026-11-01 A/B); a timeline override
+    # of the size is still valid and reaches the .ass compiler.
     for size in (84, 92, 104):
         _, tl = project(layout(("map", 30, None), cs={"size": size}))
-        assert profiles.caption_style(tl)["ab_sizes"] == [84, 92, 104]
+        assert profiles.caption_style(tl)["ab_sizes"] == [84]
         assert "ab_sizes" not in captions.rust_style(tl)
         ev = captions.compile_ass([type("W", (), {"word": "Halo", "start_frame": 0, "end_frame": 10,
                                                    "highlight": False})()], tl)[1]
