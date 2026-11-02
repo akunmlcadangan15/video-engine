@@ -27,7 +27,7 @@ import hypoverum_core_rs as core
 
 from . import config, profiles
 from .timeline import HYPERFRAMES, Timeline
-from .util import EngineError, decode_colour
+from .util import EngineError
 
 TRANSITION_VERSION = "trans-1"   # bump when a transition clip's pixels change without a source-code change
 BLUR_TAPS = 8          # zoomed copies averaged for the radial blur
@@ -224,9 +224,9 @@ def page_frames(last: np.ndarray, head: list[np.ndarray]) -> list[np.ndarray]:
 # ------------------------------------------------------------------------------------------------ files
 
 def decode(path: Path, first: int, count: int, W: int, H: int, threads: int = 2) -> list[np.ndarray]:
-    """Frames [first, first + count) of a segment file as RGB arrays."""
+    """Frames [first, first + count) of a segment file as RGB arrays (engine segments are BT.709 limited range)."""
     cmd = [config.FFMPEG, "-v", "error", "-threads", str(threads), "-i", str(path),
-           "-vf", f"select=gte(n\\,{first}),scale={W}:{H}{(':' + o) if (o := decode_colour(path)) else ''}",
+           "-vf", f"select=gte(n\\,{first}),scale={W}:{H}:in_color_matrix=bt709:in_range=limited",
            "-frames:v", str(count), "-vsync", "0", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
     buf = subprocess.run(cmd, capture_output=True, check=True).stdout
     n = len(buf) // (W * H * 3)
