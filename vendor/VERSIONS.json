@@ -1,9 +1,17 @@
 {
-  "_doc": "Pinned toolchain for HyperFrames rendering. `engine doctor` checks it; `engine doctor --install` installs missing or mismatched components into vendor/. Installed trees are gitignored.",
+  "_doc": "Pinned toolchain for HyperFrames rendering. `engine doctor` checks it; `engine doctor --install` installs missing or mismatched components into vendor/. Installed trees are gitignored. node: one `version`, plus url and sha256 of the official tarball per platform key (linux-x64, darwin-arm64); the hashes come from https://nodejs.org/dist/<version>/SHASUMS256.txt. chrome: @puppeteer/browsers picks the platform build for the same version.",
   "node": {
     "version": "v22.23.4",
-    "url": "https://nodejs.org/dist/v22.23.4/node-v22.23.4-linux-x64.tar.xz",
-    "sha256": "1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce"
+    "platforms": {
+      "linux-x64": {
+        "url": "https://nodejs.org/dist/v22.23.4/node-v22.23.4-linux-x64.tar.xz",
+        "sha256": "1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce"
+      },
+      "darwin-arm64": {
+        "url": "https://nodejs.org/dist/v22.23.4/node-v22.23.4-darwin-arm64.tar.xz",
+        "sha256": "037650d0839f457747396f052073fb48333d31bf5abd3c98b74da20d89ebb1ad"
+      }
+    }
   },
   "npm": {
     "hyperframes": "0.8.214",

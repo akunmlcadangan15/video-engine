@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from video_engine import config, doctor
+from video_engine import config, doctor, platform_info
 from video_engine.util import EngineError
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -82,6 +82,99 @@ def test_bad_ffmpeg_missing_filter_or_encoder_fails(monkeypatch, filters, encode
     assert not c.ok and gone in c.got
 
 
+FFMPEG_VERSION_LINES = [
+    ("ffmpeg version 7.1.1 Copyright (c) 2000-2025 the FFmpeg developers", 7),
+    ("ffmpeg version 7.1-static https://johnvansickle.com/ffmpeg/  Copyright (c) 2000-2024", 7),
+    ("ffmpeg version n7.0.2-5-gabcdef Copyright (c) 2000-2024 the FFmpeg developers", 7),
+    ("ffmpeg version 7.0.git Copyright", 7),
+    ("ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers", 6),
+    ("ffmpeg version 8.0 Copyright", 8),
+    ("ffmpeg version N-117021-g1234abc Copyright (c) 2000-2024", None),   # git master: no release number
+    ("", None),
+    ("command not found", None),
+]
+
+
+@pytest.mark.parametrize("text,major", FFMPEG_VERSION_LINES)
+def test_good_parse_ffmpeg_major(text, major):
+    assert doctor.parse_ffmpeg_major(text) == major
+
+
+def test_good_ffmpeg_version_7_passes_and_other_majors_fail():
+    assert doctor.check_ffmpeg_version("ffmpeg version 7.1.1 Copyright (c) 2000-2025").ok
+    for text in ("ffmpeg version 6.1.1-3ubuntu5 Copyright", "ffmpeg version 8.0 Copyright", "ffmpeg version N-1-gabc Copyright", ""):
+        c = doctor.check_ffmpeg_version(text)
+        assert not c.ok and c.name == "ffmpeg-version", c.line()
+    assert doctor.check_ffmpeg_version("ffmpeg version 6.1.1-3ubuntu5 Copyright").got == "6.1.1-3ubuntu5"
+
+
+def test_good_check_runs_ffmpeg_version_as_its_own_check(tmp_path, monkeypatch):
+    monkeypatch.setattr(doctor, "_ffmpeg_names", lambda flag: {"subtitles", "loudnorm", "sidechaincompress", "libx264", "aac"})
+    monkeypatch.setattr(doctor, "check_ffmpeg_version", lambda: doctor.Check("ffmpeg-version", False, "7.x", "6.1"))
+    res = {c.name: c for c in doctor.check(_fake_vendor(tmp_path))}
+    assert res["ffmpeg"].ok and not res["ffmpeg-version"].ok
+    assert [n for n, c in res.items() if not c.ok] == ["ffmpeg-version"]
+
+
+def test_good_check_reports_platform_first():
+    c = doctor.check_platform()
+    assert c.name == "platform" and c.ok and c.got in platform_info.SUPPORTED
+
+
+def test_bad_unsupported_platform_fails_check_and_blocks_install(tmp_path, monkeypatch):
+    v = _fake_vendor(tmp_path)
+    monkeypatch.setattr(platform_info.sys, "platform", "freebsd14")
+    res = doctor.check(v, run_binaries=False)
+    assert [c.name for c in res] == ["platform"] and not res[0].ok and "unsupported platform" in res[0].got
+    with pytest.raises(EngineError, match="unsupported platform"):
+        doctor.install(v, tmp_path / "tmp")
+
+
+@pytest.mark.parametrize("key,top", [("linux-x64", "linux-x64"), ("darwin-arm64", "darwin-arm64")])
+def test_good_node_pin_selected_per_platform(key, top):
+    pin = doctor.node_pin(PINS, key)
+    assert pin["version"] == PINS["node"]["version"]
+    assert pin["url"].endswith(f"node-{pin['version']}-{top}.tar.xz")
+    assert pin["sha256"] == PINS["node"]["platforms"][key]["sha256"]
+
+
+def test_bad_node_pin_missing_platform_is_a_clear_error():
+    with pytest.raises(EngineError, match="no node pin for platform darwin-arm64"):
+        doctor.node_pin({"node": {"version": "v1", "platforms": {}}}, "darwin-arm64")
+
+
+def test_good_paths_chrome_layout_per_platform(tmp_path):
+    c = PINS["chrome"]
+    lin = doctor.paths(tmp_path, PINS, "linux-x64")["chrome"]
+    mac = doctor.paths(tmp_path, PINS, "darwin-arm64")["chrome"]
+    assert lin == tmp_path / "chrome" / c["product"] / f"linux-{c['version']}" / f"{c['product']}-linux64" / c["product"]
+    assert mac == tmp_path / "chrome" / c["product"] / f"mac_arm-{c['version']}" / f"{c['product']}-mac-arm64" / c["product"]
+
+
+def test_good_install_node_extracts_darwin_layout(tmp_path, monkeypatch):
+    """The top-level dir of the tarball carries the platform name; extraction must not depend on it."""
+    import io
+    import hashlib
+    import tarfile
+    top = f"node-{PINS['node']['version']}-darwin-arm64"
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:xz") as tf:
+        data = b"#!/bin/sh\n"
+        ti = tarfile.TarInfo(f"{top}/bin/node")
+        ti.size, ti.mode = len(data), 0o755
+        tf.addfile(ti, io.BytesIO(data))
+    blob = buf.getvalue()
+    pins = json.loads(json.dumps(PINS))
+    pins["node"]["platforms"]["darwin-arm64"]["sha256"] = hashlib.sha256(blob).hexdigest()
+    monkeypatch.setattr(platform_info, "platform_key", lambda *a: "darwin-arm64")
+    monkeypatch.setattr(doctor.urllib.request, "urlretrieve", lambda url, dst: Path(dst).write_bytes(blob))
+    v = tmp_path / "vendor"
+    v.mkdir()
+    doctor.install_node(v, pins, tmp_path / "tmp")
+    assert (v / "node" / "bin" / "node").is_file()
+    assert (v / "node" / ".version").read_text().strip() == PINS["node"]["version"]
+
+
 def test_good_ffmpeg_names_parses_real_listing():
     if not (f := doctor._ffmpeg_names("-filters")):
         pytest.skip("no runnable ffmpeg")
@@ -109,7 +202,9 @@ def test_good_pins_are_exact_versions():
     lock = json.loads((ROOT / "vendor" / "npm" / "package-lock.json").read_text())
     for name, want in PINS["npm"].items():
         assert lock["packages"][f"node_modules/{name}"]["version"] == want
-    assert re.fullmatch(r"[0-9a-f]{64}", PINS["node"]["sha256"])
+    for key, pin in PINS["node"]["platforms"].items():
+        assert re.fullmatch(r"[0-9a-f]{64}", pin["sha256"]), key
+        assert PINS["node"]["version"] in pin["url"] and pin["url"].endswith(f"-{key}.tar.xz"), key
 
 
 RETIRED = "hypoverum" + "-kit"  # split so this file does not match itself

@@ -1,9 +1,11 @@
 """`engine doctor`: checks and installs the pinned HyperFrames toolchain inside the engine's vendor/ directory.
 
 Components (pins in vendor/VERSIONS.json):
-- node: official Linux x64 tarball, SHA-256 verified, unpacked to vendor/node.
+- platform: linux-x64 or darwin-arm64 (platform_info.py); anything else fails the first check.
+- node: official tarball for the platform (Linux x64 or macOS arm64), SHA-256 verified, unpacked to vendor/node.
 - npm: hyperframes, puppeteer-core and three (models.py) from vendor/npm/package-lock.json via `npm ci` (vendored node), vendor/npm/node_modules.
 - chrome: chrome-headless-shell via @puppeteer/browsers (dependency of puppeteer-core), vendor/chrome.
+- ffmpeg: system package, not vendored; version 7.x with the filters and encoders a build needs.
 
 The engine resolves every toolchain path from vendor/ (config.py); no other location is read.
 """
@@ -11,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import tarfile
@@ -18,7 +21,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import config
+from . import config, platform_info
 from .util import EngineError
 
 
@@ -26,13 +29,22 @@ def pins(vendor: Path | None = None) -> dict:
     return json.loads(((vendor or config.VENDOR) / "VERSIONS.json").read_text())
 
 
-def paths(vendor: Path, p: dict) -> dict[str, Path]:
+def node_pin(p: dict, key: str | None = None) -> dict:
+    """{"version", "url", "sha256"} of the node tarball for platform `key` (default: this machine)."""
+    key = key or platform_info.platform_key()
+    try:
+        return {"version": p["node"]["version"], **p["node"]["platforms"][key]}
+    except KeyError:
+        raise EngineError(f"vendor/VERSIONS.json has no node pin for platform {key}") from None
+
+
+def paths(vendor: Path, p: dict, key: str | None = None) -> dict[str, Path]:
     c = p["chrome"]
     return {
         "node": vendor / "node" / "bin" / "node",
         "hf_cli": vendor / "npm" / "node_modules" / "hyperframes" / "bin" / "hyperframes.mjs",
         "puppeteer": vendor / "npm" / "node_modules" / "puppeteer-core",
-        "chrome": vendor / "chrome" / c["product"] / f"linux-{c['version']}" / f"{c['product']}-linux64" / c["product"],
+        "chrome": vendor / "chrome" / c["product"] / platform_info.chrome_relpath(c["product"], c["version"], key),
     }
 
 
@@ -57,8 +69,11 @@ def _pkg_version(d: Path) -> str:
 def check(vendor: Path | None = None, run_binaries: bool = True) -> list[Check]:
     vendor = vendor or config.VENDOR
     p = pins(vendor)
+    plat = check_platform()
+    if not plat.ok:
+        return [plat]   # no toolchain path or download is defined for this platform
     x = paths(vendor, p)
-    out = []
+    out = [plat]
     got = "missing"
     if x["node"].is_file():
         got = (subprocess.run([x["node"], "-v"], capture_output=True, text=True).stdout.strip() or "unrunnable") \
@@ -78,7 +93,16 @@ def check(vendor: Path | None = None, run_binaries: bool = True) -> list[Check]:
                      "present" if ch.is_file() else "missing"))
     if run_binaries:
         out.append(check_ffmpeg())
+        out.append(check_ffmpeg_version())
     return out
+
+
+def check_platform() -> Check:
+    want = " or ".join(platform_info.SUPPORTED)
+    try:
+        return Check("platform", True, want, platform_info.platform_key())
+    except EngineError as e:
+        return Check("platform", False, want, str(e).split(";")[0])
 
 
 # ffmpeg is a system package (not vendored, not installed by --install); a build needs these from config.FFMPEG.
@@ -102,6 +126,30 @@ def check_ffmpeg() -> Check:
     return Check("ffmpeg", not missing, want, f"missing {', '.join(missing)}" if missing else "present")
 
 
+# The engine is built and tested against ffmpeg 7.x (README: 7.1); other majors change filter and encoder behaviour.
+FFMPEG_MAJOR = 7
+
+
+def parse_ffmpeg_major(text: str) -> int | None:
+    """Major version from `ffmpeg -version` output: "ffmpeg version 7.1.1 ...", "n7.1-5-g...", "7.0.git"; None for
+    builds without a release number ("N-12345-gabcdef" from git master)."""
+    m = re.search(r"\bff(?:mpeg|probe) version [nN]?(\d+)", text or "")
+    return int(m.group(1)) if m else None
+
+
+def check_ffmpeg_version(text: str | None = None) -> Check:
+    """FAIL unless config.FFMPEG is ffmpeg FFMPEG_MAJOR.x. `text` is the `-version` output (default: run it)."""
+    if text is None:
+        try:
+            text = subprocess.run([config.FFMPEG, "-version"], capture_output=True, text=True, timeout=30).stdout
+        except (OSError, subprocess.SubprocessError):
+            text = ""
+    first = next(iter(text.splitlines()), "").split(" Copyright")[0].removeprefix("ffmpeg version ").strip()
+    major = parse_ffmpeg_major(text)
+    got = first if major is not None else (f"unparseable ({first[:60]})" if first else "unrunnable")
+    return Check("ffmpeg-version", major == FFMPEG_MAJOR, f"{FFMPEG_MAJOR}.x", got)
+
+
 def _sha256(f: Path) -> str:
     h = hashlib.sha256()
     with f.open("rb") as fh:
@@ -111,18 +159,20 @@ def _sha256(f: Path) -> str:
 
 
 def install_node(vendor: Path, p: dict, tmp: Path) -> None:
+    pin = node_pin(p)
     tmp.mkdir(parents=True, exist_ok=True)
-    tar = tmp / Path(p["node"]["url"]).name
-    urllib.request.urlretrieve(p["node"]["url"], tar)
+    tar = tmp / Path(pin["url"]).name
+    urllib.request.urlretrieve(pin["url"], tar)
     got = _sha256(tar)
-    if got != p["node"]["sha256"]:
+    if got != pin["sha256"]:
         tar.unlink(missing_ok=True)
-        raise EngineError(f"node tarball sha256 mismatch: want {p['node']['sha256']}, got {got}")
+        raise EngineError(f"node tarball sha256 mismatch: want {pin['sha256']}, got {got}")
     stage = tmp / "node_stage"
     shutil.rmtree(stage, ignore_errors=True)
     with tarfile.open(tar) as tf:
         tf.extractall(stage, filter="tar")
-    (src,) = list(stage.iterdir())
+    # One top-level dir whose name carries the platform (node-vX-linux-x64, node-vX-darwin-arm64); "._*" are macOS metadata.
+    (src,) = [d for d in stage.iterdir() if not d.name.startswith("._")]
     dst = vendor / "node"
     shutil.rmtree(dst, ignore_errors=True)
     shutil.move(str(src), dst)
@@ -163,6 +213,7 @@ def install_chrome(vendor: Path, p: dict, tmp: Path) -> None:
 def install(vendor: Path | None = None, tmp: Path | None = None) -> list[Check]:
     """Install only the components whose check fails. Order: node -> npm -> chrome."""
     vendor = vendor or config.VENDOR
+    platform_info.platform_key()   # unsupported platform: EngineError before anything is downloaded
     tmp = tmp or config.workdir("doctor")
     p = pins(vendor)
     status = {c.name: c.ok for c in check(vendor)}

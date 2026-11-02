@@ -4,8 +4,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import sys
 import tempfile
 from pathlib import Path
+
+from . import platform_info
 
 ENGINE_ROOT = Path(__file__).resolve().parent.parent
 PKG = Path(__file__).resolve().parent
@@ -26,7 +30,8 @@ DOWNLOAD_DIR = Path(os.environ.get("VIDEO_ENGINE_DOWNLOAD_DIR", WORKSPACE / "dow
 # Persistent content-addressed cache (word timestamps, rendered segments) on disk; survives /dev/shm cleanup.
 CACHE_DIR = Path(os.environ.get("VIDEO_ENGINE_CACHE", ENGINE_ROOT / ".cache"))
 CACHE_MAX_BYTES = int(os.environ.get("VIDEO_ENGINE_CACHE_MAX_MB", "4096")) * 1024 * 1024
-SHM_ROOT = Path(os.environ.get("VIDEO_ENGINE_SHM", "/dev/shm/video_engine"))
+# /dev/shm/video_engine on Linux, <tempdir>/video_engine on macOS (no /dev/shm there).
+SHM_ROOT = Path(os.environ.get("VIDEO_ENGINE_SHM", platform_info.default_shm_root()))
 
 # CPU budget: max threads used by encoders and rayon. Default 6 (of 8 vCPU).
 THREADS = max(1, int(os.environ.get("VIDEO_ENGINE_THREADS", "6")))
@@ -43,10 +48,17 @@ _CH = _PINS["chrome"]
 NODE = VENDOR / "node" / "bin" / "node"
 HF_CLI = VENDOR / "npm" / "node_modules" / "hyperframes" / "bin" / "hyperframes.mjs"
 PUPPETEER = VENDOR / "npm" / "node_modules" / "puppeteer-core"
-CHROME = VENDOR / "chrome" / _CH["product"] / f"linux-{_CH['version']}" / f"{_CH['product']}-linux64" / _CH["product"]
+# Unsupported platform: importing config must still work, so CHROME points at a path that does not exist and
+# `engine doctor` reports the platform (and so the missing chrome) as FAIL.
+_PLATFORM = platform_info.supported_key()
+CHROME = VENDOR / "chrome" / _CH["product"] / (platform_info.chrome_relpath(_CH["product"], _CH["version"], _PLATFORM)
+                                               if _PLATFORM else Path("unsupported-platform") / _CH["product"])
 
 FFMPEG = os.environ.get("VIDEO_ENGINE_FFMPEG", "ffmpeg")
 FFPROBE = os.environ.get("VIDEO_ENGINE_FFPROBE", "ffprobe")
+# ffmpeg the HyperFrames CLI encodes with: /usr/bin on Linux; elsewhere (macOS: Homebrew) whatever is on PATH.
+_SYSTEM_FFMPEG, _SYSTEM_FFPROBE = (("/usr/bin/ffmpeg", "/usr/bin/ffprobe") if sys.platform.startswith("linux") else
+                                   (shutil.which(FFMPEG) or FFMPEG, shutil.which(FFPROBE) or FFPROBE))
 
 # Encoder defaults when a profile's [render] sets nothing for a stage. Intermediates are encoded again by the final
 # composite, so they use a fast preset at a low CRF: crf 16 veryfast matches crf 18 medium after the final pass
@@ -86,7 +98,7 @@ def hf_env() -> dict:
     env.update({
         "HYPERFRAMES_BROWSER_PATH": str(CHROME), "PRODUCER_HEADLESS_SHELL_PATH": str(CHROME),
         "HYPERFRAMES_SKIP_SKILLS": "1", "HYPERFRAMES_NO_TELEMETRY": "1", "HYPERFRAMES_NO_UPDATE_CHECK": "1",
-        "HYPERFRAMES_FFMPEG_PATH": "/usr/bin/ffmpeg", "HYPERFRAMES_FFPROBE_PATH": "/usr/bin/ffprobe",
+        "HYPERFRAMES_FFMPEG_PATH": _SYSTEM_FFMPEG, "HYPERFRAMES_FFPROBE_PATH": _SYSTEM_FFPROBE,
         "NODE_PATH": str(PUPPETEER.parent),
     })
     env["PATH"] = f"{NODE.parent}:{env.get('PATH', '')}"
