@@ -17,8 +17,8 @@ from typing import Callable
 
 from pydantic import ValidationError
 
-from .timeline import (Border, FlagCharacter, Figure, Flag, Globe, GsapScene, MapMorph, Prop, Region, Route, Beat,
-                       sec_to_frame)
+from .timeline import (Border, FlagCharacter, Figure, Flag, Flow, Globe, GsapScene, MapMorph, Prop, Region, Route, Beat,
+                       Thermometer, sec_to_frame)
 from .util import EngineError
 
 GATED = ("globe", "props", "morph", "beats")
@@ -165,6 +165,28 @@ def _flag_character(c, path, r):
     return _model(FlagCharacter, d, path)
 
 
+def _flow(c, path, r):
+    _keys(path, r, ("paths", "colour", "width_px", "speed_px", "label", "at_s", "out_s", "arrows"))
+    d = _copy(r, ("paths", "colour", "width_px", "speed_px", "label", "arrows"))
+    d["seed"] = int(path.rsplit("[", 1)[-1].rstrip("]") or 0)
+    if "at_s" in r:
+        d["at_frame"] = _frame(c, f"{path}.at_s", r["at_s"])
+    if "out_s" in r:
+        d["out_frame"] = _frame(c, f"{path}.out_s", r["out_s"], end=True)
+    return _model(Flow, d, path)
+
+
+def _thermo(c, path, r):
+    _keys(path, r, ("value", "min", "max", "unit", "decimals", "label", "note", "at_s", "out_s", "position",
+                    "height_pct"))
+    d = _copy(r, ("value", "min", "max", "unit", "decimals", "label", "note", "position", "height_pct"))
+    if "at_s" in r:
+        d["at_frame"] = _frame(c, f"{path}.at_s", r["at_s"])
+    if "out_s" in r:
+        d["out_frame"] = _frame(c, f"{path}.out_s", r["out_s"], end=True)
+    return _model(Thermometer, d, path)
+
+
 def _beat(c, path, r):
     _keys(path, r, ("at_s", "region", "pins", "markers", "routes", "title", "card", "camera", "heading", "hold", "goal"))
     d = {"at_frame": _frame(c, f"{path}.at_s", r.get("at_s")),
@@ -253,6 +275,11 @@ FIELDS: dict[str, Spec] = {
     "map_flag_characters": Spec("flag_characters", _arr(_obj({
         "flag": FLAG, "xy": PT, "height_pct": n, "eyes": s, "at_s": n, "out_s": n, "wave": b}, ["flag", "xy"])),
         _flag_character),
+    "map_flows": Spec("flows", _arr(_obj({"paths": _arr(PTS), "colour": s, "width_px": n, "speed_px": n, "label": s,
+                                          "at_s": n, "out_s": n, "arrows": b}, ["paths"])), _flow),
+    "map_thermometers": Spec("thermometers", _arr(_obj({
+        "value": n, "min": n, "max": n, "unit": s, "decimals": i, "label": s, "note": s, "at_s": n, "out_s": n,
+        "position": PT, "height_pct": n}, ["value"])), _thermo),
     "map_beats": Spec("beats", _arr(_obj({
         "at_s": n, "region": i, "pins": INTS, "markers": INTS, "routes": INTS, "title": b, "card": INTS, "camera": b,
         "heading": s, "hold": {"type": "string", "enum": ["read"]}, "goal": s}, ["at_s"])), _beat, gate="beats"),
@@ -324,7 +351,10 @@ PROMPT = """
    label, changes (later owner)}; map_routes = self-drawing arrow {points start -> end, at_s, draw_s}; map_borders =
    self-drawing line {points, dashed for sea borders}; map_figures = big number or year {kind, value, motion counter
    (counts up) | bounce, prefix, suffix (unit), at_s, count_s, position [x, y] of the frame}; map_flag_characters =
-   flag with eyes {flag, xy of the frame, eyes blink|look_left|look_right|look_at:<pin index>}."""
+   flag with eyes {flag, xy of the frame, eyes blink|look_left|look_right|look_at:<pin index>}; map_flows = moving
+   streams (wind, current) {paths: [[[x, y], ...]] start -> end, colour, label (legend), at_s}; map_thermometers =
+   {value, min, max, unit, label, note ("ilustratif" unless it is a sourced reading), at_s, position [x, y] of the
+   frame}."""
 PROMPT_GATED = {
     "beats": "map_beats = what is on screen per beat {at_s (first 0), region, pins, markers, routes (indices), title, "
              "card ([year figure] or [year, time]), camera, goal}; the layout derives camera and positions (no map_path)",

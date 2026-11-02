@@ -96,6 +96,7 @@ include = ["geoverum/entities.toml", "geoverum/layout.toml"]
 - Paths are relative to the profiles directory, end in `.toml` and must stay inside it.
   An included file cannot include another file, and `default.toml` cannot include.
 - Merge order: `default.toml` < included files (in list order) < the channel file itself.
+- `profiles/native_demo.toml`: demo / test profile of the engine-native regression demos (default look, audio and gates; draft `map_path` and every `[draft] scene` opt-in on). It is not a channel profile.
   A key set in the channel file wins over the same key in an included file; later includes win over earlier ones.
 - The merged profile and its hash do not depend on how the keys are split between files, so moving a table into an included file never changes a segment cache key.
   Check with `profiles.load(name).blake3` before and after.

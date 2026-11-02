@@ -190,6 +190,16 @@ if(whips.length){
 // counter-scaling on every frame: `zs` callbacks get the camera scale of the frame (the legs' math; 1 on the globe)
 const ZS=[], camS=t=>{let s=C.start.s;for(const g of legs){if(t<g.t0)break;s=t>=g.t0+g.d?g.L.to.s:g.from.s+(g.L.to.s-g.from.s)*g.ease((t-g.t0)/g.d);}return s;};
 const zsRun=()=>{const s=S.globe?1:camS(tl.time());ZS.forEach(f=>f(s));};
+// camera roll (camera key `roll`, deg): #cam (inside #tilt when tilted) sits in #roll, turned about the frame centre
+// to the legs' roll and scaled by the angle's cover factor, so the map still fills every corner; the roll of a frame
+// comes from the legs' math like the scale (no tween state); screen texts in #ui stay level, map labels turn with it
+if('r' in C.start){const rw=document.createElement('div');rw.id='roll';
+  rw.style.cssText='position:absolute;left:0;top:0;width:'+S.width+'px;height:'+S.height+'px;transform-origin:50% 50%';
+  const inner=document.getElementById('tilt')||cam;inner.before(rw);rw.appendChild(inner);
+  const camR=t=>{let r=C.start.r;for(const g of legs){if(t<g.t0)break;r=t>=g.t0+g.d?g.L.to.r:g.from.r+(g.L.to.r-g.from.r)*g.ease((t-g.t0)/g.d);}return r;};
+  const cover=r=>{const a=Math.abs(r)*Math.PI/180, c=Math.cos(a), n=Math.sin(a);return Math.max(c+S.height/S.width*n,c+S.width/S.height*n);};
+  window.__roll=camR;
+  ZS.push(()=>{const r=camR(tl.time());rw.style.transform='rotate('+r+'deg) scale('+cover(r)+')';});}
 const NS='http://www.w3.org/2000/svg', mk=(tag,at)=>{const e=document.createElementNS(NS,tag);for(const k in at)e.setAttribute(k,at[k]);return e;};
 const mapSvg=()=>{const v=mk('svg',{width:S.map_size[0],height:S.map_size[1]});v.style.cssText='position:absolute;left:0;top:0;overflow:visible';base.appendChild(v);return v;};
 const TH=S.theme, BOXR=TH.label_box_radius_px*S.width/1080;
@@ -586,6 +596,68 @@ const figText=(F,v)=>{
   if(c.box){boxify(el,c.box);el.style.transform='none';gsap.set(el,{xPercent:-50});pop(el,t0);}
   else tl.fromTo(el,{opacity:0,y:-30},{opacity:1,y:0,duration:0.45,ease:'power3.out'},t0);
 });
+// thermometers (components.py): one value v tweened from min to value drives the fill height, the fill colour
+// (linear RGB mix low -> high) and the number together
+const mix=(a,b,k)=>'#'+[1,3,5].map(i=>Math.round(parseInt(a.slice(i,i+2),16)+(parseInt(b.slice(i,i+2),16)-parseInt(a.slice(i,i+2),16))*k).toString(16).padStart(2,'0')).join('');
+(S.thermometers||[]).forEach((T,i)=>{
+  const el=document.createElement('div');el.className='thermo';el.setAttribute('data-qa','thermo:'+i);
+  el.style.cssText='position:absolute;left:'+T.x+'px;top:'+T.y+'px;width:'+T.w+'px;height:'+T.h+'px;visibility:hidden';
+  const tw=T.tube_w, bd=T.bulb_d, th=T.h-bd*0.85, bw=Math.max(3,tw*0.14), cx=T.w/2;
+  const tube=document.createElement('div');
+  tube.style.cssText='position:absolute;left:'+(cx-tw/2)+'px;top:0;width:'+tw+'px;height:'+(th+bd*0.3)+'px;border-radius:'+(tw/2)+'px;'+
+    'background:rgba(255,255,255,.14);border:'+bw+'px solid #fff;box-sizing:border-box;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.55)';
+  const fill=document.createElement('div');fill.setAttribute('data-thermo-fill',i);
+  fill.style.cssText='position:absolute;left:0;right:0;bottom:0;height:0';tube.appendChild(fill);
+  const bulb=document.createElement('div');
+  bulb.style.cssText='position:absolute;left:'+(cx-bd/2)+'px;top:'+(T.h-bd)+'px;width:'+bd+'px;height:'+bd+'px;border-radius:50%;'+
+    'border:'+bw+'px solid #fff;box-sizing:border-box;box-shadow:0 6px 18px rgba(0,0,0,.55)';
+  const num=document.createElement('div');num.setAttribute('data-thermo-num',i);
+  num.style.cssText='position:absolute;left:'+cx+'px;top:'+(-0.08*T.h)+'px;transform:translate(-50%,-100%);font-size:'+(0.16*T.h)+'px;'+
+    'font-family:'+FONT.f+';font-weight:'+FONT.w+';color:#fff;white-space:nowrap;text-shadow:0 4px 12px rgba(0,0,0,.8)';
+  el.append(tube,bulb,num);
+  const cap=document.createElement('div');
+  cap.style.cssText='position:absolute;left:'+cx+'px;top:'+(T.h+0.04*T.h)+'px;transform:translateX(-50%);text-align:center;white-space:nowrap;'+
+    'color:#fff;font-family:EngInter,sans-serif;text-shadow:0 3px 10px rgba(0,0,0,.85)';
+  if(T.label){const l=document.createElement('div');l.textContent=T.label;l.style.cssText='font-weight:700;font-size:'+(0.085*T.h)+'px';cap.appendChild(l);}
+  if(T.note){const n=document.createElement('div');n.textContent=T.note;n.style.cssText='font-size:'+(0.06*T.h)+'px;opacity:.85';cap.appendChild(n);}
+  el.appendChild(cap);ui.appendChild(el);
+  const F={kind:'number',prefix:'',suffix:T.unit,decimals:T.decimals}, pr={v:T.min},
+    show=()=>{const k=(pr.v-T.min)/(T.max-T.min), c=mix(T.low,T.high,k);
+      fill.style.height=(k*100)+'%';fill.style.background=c;bulb.style.background=c;num.textContent=figText(F,pr.v);};
+  show();const t0=f2t(T.at_frame);
+  tl.set(el,{visibility:'visible'},t0);
+  tl.fromTo(el,{opacity:0},{opacity:1,duration:0.3,ease:'none',immediateRender:true},t0);
+  tl.fromTo(pr,{v:T.min},{v:T.value,duration:T.fill_s,ease:MO.entrance,onUpdate:show,immediateRender:true},t0+0.2);
+  if(T.out_frame!==null)tl.to(el,{opacity:0,duration:0.4,ease:MO.exit},f2t(T.out_frame));
+});
+// flows (components.py): dashed streams moving toward each path's end at speed_px screen px per second of render
+// time from at_frame (offset = phase + speed x (t - t0), set on every frame with the counter-scale, no tween state);
+// widths and dashes keep their on-screen size; an arrowhead at each end; labelled flows fill the legend box
+if(S.flows&&S.flows.length){const svg=mapSvg();svg.setAttribute('data-flows','');
+  S.flows.forEach((F,i)=>{
+    const g=mk('g',{'data-flow':i});g.style.opacity=0;svg.appendChild(g);
+    const P=F.paths.map((pts,k)=>{
+      const e=mk('path',{d:'M'+pts.map(q=>q[0]+' '+q[1]).join('L'),fill:'none',stroke:F.colour,'stroke-linecap':'round','stroke-linejoin':'round'});
+      g.appendChild(e);const a=F.arrows?mk('path',{d:'M0 0L-1 -0.6L-0.7 0L-1 0.6Z',fill:F.colour}):null;if(a)g.appendChild(a);
+      return {e,a,ph:F.phase[k],end:pts[pts.length-1],prev:pts[pts.length-2]};});
+    const t0=f2t(F.at_frame), per=F.dash_px+F.gap_px;
+    tl.fromTo(g,{opacity:0},{opacity:F.alpha,duration:Math.max(F.reveal_s,1/FPS),ease:MO.entrance,immediateRender:true},t0);
+    if(F.out_frame!==null)tl.to(g,{opacity:0,duration:F.fade_s,ease:MO.exit},f2t(F.out_frame));
+    ZS.push(s=>{const t=tl.time(), off=-((F.speed_px*Math.max(0,t-t0))%per);
+      P.forEach(p=>{p.e.setAttribute('stroke-width',F.width_px/s);p.e.setAttribute('stroke-dasharray',(F.dash_px/s)+' '+(F.gap_px/s));
+        p.e.setAttribute('stroke-dashoffset',((off-p.ph)%per)/s);
+        if(p.a){const ang=Math.atan2(p.end[1]-p.prev[1],p.end[0]-p.prev[0])*180/Math.PI;
+          p.a.setAttribute('transform','translate('+p.end[0]+' '+p.end[1]+') rotate('+ang+') scale('+(F.width_px*3.2/s)+')');}});});
+  });
+  const L=S.flows.filter(F=>F.label);
+  if(L.length){const box=document.createElement('div');box.className='card';box.setAttribute('data-qa','legend');
+    box.style.top=(S.flow_legend==='top'?0.12:0.8)*S.height+'px';
+    L.forEach(F=>{const r=document.createElement('div');r.className='s';r.style.cssText='display:flex;align-items:center;gap:16px;color:#fff';
+      const sw=document.createElement('span');sw.style.cssText='display:inline-block;width:56px;height:10px;border-radius:5px;background:'+F.colour;
+      const tx=document.createElement('span');tx.textContent=F.label;r.append(sw,tx);box.appendChild(r);});
+    ui.appendChild(box);const t0=f2t(Math.min(...L.map(F=>F.at_frame)));
+    tl.set(box,{visibility:'visible'},t0);tl.fromTo(box,{opacity:0},{opacity:1,duration:0.45,ease:MO.entrance,immediateRender:true},t0);}
+}
 if(LG){const drv={t:0}, D=f2t(S.n_frames), up=()=>ADAPT.forEach(a=>applyInk(a,drv.t));
   twinFaces(['tabular-nums','lining-nums tabular-nums']);
   // the layout block adapts area labels and leader lines after this script

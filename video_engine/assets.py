@@ -477,7 +477,7 @@ def ensure_credits(tl, project: Path) -> tuple[object, list[dict]]:
         scene = segment.gsap_scene_config
         if scene and scene.morph:
             refs.append((segment.seg_index, scene.morph.asset_id, scene.morph.asset, "morph"))
-        if scene:
+        for scene in scene.panels() if scene else []:   # a split segment: both panels
             flags = [p.flag for p in scene.pins]
             flags += [f for r in scene.regions or [] for f in [r.flag, *(c.flag for c in r.changes)]]
             flags += [c.flag for c in scene.flag_characters or []]

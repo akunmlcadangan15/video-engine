@@ -28,7 +28,7 @@ from .ai.base import AwaitingAgent, Image, Media, Text
 from . import assets, audio, config, draft_scene, geodata, pauses, profiles, recipes
 from .hyperframes import HF_PRESETS
 from .licence import is_licence_field
-from .timeline import (HYPERFRAMES, IMAGE_EXT, NATIVE, AudioChain, CaptionWord, CaptionsMeta, Settings, Timeline,
+from .timeline import (HYPERFRAMES, IMAGE_EXT, NATIVE, ROLL_MAX, AudioChain, CaptionWord, CaptionsMeta, Settings, Timeline,
                        sec_to_frame)
 from .util import EngineError, video_info
 
@@ -274,7 +274,8 @@ def schema(inp: Inputs) -> dict:
     seg["properties"]["map_recipe"] = RECIPE_SCHEMA
     if prof.draft.map_path:
         seg["properties"]["map_path"] = {"type": "array", "items": {
-            "type": "object", "properties": {"at_s": n, "x": n, "y": n, "zoom": n, "move": {"type": "string", "enum": ["glide", "whip", "reveal"]}},
+            "type": "object", "properties": {"at_s": n, "x": n, "y": n, "zoom": n, "roll": n,
+                                             "move": {"type": "string", "enum": ["glide", "whip", "reveal"]}},
             "required": ["at_s", "x", "y"]}}
     cred = {"type": "object", "properties": {"asset": {"type": "string", "enum": ids}, "credit_line": i,
                                              "watermark_free": b}, "required": ["asset", "credit_line", "watermark_free"]}
@@ -302,7 +303,8 @@ def prompt(inp: Inputs) -> str:
     path_rule = ("\n   map_path (optional, instead of map_camera): camera keys {at_s, x, y, zoom, move}; the first at_s 0,"
                  "\n   then increasing; x,y 0..1 = the map point at the frame centre, zoom 1.0-" + f"{mz:.1f}" + "; the camera travels key"
                  "\n   to key inside one segment (one map segment visits several places). move = how the camera reaches"
-                 "\n   the key: glide (default) or whip (fast blurred move for a far jump; the camera drifts until it)."
+                 "\n   the key: glide (default) or whip (fast blurred move for a far jump; the camera drifts until it); roll = optional"
+                 "\n   map turn in degrees (-25..25) reached at the key."
                  if dp.map_path else "")
     prof = profiles.load(inp.profile or profiles.DEFAULT)
     scene_rule = draft_scene.prompt(prof.draft, prof.layout is not None)
@@ -438,7 +440,8 @@ def _camera_path(keys: list[dict], n: int, fps: int, max_zoom: float = 4.0) -> l
             continue
         out.append({"at_frame": f, "focus": [min(1.0, max(0.0, float(k["x"]))), min(1.0, max(0.0, float(k["y"])))],
                     "zoom": min(max_zoom, max(1.0, float(k.get("zoom") or 1.0))),
-                    **({"move": k["move"]} if k.get("move") in ("whip", "reveal") and out else {})})
+                    **({"move": k["move"]} if k.get("move") in ("whip", "reveal") and out else {}),
+                    **({"roll": min(ROLL_MAX, max(-ROLL_MAX, float(k["roll"])))} if k.get("roll") else {})})
     if len(out) < 2:
         raise ValueError(f"map_path needs at least 2 keys at distinct times inside the segment, got {keys!r}")
     return out
@@ -450,22 +453,25 @@ _PLACE = {"type": "object", "properties": {"label": {"type": "string"}, "lat": {
           "required": ["lat", "lng"]}
 _LL = {"type": "array", "items": {"type": "number"}}
 RECIPE_SCHEMA = {"type": "object", "properties": {
+    "split": {"type": "boolean"},
     "pattern": {"type": "string", "enum": list(recipes.PATTERNS)},
     "countries": {"type": "array", "items": {"type": "string"}}, "labels": {"type": "array", "items": {"type": "string"}},
     "points": {"type": "array", "items": _LL}, "paths": {"type": "array", "items": {"type": "array", "items": _LL}},
     "a": _PLACE, "b": _PLACE, "place": _PLACE, "value": {"type": "number"}, "unit": {"type": "string"},
     "decimals": {"type": "integer"}, "source": {"type": "string"}, "label": {"type": "string"},
     "legend": {"type": "string"}, "legend_note": {"type": "string"}, "at_s": {"type": "number"},
+    "speed_px": {"type": "number"},
     "draw_s": {"type": "number"}}, "required": ["pattern"]}
 RECIPE_RULE = """
    map_recipe (optional, kind map; needs a map asset with map_bounds): name the story pattern and its facts, the engine
    computes geometry, camera, timing and text placement: country_reveal {countries: ISO codes, labels}; follow_route
    {points: [[lat, lng], ...] start -> end, labels: [start, end]}; compare_places {a, b: {label, lat, lng, value, unit,
-   decimals}, source}; explain_flow {paths: [[[lat, lng], ...], ...], legend}; stat_emphasis {value, unit, decimals,
-   source, label, place {label, lat, lng}}; at_s = when it starts. Do not also give the map_* fields it fills
+   decimals}, source, split (true = two stacked panels, one camera each)}; explain_flow {paths: [[[lat, lng], ...],
+   ...], labels (one per path: a colour legend), legend, legend_note}; stat_emphasis {value, unit, decimals, source,
+   label, place {label, lat, lng}}; at_s = when it starts. Do not also give the map_* fields it fills
    (camera, regions, routes, pins, figures, cards). Values you cannot source are shown as illustrative."""
 RECIPE_FIELDS = {"camera_path": "map_path", "regions": "map_regions", "routes": "map_routes", "pins": "map_pins",
-                 "figures": "map_figures", "cards": "map_card"}
+                 "figures": "map_figures", "cards": "map_card", "flows": "map_flows"}
 
 
 def _recipe(s: dict, i: int, a, inp: Inputs, n: int, prof) -> recipes.Built:

@@ -283,9 +283,56 @@ def _num(v) -> float:
     return float(v)
 
 
+SPLIT_DIVIDER_PX = 8
+
+
+def _split_compare(m: MapInfo, f: Frame, a: dict, b: dict, pa, pb, source, at_s: float, gap_s: float) -> Built:
+    """Two stacked panels, one camera each on the same map: each panel fits its own place (and its label) at the
+    panel size; each figure sits in its panel's band away from its place; both counters run on one frame clock."""
+    fp = Frame(f.W, (f.H - SPLIT_DIVIDER_PX) // 2, f.fps, f.n, f.max_zoom)
+    small, big = sorted((a, b), key=lambda p: _num(p["value"]))
+    t_small, t_big = _fr(f, at_s + 0.4), _fr(f, at_s + 0.4 + gap_s)
+    places = ((a, pa), (b, pb))
+    bands = [_band_away(m, fp, _grow((*pt, *pt), 1, 0.08)) for _, pt in places]
+    card_panel = None
+    if source:   # a panel card fits only at the panel top: it goes where that panel's figure sits in the bottom band
+        if "bottom" not in bands:
+            bands[1] = "bottom"
+        card_panel = bands.index("bottom")
+    panels, notes = [], []
+    for k, (p, pt) in enumerate(places):
+        # panel bands (fractions of the panel): a figure centred at 0.25 / 0.75 takes 0.36 / 0.3 of it, the card
+        # (panel top) 0.31; the place and its label fit in what is left
+        box, band = _grow((*pt, *pt), 1, 0.03), bands[k]
+        top = 0.36 if band == "top" else (0.31 if k == card_panel else 0.0)
+        view, ok = fit(m, fp, box, top=top, bottom=0.3 if band == "bottom" else 0.0, labels=[p.get("label")],
+                       max_zoom=min(fp.max_zoom, 3.0))
+        _need(ok, f"{p.get('label')} in its panel", m)
+        first = p is small
+        t = t_small if first else t_big
+        panels.append({"camera_path": [_key(0, opening(m, fp, view, pt)), _key(_fr(f, at_s), view)],
+                       "pins": [{"label": p.get("label") or "?", "x": pt[0], "y": pt[1], "at_frame": max(0, t - 9),
+                                 "label_side": _side(m, fp, view, pt)}],
+                       "figures": [{"kind": "number", "value": _num(p["value"]), "decimals": int(p.get("decimals", 0)),
+                                    "prefix": p.get("prefix", ""), "suffix": p.get("unit", ""), "motion": "counter",
+                                    "at_frame": t, "position": [0.5, 0.25 if band == "top" else 0.75],
+                                    **({} if first else {"entity": p.get("label") or "B"})}],
+                       "cards": ([{"title": "Perbandingan", "subtitle": source, "position": "top",
+                                   "at_frame": _fr(f, at_s)}] if k == card_panel else [])})
+        notes.append(f"{p.get('label')}: zoom {view['zoom']:.2f}, figure {band}")
+    second = {"map_asset": m.path, "map_asset_id": m.asset_id, "map_bounds": m.bounds,
+              "map_projection": m.projection, **panels[1]}
+    return Built({**panels[0], "split": {"second": second, "divider_px": SPLIT_DIVIDER_PX}},
+                 f"compare_places: layout split, two cameras on one frame clock ({'; '.join(notes)}); "
+                 f"{big.get('label')} ({big['value']}) lands last in its entity colour",
+                 needs=["map with sidecar map_bounds", "values with a stated source"])
+
+
 def compare_places(m: MapInfo, f: Frame, *, a: dict, b: dict, source: str | None = None, at_s: float = 0.5,
-                   gap_s: float = 1.2) -> Built:
+                   gap_s: float = 1.2, split: bool = False) -> Built:
     pa, pb = (_pt(m, p["lat"], p["lng"], f"{k} ({p.get('label', '')})") for k, p in (("a", a), ("b", b)))
+    if split:
+        return _split_compare(m, f, a, b, pa, pb, source, at_s, gap_s)
     both = _bbox([pa, pb])                                  # the pin label boxes give the breathing room
     # layout from geometry: "bands" (figures in the top and bottom bands) when both places fit between them,
     # else "adjacent" (each figure beside its own place, away from the other one)
@@ -336,29 +383,40 @@ def compare_places(m: MapInfo, f: Frame, *, a: dict, b: dict, source: str | None
                  "screen.", needs=["map with sidecar map_bounds", "values with a stated source"])
 
 
-def explain_flow(m: MapInfo, f: Frame, *, paths: list, at_s: list | None = None, legend: str | None = None,
-                 legend_note: str | None = None, draw_s: float = 1.5) -> Built:
+FLOW_COLOURS = ["#7fd4ff", "#ffb84a", "#9dff7a", "#ff7ad9", "#c9a7ff", "#ffffff"]
+
+
+def explain_flow(m: MapInfo, f: Frame, *, paths: list, at_s: list | None = None, labels: list | None = None,
+                 legend: str | None = None, legend_note: str | None = None, speed_px: float = 140.0) -> Built:
+    """Moving streams (timeline Flow) along each path, revealed in narration order; with `labels` each path gets its
+    own colour and a legend row, else one colour under the `legend` card."""
     if not paths:
         raise ValueError("paths: give at least one path")
     pts = [[_pt(m, la, lo, f"paths[{i}][{j}]") for j, (la, lo) in enumerate(p)] for i, p in enumerate(paths)]
     for i, p in enumerate(pts):
         if len(p) < 2:
             raise ValueError(f"paths[{i}]: a path needs at least 2 points")
+    if labels is not None and len(labels) != len(pts):
+        raise ValueError(f"labels: {len(labels)} labels for {len(pts)} paths")
     dur = f.n / f.fps
     times = at_s or [0.5 + i * max(0.8, (dur - 2.5) / len(pts)) for i in range(len(pts))]
     if len(times) != len(pts):
         raise ValueError(f"at_s: {len(times)} times for {len(pts)} paths")
     allb = _bbox([q for p in pts for q in p])
-    view, ok = fit(m, f, _grow(allb, 1.1, 0.05), top=BAND_TOP * 0.6 if legend else 0.0)
+    view, ok = fit(m, f, _grow(allb, 1.1, 0.05), top=BAND_TOP * 0.6 if legend else 0.0,
+                   bottom=0.2 if labels else 0.0)
     _need(ok, "every path", m)
     wide = opening(m, f, view, pts[0][0])
-    routes = [{"points": p, "at_frame": _fr(f, t), "draw_s": draw_s} for p, t in zip(pts, times)]
+    flows = [{"paths": [p], "at_frame": _fr(f, t), "speed_px": speed_px, "seed": i,
+              "colour": FLOW_COLOURS[i % len(FLOW_COLOURS)] if labels else FLOW_COLOURS[0],
+              **({"label": str(labels[i])[:32]} if labels else {})} for i, (p, t) in enumerate(zip(pts, times))]
     cards = [{"title": legend, **({"subtitle": legend_note} if legend_note else {}), "position": "top",
               "at_frame": _fr(f, max(0.0, times[0] - 0.3))}] if legend else []
-    return Built({"camera_path": [_key(0, wide), _key(_fr(f, times[0] + 0.4), view)], "routes": routes,
+    return Built({"camera_path": [_key(0, wide), _key(_fr(f, times[0] + 0.4), view)], "flows": flows,
                   "cards": cards},
-                 f"explain_flow: {len(pts)} paths revealed at {', '.join(f'{t:.1f}s' for t in times)} under one view "
-                 f"(zoom {view['zoom']:.2f}{'' if ok else ', best effort'})", needs=["map with sidecar map_bounds"])
+                 f"explain_flow: {len(pts)} moving streams revealed at {', '.join(f'{t:.1f}s' for t in times)} under "
+                 f"one view (zoom {view['zoom']:.2f}){'; colour legend at the bottom' if labels else ''}",
+                 needs=["map with sidecar map_bounds"])
 
 
 def stat_emphasis(m: MapInfo, f: Frame, *, value, unit: str = "", decimals: int = 0, at_s: float = 0.8,

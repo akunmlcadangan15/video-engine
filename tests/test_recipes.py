@@ -144,12 +144,14 @@ def test_good_compare_places_layout_from_geometry(a, b, mode):
 def test_good_explain_flow_reveals_paths_in_narration_order():
     m = mp([-10, 90, 40, 130])
     paths = [[(5, 101), (10, 106), (15, 111)], [(25, 117), (20, 110)], [(2, 102), (8, 116)]]
-    sc = valid(m, recipes.explain_flow(m, FR, paths=paths, at_s=[0.5, 2.5, 4.5], legend="Arah aliran")).model_dump()
-    assert [r["at_frame"] for r in sc["routes"]] == [15, 75, 135]
-    assert sc["cards"][0]["title"] == "Arah aliran"
+    sc = valid(m, recipes.explain_flow(m, FR, paths=paths, at_s=[0.5, 2.5, 4.5], legend="Arah aliran",
+                                       labels=["muson barat", "muson timur", "arus lokal"])).model_dump()
+    assert [r["at_frame"] for r in sc["flows"]] == [15, 75, 135]
+    assert sc["cards"][0]["title"] == "Arah aliran" and len({r["colour"] for r in sc["flows"]}) == 3
+    assert [r["label"] for r in sc["flows"]] == ["muson barat", "muson timur", "arus lokal"]
     last = sc["camera_path"][-1]
-    for r in sc["routes"]:
-        for p in r["points"]:
+    for r in sc["flows"]:
+        for p in r["paths"][0]:
             assert inside(screen(sc, m, FR, last, *p), pad=2)
 
 
@@ -279,3 +281,19 @@ def test_good_every_camera_leg_moves_enough():
         k = sc["camera_path"]
         for a, b in zip(k, k[1:]):
             assert recipes.leg_motion(m, FR, a, b) >= 100
+
+
+def test_good_compare_split_two_cameras_each_fit_its_place():
+    m = mp([-20, 95, 22, 123])
+    a = {"label": "Jakarta", "lat": -6.2, "lng": 106.8, "value": 31, "unit": " °C"}
+    b = {"label": "Bangkok", "lat": 13.75, "lng": 100.5, "value": 34, "unit": " °C"}
+    built = recipes.compare_places(m, FR, a=a, b=b, source="ilustratif", split=True)
+    sc = valid(m, built).model_dump()
+    assert "layout split" in built.why and sc["split"]["second"]["camera_path"] != sc["camera_path"]
+    fp = recipes.Frame(W, (H - 8) // 2, 30, FR.n, FR.max_zoom)
+    for panel in (sc, sc["split"]["second"]):
+        pin, view = panel["pins"][0], panel["camera_path"][-1]
+        x, y = screen(panel, m, fp, view, pin["x"], pin["y"])
+        assert 0 < x < W and 0 < y < fp.H                               # each place framed in its own panel
+        assert abs(panel["figures"][0]["position"][1] * fp.H - y) > 100
+    assert sc["split"]["second"]["figures"][0]["entity"] == "Bangkok"

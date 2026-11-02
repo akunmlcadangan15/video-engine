@@ -7,6 +7,11 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Ditambahkan
 
+- **Komponen native baru**: roll kamera 2D (`roll` pada camera key, peta diskalakan agar tetap menutupi sudut),
+  termometer (`thermometers`: satu nilai menggerakkan isi, warna dan angka), aliran parametrik (`flows`: dash bergerak
+  menurut waktu render, seed deterministik, legenda warna) dan split-screen (`split`: dua panel HyperFrames dengan
+  kamera masing-masing, ditumpuk engine; gate R63, M02, R56 per panel). `compare_places split=True` dan `explain_flow`
+  memakai komponen ini; draft menerima `map_flows`, `map_thermometers` dan `roll`. Profil demo `native_demo`.
 - **Compiler pola cerita** (`video_engine/recipes.py`, draft `map_recipe`): `country_reveal`, `follow_route`,
   `compare_places`, `explain_flow`, `stat_emphasis` menyusun scene HyperFrames native dari fakta (ISO, lat/lng, nilai,
   waktu). Zoom, fokus kamera, pita teks dan layout perbandingan dihitung dari geometri, safe area, resolusi peta dan

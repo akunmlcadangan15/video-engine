@@ -3,6 +3,7 @@ DOM: R63 HyperFrames element margins and collisions at 3 seek times (plus camera
 (headless Chrome, dynamic port); E01 entity colours as painted."""
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 import re
@@ -70,12 +71,13 @@ def m02_map_resolution(tl: Timeline, project_dir: Path) -> list[Finding]:
     on-screen width on purpose (1 texel per px when the source allows), so they count only when they are cut below
     both that width and the source (a DEEP_MAX_SIDE cap): then the drawn raster is the limit."""
     out = []
-    for s in tl.segments:
-        if s.engine_type != HYPERFRAMES or s.gsap_scene_config.globe:
+    units = [u for s in tl.segments if s.engine_type == HYPERFRAMES for u in hyperframes.split_panels(s, tl)]
+    for s, tlu in units:   # a split segment: each panel at its own size
+        if s.gsap_scene_config.globe:
             continue   # globe scenes: M04
         sc = s.gsap_scene_config
         try:
-            scene = hyperframes.scene_data(s, tl, project_dir)
+            scene = hyperframes.scene_data(s, tlu, project_dir)
             iw, ih = maps.map_image_size(project_dir / sc.map_asset)
             ew = maps.effective_width(project_dir / sc.map_asset)
         except (EngineError, OSError) as e:
@@ -236,6 +238,10 @@ def r56_camera(tl: Timeline, project_dir: Path) -> tuple[list[Finding], list[dic
                 continue
             if sc.globe:
                 out += _r56_globe(s, tl, project_dir, target)
+                continue
+            if sc.split is not None:   # each panel's own camera_path, at the panel size
+                for ps, pt in hyperframes.split_panels(s, tl):
+                    out += _r56_path(ps, pt, project_dir, r56_min_px(pt.settings.width, pt.settings.height))
                 continue
             if sc.camera_path:
                 out += _r56_path(s, tl, project_dir, target)
@@ -642,18 +648,26 @@ def r63_dom(tl: Timeline, project_dir: Path, workdir: Path, snaps: dict) -> tupl
     dom: dict[int, dict] = {}
 
     def one(s: Segment) -> list[Finding]:
+        if s.gsap_scene_config.split is not None:   # split screen: each panel probed at its own size
+            fs = []
+            for k, (ps, pt) in enumerate(hyperframes.split_panels(s, tl)):
+                fs += panel(ps, pt, f"seg{s.seg_index:03d}_{'tb'[k]}", " (bottom panel)" if k else " (top panel)")
+            return fs
+        return panel(s, tl, f"seg{s.seg_index:03d}", "")
+
+    def panel(s: Segment, tl: Timeline, name: str, where: str) -> list[Finding]:
+        W, H = tl.settings.width, tl.settings.height
         try:
             t0 = time.perf_counter()
             skey = hyperframes.keys(s, tl, project_dir)[0]
-            d, scene = hyperframes.build_dir(s, tl, project_dir, workdir / "hf" / f"seg{s.seg_index:03d}")
-            (workdir / "hf" / f"seg{s.seg_index:03d}.key").write_text(skey)
+            d, scene = hyperframes.build_dir(s, tl, project_dir, workdir / "hf" / name)
+            (workdir / "hf" / f"{name}.key").write_text(skey)
             build_s = time.perf_counter() - t0
             times = probe_times(s, fps)
             lg = scene.get("legibility")
             # R64 also probes every element sample time, with background and glyph-mask screenshots
             all_t = sorted(set(times) | set(legibility.all_times(scene, lg))) if lg else times
-            res = hyperframes.probe_dom(d, all_t, W, H, workdir / "snaps" / f"seg{s.seg_index:03d}", bg="bg" if lg else "",
-                                        ref=skey)
+            res = hyperframes.probe_dom(d, all_t, W, H, workdir / "snaps" / name, bg="bg" if lg else "", ref=skey)
             res["build_s"] = round(build_s, 3)
         except EngineError as e:
             return [Finding("R63", "fail", f"DOM probe failed: {str(e)[-300:]}", s.seg_index)]
@@ -663,11 +677,13 @@ def r63_dom(tl: Timeline, project_dir: Path, workdir: Path, snaps: dict) -> tupl
                                  "times": [i for i in res["times"] if i.get("clip") or i.get("line_clip")]}
             res["times"] = [i for i in res["times"] if any(abs(i["t"] - t) < 1e-3 for t in times)]   # probe t: 4 dp
         mark_flying(res, scene)
-        dom[s.seg_index] = res
+        dom.setdefault(s.seg_index, res)
         fs = []
         for item in res["times"]:
             fs += check_rects(item["rects"], W, H, item["t"], s.seg_index)
         fs = dedupe_r63(fs)
+        if where:
+            fs = [dataclasses.replace(f, message=f.message + where) for f in fs]
         if res["times"] and res["times"][-1].get("png"):
             snaps[s.seg_index] = res["times"][-1]["png"]
         return fs or [Finding("R63", "pass", f"{sum(len(visible(i['rects'])) for i in res['times'])} element rects clean at {len(times)} seeks", s.seg_index)]

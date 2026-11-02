@@ -137,7 +137,8 @@ Every version is saved as `draft/timeline.v<N>.json` and `draft/review.v<N>.json
   With `[draft] map_path = true` a map segment may return `map_path` keys `{at_s, x, y, zoom}` (converted to `camera_path`: first key at frame 0, later keys sorted, deduplicated by frame, clamped to the segment and the value ranges; fewer than 2 keys = repair).
 - Map scene elements (`video_engine/draft_scene.py`, one table for schema and conversion): a `kind map` segment may return
   `map_pins[].flag` (ISO alpha-2), `map_pins[].lat/lng` (needs the map's sidecar `map_bounds` or a globe), `map_regions`
-  (with `rings` for islands and holes, `flag`, `edge`, `style`, `label`, `changes`), a map `intensity` (camera_intensity), `map_routes`, `map_borders`, `map_figures` (`motion: counter`) and
+  (with `rings` for islands and holes, `flag`, `edge`, `style`, `label`, `changes`), `map_flows`, `map_thermometers`, a map
+  `intensity` (camera_intensity), `map_path[].roll` (with `[draft] map_path`), `map_routes`, `map_borders`, `map_figures` (`motion: counter`) and
   `map_flag_characters`; the profile `[draft] scene` list adds `map_globe`, `map_props`, `map_morph` and `map_beats`
   (beats also need `[layout]`). Times are seconds from the segment start and must fall inside it; points are [x, y] 0..1
   of the map image; props and morph name draft asset ids (credited like the map). Each element is validated against its
@@ -150,7 +151,7 @@ Every version is saved as `draft/timeline.v<N>.json` and `draft/review.v<N>.json
   assembly, as the build does.
 - `map_recipe` (any profile; needs a map with sidecar `map_bounds`): the model names a story pattern and its facts and the
   engine compiles the scene (`video_engine/recipes.py`): `country_reveal {countries, labels}`, `follow_route {points,
-  labels}`, `compare_places {a, b, source}`, `explain_flow {paths, legend, legend_note}`, `stat_emphasis {value, unit,
+  labels}`, `compare_places {a, b, source, split}` (split = two stacked panels, one camera each), `explain_flow {paths, labels, legend, legend_note}` (moving `flows`, one colour and legend row per label), `stat_emphasis {value, unit,
   decimals, source, label, place}`, each with `at_s`. Camera keys come from the geometry: the deepest zoom that keeps the
   bbox (and its pin label boxes) inside the R63 safe area minus the text bands, capped by the map resolution (1.2 source
   px per screen px, gate M02) and the profile `max_zoom`, checked through the renderer's own transform; every camera leg

@@ -32,19 +32,21 @@ def visual_refs(tl: Timeline) -> list[tuple[int | None, str | None, str | None, 
         if s.engine_type == NATIVE:
             refs.append((s.seg_index, s.asset_id, s.source, "source"))
         elif s.gsap_scene_config:
-            sc = s.gsap_scene_config
-            refs.append((s.seg_index, sc.map_asset_id, sc.map_asset, "map"))
-            for c in sc.cards:
-                if c.asset_ref:
-                    refs.append((s.seg_index, c.asset_ref, None, "card image"))
-            for _, p, _, _ in props.flat(s):
-                refs.append((s.seg_index, p.asset_id, p.asset, "prop"))
-            for L in sc.layers or []:
-                refs.append((s.seg_index, L.asset_id, L.asset, "layer"))
-            for c in sc.flag_characters or []:
-                refs.append((s.seg_index, f"flag_{c.flag.code}", flag_for(c.flag.code, c.flag.variant), "flag character"))
-            for ins in sc.insets or []:
-                refs.append((s.seg_index, None, ins.asset, "inset image"))
+            for sc in s.gsap_scene_config.panels():   # a split segment: both panels' maps, props and flags
+                ps = s if sc is s.gsap_scene_config else s.model_copy(update={"gsap_scene_config": sc})
+                refs.append((s.seg_index, sc.map_asset_id, sc.map_asset, "map"))
+                for c in sc.cards:
+                    if c.asset_ref:
+                        refs.append((s.seg_index, c.asset_ref, None, "card image"))
+                for _, p, _, _ in props.flat(ps):
+                    refs.append((s.seg_index, p.asset_id, p.asset, "prop"))
+                for L in sc.layers or []:
+                    refs.append((s.seg_index, L.asset_id, L.asset, "layer"))
+                for c in sc.flag_characters or []:
+                    refs.append((s.seg_index, f"flag_{c.flag.code}", flag_for(c.flag.code, c.flag.variant),
+                                 "flag character"))
+                for ins in sc.insets or []:
+                    refs.append((s.seg_index, None, ins.asset, "inset image"))
     a = tl.audio_chain
     if a.bgm_path:
         refs.append((None, a.bgm_asset_id, a.bgm_path, "bgm"))

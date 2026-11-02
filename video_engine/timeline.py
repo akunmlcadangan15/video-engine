@@ -349,6 +349,7 @@ class Figure(Strict):
 ZOOM_MAX = 4.0     # default profile [camera] max_zoom: largest camera zoom over the cover fit (CameraKey.zoom, layout fit)
 ZOOM_LIMIT = 64.0  # largest [camera] max_zoom any profile may set
 TILT_MAX = 60.0    # largest camera tilt (deg)
+ROLL_MAX = 25.0    # largest camera roll either way (deg)
 
 
 class CameraKey(Strict):
@@ -365,6 +366,9 @@ class CameraKey(Strict):
                                                                 # on this view: it turns at 0 and drift_max (None =
                                                                 # pushes in for the whole wait)
     tilt: float = Field(0.0, ge=0.0, le=TILT_MAX)   # perspective tilt (deg) of the map plane at this view (camera3d)
+    roll: float = Field(0.0, ge=-ROLL_MAX, le=ROLL_MAX, exclude_if=lambda v: v == 0.0)   # 2D roll (deg, clockwise)
+                                                    # of the map about the frame centre; the map is scaled by the
+                                                    # angle's cover factor so it still fills every corner
     hold: int = Field(0, ge=0, le=90)               # frames the camera stays still on this view after at_frame
 
     @model_validator(mode="after")
@@ -816,6 +820,72 @@ class Particle(Strict):
         return self
 
 
+class Thermometer(Strict):
+    """Screen thermometer (components.py): one source `value` drives the fill height, the fill colour (colour_low at
+    `min` to colour_high at `max`) and the counter text together, rising from `min` over `fill_s` from `at_frame`.
+    `note` is shown under the label: give "ilustratif" (or the source) whenever the value is not a sourced reading."""
+    value: float
+    min: float = 0.0
+    max: float = 50.0
+    unit: str = Field("°C", max_length=6)
+    decimals: int = Field(0, ge=0, le=2)
+    label: Optional[str] = Field(None, min_length=1, max_length=24)
+    note: Optional[str] = Field(None, min_length=1, max_length=32)
+    at_frame: int = Field(0, ge=0)
+    out_frame: Optional[int] = Field(None, ge=0)
+    fill_s: float = Field(1.6, ge=0.3, le=6.0)
+    position: list[float] = Field([0.82, 0.5], min_length=2, max_length=2)   # frame fraction of the tube centre
+    height_pct: float = Field(30.0, ge=12.0, le=60.0)                        # tube + bulb height, % of frame height
+    colour_low: str = Field("#4aa3ff", pattern=HEX_RE)
+    colour_high: str = Field("#ff4a3d", pattern=HEX_RE)
+
+    @model_validator(mode="after")
+    def _t(self):
+        if not self.min < self.max:
+            raise ValueError(f"thermometer: min {self.min} must be < max {self.max}")
+        if not self.min <= self.value <= self.max:
+            raise ValueError(f"thermometer: value {self.value} must be within {self.min}..{self.max}")
+        if not all(0.0 <= v <= 1.0 for v in self.position):
+            raise ValueError(f"thermometer: position {self.position} must be within 0..1")
+        if self.out_frame is not None and self.out_frame <= self.at_frame:
+            raise ValueError(f"thermometer: out_frame {self.out_frame} must be > at_frame {self.at_frame}")
+        return self
+
+
+class Flow(Strict):
+    """Parametric flow (wind, current, migration; components.py): dashed streams along map `paths` (normalised [x, y]
+    points, start to end) that move toward the end at `speed_px` screen px per second of render time, with an optional
+    arrowhead at each end. Fades in over `reveal_s` from `at_frame` and out over `fade_s` from `out_frame`. Width,
+    dashes and speed keep their on-screen size while the camera zooms; `seed` fixes each stream's dash phase. `label`
+    goes to the scene's flow legend with the colour."""
+    paths: list[list[list[float]]] = Field(min_length=1, max_length=16)
+    colour: str = Field("#7fd4ff", pattern=HEX_RE)
+    alpha: float = Field(0.9, gt=0, le=1)
+    width_px: float = Field(6.0, ge=2.0, le=24.0)
+    dash_px: float = Field(18.0, ge=4.0, le=120.0)
+    gap_px: float = Field(26.0, ge=4.0, le=200.0)
+    speed_px: float = Field(120.0, ge=10.0, le=800.0)
+    arrows: bool = True
+    at_frame: int = Field(0, ge=0)
+    reveal_s: float = Field(0.8, ge=0.0, le=4.0)
+    out_frame: Optional[int] = Field(None, ge=0)
+    fade_s: float = Field(0.5, ge=0.1, le=4.0)
+    label: Optional[str] = Field(None, min_length=1, max_length=32)
+    seed: int = Field(0, ge=0)
+
+    @model_validator(mode="after")
+    def _f(self):
+        for i, p in enumerate(self.paths):
+            if len(p) < 2:
+                raise ValueError(f"flow paths[{i}]: at least 2 points")
+            for pt in p:
+                if len(pt) != 2 or not all(0.0 <= v <= 1.0 for v in pt):
+                    raise ValueError(f"flow paths[{i}]: point {pt} must be [x, y] within 0..1")
+        if self.out_frame is not None and self.out_frame <= self.at_frame:
+            raise ValueError(f"flow: out_frame {self.out_frame} must be > at_frame {self.at_frame}")
+        return self
+
+
 class GsapScene(Strict):
     template: Literal["map_pins"] = "map_pins"
     map_region: Optional[str] = None
@@ -850,6 +920,28 @@ class GsapScene(Strict):
     insets: Optional[list[Inset]] = None            # framed photo insets with leader lines (P16)
     geoid: Optional[Geoid] = None                   # exaggerated coloured Earth on a globe scene (P18)
     particles: Optional[list[Particle]] = None      # deterministic fireworks / fire accents (P19)
+    thermometers: Optional[list[Thermometer]] = Field(None, max_length=3)   # screen thermometers (components.py)
+    flows: Optional[list[Flow]] = Field(None, max_length=8)    # moving dashed streams on the map (components.py)
+    flow_legend: Literal["top", "bottom"] = Field("bottom", exclude_if=lambda v: v == "bottom")   # labelled flows
+    split: Optional["SplitView"] = None             # two stacked viewports, each its own map and camera (top = this
+                                                    # scene, bottom = split.second; hyperframes.split_panels)
+
+    @model_validator(mode="after")
+    def _split(self):
+        if self.split is None:
+            return self
+        if self.split.second.split is not None:
+            raise ValueError("split: the second panel cannot split again")
+        for name, sc in (("top", self), ("bottom", self.split.second)):
+            if not sc.camera_path:
+                raise ValueError(f"split: the {name} panel needs its own camera_path (independent cameras)")
+            if sc.beats or sc.globe:
+                raise ValueError(f"split: the {name} panel cannot be a beats or globe scene")
+        return self
+
+    def panels(self) -> list["GsapScene"]:
+        """This scene, then the split's second panel when there is one."""
+        return [self] + ([self.split.second] if self.split else [])
 
     @model_validator(mode="after")
     def _bubbles(self):
@@ -927,6 +1019,8 @@ class GsapScene(Strict):
                 raise ValueError(f"globe scenes do not take {f} (the globe camera is globe.keys; pins use lat/lng)")
         if self.map_projection != "equirectangular":
             raise ValueError("globe scenes take an equirectangular world texture (map_projection)")
+        if self.flows:
+            raise ValueError("globe scenes do not take flows yet (flows are drawn on a flat map)")
         for r in self.regions or []:
             if r.rings:
                 raise ValueError(f"region '{r.entity}': multi-ring regions (rings) are not drawn on the globe yet")
@@ -949,6 +1043,18 @@ class GsapScene(Strict):
                 raise ValueError(f"camera_path[{i}].at_frame {k[i].at_frame} must be > camera_path[{i - 1}].at_frame "
                                  f"{k[i - 1].at_frame} + hold {k[i - 1].hold}")
         return self
+
+
+class SplitView(Strict):
+    """Split screen: the frame holds two panels of equal height stacked top / bottom with a `divider_px` line between
+    them; each panel is rendered by HyperFrames at the panel size with its own map and camera, both on the segment's
+    frame clock (same n_frames and fps), and the engine stacks them (hyperframes.render)."""
+    second: GsapScene
+    divider_px: int = Field(8, ge=2, le=24, multiple_of=2)
+    divider_colour: str = Field("#ffffff", pattern=HEX_RE)
+
+
+GsapScene.model_rebuild()
 
 
 class Overlay(Strict):

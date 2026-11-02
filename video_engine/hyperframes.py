@@ -17,6 +17,7 @@ from urllib.parse import quote
 import hypoverum_core_rs as core
 
 from . import assets, cache, camera3d, config, entities, fx, globe, legibility, parallax, printstyle, profiles, projection, props, streams, toolchain
+from . import components
 from .maps import (MAP_JPEG_QUALITY, _map_copy, _need_w, _q, deep_entries, deep_plan, deep_tiles, map_image_size,
                    map_key, morph_data, texture_dim, textures)
 from .timeline import HYPERFRAMES, Segment, Timeline
@@ -188,6 +189,10 @@ def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, them
         tilt = lambda f: next(k.tilt for k in reversed(keys) if k.at_frame <= f)
         start = {**start, "t": keys[0].tilt}
         legs = [{**L, "to": {**L["to"], "t": tilt(L["f1"])}} for L in legs]
+    if any(k.roll for k in keys):   # roll `r` (deg) the same way; the template turns #roll and scales it to cover
+        roll = lambda f: next(k.roll for k in reversed(keys) if k.at_frame <= f)
+        start = {**start, "r": keys[0].roll}
+        legs = [{**L, "to": {**L["to"], "r": roll(L["f1"])}} for L in legs]
     glide_speeds(legs, start, W, H, n, theme["camera_start_speed"], theme["camera_end_speed"])
     return {"start": start, "end": legs[-1]["to"], "legs": legs, "leg_motion": motion}
 
@@ -583,6 +588,11 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
                            "count_s": f.count_s or theme["counter_s"], "at_frame": f.at_frame,
                            "x": round(f.position[0] * S.width, 2), "y": round(f.position[1] * S.height, 2),
                            "entity": f.entity, "colour": col.get(f.entity, "#ffffff")} for f in sc.figures]
+    if sc.thermometers:
+        out["thermometers"] = [components.thermo_data(t, S.width, S.height) for t in sc.thermometers]
+    if sc.flows:
+        out["flows"] = [components.flow_data(f, mw, mh, fx._seed(tl, seg)) for f in sc.flows]
+        out["flow_legend"] = sc.flow_legend
     boxed = theme["label_style"] == "box" and (lay is None or prof.print is None)
     if boxed and out.get("title"):
         t = out["title"]
@@ -769,8 +779,28 @@ def _card_name(src: Path) -> str:
     return f"card_{blake3_files([src])[0][:32]}{src.suffix.lower()}"
 
 
+def split_panels(seg: Segment, tl: Timeline) -> list[tuple[Segment, Timeline]]:
+    """A split segment as two (segment, timeline) panels at the panel size: the top panel is the scene without its
+    split, the bottom one split.second; both keep the segment's frames. A plain segment is one panel: itself."""
+    sp = seg.gsap_scene_config.split if seg.gsap_scene_config else None
+    if sp is None:
+        return [(seg, tl)]
+    ph = (tl.settings.height - sp.divider_px) // 2
+    if ph % 2:
+        raise EngineError(f"split: frame height {tl.settings.height} minus divider {sp.divider_px} must give even panels")
+    tlp = tl.model_copy(update={"settings": tl.settings.model_copy(update={"height": ph})})
+    top = seg.model_copy(update={"gsap_scene_config": seg.gsap_scene_config.model_copy(update={"split": None})})
+    return [(top, tlp), (seg.model_copy(update={"gsap_scene_config": sp.second}), tlp)]
+
+
 def keys(seg: Segment, tl: Timeline, project_dir: Path) -> tuple[str, str]:
-    """(segment cache key, map cache key) without writing files; equal to the keys `render` uses."""
+    """(segment cache key, map cache key) without writing files; equal to the keys `render` uses. A split segment's
+    key covers both panels, the divider and the frame size."""
+    if seg.gsap_scene_config.split is not None:
+        sp = seg.gsap_scene_config.split
+        ks = [keys(s, t, project_dir) for s, t in split_panels(seg, tl)]
+        return blake3_json({"split": [k[0] for k in ks], "divider": [sp.divider_px, sp.divider_colour],
+                            "size": [tl.settings.width, tl.settings.height]}), ks[0][1]
     scene = scene_data(seg, tl, project_dir)
     mk = globe.tex_key(project_dir / scene["map"]) if "globe" in scene else map_key(project_dir / scene["map"], _need_w(scene), _q(scene))
     for c in scene["cards"]:
@@ -899,6 +929,8 @@ def render(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, workers
     key = keys(seg, tl, project_dir)[0]
     if use_cache and (hit := cache.get_file("segments", key)):
         return hit, True
+    if seg.gsap_scene_config.split is not None:
+        return _render_split(seg, tl, project_dir, workdir, workers, use_cache, key), False
     hf_dir = workdir / "hf" / f"seg{seg.seg_index:03d}"
     kfile = workdir / "hf" / f"seg{seg.seg_index:03d}.key"
     if (hf_dir / "index.html").is_file() and (hf_dir / "scene.js").is_file() and kfile.is_file() and kfile.read_text() == key:
@@ -922,6 +954,26 @@ def render(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, workers
         raw.unlink(missing_ok=True)
     streams.verify(out, n, tl.settings.fps, f"segment {seg.seg_index} (HyperFrames)")
     return (cache.put_file("segments", key, out) if use_cache else out), False
+
+
+def _render_split(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, workers: int, use_cache: bool,
+                  key: str) -> Path:
+    """Both panels rendered by HyperFrames (each its own scene, map and camera, same frames), stacked top / divider /
+    bottom into the segment file; nothing animated outside HyperFrames."""
+    sp, n, S = seg.gsap_scene_config.split, seg.n_frames, tl.settings
+    files = []
+    for k, (s, t) in enumerate(split_panels(seg, tl)):
+        sub = workdir / "split" / f"seg{seg.seg_index:03d}_{k}"
+        p, _ = render(s.model_copy(update={"seg_index": seg.seg_index}), t, project_dir, sub, workers, use_cache)
+        files.append(p)
+    out = workdir / "seg" / f"seg{seg.seg_index:03d}_hf.mp4"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    _, _, x264 = encode_settings(tl)
+    run([config.FFMPEG, "-v", "error", "-y", "-i", files[0], "-i", files[1], "-f", "lavfi", "-i",
+         f"color=c={sp.divider_colour}:s={S.width}x{sp.divider_px}:r={S.fps}", "-filter_complex",
+         "[0:v][2:v][1:v]vstack=inputs=3,setsar=1[v]", "-map", "[v]", "-an", *x264, "-frames:v", str(n), out])
+    streams.verify(out, n, S.fps, f"segment {seg.seg_index} (split screen)")
+    return cache.put_file("segments", key, out) if use_cache else out
 
 
 def _is_engine_format(p: Path, tl: Timeline, n: int) -> bool:

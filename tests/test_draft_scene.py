@@ -210,3 +210,15 @@ def test_good_map_intensity_reaches_camera_intensity(proj):
     inp = draft.collect(proj)
     assert _scene(draft.assemble(inp, plan(intensity=0.4))[0]).camera_intensity == 0.4
     assert _scene(draft.assemble(inp, plan())[0]).camera_intensity == 1.0
+
+
+def test_good_flows_thermometers_reach_the_scene(proj):
+    inp = draft.collect(proj)
+    tl, _, _ = draft.assemble(inp, plan(
+        map_flows=[{"paths": [[[0.2, 0.5], [0.6, 0.4]]], "label": "Angin (ilustrasi)", "at_s": 0.3}],
+        map_thermometers=[{"value": 33, "min": 0, "max": 45, "note": "ilustratif", "at_s": 0.5}]))
+    sc = _scene(tl)
+    assert sc.flows[0].label == "Angin (ilustrasi)" and sc.flows[0].at_frame == 9
+    assert sc.thermometers[0].value == 33 and sc.thermometers[0].note == "ilustratif"
+    with pytest.raises(ValueError, match=r"segment 1: map_thermometers\[0\]: .*within"):
+        draft.assemble(inp, plan(map_thermometers=[{"value": 80, "max": 50}]))
