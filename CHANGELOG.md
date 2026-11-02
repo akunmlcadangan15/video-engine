@@ -37,6 +37,11 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Diubah
 
+- **Globe**: kamera kini bergerak di busur great-circle (jalur terpendek di bola) antar key, bukan garis lurus
+  lintang/bujur. Contoh New York–Tokyo: 97,6° lewat Arktik, bukan 115°. Leg yang akan melewati kutub (> 85°)
+  tetap memakai lintang/bujur. R56 dan P01 kini mengukur jalur yang benar-benar ditempuh. Segmen globe dirender ulang.
+- **Ken Burns native**: zoom kini berporos. Titik yang seharusnya diam di layar tidak lagi bergeser selama zoom
+  sambil pan (`camera_windows`, `ALGO_VERSION` 3). Segmen native dengan gerak kamera dirender ulang.
 - **Hash kode cache** dihitung dari pohon sintaks Python tanpa docstring (`util.code_hash`). Mengubah komentar,
   docstring, atau format modul yang masuk kunci cache tidak lagi membuang cache render. **Build pertama setelah
   perubahan ini merender ulang segmen yang ter-cache satu kali**, karena algoritma hash berubah.

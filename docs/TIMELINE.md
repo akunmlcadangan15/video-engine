@@ -81,7 +81,9 @@ The rules of `master_timeline.json` and of captions.
     `map_asset` is a whole-world 2:1 equirectangular image.
     A globe scene takes no camera_path, beats, regions, routes, props, layers or map_bounds;
       pins take lat/lng. three.js (vendor/npm) draws a unit sphere with the map downscaled to 8192 x 4096 (cache kind `maps`) at a 30 deg vertical field of view;
-      a C1 monotone cubic moves through keys in latitude, unwrapped longitude, log altitude and tilt, stopping at holds;
+      the position travels along the great circle of each key-to-key leg (shortest path on the sphere; a leg that would pass
+      beyond 85 deg latitude interpolates latitude and longitude instead), timed by a C1 monotone cubic in arc length that
+      stops at holds and where the path turns by 90 deg or more; log altitude and tilt follow the same kind of cubic;
       profile `camera_start_speed` and `camera_end_speed` set the endpoint speeds as shares of the adjacent leg mean;
       at an inner key the speed is the slower neighbouring leg's mean, so no leg slows down and speeds up again.
     Altitude drifts in at the profile drift rate after the last key and hold.
