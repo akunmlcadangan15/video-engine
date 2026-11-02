@@ -29,7 +29,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import camera3d, config
+from . import camera3d, config, projection
 from .timeline import MODEL_EXT, Prop, Segment, Timeline, sec_to_frame
 from .util import EngineError, blake3_files
 
@@ -244,8 +244,8 @@ def map_point(p: Prop, sc, mw: float, mh: float) -> tuple[float, float]:
         return p.x * mw, p.y * mh
     if not sc.map_bounds:
         raise EngineError(f"prop '{p.asset}' uses lat/lng but gsap_scene_config.map_bounds is missing")
-    s, w, n, e = sc.map_bounds
-    return (p.lng - w) / (e - w) * mw, (n - p.lat) / (n - s) * mh
+    x, y = projection.to_map(p.lat, p.lng, sc.map_bounds, projection.of(sc))
+    return x * mw, y * mh
 
 
 def scene_props(seg: Segment, tl: Timeline, project_dir: Path, cam: dict, mw: float, mh: float) -> list[dict]:

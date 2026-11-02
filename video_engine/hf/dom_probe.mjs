@@ -68,7 +68,7 @@ try {
       });
       const lines = [...document.querySelectorAll('[data-line]')].map(el => {
         const r = el.getBoundingClientRect();
-        let op = el.tagName === 'polygon' ? parseFloat(el.getAttribute('stroke-opacity') || '1') : 1, vis = true;
+        let op = (el.tagName === 'polygon' || el.hasAttribute('data-shape')) ? parseFloat(el.getAttribute('stroke-opacity') || '1') : 1, vis = true;
         for (let e = el; e && e.nodeType === 1; e = e.parentElement) {
           const cs = getComputedStyle(e);
           op *= parseFloat(cs.opacity);

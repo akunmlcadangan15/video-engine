@@ -204,3 +204,9 @@ def test_bad_lat_lng_pin_without_map_bounds(proj):
     p["segments"][1]["map_pins"] = [{"label": "Jakarta", "lat": -6.2, "lng": 106.8}]
     with pytest.raises(ValueError, match=r"segment 1: map_pins\[0\]: lat/lng need the map's bounds"):
         draft.assemble(inp, p)
+
+
+def test_good_map_intensity_reaches_camera_intensity(proj):
+    inp = draft.collect(proj)
+    assert _scene(draft.assemble(inp, plan(intensity=0.4))[0]).camera_intensity == 0.4
+    assert _scene(draft.assemble(inp, plan())[0]).camera_intensity == 1.0

@@ -137,14 +137,16 @@ Every version is saved as `draft/timeline.v<N>.json` and `draft/review.v<N>.json
   With `[draft] map_path = true` a map segment may return `map_path` keys `{at_s, x, y, zoom}` (converted to `camera_path`: first key at frame 0, later keys sorted, deduplicated by frame, clamped to the segment and the value ranges; fewer than 2 keys = repair).
 - Map scene elements (`video_engine/draft_scene.py`, one table for schema and conversion): a `kind map` segment may return
   `map_pins[].flag` (ISO alpha-2), `map_pins[].lat/lng` (needs the map's sidecar `map_bounds` or a globe), `map_regions`
-  (with `flag`, `edge`, `style`, `label`, `changes`), `map_routes`, `map_borders`, `map_figures` (`motion: counter`) and
+  (with `rings` for islands and holes, `flag`, `edge`, `style`, `label`, `changes`), a map `intensity` (camera_intensity), `map_routes`, `map_borders`, `map_figures` (`motion: counter`) and
   `map_flag_characters`; the profile `[draft] scene` list adds `map_globe`, `map_props`, `map_morph` and `map_beats`
   (beats also need `[layout]`). Times are seconds from the segment start and must fall inside it; points are [x, y] 0..1
   of the map image; props and morph name draft asset ids (credited like the map). Each element is validated against its
   timeline model and the whole scene against `GsapScene`; an unknown key, a value out of range, a key the profile does not
   expose or a map key on an image/video segment is a repair error naming `segment N: <key>[i].<field>` (never dropped).
-  A map image sidecar `<map>.json` with `"map_bounds": [south, west, north, east]` is offered to the model and copied to
-  `gsap_scene_config.map_bounds`. Open-asset credits the scene needs (flag-icons) are added from the asset registry at
+  A map image sidecar `<map>.json` with `"map_bounds": [south, west, north, east]` (and `"projection": "mercator"` for a
+  Web Mercator raster) is offered to the model and copied to `gsap_scene_config.map_bounds` / `map_projection`.
+  `video_engine/geodata.py` writes such a base map (`base_map`) and turns a Natural Earth country into a region
+  (`country_region`: every part and hole, clipped to the bounds, simplified, flag from the ISO code; `label_anchor`). Open-asset credits the scene needs (flag-icons) are added from the asset registry at
   assembly, as the build does.
 - Before assembly the answer is checked against the request schema (`ai.base.schema_errors`): type errors come back as
   `schema: $.segments[i]...` repair errors.

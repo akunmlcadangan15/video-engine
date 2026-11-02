@@ -14,6 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import hypoverum_core_rs as core
 
+from .projection import MERC_LAT_MAX
+
 from . import config
 from .grade import Grade
 from .util import EngineError
@@ -220,7 +222,10 @@ class Region(Strict):
     [x, y] of the whole-world texture (x = (lng + 180) / 360, y = (90 - lat) / 180)."""
     entity: str = Field(min_length=1, max_length=60)
     flag: Flag | None = Field(None, exclude_if=lambda value: value is None)
-    polygon: list[list[float]] = Field(min_length=3)   # normalised [x, y] map points
+    polygon: list[list[float]] = Field(min_length=3)   # normalised [x, y] map points (the main outline)
+    rings: list[list[list[float]]] = Field([], exclude_if=lambda v: not v)   # further rings drawn with the polygon
+                                                       # under the even-odd rule: other islands (outside it) and holes
+                                                       # (inside it); one fill, edge and flag domain for all of them
     at_frame: int = Field(0, ge=0)
     edge: Optional[Literal["white", "glow"]] = None    # None = profile theme.region_edge
     style: Optional[Literal["tint", "block"]] = None   # None = profile theme.region_style
@@ -236,7 +241,10 @@ class Region(Strict):
 
     @model_validator(mode="after")
     def _poly(self):
-        for pt in [*self.polygon, *([self.label_at] if self.label_at else [])]:
+        for k, ring in enumerate(self.rings):
+            if len(ring) < 3:
+                raise ValueError(f"region '{self.entity}': rings[{k}] needs at least 3 points")
+        for pt in [*self.polygon, *(p for ring in self.rings for p in ring), *([self.label_at] if self.label_at else [])]:
             if len(pt) != 2 or not all(0.0 <= v <= 1.0 for v in pt):
                 raise ValueError(f"region '{self.entity}': point {pt} must be [x, y] within 0..1")
         prev = self.at_frame
@@ -247,6 +255,10 @@ class Region(Strict):
         if self.label is None and (self.label_at is not None or self.label_at_frame is not None):
             raise ValueError(f"region '{self.entity}': label_at and label_at_frame need a label")
         return self
+
+    def all_rings(self) -> list[list[list[float]]]:
+        """The polygon then every further ring (even-odd: islands and holes)."""
+        return [self.polygon, *self.rings]
 
 
 class Border(Strict):
@@ -810,6 +822,8 @@ class GsapScene(Strict):
     map_asset: str                       # path (project-relative) of the base map image
     map_asset_id: Optional[str] = None
     map_bounds: Optional[list[float]] = Field(None, min_length=4, max_length=4)  # [south, west, north, east]
+    map_projection: Literal["equirectangular", "mercator"] = Field(   # how map_asset maps lat/lng (projection.py)
+        "equirectangular", exclude_if=lambda v: v == "equirectangular")
     title: Optional[str] = None                     # big glow title, from title_at_frame to the segment end
     title_entity: Optional[str] = Field(None, min_length=1, max_length=60)  # title colour = this entity's colour
     title_at_frame: Optional[int] = Field(None, ge=0)  # None = 0
@@ -865,10 +879,14 @@ class GsapScene(Strict):
     @model_validator(mode="after")
     def _map_bounds(self):
         b = self.map_bounds
+        if b is None and self.map_projection == "mercator":
+            raise ValueError("map_projection mercator needs map_bounds")
         if b is not None:
             south, west, north, east = b
             if not south < north or not west < east:
                 raise ValueError(f"map_bounds [south, west, north, east] = {b} needs south < north and west < east")
+            if self.map_projection == "mercator" and max(abs(south), abs(north)) > MERC_LAT_MAX:
+                raise ValueError(f"map_bounds {b}: a mercator map stays within latitude +-{MERC_LAT_MAX}")
         return self
 
     @model_validator(mode="after")
@@ -907,6 +925,11 @@ class GsapScene(Strict):
         for f in ("camera_path", "beats", "routes", "borders", "morph", "props", "layers", "map_bounds"):
             if getattr(self, f):
                 raise ValueError(f"globe scenes do not take {f} (the globe camera is globe.keys; pins use lat/lng)")
+        if self.map_projection != "equirectangular":
+            raise ValueError("globe scenes take an equirectangular world texture (map_projection)")
+        for r in self.regions or []:
+            if r.rings:
+                raise ValueError(f"region '{r.entity}': multi-ring regions (rings) are not drawn on the globe yet")
         for p in self.pins:
             if p.lat is None or p.lng is None:
                 raise ValueError(f"globe pin '{p.label}' needs lat and lng")

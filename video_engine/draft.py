@@ -68,6 +68,7 @@ class AssetInfo:
     hints: list[str] = field(default_factory=list)
     credit_line: int | None = None   # deterministic match (manifest / sidecar / existing timeline URL)
     map_bounds: list[float] | None = None   # sidecar "map_bounds" [south, west, north, east]: lat/lng pins on a flat map
+    map_projection: str | None = None       # sidecar "projection": equirectangular (default) or mercator
 
 
 @dataclass
@@ -195,6 +196,9 @@ def inventory(pdir: Path, credit_lines: list[CreditLine], exclude: set[str], exi
         if isinstance(mb, list) and len(mb) == 4 and all(isinstance(v, (int, float)) for v in mb):
             a.map_bounds = [float(v) for v in mb]
             a.hints.append(f"map_bounds [south, west, north, east]: {a.map_bounds}")
+            if sc.get("projection") in ("equirectangular", "mercator"):
+                a.map_projection = sc["projection"]
+                a.hints.append(f"projection: {a.map_projection}")
         for u in (row.get("source_url"), sc.get("url") if isinstance(sc.get("url"), str) else None,
                   sc.get("source_url") if isinstance(sc.get("source_url"), str) else None, old_urls.get(p.name)):
             if u and _norm_url(u) in by_url:
@@ -329,7 +333,7 @@ RULES
    you saw in the thumbnail when the move should end on it). kind video -> source_in_s within the clip duration minus
    the segment length; camera_preset optional. kind map -> only for a map asset; map_pins x,y are 0..1 positions
    on the map image you saw (place each pin on the place it names), at_s relative to the segment start;
-   map_camera from the enum; optional map_card.{path_rule}{scene_rule}
+   map_camera from the enum (intensity 0.3-2.0 scales its zoom and travel); optional map_card.{path_rule}{scene_rule}
 4. Overlays (optional, images/videos only): kind text_card (title + subtitle), label (short name), lower_third
    (person + role); position top or bottom. Text adds information not spoken in that segment (date, place, name);
    never repeat the spoken words. At most one overlay per segment; 2-6 words title.
@@ -496,10 +500,12 @@ def assemble(inp: Inputs, data: dict) -> tuple[Timeline, list[str], list[dict]]:
             scene = {
                 "map_asset": a.path, "map_asset_id": a.id, "pins": pins, "cards": cards,
                 "camera_preset": s.get("map_camera") or "zoom_in",
+                **({"camera_intensity": float(s["intensity"])} if s.get("intensity") is not None else {}),
                 **({"camera_path": _camera_path(s["map_path"], n, fps, max_zoom)} if s.get("map_path") else {}),
                 **({"title": s["map_title"]} if s.get("map_title") else {}),
                 **({"focus": [float(v) for v in s["map_focus"][:2]]} if len(s.get("map_focus") or []) >= 2 else {}),
-                **({"map_bounds": a.map_bounds} if a.map_bounds else {})}
+                **({"map_bounds": a.map_bounds} if a.map_bounds else {}),
+                **({"map_projection": a.map_projection} if a.map_bounds and a.map_projection == "mercator" else {})}
             scene = draft_scene.convert(s, i, n=n, fps=fps, assets=by_id, map_asset=a, used=used, dp=prof.draft,
                                         layout_on=layout_on, scene=scene)
             d.update(engine_type=HYPERFRAMES, gsap_scene_config=scene)

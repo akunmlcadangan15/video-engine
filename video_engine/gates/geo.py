@@ -9,7 +9,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
-from .. import config
+from .. import config, projection
 from ..timeline import Timeline
 from .core import Finding
 
@@ -67,8 +67,7 @@ def _pin_xy(p, sc) -> tuple[float, float] | None:
     if p.x is not None and p.y is not None:
         return p.x, p.y
     if p.lat is not None and p.lng is not None and sc.map_bounds:
-        s, w, n, e = sc.map_bounds
-        return (p.lng - w) / (e - w), (n - p.lat) / (n - s)
+        return projection.to_map(p.lat, p.lng, sc.map_bounds, projection.of(sc))
     return None
 
 
@@ -76,9 +75,13 @@ def _pin_ll(p, sc) -> tuple[float, float] | None:
     if p.lat is not None and p.lng is not None:
         return p.lat, p.lng
     if p.x is not None and p.y is not None and sc.map_bounds:
-        s, w, n, e = sc.map_bounds
-        return n - p.y * (n - s), w + p.x * (e - w)
+        return projection.to_lat_lng(p.x, p.y, sc.map_bounds, projection.of(sc))
     return None
+
+
+def in_region(x: float, y: float, r) -> bool:
+    """Normalised map point inside region r under the even-odd rule over all its rings (islands, holes)."""
+    return sum(point_in_poly(x, y, _ring(ring)) for ring in r.all_rings()) % 2 == 1
 
 
 def _region_xy(poly) -> list[tuple[float, float]]:
@@ -140,14 +143,15 @@ def run(tl: Timeline, require_land: bool | None = None) -> list[Finding]:
             continue
         regions = []
         for i, r in enumerate(sc.regions or []):
-            poly = _region_xy(r.polygon)
-            if len(set(poly)) < 3 or _area(poly) <= EPS:
-                out.append(Finding("G02", "fail", f"region '{r.entity}' polygon has no area: give at least three "
-                                                  f"distinct points", s.seg_index))
-            elif len(poly) <= 256 and self_intersects(poly):
-                out.append(Finding("G02", "fail", f"region '{r.entity}' polygon crosses itself: fix the outline",
-                                   s.seg_index))
-            regions.append((r, poly))
+            for k, ring in enumerate(r.all_rings()):
+                poly, what = _region_xy(ring), "polygon" if k == 0 else f"rings[{k - 1}]"
+                if len(set(poly)) < 3 or _area(poly) <= EPS:
+                    out.append(Finding("G02", "fail", f"region '{r.entity}' {what} has no area: give at least three "
+                                                      f"distinct points", s.seg_index))
+                elif len(poly) <= 256 and self_intersects(poly):
+                    out.append(Finding("G02", "fail", f"region '{r.entity}' {what} crosses itself: fix the outline",
+                                       s.seg_index))
+            regions.append((r, _region_xy(r.polygon)))
         if sc.beats:
             for b in sc.beats:
                 if b.region is None:
@@ -156,14 +160,14 @@ def run(tl: Timeline, require_land: bool | None = None) -> list[Finding]:
                 for pi in b.pins:
                     pin = sc.pins[pi]
                     xy = _pin_xy(pin, sc)
-                    if xy is not None and not point_in_poly(xy[0], xy[1], poly):
+                    if xy is not None and not in_region(xy[0], xy[1], r):
                         out.append(Finding("G02", "fail", f"pin '{pin.label}' is outside beat region {b.region} "
                                                           f"'{r.entity}'", s.seg_index))
         for pin in sc.pins:
             xy, ll = _pin_xy(pin, sc), _pin_ll(pin, sc)
             label = pin.label.strip().lower()
             for r, poly in regions:
-                if label == r.entity.strip().lower() and xy is not None and not point_in_poly(xy[0], xy[1], poly):
+                if label == r.entity.strip().lower() and xy is not None and not in_region(xy[0], xy[1], r):
                     out.append(Finding("G02", "fail", f"pin '{pin.label}' names region '{r.entity}' but sits outside "
                                                       f"it", s.seg_index))
             if ll is None or _water(pin.label):

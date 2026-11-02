@@ -40,10 +40,10 @@ html,body{width:__W__px;height:__H__px;overflow:hidden;background:#0b1118}
 #root.line-mask{background:#fff!important}
 .line-mask *{visibility:hidden!important}
 .line-mask [data-line],.line-mask [data-line] *{visibility:visible!important}
-.line-mask polygon[data-line]{fill-opacity:0!important}
+.line-mask polygon[data-line],.line-mask [data-shape][data-line]{fill-opacity:0!important}
 .line-mask [data-line-casing],.line-mask mask *{visibility:visible!important}
-.line-measure [data-line]:not(polygon),.line-measure [data-line] *{visibility:hidden!important}
-.line-measure polygon[data-line]{stroke-opacity:0!important}
+.line-measure [data-line]:not(polygon):not([data-shape]),.line-measure [data-line] *{visibility:hidden!important}
+.line-measure polygon[data-line],.line-measure [data-shape][data-line]{stroke-opacity:0!important}
 .line-measure [data-line-casing]{visibility:hidden!important}
 .card .t{font-size:64px;line-height:1.05;white-space:nowrap}
 .card .s{font-family:EngInterS;font-size:36px;line-height:1.2;color:#ffd84a;margin-top:10px}
@@ -232,13 +232,13 @@ if(S.regions&&S.regions.length){
     const s=(f.fit==='cover'?Math.max:Math.min)(w/a,h), W=s*a;return {x:x+(w-W)/2,y:y+(h-s)/2,width:W,height:s};}
   window.__flagRect=flagRect;
   // P17 hatching: a diagonal SVG pattern clipped to the region polygon, over the fill (and under a flag / edge)
-  const hatch=(i,pts,parent,t0,R)=>{
+  const hatch=(i,shp,parent,t0,R)=>{
     if(!R.hatch)return null;
     const H=R.hatch, s=H.spacing_px, id='hatch'+i, pat=mk('pattern',{id,width:s,height:s,patternUnits:'userSpaceOnUse',
       patternTransform:'rotate('+H.angle+')'});
     pat.appendChild(mk('line',{x1:0,y1:0,x2:s,y2:0,stroke:H.colour,'stroke-width':H.line_px}));
     svg.appendChild(pat);
-    const hp=mk('polygon',{points:pts,fill:'url(#'+id+')','fill-opacity':0,...geo(R,i)});
+    const hp=shp({fill:'url(#'+id+')','fill-opacity':0,...geo(R,i)});
     parent.appendChild(hp);
     tl.fromTo(hp,{attr:{'fill-opacity':0}},{attr:{'fill-opacity':H.alpha},duration:0.4,ease:MO.entrance,immediateRender:true},t0);
     const m=document.createElement('div');m.setAttribute('data-qa','fx:hatch:'+i);
@@ -246,31 +246,34 @@ if(S.regions&&S.regions.length){
     return hp;};
   S.regions.forEach((R,i)=>{
     const pts=R.points.map(p=>p[0]+','+p[1]).join(' '), t0=f2t(R.at_frame);
+    // islands and holes (R.rings): one even-odd path for every shape of the region; one ring stays a polygon
+    const D=R.rings?R.rings.map(g=>'M'+g.map(p=>p[0]+' '+p[1]).join('L')+'Z').join(''):null,
+      shp=at=>D?mk('path',{d:D,'fill-rule':'evenodd','clip-rule':'evenodd','data-shape':'region',...at}):mk('polygon',{points:pts,...at});
     let prev=R;
     if(R.style==='block'){
       // block: blurred drop shadow, an extruded side (stacked copies down to block_depth_px), the saturated face,
       // a bevel (lighter stroke clipped inside the face), then the neon edge drawn on; owner changes recolour it
       const g=mk('g',{'data-block':i}), n=4, sides=[];g.style.opacity=0;svg.appendChild(g);
-      const sh=mk('polygon',{points:pts,fill:'#000','fill-opacity':TH.block_shadow_alpha,'stroke-linejoin':'round',...geo(R,i)});g.appendChild(sh);
-      for(let k=n;k>=1;k--){const sp=mk('polygon',{points:pts,'stroke-linejoin':'round',...geo(R,i)});sp.style.fill=R.side;sp.style.stroke=R.side;g.appendChild(sp);sides.push([sp,k/n]);}
-      const face=mk('polygon',{points:pts,'fill-opacity':TH.block_fill_alpha,'data-entity':R.entity,'data-paint':'block','data-region':i,...geo(R,i)});
+      const sh=shp({fill:'#000','fill-opacity':TH.block_shadow_alpha,'stroke-linejoin':'round',...geo(R,i)});g.appendChild(sh);
+      for(let k=n;k>=1;k--){const sp=shp({'stroke-linejoin':'round',...geo(R,i)});sp.style.fill=R.side;sp.style.stroke=R.side;g.appendChild(sp);sides.push([sp,k/n]);}
+      const face=shp({'fill-opacity':TH.block_fill_alpha,'data-entity':R.entity,'data-paint':'block','data-region':i,...geo(R,i)});
       face.style.fill=R.block;g.appendChild(face);
-      const cp=mk('clipPath',{id:'bc'+i});cp.appendChild(mk('polygon',{points:pts,...geo(R,i)}));svg.appendChild(cp);
-      const bv=mk('polygon',{points:pts,fill:'none','stroke-opacity':0.85,'stroke-linejoin':'round','clip-path':'url(#bc'+i+')',...geo(R,i)});
+      const cp=mk('clipPath',{id:'bc'+i});cp.appendChild(shp({...geo(R,i)}));svg.appendChild(cp);
+      const bv=shp({fill:'none','stroke-opacity':0.85,'stroke-linejoin':'round','clip-path':'url(#bc'+i+')',...geo(R,i)});
       bv.style.stroke=R.bevel;g.appendChild(bv);
       ZS.push(s=>{const D=TH.block_depth_px/s;
         sh.setAttribute('transform','translate(0 '+(D+TH.block_shadow_px/s)+')');sh.style.filter='blur('+(TH.block_shadow_blur_px/s)+'px)';
         sides.forEach(([sp,k])=>{sp.setAttribute('transform','translate(0 '+(k*D)+')');sp.setAttribute('stroke-width',1/s);});
         bv.setAttribute('stroke-width',2*TH.block_bevel_px/s);});
       tl.fromTo(g,{opacity:0},{opacity:1,duration:0.45,ease:MO.entrance,immediateRender:true},t0);
-      neon(svg,'polygon',{points:pts},R.edge_colour,R.casing||TH.label_box_colour,TH.block_edge_px,R.dashed,t0,R.draw_s,'region:'+i,geo(R,i));
+      neon(svg,D?'path':'polygon',D?{d:D,'fill-rule':'evenodd'}:{points:pts},R.edge_colour,R.casing||TH.label_box_colour,TH.block_edge_px,R.dashed,t0,R.draw_s,'region:'+i,geo(R,i));
       R.changes.forEach(c=>{const t=f2t(c.at_frame);
         chg(R,face,{fill:prev.block},{fill:c.block},t);chg(R,bv,{stroke:prev.bevel},{stroke:c.bevel},t);
         sides.forEach(([sp])=>chg(R,sp,{fill:prev.side,stroke:prev.side},{fill:c.side,stroke:c.side},t));
         tl.set(face,{attr:{'data-entity':c.entity}},t);prev=c;});
     }else{
     const r=LG?Object.assign({},R,{edge:'glow'}):R;
-    const pg=mk('polygon',{points:pts,...geo(R,i)});
+    const pg=shp({...geo(R,i)});
     pg.setAttribute('fill',r.colour);pg.setAttribute('fill-opacity','0');pg.setAttribute('stroke-linejoin','round');
     pg.setAttribute('stroke',r.edge==='glow'?r.colour:'#ffffff');pg.setAttribute('stroke-opacity','0');
     const soft=r.edge==='glow'&&T.region_glow_px>0&&T.region_glow_alpha<1, glow=rgba(r.colour,T.region_glow_alpha);
@@ -285,11 +288,11 @@ if(S.regions&&S.regions.length){
     if(LG){pg.setAttribute('data-line','region:'+i);lineInk(pg,inks(r));}
     const edges=[pg];
     // legibility profiles: a casing in the outline's opposite tone (r.casing) under it (stroke only; the fill stays on the polygon)
-    const cg=cased?mk('polygon',{points:pts,...geo(R,i)}):null;
+    const cg=cased?shp({...geo(R,i)}):null;
     if(cased){cg.setAttribute('fill','none');cg.setAttribute('stroke',r.casing);
       cg.setAttribute('stroke-opacity','0');cg.setAttribute('stroke-linejoin','round');cg.setAttribute('data-line-casing','region:'+i);svg.appendChild(cg);}
     if(soft){
-      const ge=mk('polygon',{points:pts,...geo(R,i)});
+      const ge=shp({...geo(R,i)});
       ge.setAttribute('fill','none');ge.setAttribute('stroke',r.colour);ge.setAttribute('stroke-opacity','0');ge.setAttribute('stroke-linejoin','round');
       ge.style.filter='drop-shadow(0 0 '+T.region_glow_px+'px '+glow+') drop-shadow(0 0 '+(T.region_glow_px/3)+'px '+glow+')';
       svg.appendChild(ge);edges.push(ge);
@@ -307,10 +310,10 @@ if(S.regions&&S.regions.length){
       tl.set(pg,{attr:{'data-entity':c.entity,...(LG?{'data-line-ink':JSON.stringify(inks(c))}:{})}},t);prev=c;});
     }
     if(R.flag||R.changes.some(c=>c.flag)){
-      const cp=mk('clipPath',{id:'flagclip'+i}), polygon=mk('polygon',{points:pts,...geo(R,i)});
+      const cp=mk('clipPath',{id:'flagclip'+i}), polygon=shp({...geo(R,i)});
       cp.appendChild(polygon);svg.appendChild(cp);
-      const xs=R.points.map(p=>p[0]), ys=R.points.map(p=>p[1]), x=Math.min(...xs), y=Math.min(...ys),
-        w=Math.max(...xs)-x, h=Math.max(...ys)-y;
+      const xs=R.points.map(p=>p[0]), ys=R.points.map(p=>p[1]), B=R.bbox||[Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)],
+        x=B[0], y=B[1], w=B[2]-x, h=B[3]-y;   // one flag domain over every island
       let previous=null;
       [R,...R.changes].forEach((owner,k)=>{
         const f=owner.flag, t=f2t(owner.at_frame);
@@ -325,13 +328,13 @@ if(S.regions&&S.regions.length){
         previous={el:img,f};
       });
       const f=R.flag||R.changes.find(c=>c.flag).flag;
-      const outline=mk('polygon',{points:pts,fill:'none',stroke:R.edge_colour||'#ffffff','stroke-linejoin':'round',...geo(R,i)});
+      const outline=shp({fill:'none',stroke:R.edge_colour||'#ffffff','stroke-linejoin':'round',...geo(R,i)});
       outline.style.filter='drop-shadow(0 0 '+(f.glow_px*S.width/1080)+'px white)';svg.appendChild(outline);
       tl.fromTo(outline,{opacity:0},{opacity:1,duration:f.reveal_s,ease:MO.entrance,immediateRender:true},t0);
       legs.forEach(g=>tl.fromTo(outline,{attr:{'stroke-width':f.edge_px*S.width/1080/g.from.s}},
         {attr:{'stroke-width':f.edge_px*S.width/1080/g.L.to.s},duration:g.d,ease:g.inv,immediateRender:g.k===0},g.t0));
     }
-    hatch(i,pts,svg,t0,R);
+    hatch(i,shp,svg,t0,R);
     // region label: a solid box (owner's box colour) anchored on the map, counter-scaled, popping in
     if(R.label){const L=R.label, el=document.createElement('div');el.className='rl';
       el.style.left=L.x+'px';el.style.top=L.y+'px';if(L.ll)el.setAttribute('data-ll',L.ll.join(','));

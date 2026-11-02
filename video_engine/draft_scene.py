@@ -112,7 +112,7 @@ def _asset(c: Ctx, path: str, aid, kind: str = "image"):
 
 def _region(c, path, r):
     _keys(path, r, REGION_KEYS)
-    d = _copy(r, ("entity", "polygon", "edge", "style", "edge_colour", "dashed", "draw_s", "label", "label_at", "box"))
+    d = _copy(r, ("entity", "polygon", "rings", "edge", "style", "edge_colour", "dashed", "draw_s", "label", "label_at", "box"))
     if "flag" in r:
         d["flag"] = _flag(f"{path}.flag", r["flag"])
     if "at_s" in r:
@@ -218,7 +218,7 @@ def _morph(c, path, m):
 
 
 # ------------------------------------------------------------------------------------------------------------ table
-REGION_KEYS = ("entity", "polygon", "flag", "at_s", "edge", "style", "edge_colour", "dashed", "draw_s", "label",
+REGION_KEYS = ("entity", "polygon", "rings", "flag", "at_s", "edge", "style", "edge_colour", "dashed", "draw_s", "label",
                "label_at", "label_at_s", "box", "changes")
 FIGURE_KEYS = ("kind", "value", "decimals", "prefix", "suffix", "motion", "count_from", "count_s", "at_s", "position",
                "entity", "box")
@@ -238,7 +238,7 @@ class Spec:
 
 FIELDS: dict[str, Spec] = {
     "map_regions": Spec("regions", _arr(_obj({
-        "entity": s, "polygon": PTS, "flag": FLAG, "at_s": n, "edge": {"type": "string", "enum": ["white", "glow"]},
+        "entity": s, "polygon": PTS, "rings": _arr(PTS), "flag": FLAG, "at_s": n, "edge": {"type": "string", "enum": ["white", "glow"]},
         "style": {"type": "string", "enum": ["tint", "block"]}, "edge_colour": s, "dashed": b, "draw_s": n,
         "label": s, "label_at": PT, "label_at_s": n, "box": b,
         "changes": _arr(_obj({"at_s": n, "entity": s, "flag": FLAG}, ["at_s", "entity"]))}, ["entity", "polygon"])),
@@ -302,6 +302,7 @@ def convert(seg: dict, idx: int, *, n: int, fps: int, assets: dict, map_asset, u
         raise _err(f"segment {idx}: map_beats", "beats derive the camera; drop map_path")
     if scene.get("globe"):
         scene.pop("map_bounds", None)
+        scene.pop("map_projection", None)
     elif not scene.get("map_bounds"):
         for j, p in enumerate(scene.get("pins") or []):
             if p.get("x") is None and p.get("lat") is not None:
@@ -318,7 +319,8 @@ PROMPT = """
    Map scene elements (optional, kind map only; times in seconds from the segment start, points [x, y] 0..1 on the map
    image you saw; give each element only when the narration needs it, timed to the words that name it):
    map_pins[].flag = ISO alpha-2 code (flag in the pin); map_regions = country/area highlight {entity, polygon (>= 3
-   points tracing its outline), flag (ISO code: the flag fills the polygon), at_s, edge white|glow, style tint|block,
+   points tracing its outline; rings = further islands and holes, one flag over all), flag (ISO code: the flag
+   fills the polygon), at_s, edge white|glow, style tint|block,
    label, changes (later owner)}; map_routes = self-drawing arrow {points start -> end, at_s, draw_s}; map_borders =
    self-drawing line {points, dashed for sea borders}; map_figures = big number or year {kind, value, motion counter
    (counts up) | bounce, prefix, suffix (unit), at_s, count_s, position [x, y] of the frame}; map_flag_characters =

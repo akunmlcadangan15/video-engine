@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 import hypoverum_core_rs as core
 
-from . import assets, cache, camera3d, config, entities, fx, globe, legibility, parallax, printstyle, profiles, props, streams, toolchain
+from . import assets, cache, camera3d, config, entities, fx, globe, legibility, parallax, printstyle, profiles, projection, props, streams, toolchain
 from .maps import (MAP_JPEG_QUALITY, _map_copy, _need_w, _q, deep_entries, deep_plan, deep_tiles, map_image_size,
                    map_key, morph_data, texture_dim, textures)
 from .timeline import HYPERFRAMES, Segment, Timeline
@@ -373,8 +373,8 @@ def _pin_xy(p, sc, mw, mh) -> tuple[float, float]:
         return p.x * mw, p.y * mh
     if not sc.map_bounds:
         raise EngineError(f"pin '{p.label}' uses lat/lng but gsap_scene_config.map_bounds is missing")
-    s, w, n, e = sc.map_bounds
-    return (p.lng - w) / (e - w) * mw, (n - p.lat) / (n - s) * mh
+    x, y = projection.to_map(p.lat, p.lng, sc.map_bounds, projection.of(sc))
+    return x * mw, y * mh
 
 
 def pin_frame(p, i: int, n: int, fps: int) -> int:
@@ -561,7 +561,7 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     if sc.regions:
         out["regions"] = [region_data(r, ecol, theme, mw, mh, G, S, lay is not None, prof.fx) for r in sc.regions]
         for r, data in zip(sc.regions, out["regions"]):
-            ra = region_aspect(r.polygon, mw, mh, G is not None)
+            ra = region_aspect([p for ring in r.all_rings() for p in ring], mw, mh, G is not None)
             if r.flag:
                 data["flag"] = _flag_data(r.flag, prof, project_dir, ra)
             for change, target in zip(r.changes, data["changes"]):
@@ -678,6 +678,10 @@ def region_data(r, col: dict, theme: dict, mw: float, mh: float, G: dict | None,
     pts, ll = xy(r.polygon, r.at_frame)
     out = {**paint(r.entity), "edge": r.edge or theme["region_edge"], "style": style, "points": pts,
            "at_frame": r.at_frame, "changes": [{**paint(c.entity), "at_frame": c.at_frame} for c in r.changes]}
+    if r.rings:   # islands and holes: the template draws one even-odd path; the flag spans the bbox of every ring
+        rings = [pts] + [xy(ring, r.at_frame)[0] for ring in r.rings]
+        xs, ys = [p[0] for g in rings for p in g], [p[1] for g in rings for p in g]
+        out.update(rings=rings, bbox=[min(xs), min(ys), max(xs), max(ys)])
     if ll:
         out["ll"] = ll
     if style == "block":

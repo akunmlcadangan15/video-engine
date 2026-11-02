@@ -7,6 +7,12 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Ditambahkan
 
+- **Paket geografi** (`video_engine/projection.py`, `video_engine/geodata.py`): scene punya `map_projection`
+  (`equirectangular` atau `mercator`); pin, props, gate G02 dan garis graticule memakai satu fungsi transformasi.
+  Region bisa punya `rings` (pulau lain dan holes, aturan even-odd) dengan satu fill, tepi dan domain bendera untuk
+  seluruh negara kepulauan. `geodata.base_map` membuat raster Natural Earth + sidecar proyeksi, `country_region`
+  mengubah fitur MultiPolygon menjadi region yang dipotong ke batas peta. Draft meneruskan `rings`, proyeksi sidecar
+  dan `intensity` peta (sebelumnya diabaikan diam-diam).
 - **Draft peta lengkap** (`video_engine/draft_scene.py`): `engine draft` kini meneruskan region berbendera, rute,
   border, figure/counter, flag character dan bendera pin ke `gsap_scene_config`; globe, props, morph dan beats lewat
   `[draft] scene` profil (Geoverum: globe, props, beats). Sebelumnya schema dan assembler membuang semua field ini
@@ -82,6 +88,7 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Diperbaiki
 
+- Field draft `[draft] scene` yang kosong tidak lagi masuk hash profil (P0 sempat mengubah hash profil default).
 - **Warna footage sumber**: footage tanpa tag warna kini didekode sesuai standar ukuran (HD ke atas = BT.709, SD =
   BT.601) dan tag yang ada dipakai, termasuk full range (`util.decode_colour`). Sebelumnya semua footage tanpa tag
   dibaca sebagai BT.601: merah jenuh di footage stok HD jadi ~18 level lebih gelap. Sumber HDR (PQ/HLG) kini

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from . import assets
+from . import assets, projection
 from .timeline import Segment, Timeline, sec_to_frame
 from .util import EngineError
 
@@ -73,7 +73,10 @@ def grid_data(cfg, scene: dict, sc) -> dict:
             lng += step
         lat = math.ceil(south / step) * step
         while lat <= north + 1e-9:
-            y = round((north - lat) / (north - south) * mh, 2)
+            if sc.map_projection == "mercator" and abs(lat) > projection.MERC_LAT_MAX:
+                lat += step
+                continue
+            y = round(projection.to_map(lat, west, (south, west, north, east), projection.of(sc))[1] * mh, 2)
             lines.append([[0.0, y], [round(mw, 2), y]])
             lat += step
         out["lines"] = lines
