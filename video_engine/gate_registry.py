@@ -77,7 +77,7 @@ GATES: tuple[Gate, ...] = (
        "static", never=True),
     # --- layer 2: math ---------------------------------------------------------------------------------------
     _t("M01", "Source length",
-       "The source video is long enough for `source_in_frame + n_frames`.",
+       "The source video is long enough for `source_in_frame + n_frames` and is not HDR (PQ/HLG).",
        "math", never=True),
     _t("M02", "Map resolution",
        "Map texels per screen pixel at the deepest zoom: warn below 1.2, fail below 0.85.",

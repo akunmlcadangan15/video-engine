@@ -11,7 +11,7 @@ import hypoverum_core_rs as core
 
 from . import cache, config, overlays, profiles, resources, streams, toolchain
 from .timeline import Segment, Timeline
-from .util import EngineError, blake3_files, blake3_json, code_hash, run, video_info
+from .util import EngineError, blake3_files, blake3_json, code_hash, decode_colour, run, video_info
 
 NATIVE_VERSION = "native-1"
 COPY_FORMAT = "copy-edit-list"   # stream-copy segment layout (render_copy); part of every copy-mode key
@@ -52,6 +52,12 @@ def camera_endpoints(seg: Segment, tl: Timeline, sw: int, sh: int):
     cm = seg.camera_move
     W, H = tl.settings.width, tl.settings.height
     return core.camera_plan(cm.preset, cm.intensity, float(sw), float(sh), float(W), float(H), cm.focus_box)
+
+
+def _cs(src: Path) -> str:
+    """':in_color_matrix=..:in_range=..' of a video source for a scale filter (util.decode_colour), '' for RGB."""
+    o = decode_colour(src)
+    return f":{o}" if o else ""
 
 
 def _keyframe_at(src: Path, t: float, fps: float) -> bool:
@@ -138,7 +144,7 @@ def _decode_cmd(job: NativeJob, ws: int, hs: int, fps: int) -> list:
                 "-vf", f"scale={ws}:{hs}:flags=lanczos,format=rgb24", "-f", "rawvideo", "-"]
     t_in = job.seg.source_in_frame / fps
     return [config.FFMPEG, "-v", "error", "-ss", f"{t_in:.6f}", "-i", str(job.src), "-an",
-            "-vf", f"fps={fps},scale={ws}:{hs}:flags=bicubic,format=rgb24", "-frames:v", str(job.seg.n_frames),
+            "-vf", f"fps={fps},scale={ws}:{hs}:flags=bicubic{_cs(job.src)},format=rgb24", "-frames:v", str(job.seg.n_frames),
             "-f", "rawvideo", "-"]
 
 
@@ -189,7 +195,8 @@ def render_camera(job: NativeJob, tl: Timeline, out: Path, threads: int) -> None
 def render_encode(job: NativeJob, tl: Timeline, out: Path, threads: int) -> None:
     S = tl.settings
     t_in = job.seg.source_in_frame / S.fps
-    vf = (f"fps={S.fps},scale={S.width}:{S.height}:force_original_aspect_ratio=increase:flags=bicubic,"
+    vf = (f"fps={S.fps},scale={S.width}:{S.height}:force_original_aspect_ratio=increase:flags=bicubic{_cs(job.src)}"
+          f":out_color_matrix=bt709:out_range=limited,format=yuv420p,"
           f"crop={S.width}:{S.height},setsar=1,tpad=stop_mode=clone:stop=-1")
     inputs, filt = _overlay_args(job.seg, tl, vf, out.parent / "ov")
     run([config.FFMPEG, "-v", "error", "-y", "-ss", f"{t_in:.6f}", "-i", job.src, *inputs, "-an", *filt,
@@ -245,7 +252,7 @@ def preview_frame(job: NativeJob, tl: Timeline, frame_idx: int, out_png: Path) -
     i = max(0, min(n - 1, frame_idx))
     if job.mode != "camera":
         t = (job.seg.source_in_frame + i) / S.fps
-        vf = f"scale={S.width}:{S.height}:force_original_aspect_ratio=increase,crop={S.width}:{S.height}"
+        vf = f"scale={S.width}:{S.height}:force_original_aspect_ratio=increase{_cs(job.src)},crop={S.width}:{S.height}"
         cmd = [config.FFMPEG, "-v", "error", "-ss", f"{t:.6f}", "-i", str(job.src), "-frames:v", "1", "-vf",
                vf + ",format=rgb24", "-f", "rawvideo", "-"]
         buf = subprocess.run(cmd, capture_output=True, check=True).stdout[: S.width * S.height * 3]
@@ -262,7 +269,7 @@ def preview_frame(job: NativeJob, tl: Timeline, frame_idx: int, out_png: Path) -
     else:
         t = (job.seg.source_in_frame + i) / S.fps
         cmd = [config.FFMPEG, "-v", "error", "-ss", f"{t:.6f}", "-i", str(job.src), "-frames:v", "1",
-               "-vf", f"scale={ws}:{hs},format=rgb24", "-f", "rawvideo", "-"]
+               "-vf", f"scale={ws}:{hs}{_cs(job.src)},format=rgb24", "-f", "rawvideo", "-"]
     buf = subprocess.run(cmd, capture_output=True, check=True).stdout[: ws * hs * 3]
     rgb = overlays.composite_rgb(bytes(core.warp_frame(buf, ws, hs, win, S.width, S.height)), S.width, S.height, job.seg, i,
                                  pr=profiles.of(tl).print)
@@ -276,7 +283,7 @@ def snapshot_rgb(job: NativeJob, tl: Timeline, frame_idx: int, ow: int, oh: int)
     i = max(0, min(job.seg.n_frames - 1, frame_idx))
     if job.mode != "camera":
         t = (job.seg.source_in_frame + i) / S.fps
-        vf = f"scale={ow}:{oh}:force_original_aspect_ratio=increase,crop={ow}:{oh},format=rgb24"
+        vf = f"scale={ow}:{oh}:force_original_aspect_ratio=increase{_cs(job.src)},crop={ow}:{oh},format=rgb24"
         cmd = [config.FFMPEG, "-v", "error", "-ss", f"{t:.6f}", "-i", str(job.src), "-frames:v", "1", "-vf", vf,
                "-f", "rawvideo", "-"]
         buf = subprocess.run(cmd, capture_output=True, check=True).stdout[: ow * oh * 3]
@@ -291,7 +298,7 @@ def snapshot_rgb(job: NativeJob, tl: Timeline, frame_idx: int, ow: int, oh: int)
     else:
         t = (job.seg.source_in_frame + i) / S.fps
         cmd = [config.FFMPEG, "-v", "error", "-ss", f"{t:.6f}", "-i", str(job.src), "-frames:v", "1",
-               "-vf", f"scale={ws}:{hs},format=rgb24", "-f", "rawvideo", "-"]
+               "-vf", f"scale={ws}:{hs}{_cs(job.src)},format=rgb24", "-f", "rawvideo", "-"]
     buf = subprocess.run(cmd, capture_output=True, check=True).stdout[: ws * hs * 3]
     rgb = bytes(core.warp_frame(buf, ws, hs, (win[0] * fx, win[1] * fy, win[2] * fx, win[3] * fy), ow, oh))
     return overlays.composite_rgb(rgb, ow, oh, job.seg, i, ow / S.width, profiles.of(tl).print)

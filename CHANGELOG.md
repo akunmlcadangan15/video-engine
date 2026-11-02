@@ -44,6 +44,10 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Diperbaiki
 
+- **Warna footage sumber**: footage tanpa tag warna kini didekode sesuai standar ukuran (HD ke atas = BT.709, SD =
+  BT.601) dan tag yang ada dipakai, termasuk full range (`util.decode_colour`). Sebelumnya semua footage tanpa tag
+  dibaca sebagai BT.601: merah jenuh di footage stok HD jadi ~18 level lebih gelap. Sumber HDR (PQ/HLG) kini
+  ditolak gate M01 dengan pesan jelas, karena engine SDR BT.709 dan tidak melakukan tone-mapping.
 - **Publish build**: `build_report.json` kini ditulis ke file sementara sebelum `out/final.mp4` diganti. Kegagalan
   tulis laporan (mis. disk penuh) tidak lagi meninggalkan `final.mp4` baru dengan laporan lama.
 - **Warna transisi**: klip transisi (RGB) kini dikonversi sendiri ke BT.709 limited-range dan di-overlay dengan
