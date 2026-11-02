@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from video_engine import build, cache, cache_prune, config
+from video_engine import build, cache, config
 from video_engine.ai.base import AwaitingAgent
 from video_engine.sound import cache as sound_cache
 from video_engine.util import EngineError

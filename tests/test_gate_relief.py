@@ -1,12 +1,13 @@
 """Gate relief: `gates.waive_with_reason`, build `--mode draft`, `--repin` and the W01 refresh hint."""
 import json
+import os
 import shlex
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from video_engine import audio, build, cli, deliver, gate_registry, timeline
+from video_engine import audio, build, cli, config, deliver, gate_registry, timeline
 from video_engine.gates import layer1, severity
 from video_engine.gates.core import Finding
 from video_engine.util import EngineError
@@ -14,6 +15,12 @@ from video_engine.util import EngineError
 from test_build_publish import _previous, _published, _Rep
 from test_gate_severity import two_maps
 from test_words_pin import RAW, vo_project
+
+def need_toolchain():
+    """`cli.main` turns a missing vendored Node into exit code 1 (no skip), so these tests check for it first."""
+    if not (config.NODE.is_file() and config.CHROME.is_file()) and os.environ.get("VIDEO_ENGINE_REQUIRE_TOOLCHAIN") != "1":
+        pytest.skip("vendored toolchain not installed; run `engine doctor --install`")
+
 
 REASON = "the title card sits in zone 1 on purpose for this reveal"
 
@@ -192,6 +199,7 @@ def test_bad_a_draft_build_cannot_be_delivered(proj):
 
 
 def test_good_cli_build_and_preflight_accept_mode(proj, monkeypatch, capsys):
+    need_toolchain()
     _inject(monkeypatch, "R62")
     assert cli.main(["build", str(proj), "--mode", "draft"]) == 0
     out = capsys.readouterr().out
@@ -254,6 +262,7 @@ def test_bad_without_repin_a_stale_pin_still_fails_the_build(project, fake_stt):
 
 
 def test_good_cli_build_accepts_repin(project, fake_stt, monkeypatch, capsys):
+    need_toolchain()
     p = _stale_project(project, fake_stt)
     monkeypatch.setattr(build, "run_preflight", lambda *a, **k: _Rep())
     assert cli.main(["build", str(p), "--repin"]) == 0

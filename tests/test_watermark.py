@@ -62,7 +62,7 @@ def _one_seg(doc):
 def test_good_watermark_sits_top_right_inside_safe_area(chan):
     _, tl = chan()
     r = watermark.placement(tl).text_rect()
-    W, H = tl.settings.width, tl.settings.height
+    W = tl.settings.width
     assert abs((r["x"] + r["w"]) - (W - watermark.SAFE_X)) <= 1 and abs(r["y"] - watermark.SAFE_TOP) <= 1
     assert r["x"] > W / 2 and r["w"] > 100 and 20 < r["h"] < 60
 

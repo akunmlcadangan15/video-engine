@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from video_engine import config, profiles
+from video_engine import profiles
 from video_engine.gates import geo
 
 SQ = [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]]

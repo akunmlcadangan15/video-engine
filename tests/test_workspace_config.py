@@ -1,12 +1,10 @@
 """config.WORKSPACE: one variable moves the default location of the shared libraries; each library keeps its own
 override, and with nothing set the defaults are the paths of the render machine."""
-import importlib
 import os
 import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 VARS = ("VIDEO_ENGINE_WORKSPACE", "VIDEO_ENGINE_GEO_LIBRARY", "VIDEO_ENGINE_OPEN_ASSETS", "VIDEO_ENGINE_STOCK_DIRS",

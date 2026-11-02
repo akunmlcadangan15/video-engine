@@ -1,6 +1,5 @@
 """A composite cache hit must not render transition clips: the composite lookup uses transitions.plan_key before the
 factory runs."""
-from pathlib import Path
 
 import pytest
 

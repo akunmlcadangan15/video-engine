@@ -294,7 +294,7 @@ def test_good_layout_grid_and_label_offset_scale_with_width_and_height(project, 
     no_print(monkeypatch)
     d1, tl1 = project(beats_doc)
     d2, tl2 = project(lambda d: (beats_doc(d), d["settings"].update(width=1188, height=2112)))
-    p1 = layout.apply_segment(tl1.segments[2], tl1, d1)
+    layout.apply_segment(tl1.segments[2], tl1, d1)
     p2 = layout.apply_segment(tl2.segments[2], tl2, d2)
     ky = 2112 / 1920
     assert p2.title["y"] == pytest.approx(304 * ky)

@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from conftest import engine_clip
-from video_engine import grade, profiles, streams, timeline
+from video_engine import grade, profiles, streams
 from video_engine.gates import layer2
 from video_engine.util import EngineError
 

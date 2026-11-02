@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from video_engine import audio, qa, resources, transitions
+from video_engine import audio, qa, transitions
 
 
 def test_good_audio_command_carries_the_budget_thread_count(project):

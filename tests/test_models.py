@@ -9,7 +9,6 @@ from PIL import Image
 from pydantic import ValidationError
 
 from video_engine import hyperframes, models, props, timeline
-from video_engine.gates import props_gates
 from video_engine.util import EngineError
 
 from test_props import URL, _fs
