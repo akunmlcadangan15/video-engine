@@ -17,7 +17,7 @@ LABEL = {"id": "lbl", "kind": "label", "box": [240, 1000, 600, 110], "text": "Je
 
 
 def frame_rgb(path, idx, W=1080, H=1920) -> bytes:
-    return subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-vf", f"select=eq(n\\,{idx})", "-vsync", "0",
+    return subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-vf", f"select=eq(n\\,{idx})", "-fps_mode", "passthrough",
                            "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
                           capture_output=True, check=True).stdout[: W * H * 3]
 

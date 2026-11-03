@@ -59,7 +59,8 @@ def _colour(clip, tmp):
 
 
 def _field_order(clip, tmp):
-    return clip("fo.mp4", extra=("-flags", "+ilme+ildct", "-top", "1")), {"field_order"}
+    # -vf setfield marks top-field-first on ffmpeg 7 and 9; the old -top 1 is not an encoder option in 9.
+    return clip("fo.mp4", extra=("-flags", "+ilme+ildct", "-vf", "setfield=tff")), {"field_order"}
 
 
 def _size(clip, tmp):

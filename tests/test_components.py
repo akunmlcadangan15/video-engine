@@ -36,7 +36,7 @@ def _path(n, roll):
 # roll ---------------------------------------------------------------------------------------------------------------
 def test_bad_roll_range():
     with pytest.raises(ValidationError):
-        CameraKey(at_frame=0, focus=[0.5, 0.5], roll=40)
+        CameraKey(at_frame=0, focus=[0.5, 0.5], roll=46)   # ROLL_MAX is 45: banking needs the full range
 
 
 def test_good_no_roll_scene_unchanged(project):

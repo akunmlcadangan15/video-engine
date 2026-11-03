@@ -269,7 +269,7 @@ def decode(path: Path, first: int, count: int, W: int, H: int, threads: int = 2)
     """Frames [first, first + count) of a segment file as RGB arrays (engine segments are BT.709 limited range)."""
     cmd = [config.FFMPEG, "-v", "error", "-threads", str(threads), "-i", str(path),
            "-vf", f"select=gte(n\\,{first}),scale={W}:{H}:in_color_matrix=bt709:in_range=limited",
-           "-frames:v", str(count), "-vsync", "0", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+           "-frames:v", str(count), "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
     buf = subprocess.run(cmd, capture_output=True, check=True).stdout
     n = len(buf) // (W * H * 3)
     if n != count:
