@@ -14,8 +14,8 @@ from video_engine.gates import layer2
 def _deep_profile(monkeypatch, mz=16.0):
     real = profiles.load
 
-    def load(name=None):
-        p = real(name)
+    def load(name=None, overrides=None):   # profiles.load grew a second argument (profile_overrides)
+        p = real(name, overrides)
         data = p.data.model_copy(update={"camera": p.data.camera.model_copy(update={"max_zoom": mz})})
         return profiles.Profile(p.name, data, p.blake3 + f"-mz{mz}")
     monkeypatch.setattr(profiles, "load", load)
