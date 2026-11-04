@@ -11,7 +11,7 @@
     "Prove scale visually using true-scale country polygon dragging (e.g. Chile stretched from London to Baghdad), polygon tiling (5x France inside Tibet), everyday object scale cutouts (Costco parking lot beside Market Island), or engineering dimension bars (mi + km).",
     "Use 2D side-view cross-section diagrams when explaining underwater depth (900 m Gibraltar vs 75 m Channel Tunnel, Wallace trench), soil/root layers, or vertical dust walls, and 3D horizon profiles for mountain/flight altitude comparisons (33,000 ft vs 14,800 ft).",
     "Distinguish territories clearly using translucent entity fills with glowing borders, diagonal striped fills (45 deg) for split zones, physical surface textures (cracked earth, 3D trees), full waving flag-map fills, or animated flag-characters.",
-    "Captions stay at fixed y = 1382 (bottom <= 1480 px, Shorts safe zone), Inter Bold 84 px white, 1-2 words per event, no outline, soft drop shadow, no per-word highlight and never a box.",
+    "Captions stay at fixed y = 1382 (bottom <= 1480 px, Shorts safe zone), Inter Bold 84 px white, 1-2 words per event, no outline, soft drop shadow, no per-word highlight and no box by default (a box is a deliberate choice, not blocked).",
     "Watermark 'Geoverum' stays clear at the watermark top right (32 px clearance).",
     "Music and SFX come from Epidemic Sound only, mixed to -14.0 LUFS (-1.5 dBTP) with music ducked -12 dB under the voiceover and no silence gap over 0.65 s.",
     "The last 5 s return to a keyword or title from the hook on screen (or an icon equation / 3D globe / real aerial photo payoff); No call to action and no end card."
@@ -68,9 +68,9 @@
           "value": 1382
         },
         {
-          "key": "caption_style.forbid_box",
-          "op": "==",
-          "value": true
+          "key": "caption_style.box_bg",
+          "op": "exists",
+          "value": false
         },
         {
           "key": "caption_style.outline",
@@ -196,9 +196,9 @@
           ]
         },
         {
-          "key": "caption_style.forbid_box",
-          "op": "==",
-          "value": true
+          "key": "caption_style.box_bg",
+          "op": "exists",
+          "value": false
         }
       ]
     },

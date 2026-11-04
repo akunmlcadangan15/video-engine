@@ -111,6 +111,7 @@ Penjelasan lengkap tiap tahap ada di [docs/BUILD.md](docs/BUILD.md).
 | `engine deliver P --export DIR` | Paket siap unggah (video, JOIN, credits, SRT, thumbnail, metadata). |
 | `engine taste CHANNEL` | Lihat atau ubah catatan selera channel; `--lint` membandingkannya dengan profil. |
 | `engine doctor` | Cek toolchain di `vendor/`. |
+| `engine toolchain [use SPEC]` | Lihat atau ganti versi HyperFrames: `pinned` (0.9.13, bawaan), `X.Y.Z`, `latest`, `system` (CLI global). Bisa juga lewat env `VIDEO_ENGINE_HYPERFRAMES_VERSION`. Ganti versi = segmen HyperFrames dirender ulang. |
 
 Semua perintah dan opsinya ada di [docs/CLI.md](docs/CLI.md). Kode keluar: 0 sukses, 1 gate atau engine gagal, 2 salah
 pakai, 3 menunggu jawaban agent.

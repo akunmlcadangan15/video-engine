@@ -1,4 +1,4 @@
-"""Stage 2 caption style (Geoverum): Inter Bold, no outline, soft shadow, no box, fixed_y 1382 and A/B sizes."""
+"""Stage 2 caption style (Geoverum): Inter Bold, no outline, soft shadow, no box by default, fixed_y 1382 and A/B sizes."""
 import pytest
 from test_style_gates import layout
 
@@ -17,7 +17,8 @@ def test_good_geoverum_inter_bold_no_outline_no_box_fixed_y(project):
     st = profiles.caption_style(tl)
     assert st["font"] == "Inter" and st["bold"] is True
     assert st["size"] == 84 and st["outline"] == 0 and st["soft_shadow"] is True
-    assert st["forbid_box"] is True and st["fixed_y"] == 1382 and st["max_bottom_y"] == 1480
+    assert "box_bg" not in st and st["fixed_y"] == 1382 and st["max_bottom_y"] == 1480   # no box by default
+    assert st["forbid_box"] is False                     # 2026-11-04: a box is a style choice, not blocked
     txt, ev = captions.compile_ass([type("W", (), {"word": w, "start_frame": a, "end_frame": b, "highlight": False})()
                                     for w, a, b in WORDS], tl)
     f = _style_line(txt)
@@ -43,7 +44,7 @@ def test_good_ab_sizes_reach_the_ass_compiler_but_stay_python_only(project):
         assert ev and ev[0][3] == float(size)
 
 
-def test_bad_forbid_box_rejects_box_bg_from_profile_or_timeline(project):
+def test_bad_forbid_box_rejects_box_bg_from_profile_or_timeline(project, strict_geoverum):
     with pytest.raises(EngineError, match="forbid_box"):
         project(layout(("map", 30, None), cs={"box_bg": True}))
     _, tl = project(layout(("map", 30, None)))
@@ -51,6 +52,13 @@ def test_bad_forbid_box_rejects_box_bg_from_profile_or_timeline(project):
     with pytest.raises(EngineError, match="forbid_box"):
         captions.compile_ass([type("W", (), {"word": "Halo", "start_frame": 0, "end_frame": 10,
                                               "highlight": False})()], tl)
+
+
+def test_good_geoverum_allows_a_caption_box_from_the_timeline(project):
+    _, tl = project(layout(("map", 30, None), cs={"box_bg": True}))
+    assert profiles.caption_style(tl)["box_bg"] is True
+    assert captions.compile_ass([type("W", (), {"word": "Halo", "start_frame": 0, "end_frame": 10,
+                                                 "highlight": False})()], tl)[1]
 
 
 def test_good_default_caption_style_is_unchanged(project):

@@ -46,14 +46,14 @@ def test_good_style_fail_not_required_becomes_warn_and_does_not_block(project):
     assert rep.findings[0].waived.startswith("fail: style gate not required")
 
 
-def test_bad_required_style_fail_still_blocks(project):
+def test_bad_required_style_fail_still_blocks(project, strict_geoverum):
     _, tl = project(two_maps(gates={"require": ["P01"]}))
     rep = Report(severity.apply([hold()], tl))
     assert severity.required(tl) >= {"S01", "P01"}
     assert [f.level for f in rep.findings] == ["fail"] and not rep.ok
 
 
-def test_bad_project_cannot_waive_a_channel_required_rule(project):
+def test_bad_project_cannot_waive_a_channel_required_rule(project, strict_geoverum):
     _, tl = project(two_maps(gates={"waive": ["S01", "R14"]}))
     fs = severity.apply([Finding("S01", "fail", "silence gap"), Finding("R14", "fail", "licence not in allowlist")], tl)
     assert [f.level for f in fs if f.gate in ("S01", "R14")] == ["fail", "fail"]
@@ -104,17 +104,19 @@ def test_bad_never_advisory_gate_rejected_in_profile(tmp_path, monkeypatch):
         profiles.load("chan")
 
 
-def test_good_geoverum_requires_only_s01_and_lowers_advisory_gates(project):
+def test_good_geoverum_requires_no_style_gate_and_lowers_advisory_gates(project):
     p = profiles.load("geoverum")
-    assert set(p.gates.require) == {"S01"}
+    assert p.gates.require == []                         # 2026-11-04: no style gate blocks on Geoverum
     assert {"R64", "E01", "R56", "T01", "R44", "AS04", "F03", "L02", "L09"} <= set(p.gates.advisory)
+    assert {"L01", "L06", "R62", "R63", "Z01", "O01", "M02", "B01"} <= set(p.gates.advisory)   # layout gates warn
+    assert not set(p.gates.advisory) & set(profiles.NEVER_ADVISORY)
     assert p.gates.camera.min_drift_per_s == 0.06
     _, tl = project(two_maps())
     assert [f.level for f in style.p02_drift(tl, p.gates.camera)] == ["pass"]
 
 
-def test_good_geoverum_style_and_advisory_fails_become_warn_while_s01_blocks(project):
-    """Non-required style gates and advisory gates lower to warn on Geoverum; S01 and core technical gates still fail."""
+def test_good_geoverum_style_and_advisory_fails_become_warn_while_safety_gates_block(project):
+    """Style gates (S01 too) and advisory gates lower to warn on Geoverum; never-advisory safety gates still fail."""
     _, tl = project(two_maps())
     fs = severity.apply([Finding("C01", "fail", "3 shot changes per 10 s"),
                          Finding("C02", "fail", "CTA on screen"),
@@ -124,8 +126,11 @@ def test_good_geoverum_style_and_advisory_fails_become_warn_while_s01_blocks(pro
                          Finding("V01", "fail", "hard cut between two maps"),
                          Finding("R64", "fail", "Lc below target"),
                          Finding("L02", "fail", "title tracking"),
-                         Finding("S01", "fail", "silent gap 1.00 s at 1.00 s")], tl)
-    assert [f.level for f in fs] == ["warn"] * 8 + ["fail"] and not Report(fs).ok
+                         Finding("R63", "fail", "caption hits a pin"),
+                         Finding("S01", "fail", "silent gap 1.00 s at 1.00 s"),
+                         Finding("T02", "fail", "segments overlap"),
+                         Finding("R14", "fail", "licence not in allowlist")], tl)
+    assert [f.level for f in fs] == ["warn"] * 10 + ["fail", "fail"] and not Report(fs).ok
 
 
 def test_bad_p02_drift_below_floor_fails(project, monkeypatch):

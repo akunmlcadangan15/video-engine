@@ -507,6 +507,8 @@ def test_good_layout_without_fly_keeps_its_hash(tmp_path, monkeypatch):
         dump["theme"].pop("reveal_ease")      # nor does the default reveal ease
     if dump["gates"]["camera"].get("step_warn") is None:
         dump["gates"]["camera"].pop("step_warn", None)   # nor an unset P03 step_warn
+    if not dump["gates"].get("require"):
+        dump["gates"].pop("require", None)       # nor an empty required-gate list (geoverum since 2026-11-04)
     assert prof.blake3 == blake3_json(dump)   # an absent [layout.fly] adds nothing to the hash
 
 

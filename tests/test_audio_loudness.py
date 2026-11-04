@@ -62,7 +62,54 @@ def test_good_two_pass_norm_filter_uses_measurement(project):
     _, tl = project()
     flt = audio.norm_filter(tl, {"input_i": "-20.1", "input_tp": "-6.0", "input_lra": "3.0", "input_thresh": "-30.5",
                                  "target_offset": "0.1"})
-    assert "linear=true" in flt and "measured_I=-20.1" in flt and "alimiter" in flt
+    assert "linear=true" in flt and "measured_I=-20.1" in flt and audio.tp_limiter(-1.5 - audio.TP_MARGIN_DB) in flt
+
+
+# true peak: oversampled limiter, closed-loop ceiling ---------------------------------------------------------------
+ISP_TONE = "aevalsrc='sin(PI/2*n+PI/4)':s=48000"   # 12 kHz at fs/4, phase 45 deg: samples -3 dBFS, true peak 0 dBTP
+
+
+def test_good_gain_pass_limits_inter_sample_peaks(project, tmp_path):
+    """A sample-peak limiter at 48 kHz leaves these samples (-3 dBFS) untouched and the true peak at 0 dBTP; the
+    oversampled limiter brings the encoded true peak under the limit (project-6 build-11: -1.3 dBTP > -2.0)."""
+    _, tl = project()
+    f = _mp4(tmp_path / "isp.mp4", ISP_TONE)
+    assert audio.loudness(f)["TP"] > -0.5
+    dst = audio.apply_gain(f, tmp_path / "isp.lim.mp4", 0.0, -2.0)
+    assert audio.loudness(dst)["TP"] <= -2.0
+
+
+def test_good_tp_limiter_keeps_timing_and_length():
+    """latency=1: the limiter's lookahead does not delay the audio or drop its tail (no A/V drift per pass)."""
+    import numpy as np
+    r = subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "aevalsrc='if(eq(n,4800),0.9,0)':s=48000:d=0.5",
+                        "-af", audio.tp_limiter(-6.0), "-f", "f32le", "-ac", "1", "-"], capture_output=True, check=True)
+    x = np.frombuffer(r.stdout, np.float32)
+    assert len(x) == 24000 and int(np.abs(x).argmax()) == 4800
+
+
+def test_good_next_ceiling_lowers_by_measured_excess():
+    assert audio.next_ceiling(-2.5, {"TP": -2.1}, -2.0) == -2.5
+    assert audio.next_ceiling(-2.5, {"TP": -1.3}, -2.0) == pytest.approx(-2.5 - 0.7 - audio.TP_STEP_DB)
+
+
+def test_good_correction_passes_lower_the_ceiling_until_tp_passes(project, tmp_path, monkeypatch):
+    """An encoder that overshoots the limiter ceiling by 1 dB: each pass lowers the ceiling by the measured excess
+    (it never repeats the setting that just failed) until the encoded true peak is under the limit."""
+    _, tl = project()
+    L = audio.profiles.loudness(tl)
+    ceilings = []
+    monkeypatch.setattr(audio, "apply_gain", lambda src, dst, g, tp, threads=None, ceiling=None:
+                        (ceilings.append(ceiling), dst.write_bytes(b""))[1])
+    monkeypatch.setattr(audio, "loudness",
+                        lambda p, threads=None: {"I": L.target_lufs, "LRA": 1.0,
+                                                 "TP": (ceilings[-1] if ceilings else L.true_peak + 1.5) + 1.0})
+    f = tmp_path / "a.m4a"
+    f.write_bytes(b"")
+    fs, hist = audio.enforce_loudness(f, tl)
+    assert lv(fs) == ["pass"], hist
+    assert ceilings[0] == L.true_peak - audio.TP_MARGIN_DB and all(b < a for a, b in zip(ceilings, ceilings[1:]))
+    assert hist[-1]["TP"] <= L.true_peak and [h["ceiling"] for h in hist[1:]] == [round(c, 2) for c in ceilings]
 
 
 # caption word fixes --------------------------------------------------------------------------------------------------

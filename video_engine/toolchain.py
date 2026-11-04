@@ -5,6 +5,9 @@
   node      the node binary (config.NODE)
   chrome    every file of the headless Chrome install dir (config.CHROME's directory)
   npm       every file of vendor/npm/node_modules (hyperframes, puppeteer-core and their resolved dependencies)
+  hf        the active HyperFrames (hfversion.active): "<source>:<version>" and every file of its package dir, so
+            switching VIDEO_ENGINE_HYPERFRAMES_VERSION (pinned / X.Y.Z / latest / system) never reuses a segment
+            rendered by another HyperFrames
   gsap      vendor/js/gsap.min.js
   template  every file of video_engine/template/
   probe     video_engine/hf/dom_probe.mjs (the DOM probe that measures the inks of legibility segments)
@@ -86,9 +89,12 @@ def _ffmpeg_version(path: str, size: int, mtime_ns: int) -> str:
 
 
 def hf_paths() -> tuple:
-    """Toolchain locations the HyperFrames render uses (config paths, read at call time)."""
+    """Toolchain locations the HyperFrames render uses (config paths and the active HyperFrames, read at call time)."""
+    from . import hfversion
+    hf = hfversion.active()
     return (config.VENDOR / "VERSIONS.json", config.NODE, config.CHROME.parent, config.PUPPETEER.parent,
-            config.GSAP_JS, config.TEMPLATE_DIR, config.PKG / "hf" / "dom_probe.mjs",
+            config.GSAP_JS, config.TEMPLATE_DIR, config.PKG / "hf" / "dom_probe.mjs", hf.root,
+            f"{hf.source}:{hf.version}",
             tuple(dict.fromkeys([str(config.FFMPEG), config.hf_env()["HYPERFRAMES_FFMPEG_PATH"]])))
 
 
@@ -98,7 +104,7 @@ def hf_identity() -> str:
 
 @functools.lru_cache(maxsize=None)
 def _identity(paths: tuple) -> str:
-    *trees, ffmpegs = paths
-    names = ("pins", "node", "chrome", "npm", "gsap", "template", "probe")
-    return blake3_json({**{n: tree_hash(p) for n, p in zip(names, trees)},
+    *trees, hf_tag, ffmpegs = paths
+    names = ("pins", "node", "chrome", "npm", "gsap", "template", "probe", "hf_tree")
+    return blake3_json({**{n: tree_hash(p) for n, p in zip(names, trees)}, "hf": hf_tag,
                         "ffmpeg": [ffmpeg_version(x) for x in ffmpegs]})

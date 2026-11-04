@@ -7,6 +7,11 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Ditambahkan
 
+- **Versi HyperFrames bisa dipilih** (`video_engine/hfversion.py`, `engine toolchain [show|list|use SPEC]`): env
+  `VIDEO_ENGINE_HYPERFRAMES_VERSION` atau `vendor/hyperframes.select` memilih `pinned` (bawaan), versi pasti `X.Y.Z`
+  (dipasang ke `vendor/hf/X.Y.Z`), `latest` atau `system` (CLI global). `engine doctor` menampilkan versi aktif
+  (`hyperframes-active`) dan hanya WARN bila bukan pin; `build_report.json` mencatat versi yang dipakai; versi dan
+  sumbernya masuk kunci cache segmen HyperFrames.
 - **Komponen native baru**: roll kamera 2D (`roll` pada camera key, peta diskalakan agar tetap menutupi sudut),
   termometer (`thermometers`: satu nilai menggerakkan isi, warna dan angka), aliran parametrik (`flows`: dash bergerak
   menurut waktu render, seed deterministik, legenda warna) dan split-screen (`split`: dua panel HyperFrames dengan
@@ -77,6 +82,9 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Diubah
 
+- **HyperFrames 0.8.214 -> 0.9.13** (pin `vendor/VERSIONS.json`, `vendor/npm/package.json` + lockfile; dependensi
+  baru `undici`). Flag `render` yang dipakai engine tidak berubah; breaking change 0.9.0 (Plan v1 distributed render)
+  tidak menyentuh engine. Semua segmen HyperFrames dirender ulang sekali (toolchain identity berubah).
 - **Dokumentasi platform**: pernyataan "hanya Linux x64" di README, `docs/LIMITS.md` dan `docs/ENVIRONMENT.md`
   diganti dengan kebijakan paritas Linux x64 dan macOS Apple Silicon.
 - **Globe**: kamera kini bergerak di busur great-circle (jalur terpendek di bola) antar key, bukan garis lurus

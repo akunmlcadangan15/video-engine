@@ -4,6 +4,9 @@ Components (pins in vendor/VERSIONS.json):
 - platform: linux-x64 or darwin-arm64 (platform_info.py); anything else fails the first check.
 - node: official tarball for the platform (Linux x64 or macOS arm64), SHA-256 verified, unpacked to vendor/node.
 - npm: hyperframes, puppeteer-core and three (models.py) from vendor/npm/package-lock.json via `npm ci` (vendored node), vendor/npm/node_modules.
+  A hyperframes in vendor/npm that differs from the pin is a WARN, not a FAIL.
+- hyperframes-active: the HyperFrames the build renders with (hfversion.py: VIDEO_ENGINE_HYPERFRAMES_VERSION or
+  `engine toolchain use`); FAIL only when it is not installed, WARN when it is not the pinned version.
 - chrome: chrome-headless-shell via @puppeteer/browsers (dependency of puppeteer-core), vendor/chrome.
 - ffmpeg: system package, not vendored; version 7.x with the filters and encoders a build needs.
 
@@ -54,9 +57,11 @@ class Check:
     ok: bool
     want: str
     got: str
+    warn: bool = False   # ok for `engine doctor`'s exit code, printed as WARN
 
     def line(self) -> str:
-        return f"[{'OK' if self.ok else 'FAIL'}] {self.name}: want {self.want}, got {self.got}"
+        tag = "FAIL" if not self.ok else "WARN" if self.warn else "OK"
+        return f"[{tag}] {self.name}: want {self.want}, got {self.got}"
 
 
 def _pkg_version(d: Path) -> str:
@@ -84,10 +89,14 @@ def check(vendor: Path | None = None, run_binaries: bool = True) -> list[Check]:
         g = _pkg_version(nm / name)
         dist_missing = name == "hyperframes" and g == want and not (nm / name / "dist").is_dir()
         ok = g == want and not dist_missing
+        if name == "hyperframes" and g != "missing" and not dist_missing and g != want:
+            out.append(Check(name, True, want, f"{g} (differs from the pin)", warn=True))
+            continue
         out.append(Check(name, ok, want, f"{g} (dist missing)" if dist_missing else g))
     cli = x["hf_cli"]
     out.append(Check("hyperframes-cli", cli.is_file(), "bin/hyperframes.mjs",
                      "present" if cli.is_file() else "missing"))
+    out.append(check_active(vendor))
     ch = x["chrome"]
     out.append(Check("chrome", ch.is_file() and bool(ch.stat().st_mode & 0o111), f"{p['chrome']['product']}@{p['chrome']['version']}",
                      "present" if ch.is_file() else "missing"))
@@ -95,6 +104,21 @@ def check(vendor: Path | None = None, run_binaries: bool = True) -> list[Check]:
         out.append(check_ffmpeg())
         out.append(check_ffmpeg_version())
     return out
+
+
+def check_active(vendor: Path | None = None) -> Check:
+    """The HyperFrames the build renders with (hfversion.resolve): FAIL when not installed (or the setting is
+    invalid), WARN when it is not the pinned version."""
+    from . import hfversion
+    vendor = vendor or config.VENDOR
+    pin = pins(vendor)["npm"]["hyperframes"]
+    try:
+        a = hfversion.resolve(vendor=vendor)
+    except EngineError as e:
+        return Check("hyperframes-active", False, f"valid {hfversion.ENV}", str(e))
+    if not a.installed:
+        return Check("hyperframes-active", False, f"{a.spec} installed", f"missing at {a.root}")
+    return Check("hyperframes-active", True, f"{a.spec} (pin {pin})", a.label(), warn=a.version != pin)
 
 
 def check_platform() -> Check:
@@ -218,12 +242,56 @@ def install(vendor: Path | None = None, tmp: Path | None = None) -> list[Check]:
     platform_info.platform_key()   # unsupported platform: EngineError before anything is downloaded
     tmp = tmp or config.workdir("doctor")
     p = pins(vendor)
-    status = {c.name: c.ok for c in check(vendor)}
+    status = {c.name: c.ok and not c.warn for c in check(vendor)}
     if not status["node"]:
         install_node(vendor, p, tmp)
     if not all(status[n] for n in p["npm"]) or not status["hyperframes-cli"]:
         install_npm(vendor, tmp)
     if not status["chrome"]:
         install_chrome(vendor, p, tmp)
+    from . import hfversion
+    try:
+        a = hfversion.resolve(vendor=vendor)
+        if a.source == "vendor" and not a.installed:
+            install_hf_version(vendor, a.root.parent.parent.name, tmp)
+    except EngineError:
+        pass   # an invalid setting stays a FAIL of hyperframes-active
     shutil.rmtree(tmp, ignore_errors=True)
     return check(vendor)
+
+
+def npm_latest(vendor: Path | None = None, tmp: Path | None = None) -> str:
+    """Newest hyperframes version on the npm registry (`npm view hyperframes version`, vendored npm)."""
+    from . import hfversion
+    vendor = vendor or config.VENDOR
+    tmp = tmp or config.workdir("doctor")
+    r = subprocess.run([vendor / "node" / "bin" / "npm", "view", "hyperframes", "version"], capture_output=True,
+                       text=True, env=_node_env(vendor, tmp), timeout=120, check=False)
+    v = r.stdout.strip().splitlines()[-1].strip() if r.stdout.strip() else ""
+    if r.returncode or hfversion.parse_spec(v or "?") in hfversion.KEYWORDS:
+        raise EngineError(f"npm view hyperframes version failed: {(r.stderr or r.stdout).strip()[:300]}")
+    return v
+
+
+def install_hf_version(vendor: Path, version: str, tmp: Path) -> Path:
+    """Install hyperframes@VERSION (and its own dependencies) into vendor/hf/VERSION with the vendored npm. Not
+    lockfile-pinned like vendor/npm. Install scripts are skipped as for vendor/npm (esbuild ships its binary as an
+    optional dependency, so no postinstall is needed); the CLI and esbuild binary are checked after the install."""
+    from . import hfversion
+    version = hfversion.parse_spec(version)
+    if version in hfversion.KEYWORDS:
+        raise EngineError(f"install_hf_version needs an exact version, got {version!r}")
+    d = vendor / "hf" / version
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "package.json").write_text(json.dumps({"name": "video-engine-hf", "private": True,
+                                                 "dependencies": {"hyperframes": version}}, indent=2) + "\n")
+    subprocess.run([vendor / "node" / "bin" / "npm", "install", "--no-audit", "--no-fund", "--ignore-scripts"],
+                   cwd=d, env=_node_env(vendor, tmp), check=True)
+    root = hfversion.vendor_root(version, vendor)
+    got = _pkg_version(root)
+    if got != version or not (root / "bin" / "hyperframes.mjs").is_file() or not (root / "dist").is_dir():
+        raise EngineError(f"hyperframes@{version} install in {d} incomplete (got {got})")
+    esb = d / "node_modules" / "esbuild" / "bin" / "esbuild"
+    if esb.is_file() and subprocess.run([esb, "--version"], capture_output=True, check=False).returncode:
+        raise EngineError(f"esbuild in {d} does not run; reinstall without --ignore-scripts")
+    return root

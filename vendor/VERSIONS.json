@@ -14,7 +14,7 @@
     }
   },
   "npm": {
-    "hyperframes": "0.8.214",
+    "hyperframes": "0.9.13",
     "puppeteer-core": "25.16.0",
     "three": "0.186.1"
   },

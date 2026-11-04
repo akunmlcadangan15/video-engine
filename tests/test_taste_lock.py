@@ -18,13 +18,14 @@ def test_good_taste_seed_records_the_approved_choices_with_reasons():
     assert "−14 LUFS" in liked
     assert "92/104" in rejected and "Stage 4 sekaligus" in rejected and "pecah" in rejected
     assert all(e["why"].strip() for e in t["liked"] + t["rejected"])
-    assert any("84 px white" in r and "1382" in r and "never a box" in r for r in t["rules"])
+    assert any("84 px white" in r and "1382" in r and "no box by default" in r for r in t["rules"])
 
 
 def test_good_geoverum_profile_matches_the_taste_lock():
     p = profiles.load("geoverum")
     cs = p.caption_style
-    assert (cs["size"], cs["fixed_y"], cs["forbid_box"], cs["outline"]) == (84, 1382, True, 0)
+    assert (cs["size"], cs["fixed_y"], cs["outline"]) == (84, 1382, 0)
+    assert "box_bg" not in cs and cs["forbid_box"] is False   # no box by default; a box is allowed (2026-11-04)
     assert abs(cs["fixed_y"] / 1920 - 0.72) < 0.005
     assert p.data.flags.fit == "auto"
     d = p.data

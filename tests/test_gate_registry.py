@@ -51,11 +51,13 @@ def test_bad_a_registered_gate_that_no_code_emits_is_stale():
 def test_good_geoverum_effects_match_the_profile():
     p = profiles.load("geoverum")
     eff = {g.id: gate_tools.effect(g, p) for g in reg.GATES}
-    assert eff["S01"] == "blocks"                       # the only required style gate
+    assert all(eff[g.id] != "blocks" for g in reg.GATES if g.kind == "style")   # no style gate blocks (2026-11-04)
+    assert eff["S01"] == "warns"
     assert eff["H01"] == "warns" and eff["P01"] == "warns" and eff["C02"] == "warns"
     assert eff["C01"] == eff["V01"] == eff["D02"] == "off"     # tables absent in geoverum.toml
     assert eff["R64"] == "warns" and eff["L02"] == "warns"     # advisory in geoverum.toml
-    assert eff["L06"] == "blocks" and eff["T02"] == "blocks"
+    assert eff["L06"] == eff["R63"] == eff["Z01"] == "warns"   # layout/placement advisory in geoverum.toml
+    assert eff["T02"] == eff["R07"] == eff["A01"] == eff["A02"] == "blocks"   # technical safety stays
     assert eff["AS01"] == "warns"                       # anti-slop stays warn
     assert eff["AIQA"] == "on request" and eff["GW01"] == "meta"
 
@@ -141,7 +143,7 @@ def test_good_cli_gates_lists_describes_and_reports_stats(tmp_path, capsys):
     assert "H01" in out and "R63" not in out
     assert cli.main(["gates", "r63", "--profile", "geoverum"]) == 0
     out = capsys.readouterr().out
-    assert "Element margins and collisions" in out and "profile: blocks" in out
+    assert "Element margins and collisions" in out and "profile: warns" in out
     assert cli.main(["gates", "--format", "json", "--layer", "props"]) == 0
     assert [r["id"] for r in json.loads(capsys.readouterr().out)] == ["F01", "F02", "F03", "F04"]
     _report(tmp_path / "p" / "out" / "build_report.json", True, warns=["N01"])

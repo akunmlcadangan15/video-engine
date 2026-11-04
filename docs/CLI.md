@@ -88,6 +88,15 @@ Narration pauses (Rust energy detector on 16 kHz mono PCM) as half-open frame ra
 
 Checks the pinned toolchain in `vendor/`; exit 1 when a component is missing or mismatched.
 `--install` downloads and installs only the failing components.
+The `hyperframes-active` line names the HyperFrames the build renders with (see `engine toolchain`); a HyperFrames other than the pin, in `vendor/npm` or selected, is a `[WARN]` line and does not change the exit code.
+
+## `engine toolchain [show | list | use SPEC]`
+
+Shows or switches the HyperFrames version the build renders with (node, Chrome and puppeteer-core stay pinned).
+SPEC: `pinned` (the `vendor/VERSIONS.json` pin, default), an exact `X.Y.Z`, `latest` (newest installed; `use latest` installs the newest npm release first) or `system` (the global `hyperframes` on PATH, run with the vendored node).
+`use` installs a non-pinned version into `vendor/hf/X.Y.Z` (vendored npm, not lockfile-pinned) and writes the choice to `vendor/hyperframes.select`; `VIDEO_ENGINE_HYPERFRAMES_VERSION` overrides that file.
+`list` prints the pinned, vendored and system versions. Exit 1 when the active version is not installed.
+The active version and source are part of every HyperFrames segment cache key, so a switch rerenders HyperFrames segments; `build_report.json` records it under `toolchain.hyperframes` (+ `hyperframes_source`, `hyperframes_setting`, `hyperframes_pinned`).
 
 ## `engine clean [P ...] [--cache]`
 

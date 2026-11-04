@@ -52,17 +52,25 @@ def test_good_complete_vendor_passes(tmp_path):
 
 @pytest.mark.parametrize("kw,bad", [
     ({"node": False}, "node"),
-    ({"hf_version": "0.8.100"}, "hyperframes"),
     ({"hf_dist": False}, "hyperframes"),
-    ({"hf_cli": False}, "hyperframes-cli"),
+    ({"hf_cli": False}, ("hyperframes-cli", "hyperframes-active")),   # the active (pinned) CLI is missing too
     ({"pptr": False}, "puppeteer-core"),
     ({"chrome": False}, "chrome"),
     ({"three": False}, "three"),
 ])
 def test_bad_missing_or_mismatched_component_fails(tmp_path, kw, bad):
+    bad = (bad,) if isinstance(bad, str) else bad
     res = {c.name: c for c in doctor.check(_fake_vendor(tmp_path, **kw), run_binaries=False)}
-    assert not res[bad].ok
-    assert all(c.ok for n, c in res.items() if n != bad)
+    assert all(not res[b].ok for b in bad)
+    assert all(c.ok for n, c in res.items() if n not in bad)
+
+
+def test_good_hyperframes_other_than_the_pin_warns_and_does_not_fail(tmp_path, monkeypatch):
+    monkeypatch.delenv("VIDEO_ENGINE_HYPERFRAMES_VERSION", raising=False)
+    res = {c.name: c for c in doctor.check(_fake_vendor(tmp_path, hf_version="0.8.100"), run_binaries=False)}
+    assert all(c.ok for c in res.values()), [c.line() for c in res.values()]
+    assert res["hyperframes"].warn and res["hyperframes"].line().startswith("[WARN]")
+    assert res["hyperframes-active"].warn and "0.8.100" in res["hyperframes-active"].got
 
 
 def test_good_ffmpeg_with_required_filters_and_encoders_passes(monkeypatch):

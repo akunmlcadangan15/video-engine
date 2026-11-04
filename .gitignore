@@ -11,3 +11,5 @@ vendor/npm/node_modules/
 **/out/sound_request/
 **/out/*.mp4
 .venv/
+vendor/hf/
+vendor/hyperframes.select

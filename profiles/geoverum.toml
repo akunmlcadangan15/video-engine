@@ -29,7 +29,7 @@ emphasis_scale = 1.0
 max_words = 2
 fixed_y = 1382                # caption centre, px at 1920 height (about 0.72 x 1920)
 max_bottom_y = 1480           # Z01: caption box bottom at or above the Shorts lower UI limit
-forbid_box = true             # captions never use a backing box (box_bg = true is rejected)
+forbid_box = false            # advisory since 2026-11-04: captions may use a box (style choice, not blocked)
 auto_place = true             # a caption that would hit a pin, label or figure shifts (R63 fix) ...
 place_band = [0.60, 0.76]     # ... inside the approved lower band, centre 0.60-0.76 H (1152-1459 px)
 clearance = 0                 # captions must still not intersect any element box (R63)
@@ -138,8 +138,8 @@ final_bit_depth = 10          # no encoder banding in sky, sea and glow gradient
 map_jpeg_quality = 95         # map derivatives and deep tiles
 
 [gates]                       # style gates whose fails block a build; every other style gate only warns
-require = ["S01"]
-advisory = ["R64", "E01", "R56", "T01", "R44", "AS04", "F03", "L02", "L03", "L04", "L05", "L07", "L08", "L09", "L10"]
+require = []                  # 2026-11-04: no style gate blocks; all style gates only warn
+advisory = ["R64", "E01", "R56", "T01", "R44", "AS04", "F01", "F02", "F03", "F04", "L01", "L02", "L03", "L04", "L05", "L06", "L07", "L08", "L09", "L10", "R62", "R63", "Z01", "O01", "M02", "M04", "G02", "B01"]
 
 [gates.hook]
 vo_warn_s = 0.2

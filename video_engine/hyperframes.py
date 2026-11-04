@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 import hypoverum_core_rs as core
 
-from . import assets, cache, camera3d, config, entities, fx, globe, legibility, parallax, printstyle, profiles, projection, props, streams, toolchain
+from . import assets, cache, camera3d, config, entities, fx, globe, hfversion, legibility, parallax, printstyle, profiles, projection, props, streams, toolchain
 from . import components
 from .maps import (MAP_JPEG_QUALITY, _map_copy, _need_w, _q, deep_entries, deep_plan, deep_tiles, map_image_size,
                    map_key, morph_data, texture_dim, textures)
@@ -1050,7 +1050,7 @@ def render(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, workers
     out.parent.mkdir(parents=True, exist_ok=True)
     raw = out.with_suffix(".raw.mp4")
     q, crf, x264 = encode_settings(tl)
-    run([config.NODE, config.HF_CLI, "render", d, "--fps", str(tl.settings.fps), "--sdr", "-q", q, "--crf", str(crf),
+    run([config.NODE, hfversion.require().cli, "render", d, "--fps", str(tl.settings.fps), "--sdr", "-q", q, "--crf", str(crf),
          "--workers", str(workers), "-o", raw], env=config.hf_env(), timeout=900)
     n = seg.n_frames
     if _is_engine_format(raw, tl, n):

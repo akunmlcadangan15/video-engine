@@ -7,6 +7,7 @@ import argparse
 import json
 import shlex
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -469,6 +470,38 @@ def cmd_doctor(a) -> int:
     return 0 if ok else 1
 
 
+def cmd_toolchain(a) -> int:
+    """show / list / use SPEC: which HyperFrames the build renders with (hfversion.py)."""
+    from . import doctor, hfversion
+    if a.action == "use":
+        if not a.spec:
+            print("usage: engine toolchain use pinned|latest|system|X.Y.Z", file=sys.stderr)
+            return 2
+        spec = hfversion.parse_spec(a.spec)
+        pin = hfversion.pinned_version()
+        want = doctor.npm_latest() if spec == "latest" else spec
+        if want not in hfversion.KEYWORDS and want != pin and not (hfversion.vendor_root(want) / "bin" / "hyperframes.mjs").is_file():
+            print(f"installing hyperframes@{want} into {config.VENDOR / 'hf' / want}", flush=True)
+            try:
+                doctor.install_hf_version(config.VENDOR, want, config.workdir("doctor"))
+            except subprocess.CalledProcessError as e:
+                raise EngineError(f"npm install hyperframes@{want} failed (exit {e.returncode})") from e
+        (config.VENDOR / hfversion.SELECT_FILE).write_text(spec + "\n")
+        print(f"selected {spec!r} in {config.VENDOR / hfversion.SELECT_FILE}")
+    act = hfversion.active()
+    if a.action == "list":
+        pin = hfversion.pinned_version()
+        sysroot = hfversion.system_root()
+        print(f"pinned  {pin} ({'installed' if hfversion.pinned_root().joinpath('bin/hyperframes.mjs').is_file() else 'missing'}; vendor/npm)")
+        for v in hfversion.installed_versions():
+            print(f"vendor  {v} (vendor/hf/{v})")
+        print(f"system  {hfversion._pkg_version(sysroot) if sysroot else 'missing'}" + (f" ({sysroot})" if sysroot else ""))
+    if hfversion.setting()[1] == "env" and a.action == "use":
+        print(f"note: {hfversion.ENV} is set and wins over the selection file")
+    print(f"active: HyperFrames {act.label()}; cli {act.cli}")
+    return 0 if act.installed else 1
+
+
 def _clean_project_ids(projects: list[str]) -> set[str]:
     from . import timeline
     ids = set()
@@ -694,8 +727,16 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--project", action="append", default=[], help="project dir whose keys are kept (repeatable)")
     x.add_argument("--dry-run", action="store_true", help="list what would be deleted")
     x = add("doctor", cmd_doctor, "Check the pinned HyperFrames toolchain in vendor/ (node, hyperframes, puppeteer-core, "
-                                    "chrome-headless-shell; pins in vendor/VERSIONS.json).")
+                                    "chrome-headless-shell; pins in vendor/VERSIONS.json) and the active HyperFrames "
+                                    "(`engine toolchain`); a HyperFrames other than the pin is a WARN.")
     x.add_argument("--install", action="store_true", help="download and install missing or mismatched components")
+    x = add("toolchain", cmd_toolchain, "Show or switch the HyperFrames version the build renders with. Setting: env "
+                                          "VIDEO_ENGINE_HYPERFRAMES_VERSION, else vendor/hyperframes.select (written by "
+                                          "`use`), else the vendor/VERSIONS.json pin. SPEC: pinned, latest (newest npm "
+                                          "release; installed into vendor/hf/), system (global `hyperframes` on PATH) "
+                                          "or an exact X.Y.Z. A switch changes the segment cache keys.")
+    x.add_argument("action", nargs="?", choices=("show", "list", "use"), default="show")
+    x.add_argument("spec", nargs="?", help="for `use`: pinned | latest | system | X.Y.Z")
     x = add("clean", cmd_clean, "Remove only the given projects' scratch dirs, their <project>/ai_request/ bundles, "
                                   "and with --cache the cache entries words/, segments/, maps/.")
     x.add_argument("project", nargs="*")

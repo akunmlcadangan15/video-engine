@@ -55,7 +55,7 @@ def test_good_waive_with_reason_lowers_a_waivable_technical_gate_and_keeps_the_r
     assert rows["waived"][0]["gate"] == "L01" and REASON in rows["waived"][0]["waived"]
 
 
-def test_good_waive_with_reason_also_lowers_a_warning_and_ignores_other_gates(project):
+def test_good_waive_with_reason_also_lowers_a_warning_and_ignores_other_gates(project, strict_geoverum):
     _, tl = project(two_maps(**waiver("O01", "L06")))
     fs = severity.apply([Finding("O01", "warn", "w"), Finding("L06", "fail", "f"), Finding("L01", "fail", "kept")], tl)
     assert [(f.gate, f.level) for f in fs] == [("O01", "info"), ("L06", "info"), ("L01", "fail")]
@@ -85,7 +85,7 @@ def test_bad_waive_with_reason_rejects_duplicates_and_unknown_keys(project):
         project(two_maps(gates={"waive_with_reason": [{"gate": "L01", "reason": REASON, "extra": 1}]}))
 
 
-def test_good_plain_waive_of_a_waivable_gate_is_ignored_with_a_hint(project):
+def test_good_plain_waive_of_a_waivable_gate_is_ignored_with_a_hint(project, strict_geoverum):
     _, tl = project(two_maps(gates={"waive": ["L01"]}))
     fs = severity.apply([Finding("L01", "fail", "overlap")], tl)
     assert [f.level for f in fs if f.gate == "L01"] == ["fail"]
@@ -99,13 +99,13 @@ def test_good_the_registry_marks_exactly_the_three_waivable_gates():
 
 
 # ------------------------------------------------------------------------------------------- draft severity
-def test_good_draft_lowers_technical_fails_that_a_profile_could_make_advisory(project):
+def test_good_draft_lowers_technical_fails_that_a_profile_could_make_advisory(project, strict_geoverum):
     _, tl = project(two_maps())
     fs = [Finding(g, "fail", "x") for g in ("R63", "M02", "Z01", "L02")]
     out = {f.gate: f for f in severity.apply(fs, tl, draft=True)}
     assert {f.level for f in out.values()} == {"warn"}
     assert all("draft" in out[g].waived for g in ("R63", "M02", "Z01"))
-    assert "draft" not in out["L02"].waived                   # advisory in geoverum.toml: lowered in every build
+    assert "draft" not in out["L02"].waived                   # advisory in the profile: lowered in every build
     assert {f.level for f in severity.apply([Finding(g, "fail", "x") for g in ("R63", "M02")], tl)} == {"fail"}
 
 
@@ -115,7 +115,7 @@ def test_bad_draft_never_lowers_the_gates_no_profile_may_lower(project):
     assert {f.level for f in severity.apply(never, tl, draft=True)} == {"fail"}
 
 
-def test_bad_draft_keeps_required_style_gates_blocking(project):
+def test_bad_draft_keeps_required_style_gates_blocking(project, strict_geoverum):
     _, tl = project(two_maps())
     out = severity.apply([Finding("S01", "fail", "gap"), Finding("N01", "fail", "nothing new")], tl, draft=True)
     assert [(f.gate, f.level) for f in out] == [("S01", "fail"), ("N01", "warn")]
@@ -209,7 +209,7 @@ def test_good_cli_build_and_preflight_accept_mode(proj, monkeypatch, capsys):
         cli.main(["build", str(proj), "--mode", "nope"])
 
 
-def test_good_cli_preflight_mode_draft_reports_technical_fails_as_warnings(project, monkeypatch, capsys):
+def test_good_cli_preflight_mode_draft_reports_technical_fails_as_warnings(project, monkeypatch, capsys, strict_geoverum):
     p, _ = project(two_maps())
     from video_engine.gates import runner
     real = runner.layer2.r62_caption_margins

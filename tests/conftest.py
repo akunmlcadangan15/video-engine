@@ -200,6 +200,31 @@ def project(tmp_path, assets):
     return make
 
 
+# Geoverum's gate policy before 2026-11-04 (the channel then relaxed it: no required style gate, boxes allowed).
+STRICT_GEOVERUM = {"require": '["S01"]', "forbid_box": "true",
+                   "advisory": '["R64", "E01", "R56", "T01", "R44", "AS04", "F03", "L02", "L03", "L04", "L05", "L07", '
+                               '"L08", "L09", "L10"]'}
+
+
+@pytest.fixture
+def strict_geoverum(tmp_path, monkeypatch):
+    """Profiles dir whose `geoverum` is the real channel profile under the strict policy above (S01 required,
+    forbid_box, the short advisory list): tests of the require / forbid_box / draft / waive mechanisms keep a channel
+    that uses them whatever geoverum.toml currently says."""
+    import re
+    from video_engine import config, profiles
+    text = profiles.flatten("geoverum")
+    for k, v in STRICT_GEOVERUM.items():
+        text, n = re.subn(rf"(?m)^{k}\s*=.*$", f"{k} = {v}", text)
+        assert n == 1, k
+    d = tmp_path / "strict_profiles"
+    d.mkdir(exist_ok=True)
+    (d / "default.toml").write_text((config.PROFILES_DIR / "default.toml").read_text())
+    (d / "geoverum.toml").write_text(text)
+    monkeypatch.setattr(config, "PROFILES_DIR", d)
+    return d
+
+
 def words(*items):
     """words(("Halo", 0, 10), ...) -> list[CaptionWord]."""
     from video_engine.timeline import CaptionWord

@@ -11,7 +11,8 @@ under the cache root, `engine:<rel>` under the engine checkout, else absolute):
               Locked: a later build reuses these exact files (sha256 verified) and never asks the sound resolver
               again, until `engine build --relock`. A locked file that changed or vanished is a stage error naming
               --relock.
-  toolchain   ffmpeg version line, x264 args, node / chrome / hyperframes pins (vendor/VERSIONS.json), engine version
+  toolchain   ffmpeg version line, x264 args, node / chrome pins (vendor/VERSIONS.json), the HyperFrames version the
+              build rendered with (+ source, setting and pin; hfversion.py), engine version
   seeds       every random seed the render uses (generated local test tones)
   resources   worker budget of the build (video_engine/resources.py)
   stage_keys  cache keys of the composite and audio stages (filled after they run)
@@ -96,7 +97,11 @@ def ffmpeg_version() -> str:
 
 
 def toolchain() -> dict:
+    """Toolchain of this build; "hyperframes" is the version the segments were rendered with (hfversion.active),
+    "hyperframes_pinned" the vendor/VERSIONS.json pin."""
+    from . import hfversion
     pins = json.loads((config.VENDOR / "VERSIONS.json").read_text())
+    hf = hfversion.active()
     from importlib.metadata import PackageNotFoundError, version
     try:
         ev = version("video-engine")
@@ -104,7 +109,8 @@ def toolchain() -> dict:
         ev = "unknown"
     return {"ffmpeg": ffmpeg_version(), "x264": list(config.X264), "x264_segment": list(config.X264_SEGMENT), "node": pins["node"]["version"],
             "chrome": f"{pins['chrome']['product']} {pins['chrome']['version']}",
-            "hyperframes": pins["npm"]["hyperframes"], "puppeteer-core": pins["npm"]["puppeteer-core"],
+            "hyperframes": hf.version, "hyperframes_source": hf.source, "hyperframes_setting": hf.spec,
+            "hyperframes_pinned": pins["npm"]["hyperframes"], "puppeteer-core": pins["npm"]["puppeteer-core"],
             "engine": ev}
 
 

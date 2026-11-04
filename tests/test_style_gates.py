@@ -433,7 +433,15 @@ def test_bad_project_y_override_below_max_bottom_y_fails_z01(project):
     assert fs and all(f.level == "fail" and "y=1500" in f.message for f in fs)
 
 
-def test_bad_z01_preflight_fails_geoverum_build_at_1500(project, W):
+def test_bad_z01_preflight_warns_on_geoverum_at_1500(project, W):
+    """Z01 still fails at 1500 px, but it is advisory on Geoverum since 2026-11-04: the build gets a warning."""
+    d, tl = project(layout(("photo", 30, None), ("photo", 30, None), cs={"fixed_y": 1500}))
+    rep = run_preflight(tl, d, GEO_WORDS, dom=False, snapshots=False)
+    z = [f for f in rep.findings if f.gate == "Z01"]
+    assert z and all(f.level == "warn" and f.waived.startswith("fail:") for f in z)
+
+
+def test_bad_z01_preflight_fails_a_strict_geoverum_build_at_1500(project, W, strict_geoverum):
     d, tl = project(layout(("photo", 30, None), ("photo", 30, None), cs={"fixed_y": 1500}))
     rep = run_preflight(tl, d, GEO_WORDS, dom=False, snapshots=False)
     assert "fail" in levels(rep.findings, "Z01")

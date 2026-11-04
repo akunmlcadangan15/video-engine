@@ -283,15 +283,28 @@ def measure_mix(tl: Timeline, project_dir: Path, mix=None, threads: int | None =
         raise EngineError(f"loudness measure produced no usable JSON: {e}") from None
 
 
+TP_RATE = 4 * MIX_RATE   # Hz: true-peak limiting runs 4x oversampled (the ebur128 true-peak meter oversamples 4x)
+TP_MARGIN_DB = 0.5       # first limiter ceiling under the profile true-peak limit (resampling + AAC overshoot)
+TP_STEP_DB = 0.2         # extra headroom per corrective pass on top of the measured true-peak excess
+
+
+def tp_limiter(ceiling_db: float) -> str:
+    """True-peak-aware limiter: oversample to TP_RATE, limit at `ceiling_db` (latency-compensated, so the audio keeps
+    its timing and length), back to MIX_RATE. A limiter at MIX_RATE only bounds sample peaks: the peaks between
+    samples (what A01 measures) stay above its ceiling."""
+    return (f"aresample={TP_RATE},alimiter=limit={10 ** (ceiling_db / 20):.5f}:level=false:latency=1,"
+            f"aresample={MIX_RATE}")
+
+
 def norm_filter(tl: Timeline, m: dict | None) -> str:
-    """Loudnorm pass 2 (linear gain from the pass-1 measurement) followed by a sample-peak limiter 0.5 dB under TP."""
+    """Loudnorm pass 2 (linear gain from the pass-1 measurement) followed by the true-peak limiter TP_MARGIN_DB
+    under TP."""
     L = profiles.loudness(tl)
-    lim = 10 ** ((L.true_peak - 0.5) / 20)
     base = f"loudnorm=I={L.target_lufs}:TP={L.true_peak}:LRA={L.lra}"
     if m:
         base += (f":measured_I={m['input_i']}:measured_TP={m['input_tp']}:measured_LRA={m['input_lra']}"
                  f":measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true")
-    return f"{base},alimiter=limit={lim:.4f}:level=false"
+    return f"{base},{tp_limiter(L.true_peak - TP_MARGIN_DB)}"
 
 
 def video_inputs(segments: list[Path], list_path: Path, fps: int) -> tuple[list, int, str, str]:
@@ -559,7 +572,7 @@ def loudness(path: Path, threads: int | None = None) -> dict:
             "LRA": float(lra.group(1)) if lra else None}
 
 
-MAX_CORRECTIONS = 2     # corrective gain passes before A01 fails the build
+MAX_CORRECTIONS = 3     # corrective gain passes before A01 fails the build
 
 
 def loudness_findings(m: dict, target_lufs: float, max_tp: float, tol: float) -> list:
@@ -576,18 +589,20 @@ def loudness_findings(m: dict, target_lufs: float, max_tp: float, tol: float) ->
     return out or [Finding("A01", "pass", f"{I:.1f} LUFS, true peak {TP:.1f} dBTP")]
 
 
-def apply_gain(src: Path, dst: Path, gain_db: float, true_peak: float, threads: int | None = None) -> Path:
-    """Corrective pass: audio gain + sample-peak limiter 0.5 dB under the true-peak limit; video stream copied.
-    The copied stream must keep every streams.VIDEO_KEYS parameter, its frame count and its duration."""
-    lim = 10 ** ((true_peak - 0.5) / 20)
+def apply_gain(src: Path, dst: Path, gain_db: float, true_peak: float, threads: int | None = None,
+               ceiling: float | None = None) -> Path:
+    """Corrective pass: audio gain + true-peak limiter at `ceiling` dBTP (default TP_MARGIN_DB under the true-peak
+    limit); video stream copied. The copied stream must keep every streams.VIDEO_KEYS parameter, its frame count
+    and its duration."""
+    af = f"volume={gain_db:.2f}dB,{tp_limiter(true_peak - TP_MARGIN_DB if ceiling is None else ceiling)}"
     if not any(st.get("codec_type") == "video" for st in probe(src)["streams"]):   # audio-only master
         run([config.FFMPEG, "-v", "error", "-y", "-i", src, "-map", "0:a:0", *(["-threads", str(threads)] if threads else []),
-             "-af", f"volume={gain_db:.2f}dB,alimiter=limit={lim:.4f}:level=false", "-c:a", "aac", "-b:a", "192k",
+             "-af", af, "-c:a", "aac", "-b:a", "192k",
              "-ar", "48000", dst])
         return dst
     run([config.FFMPEG, "-v", "error", "-y", "-i", src, "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy",
          *(["-threads", str(threads)] if threads else []),
-         "-af", f"volume={gain_db:.2f}dB,alimiter=limit={lim:.4f}:level=false", "-c:a", "aac", "-b:a", "192k",
+         "-af", af, "-c:a", "aac", "-b:a", "192k",
          "-ar", "48000", "-movflags", "+faststart", dst])
     if diff := streams.mismatch(streams.params(dst, "v:0"), streams.params(src, "v:0")):
         raise EngineError(f"gain pass changed the copied video stream: {diff}")
@@ -597,20 +612,33 @@ def apply_gain(src: Path, dst: Path, gain_db: float, true_peak: float, threads: 
     return dst
 
 
+def next_ceiling(ceiling: float, m: dict, max_tp: float) -> float:
+    """Limiter ceiling of the next corrective pass after one at `ceiling` measured `m` on the encoded file: lowered
+    by the true-peak excess over `max_tp` (the encoder overshoot that survived the limiter) plus TP_STEP_DB."""
+    tp = m.get("TP")
+    return ceiling if tp is None or tp <= max_tp else ceiling - (tp - max_tp) - TP_STEP_DB
+
+
 def enforce_loudness(path: Path, tl: Timeline, threads: int | None = None) -> tuple[list, list[dict]]:
     """Measure -> corrective gain pass(es) while outside the profile tolerance -> re-measure. Replaces `path` in place.
-    Returns (A01 findings of the last measurement, list of measurements {"pass", "I", "TP", "gain_db"})."""
+    Each pass re-limits the decoded audio with the true-peak limiter. The first runs at the mux pass ceiling: an
+    excess on the mux file can come from a codec burst that the re-limit itself removes. After that, every true-peak
+    excess measured on the encoded result lowers the ceiling of the next pass (next_ceiling) instead of repeating it.
+    Returns (A01 findings of the last measurement, list of measurements {"pass", "I", "TP", "gain_db", "ceiling"})."""
     L = profiles.loudness(tl)
     m = loudness(path, threads)
     hist = [{"pass": "mux", **m, "gain_db": 0.0}]
+    ceiling = L.true_peak - TP_MARGIN_DB
     for k in range(MAX_CORRECTIONS):
         fs = loudness_findings(m, L.target_lufs, L.true_peak, L.tolerance_lu)
         if all(f.level == "pass" for f in fs) or m.get("I") is None:
             return fs, hist
+        if k:
+            ceiling = next_ceiling(ceiling, m, L.true_peak)
         gain = L.target_lufs - m["I"]
         tmp = path.with_suffix(f".gain{k}{path.suffix}")
-        apply_gain(path, tmp, gain, L.true_peak, threads)
+        apply_gain(path, tmp, gain, L.true_peak, threads, ceiling=ceiling)
         tmp.replace(path)
         m = loudness(path, threads)
-        hist.append({"pass": f"correct{k + 1}", **m, "gain_db": round(gain, 2)})
+        hist.append({"pass": f"correct{k + 1}", **m, "gain_db": round(gain, 2), "ceiling": round(ceiling, 2)})
     return loudness_findings(m, L.target_lufs, L.true_peak, L.tolerance_lu), hist

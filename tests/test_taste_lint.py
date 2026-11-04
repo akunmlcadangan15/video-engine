@@ -122,7 +122,7 @@ def test_good_the_geoverum_store_agrees_with_the_geoverum_profile():
 
 def test_good_cli_lint_exit_codes_and_check_option(store, capsys):
     assert cli.main(["taste", "geoverum", "--like", "size 84", "--why", "approved", "--check",
-                     "caption_style.size == 84", "--check", "caption_style.forbid_box == true"]) == 0
+                     "caption_style.size == 84", "--check", "caption_style.box_bg exists false"]) == 0
     capsys.readouterr()
     assert cli.main(["taste", "geoverum", "--lint"]) == 0
     assert "2 of 2 checks ok" in capsys.readouterr().out
