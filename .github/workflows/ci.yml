@@ -90,6 +90,52 @@ jobs:
           tests/test_gate_registry.py tests/test_profile_include.py tests/test_taste_lint.py tests/test_check_docs.py
           tests/test_workspace_config.py
 
+  macos-fast:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      VIDEO_ENGINE_FFMPEG: /opt/homebrew/opt/ffmpeg@7/bin/ffmpeg
+      VIDEO_ENGINE_FFPROBE: /opt/homebrew/opt/ffmpeg@7/bin/ffprobe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: brew install ffmpeg@7
+      - run: python -m pip install --upgrade pip maturin
+      - run: python -m pip install -e ".[test]" faster-whisper google-genai
+      - run: python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist
+      - run: python -m pip install --force-reinstall dist/hypoverum_core_rs-*.whl
+      - run: >-
+          python -m pytest -q
+          tests/test_cli.py tests/test_cli_aux.py tests/test_gate_severity.py tests/test_geo_gate.py
+          tests/test_profiles.py tests/test_blocks_library.py tests/test_import_sheet_prune.py
+          tests/test_scratch_safety.py tests/test_cache_lease.py tests/test_timeline_frames.py
+          tests/test_gates_layer1.py tests/test_examples.py tests/test_audio_mix_exact.py tests/test_overlays.py
+          tests/test_gate_registry.py tests/test_profile_include.py tests/test_taste_lint.py tests/test_check_docs.py
+          tests/test_workspace_config.py
+
+  macos-nightly:
+    if: github.event_name == 'schedule'
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      VIDEO_ENGINE_FFMPEG: /opt/homebrew/opt/ffmpeg@7/bin/ffmpeg
+      VIDEO_ENGINE_FFPROBE: /opt/homebrew/opt/ffmpeg@7/bin/ffprobe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: brew install ffmpeg@7
+      - run: python -m pip install --upgrade pip maturin
+      - run: python -m pip install -e ".[test]" faster-whisper google-genai
+      - run: python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist
+      - run: python -m pip install --force-reinstall dist/hypoverum_core_rs-*.whl
+      - run: python -m video_engine.cli doctor --install
+      - run: python -m pytest -q
+        env: { VIDEO_ENGINE_REQUIRE_TOOLCHAIN: "1" }   # toolchain installed: a missing vendored file is a failure
+
   nightly:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
