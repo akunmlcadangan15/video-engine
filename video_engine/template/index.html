@@ -401,7 +401,12 @@ if(S.routes&&S.routes.length){
     const mask=mk('mask',{id:'route-mask-'+i,maskUnits:'userSpaceOnUse',x:-S.map_size[0],y:-S.map_size[1],width:3*S.map_size[0],height:3*S.map_size[1]});
     const mp=mk('path',{d:d,fill:'none',stroke:'#fff','stroke-width':4*T.route_width_px,'stroke-linecap':'butt','stroke-linejoin':'round'});
     mask.appendChild(mp);svg.appendChild(mask);
-    const g=mk('g',{'data-route':i});g.style.filter='drop-shadow(0 2px 3px rgba(0,0,0,.6))';
+    // the soft shadow is an SVG filter, not CSS drop-shadow: on Linux Chrome a CSS filter inside #base re-rasterises the
+    // whole map layer, shifting map edges by tens of levels before the route has drawn a pixel; offset and blur keep
+    // their on-screen size through zooms, like the line
+    const sh=mk('filter',{id:'route-shadow-'+i,filterUnits:'userSpaceOnUse',x:-S.map_size[0],y:-S.map_size[1],width:3*S.map_size[0],height:3*S.map_size[1],'color-interpolation-filters':'sRGB'});
+    const ds=mk('feDropShadow',{dx:0,dy:2/C.start.s,stdDeviation:1.5/C.start.s,'flood-color':'#000','flood-opacity':0.6});sh.appendChild(ds);svg.appendChild(sh);
+    const g=mk('g',{'data-route':i,filter:'url(#route-shadow-'+i+')'});
     const line=mk('path',{d:d,fill:'none',stroke:T.route_colour,'stroke-width':T.route_width_px/C.start.s,'stroke-dasharray':dash(C.start.s),
       'stroke-linecap':'round','stroke-linejoin':'round',mask:'url(#route-mask-'+i+')'});
     const a=T.route_arrow_px, head=mk('g',{}), sc=mk('g',{transform:'scale('+(1/C.start.s)+')'});
@@ -426,6 +431,7 @@ if(S.routes&&S.routes.length){
         {attr:{'stroke-width':T.route_width_px/gl.L.to.s,'stroke-dasharray':dash(gl.L.to.s)},duration:gl.d,ease:gl.inv,immediateRender:gl.k===0},gl.t0);
       if(LG)tl.fromTo(casing,{attr:{'stroke-width':cw/gl.from.s,'stroke-dasharray':dash(gl.from.s)}},
         {attr:{'stroke-width':cw/gl.L.to.s,'stroke-dasharray':dash(gl.L.to.s)},duration:gl.d,ease:gl.inv,immediateRender:gl.k===0},gl.t0);
+      tl.fromTo(ds,{attr:{dy:2/gl.from.s,stdDeviation:1.5/gl.from.s}},{attr:{dy:2/gl.L.to.s,stdDeviation:1.5/gl.L.to.s},duration:gl.d,ease:gl.inv,immediateRender:gl.k===0},gl.t0);
       tl.fromTo(sc,{attr:{transform:'scale('+(1/gl.from.s)+')'}},{attr:{transform:'scale('+(1/gl.L.to.s)+')'},duration:gl.d,ease:gl.inv,immediateRender:gl.k===0},gl.t0);
     });
   });

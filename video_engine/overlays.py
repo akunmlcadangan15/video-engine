@@ -15,7 +15,7 @@ from . import config
 from .timeline import Overlay, Segment, Timeline
 from .util import EngineError, blake3_files
 
-OVERLAY_VERSION = "ov-1"
+OVERLAY_VERSION = "ov-2"   # ov-2: labels on a themed plate that hugs the text
 FONT_BOLD, FONT_SEMI = "Inter-Bold.otf", "Inter-SemiBold.otf"
 MIN_FONT_PX = 26                 # at 1920 px output height; scaled with height
 MAX_FONT_PX = {"label": 54, "text_card": 72, "lower_third": 64}
@@ -28,6 +28,8 @@ SAFE_X, SAFE_TOP, SAFE_BOTTOM = 60, 100, 100   # same safe area as R63
 HEADING_PAD = 16                 # px at 1920: box bottom to the heading baseline (room for the shadow)
 HEADING_BASE = (360, 400)        # px at 1920: allowed heading baseline y (brand profile)
 HEADING_SS = 4                   # supersampling of the heading PNG (1.5 px rules)
+LABEL_BOX = ("#15181d", 3.0, 44.0)   # label plate fallback (colour, radius px, font cap px at 1080 width) = default theme
+LABEL_PAD = (0.45, 0.20, 0.24)   # label plate padding in em (x, top, bottom), as the map scene's .box labels
 FONT_FACE = {"label": "Inter", "text_card": "Inter", "lower_third": "Inter", "heading": "Cinzel"}   # gate T01
 
 
@@ -107,7 +109,7 @@ def heading_layout(ov: Overlay, pr, H: int = 1920, ss: int = 1) -> dict:
             "rules": (left, right), "diamonds": (tx - g - d / 2, tx + tw + g + d / 2), "d": d, "w": w, "tw": tw}
 
 
-def fit(ov: Overlay, H: int = 1920, pr=None) -> Layout:
+def fit(ov: Overlay, H: int = 1920, pr=None, max_px: float | None = None) -> Layout:
     """Largest font size (<= MAX_FONT_PX[kind]) whose wrapped title + subtitle fit inside the padded box.
     Raises EngineError when even MIN_FONT_PX does not fit. Headings keep print.heading_px: their painted width
     and cap height must fit the box."""
@@ -123,7 +125,8 @@ def fit(ov: Overlay, H: int = 1920, pr=None) -> Layout:
     accent = 10 * k if ov.kind in ("text_card", "lower_third") else 0
     inner_w, inner_h = w - 2 * px_pad - accent, h - 2 * py_pad
     lo = max(8, round(MIN_FONT_PX * k))
-    for px in range(round(MAX_FONT_PX[ov.kind] * k), lo - 1, -2):
+    top = round(MAX_FONT_PX[ov.kind] * k) if max_px is None else max(lo, round(min(max_px, MAX_FONT_PX[ov.kind] * k)))
+    for px in range(top, lo - 1, -2):
         ft = _font(FONT_BOLD if ov.kind != "label" else FONT_SEMI, px)
         tl = _wrap(ov.text.strip(), ft, inner_w)
         if tl is None:
@@ -182,43 +185,50 @@ def render_heading(ov: Overlay, out: Path, pr, H: int = 1920) -> Path:
     return im
 
 
-def render_im(ov: Overlay, H: int = 1920, pr=None):
-    from PIL import Image, ImageDraw
-    if ov.kind == "heading":
-        return render_heading(ov, None, _print(pr), H)
+def _label_style(H: int, th=None) -> tuple[tuple, int, float]:
+    """Plate colour (opaque), corner radius and font cap of a native label, from the profile theme like the map
+    scene's box labels (label_box_colour, label_box_radius_px, label_box_px; px at 1080 width = 1920 height)."""
     k = _scale(H)
-    lay = fit(ov, H)
+    col, rad, cap = (th.label_box_colour, th.label_box_radius_px, th.label_box_px) if th is not None else LABEL_BOX
+    return _hex(col), round(rad * k), cap * k
+
+
+def _render_label(ov: Overlay, H: int, th=None):
+    """Label: a solid plate hugging the text (padding in em of the font size), centred in the box; the rest of the
+    box stays transparent."""
+    from PIL import Image, ImageDraw
+    fill, rad, cap = _label_style(H, th)
+    lay = fit(ov, H, max_px=cap)
     w, h = round(ov.box[2]), round(ov.box[3])
     im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    r = round(18 * k) if ov.kind != "lower_third" else round(6 * k)
-    d.rounded_rectangle([0, 0, w - 1, h - 1], radius=r, fill=BG[ov.kind])
-    px_pad, py_pad = (v * k for v in PAD[ov.kind])
-    x0 = px_pad
-    if ov.kind in ("text_card", "lower_third"):
-        d.rectangle([0, 0, round(10 * k) - 1, h - 1], fill=ACCENT)
-        x0 += 10 * k
-    ty = py_pad + (h - 2 * py_pad - lay.text_h) / 2     # centre the text block vertically
-    ft = _font(FONT_BOLD if ov.kind != "label" else FONT_SEMI, lay.title_px)
-    for ln in lay.title_lines:
-        lw = ft.getlength(ln)
-        tx = (w - lw) / 2 if ov.kind == "label" else x0
-        d.text((tx, ty), ln, font=ft, fill=(255, 255, 255, 255))
-        ty += lay.title_px * 1.18
+    ft = _font(FONT_BOLD, lay.title_px)
+    fs = _font(FONT_SEMI, lay.sub_px) if lay.sub_lines else None
+    tw = max([ft.getlength(ln) for ln in lay.title_lines] + [fs.getlength(ln) for ln in lay.sub_lines])
+    px = lay.title_px
+    padx, padt, padb = (v * px for v in LABEL_PAD)
+    bw, bh = min(w, tw + 2 * padx), min(h, lay.text_h + padt + padb)
+    x0, y0 = (w - bw) / 2, (h - bh) / 2
+    d.rounded_rectangle([round(x0), round(y0), round(x0 + bw) - 1, round(y0 + bh) - 1], radius=rad, fill=fill)
+    cap_h = lambda f: -f.getbbox("H", anchor="ls")[1]
+    ty = y0 + padt
+    for ln in lay.title_lines:                      # baseline puts the cap height in the middle of each line slot
+        d.text((w / 2, ty + (px * 1.18 + cap_h(ft)) / 2), ln, font=ft, fill=(255, 255, 255, 255), anchor="ms")
+        ty += px * 1.18
     if lay.sub_lines:
-        ty += lay.title_px * 0.25
-        fs = _font(FONT_SEMI, lay.sub_px)
+        ty += px * 0.25
         for ln in lay.sub_lines:
-            sx = (w - fs.getlength(ln)) / 2 if ov.kind == "label" else x0
-            d.text((sx, ty), ln, font=fs, fill=(214, 220, 228, 255))
+            d.text((w / 2, ty + (lay.sub_px * 1.22 + cap_h(fs)) / 2), ln, font=fs, fill=(214, 220, 228, 255), anchor="ms")
             ty += lay.sub_px * 1.22
     return im
 
 
-def render_png(ov: Overlay, out: Path, H: int = 1920, pr=None) -> Path:
+def render_im(ov: Overlay, H: int = 1920, pr=None, th=None):
     from PIL import Image, ImageDraw
     if ov.kind == "heading":
-        return render_heading(ov, out, _print(pr), H)
+        return render_heading(ov, None, _print(pr), H)
+    if ov.kind == "label":
+        return _render_label(ov, H, th)
     k = _scale(H)
     lay = fit(ov, H)
     w, h = round(ov.box[2]), round(ov.box[3])
@@ -227,24 +237,26 @@ def render_png(ov: Overlay, out: Path, H: int = 1920, pr=None) -> Path:
     r = round(18 * k) if ov.kind != "lower_third" else round(6 * k)
     d.rounded_rectangle([0, 0, w - 1, h - 1], radius=r, fill=BG[ov.kind])
     px_pad, py_pad = (v * k for v in PAD[ov.kind])
-    x0 = px_pad
-    if ov.kind in ("text_card", "lower_third"):
-        d.rectangle([0, 0, round(10 * k) - 1, h - 1], fill=ACCENT)
-        x0 += 10 * k
+    x0 = px_pad + 10 * k
+    d.rectangle([0, 0, round(10 * k) - 1, h - 1], fill=ACCENT)
     ty = py_pad + (h - 2 * py_pad - lay.text_h) / 2     # centre the text block vertically
-    ft = _font(FONT_BOLD if ov.kind != "label" else FONT_SEMI, lay.title_px)
+    ft = _font(FONT_BOLD, lay.title_px)
     for ln in lay.title_lines:
-        lw = ft.getlength(ln)
-        tx = (w - lw) / 2 if ov.kind == "label" else x0
-        d.text((tx, ty), ln, font=ft, fill=(255, 255, 255, 255))
+        d.text((x0, ty), ln, font=ft, fill=(255, 255, 255, 255))
         ty += lay.title_px * 1.18
     if lay.sub_lines:
         ty += lay.title_px * 0.25
         fs = _font(FONT_SEMI, lay.sub_px)
         for ln in lay.sub_lines:
-            sx = (w - fs.getlength(ln)) / 2 if ov.kind == "label" else x0
-            d.text((sx, ty), ln, font=fs, fill=(214, 220, 228, 255))
+            d.text((x0, ty), ln, font=fs, fill=(214, 220, 228, 255))
             ty += lay.sub_px * 1.22
+    return im
+
+
+def render_png(ov: Overlay, out: Path, H: int = 1920, pr=None, th=None) -> Path:
+    if ov.kind == "heading":
+        return render_heading(ov, out, _print(pr), H)
+    im = render_im(ov, H, pr, th)
     out.parent.mkdir(parents=True, exist_ok=True)
     im.save(out)
     return out
@@ -260,7 +272,7 @@ def frame_range(ov: Overlay, seg: Segment) -> tuple[int, int]:
     return a, b
 
 
-def key_part(seg: Segment, pr=None) -> dict | None:
+def key_part(seg: Segment, pr=None, th=None) -> dict | None:
     """Cache-key contribution of the drawn overlays (None when nothing is drawn)."""
     ds = drawn(seg)
     if not ds:
@@ -268,6 +280,8 @@ def key_part(seg: Segment, pr=None) -> dict | None:
     import PIL
     out = {"v": OVERLAY_VERSION, "pillow": PIL.__version__, "ov": [o.model_dump(exclude=None if o.on else {"on"}) for o in ds],
            "fonts": blake3_files([config.FONTS_DIR / FONT_BOLD, config.FONTS_DIR / FONT_SEMI])}
+    if any(o.kind == "label" for o in ds):
+        out["label"] = [list(_label_style(1920, th)), LABEL_PAD]
     if any(o.kind == "heading" for o in ds):
         out["heading"] = {"print": _print(pr).model_dump(mode="json"), "pad": HEADING_PAD, "ss": HEADING_SS,
                           "font": blake3_files([config.FONTS_DIR / "Cinzel[wght].ttf"])}
@@ -292,7 +306,7 @@ def ffmpeg_parts(seg: Segment, tl: Timeline, png_dir: Path, first_input: int) ->
     chain: list[str] = []
     cur = "vbase"
     for i, ov in enumerate(drawn(seg)):
-        png = render_png(ov, png_dir / f"seg{seg.seg_index:03d}_ov{i}.png", tl.settings.height, pr)
+        png = render_png(ov, png_dir / f"seg{seg.seg_index:03d}_ov{i}.png", tl.settings.height, pr, prof.theme)
         args += ["-loop", "1", "-framerate", str(fps), "-t", f"{dur:.6f}", "-i", str(png)]
         a, b = frame_range(ov, seg)
         fd = min(_fade_s(ov, pr, motion), (b - a) / fps / 3)
@@ -308,7 +322,8 @@ def ffmpeg_parts(seg: Segment, tl: Timeline, png_dir: Path, first_input: int) ->
     return args, ";".join(chain)
 
 
-def composite_rgb(frame: bytes, W: int, H: int, seg: Segment, frame_idx: int, scale: float = 1.0, pr=None) -> bytes:
+def composite_rgb(frame: bytes, W: int, H: int, seg: Segment, frame_idx: int, scale: float = 1.0, pr=None,
+                  th=None) -> bytes:
     """Draw the overlays visible at `frame_idx` onto an RGB24 frame (previews and gate snapshots)."""
     ds = [o for o in drawn(seg) if frame_range(o, seg)[0] <= frame_idx < frame_range(o, seg)[1]]
     if not ds:
@@ -316,7 +331,7 @@ def composite_rgb(frame: bytes, W: int, H: int, seg: Segment, frame_idx: int, sc
     from PIL import Image
     base = Image.frombytes("RGB", (W, H), frame).convert("RGBA")
     for o in ds:
-        ov = render_im(o, round(H / scale), pr)
+        ov = render_im(o, round(H / scale), pr, th)
         if scale != 1.0:
             ov = ov.resize((max(1, round(ov.width * scale)), max(1, round(ov.height * scale))))
         base.alpha_composite(ov, (round(o.box[0] * scale), round(o.box[1] * scale)))

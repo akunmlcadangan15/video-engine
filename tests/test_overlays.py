@@ -37,6 +37,19 @@ def test_good_fit_and_png_size(tmp_path):
     assert im.getpixel((2, 150))[:3] == overlays.ACCENT[:3]           # accent bar on the left edge
 
 
+def test_good_label_plate_hugs_the_text_in_theme_style():
+    from video_engine import profiles
+    th = profiles.load("geoverum").theme
+    short, long = (overlays.render_im(Overlay(**dict(LABEL, text=t)), 1920, None, th) for t in ("JALAN", "JALUR KERETA API"))
+    assert short.size == long.size == (600, 110)                       # the PNG keeps the overlay box size
+    (x0, y0, x1, y1), (lx0, _, lx1, _) = short.getchannel("A").getbbox(), long.getchannel("A").getbbox()
+    assert x1 - x0 < 260 and x1 - x0 < lx1 - lx0                         # plate width follows the text
+    assert y1 - y0 < 0.8 * 110 and abs((x0 + x1) / 2 - 300) <= 1          # height follows the font, centred in the box
+    fill = overlays._hex(th.label_box_colour)
+    assert short.getpixel((x0 + 3, (y0 + y1) // 2)) == fill               # opaque theme colour (label_box_colour)
+    assert overlays.fit(Overlay(**LABEL), max_px=th.label_box_px).title_px <= th.label_box_px   # font capped by theme
+
+
 def test_bad_text_does_not_fit():
     ov = Overlay(id="x", kind="label", box=[100, 400, 160, 40], text="Teks yang terlalu panjang untuk kotak kecil")
     with pytest.raises(EngineError, match="does not fit"):
@@ -106,12 +119,13 @@ def test_good_overlay_drawn_in_box_and_timed(project, tmp_path, seg):
     b, _, _ = native.render(j1, tl, tmp_path / "b", use_cache=False)
     from video_engine.util import count_frames
     assert count_frames(b) == s1.n_frames
-    cx, cy = 540, 1055                                              # inside the label box
+    cx, cy = 345, 1055                                              # on the plate, left of the text
     on_a, on_b = frame_rgb(a, 35), frame_rgb(b, 35)
-    assert sum(abs(x - y) for x, y in zip(px(on_a, cx - 280, cy), px(on_b, cx - 280, cy))) > 30   # dark plate drawn
+    assert sum(abs(x - y) for x, y in zip(px(on_a, cx, cy), px(on_b, cx, cy))) > 30               # dark plate drawn
+    assert px(on_b, 260, cy) == pytest.approx(px(on_a, 260, cy), abs=6)       # box beyond the plate stays clear
     assert px(on_b, 1000, 200) == pytest.approx(px(on_a, 1000, 200), abs=6)                      # outside box untouched
     off_a, off_b = frame_rgb(a, 5), frame_rgb(b, 5)                                                # before start_frame
-    assert sum(abs(x - y) for x, y in zip(px(off_a, cx - 280, cy), px(off_b, cx - 280, cy))) < 20
+    assert sum(abs(x - y) for x, y in zip(px(off_a, cx, cy), px(off_b, cx, cy))) < 20
 
 
 def test_good_snapshot_and_preview_include_overlay(project, tmp_path):

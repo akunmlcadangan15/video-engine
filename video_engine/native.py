@@ -109,7 +109,7 @@ def _key(job: NativeJob, tl: Timeline, mode: str, src_hash: str) -> str:
         "cam": seg.camera_move.model_dump() if seg.camera_move else None, "W": S.width, "H": S.height, "fps": S.fps,
         "x264": seg_x264(tl), "threads": resources.X264_THREADS, "ffmpeg": toolchain.ffmpeg_version(config.FFMPEG),
         "code": code_hash(CODE), "algo": core.ALGO_VERSION, **({"copy": COPY_FORMAT} if mode == "copy" else {}),
-        **({"ov": ov} if (ov := overlays.key_part(seg, profiles.of(tl).print)) else {}),
+        **({"ov": ov} if (ov := overlays.key_part(seg, profiles.of(tl).print, profiles.of(tl).theme)) else {}),
         **({"profile": pv} if (pv := profiles.of(tl).render_values("native")) else {}),
     })
 
@@ -256,7 +256,7 @@ def preview_frame(job: NativeJob, tl: Timeline, frame_idx: int, out_png: Path) -
         cmd = [config.FFMPEG, "-v", "error", "-ss", f"{t:.6f}", "-i", str(job.src), "-frames:v", "1", "-vf",
                vf + ",format=rgb24", "-f", "rawvideo", "-"]
         buf = subprocess.run(cmd, capture_output=True, check=True).stdout[: S.width * S.height * 3]
-        rgb = overlays.composite_rgb(buf, S.width, S.height, job.seg, i, pr=profiles.of(tl).print)
+        rgb = overlays.composite_rgb(buf, S.width, S.height, job.seg, i, pr=profiles.of(tl).print, th=profiles.of(tl).theme)
         Image.frombytes("RGB", (S.width, S.height), rgb).save(out_png)
         return out_png
     s = _work_scale(job, S.width)
@@ -272,7 +272,7 @@ def preview_frame(job: NativeJob, tl: Timeline, frame_idx: int, out_png: Path) -
                "-vf", f"scale={ws}:{hs}{_cs(job.src)},format=rgb24", "-f", "rawvideo", "-"]
     buf = subprocess.run(cmd, capture_output=True, check=True).stdout[: ws * hs * 3]
     rgb = overlays.composite_rgb(bytes(core.warp_frame(buf, ws, hs, win, S.width, S.height)), S.width, S.height, job.seg, i,
-                                 pr=profiles.of(tl).print)
+                                 pr=profiles.of(tl).print, th=profiles.of(tl).theme)
     Image.frombytes("RGB", (S.width, S.height), rgb).save(out_png)
     return out_png
 
@@ -287,7 +287,7 @@ def snapshot_rgb(job: NativeJob, tl: Timeline, frame_idx: int, ow: int, oh: int)
         cmd = [config.FFMPEG, "-v", "error", "-ss", f"{t:.6f}", "-i", str(job.src), "-frames:v", "1", "-vf", vf,
                "-f", "rawvideo", "-"]
         buf = subprocess.run(cmd, capture_output=True, check=True).stdout[: ow * oh * 3]
-        return overlays.composite_rgb(buf, ow, oh, job.seg, i, ow / S.width, profiles.of(tl).print)
+        return overlays.composite_rgb(buf, ow, oh, job.seg, i, ow / S.width, profiles.of(tl).print, profiles.of(tl).theme)
     win = core.camera_windows(job.start_win, job.end_win, job.seg.n_frames)[i]
     s = min(1.0, ow / max(1.0, win[2]) * 1.02)
     ws, hs = max(2, round(job.src_w * s)), max(2, round(job.src_h * s))
@@ -301,4 +301,4 @@ def snapshot_rgb(job: NativeJob, tl: Timeline, frame_idx: int, ow: int, oh: int)
                "-vf", f"scale={ws}:{hs}{_cs(job.src)},format=rgb24", "-f", "rawvideo", "-"]
     buf = subprocess.run(cmd, capture_output=True, check=True).stdout[: ws * hs * 3]
     rgb = bytes(core.warp_frame(buf, ws, hs, (win[0] * fx, win[1] * fy, win[2] * fx, win[3] * fy), ow, oh))
-    return overlays.composite_rgb(rgb, ow, oh, job.seg, i, ow / S.width, profiles.of(tl).print)
+    return overlays.composite_rgb(rgb, ow, oh, job.seg, i, ow / S.width, profiles.of(tl).print, profiles.of(tl).theme)
