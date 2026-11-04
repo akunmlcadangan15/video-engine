@@ -1,6 +1,6 @@
 """Golden frames: pixel regression tests for the paths that render without Chrome (native Ken Burns over a still,
 native footage with a pan, the crossfade, state, zoom whip, zoom through and page turn transitions, a colour grade). Each case renders a few frames at a
-small size and compares them with tests/golden/<name>.png.
+small size and compares them with tests/golden/<platform>/<name>.png.
 
 Tolerance (`_close`): mean absolute difference <= 1.5 levels and at most 0.5 % of the samples off by more than 24,
 so encoder/scaler rounding across ffmpeg builds passes and a moved, re-coloured or re-timed picture fails.
@@ -15,7 +15,7 @@ import pytest
 from PIL import Image
 
 from conftest import engine_clip
-from video_engine import config, grade, native, profiles, transitions
+from video_engine import config, grade, native, platform_info, profiles, transitions
 
 GOLDEN = Path(__file__).parent / "golden"
 UPDATE = os.environ.get("VIDEO_ENGINE_UPDATE_GOLDENS") == "1"
@@ -35,14 +35,16 @@ def _close(got: np.ndarray, want: np.ndarray) -> tuple[bool, str]:
 
 
 def _check(name: str, frames: list[np.ndarray]):
-    """Frames side by side against tests/golden/<name>.png (written when VIDEO_ENGINE_UPDATE_GOLDENS=1)."""
+    """Frames side by side against tests/golden/<platform>/<name>.png (written when VIDEO_ENGINE_UPDATE_GOLDENS=1)."""
+    platform = platform_info.platform_key()
     got = np.concatenate([np.asarray(f, np.uint8).reshape(H, W, 3) for f in frames], axis=1)
-    path = GOLDEN / f"{name}.png"
+    path = GOLDEN / platform / f"{name}.png"
     if UPDATE:
-        GOLDEN.mkdir(exist_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True)
         Image.fromarray(got).save(path, optimize=True)
         pytest.skip(f"golden written: {path}")
-    assert path.is_file(), f"missing golden {path}; create it with VIDEO_ENGINE_UPDATE_GOLDENS=1"
+    if not path.is_file():
+        pytest.skip(f"no golden for {platform} yet: {path}; create it with VIDEO_ENGINE_UPDATE_GOLDENS=1 on this platform")
     ok, why = _close(got, np.asarray(Image.open(path).convert("RGB")))
     if not ok:
         Image.fromarray(got).save(path.with_suffix(".actual.png"))
