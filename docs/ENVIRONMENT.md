@@ -26,7 +26,7 @@ Parity policy:
 |---|---|---|
 | Node | `node-v<ver>-linux-x64` (SHA-256 per platform in `vendor/VERSIONS.json`) | `node-v<ver>-darwin-arm64` |
 | Chrome | `linux-<ver>/chrome-headless-shell-linux64/` | `mac_arm-<ver>/chrome-headless-shell-mac-arm64/` |
-| ffmpeg 7 | system package (`/usr/bin`) | Homebrew `ffmpeg@7` (keg-only, see below) |
+| ffmpeg 7-9 | system package (`/usr/bin`) | Homebrew `ffmpeg@7` (keg-only, see below) or `ffmpeg` 9 |
 | Scratch root (`VIDEO_ENGINE_SHM`) | `/dev/shm/video_engine` (tmpfs, uses RAM) | `$TMPDIR/video_engine` (disk) |
 | Process stats, RAM | `/proc` | `ps`, `sysctl` |
 
@@ -81,7 +81,7 @@ Tests: `pytest -q tests/test_wrapper_scripts.py` (uses a stub `engine`).
 | Python | `/workspace/engine-venv` on the render server (`source /workspace/engine-venv/bin/activate`); `.venv` in a checkout |
 | Rust | `source ~/.cargo/env`; on the Linux server build with `CC=/usr/bin/gcc` (macOS: the default Apple clang) |
 | Rust extension | `hypoverum_core_rs` (PyO3 0.27, abi3). Rebuild: `cd rust/hypoverum_core_rs && CC=/usr/bin/gcc maturin develop --release` (macOS: without `CC=`) |
-| ffmpeg / ffprobe | major version 7 (7.1) on PATH (macOS: Homebrew `ffmpeg@7`, keg-only; override: `VIDEO_ENGINE_FFMPEG`, `VIDEO_ENGINE_FFPROBE`) |
+| ffmpeg / ffprobe | major version 7 to 9 on PATH (verified 7.1.5 and 9.0.2; macOS: Homebrew `ffmpeg@7`, keg-only; override: `VIDEO_ENGINE_FFMPEG`, `VIDEO_ENGINE_FFPROBE`) |
 | HyperFrames, Node, Chrome, Puppeteer | engine-owned, pinned in `vendor/VERSIONS.json` (Node v22.23.4 SHA-256 checked per platform, hyperframes 0.8.214, puppeteer-core 25.16.0, three 0.186.1 via `vendor/npm/package-lock.json`, chrome-headless-shell 152.0.7977.30). Installed trees `vendor/node`, `vendor/npm/node_modules`, `vendor/chrome` are gitignored. Check: `engine doctor`; install: `engine doctor --install`. Override the whole directory with `VIDEO_ENGINE_VENDOR`. No other toolchain location is read. |
 | Gemini | `GEMINI_API_KEY` in the environment. Never print it. |
 | Other AI providers | API key in the env var named by `api_key_env` in `ai_providers.toml`. Never print it. |

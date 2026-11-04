@@ -16,7 +16,7 @@ seterusnya), karena render yang gagal jauh lebih mahal daripada pemeriksaannya.
 ## Mulai cepat
 
 Syarat: Linux x64 atau macOS Apple Silicon (keduanya platform setara, lihat di bawah), Python 3.10 atau lebih baru, toolchain Rust, `ffmpeg` di `PATH`, dan sekitar 700 MB ruang disk untuk toolchain
-HyperFrames. Mesin render memakai ffmpeg 7.1; `engine doctor` memeriksa bahwa ffmpeg punya filter `subtitles`,
+HyperFrames. Mesin render memakai ffmpeg 7.1 sampai 9.0; `engine doctor` memeriksa bahwa ffmpeg punya filter `subtitles`,
 `loudnorm`, `sidechaincompress` serta encoder `libx264` dan `aac`.
 
 ```bash

@@ -35,7 +35,8 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
   melambat panjang ke key, dengan kurva `theme.reveal_ease` yang dikalibrasi dari Short referensi Pan-American.
   Draft AI juga bisa memilihnya.
 - **Tes golden-frame** (`tests/test_golden_frames.py`, `tests/golden/`): regresi piksel untuk Ken Burns native,
-  pan footage, transisi crossfade, state, zoom whip dan page turn, serta grade warna, dengan toleransi untuk beda build ffmpeg.
+  pan footage, transisi crossfade, state, zoom whip dan page turn, serta grade warna, dengan toleransi untuk beda
+  build ffmpeg **di platform yang sama**: golden dibuat di Linux, jadi suite ini belum hijau di macOS.
 - **Gate P03 (jalur kamera)**: per segmen melaporkan panjang lintasan kamera, kecepatan layar puncak, dan perubahan
   kecepatan terbesar dalam satu frame (info). Dengan `[gates.camera] step_warn` gate ini memperingatkan lompatan
   kecepatan; default mati karena whip memang berubah cepat.
@@ -66,7 +67,7 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 - **macOS Apple Silicon sebagai platform setara Linux x64**: keduanya bisa membangun dan menyerahkan video final,
   gate yang sama berlaku, keluaran punya spesifikasi yang sama (tidak identik bit demi bit), dan cache dipisah
   menurut identitas toolchain. `engine doctor --install` memasang Node `darwin-arm64` dan Chrome `mac_arm`,
-  `engine doctor` mencetak baris platform dan mensyaratkan ffmpeg mayor 7, folder scratch bawaan di macOS adalah
+  `engine doctor` mencetak baris platform dan menerima ffmpeg mayor 7 sampai 9, folder scratch bawaan di macOS adalah
   `$TMPDIR/video_engine`. Panduan instalasi ada di README dan [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#platforms).
 - **Wrapper `scripts/engine-build` dan `scripts/engine-batch`**: versi portabel (POSIX `sh`, Linux dan macOS) dari
   wrapper server render. Memuat `engine.env` (`VIDEO_ENGINE_ENV_FILE`), menolak bila disk bebas kurang dari
@@ -91,8 +92,6 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 - **README lama** dipecah menjadi `docs/ENVIRONMENT.md`, `CLI.md`, `TIMELINE.md`, `PROFILES.md`, `GATES.md`, `BUILD.md`,
   `DELIVERY.md`, `AI.md`, `TESTING.md`, dan `LIMITS.md`. Peta pindahnya ada di README.
 
-- **Dokumentasi platform**: toolchain HyperFrames terkunci untuk Linux x64; `docs/ENVIRONMENT.md` dan
-  `docs/LIMITS.md` kini menyebutnya.
 - `cargo fmt` pada `ass.rs` (hanya format; output crate dan `ALGO_VERSION` tidak berubah).
 
 ### Diperbaiki
