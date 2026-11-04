@@ -340,10 +340,10 @@ def composite_cmd(tl: Timeline, segments: list[Path], ass: Path | None, out: Pat
     concat_list = out.with_name(out.stem + ".concat.txt")
     vin, nv, vpre, vsrc = video_inputs(segments, concat_list, S.fps)
     cmd = [config.FFMPEG, "-v", "error", "-y", *vin]
-    vf, cwd = "null", None
+    vf, cwd, sub_env = "null", None, None
     extra = {"segments": segments, "threads": threads, "ass": ass}
     if ass is not None:
-        vf, cwd = subtitle_filter(ass)
+        vf, cwd, sub_env = subtitle_filter(ass)
     wm_png = out.with_name(out.stem + ".watermark.png")
     pl = watermark.render(tl, wm_png)
     R = profiles.of(tl).render
@@ -403,12 +403,15 @@ def composite(tl: Timeline, segments: list[Path], ass: Path | None, out: Path, t
         transitions = transition_factory()
     clips = [] if transitions is None else [p for p, _ in transitions]
     cmd, cwd, parts, scratch = composite_cmd(tl, segments, ass, out, threads, transitions)
+    sub_env = None
+    if ass is not None:
+        _, _, sub_env = subtitle_filter(ass)
     try:
         if use_cache and canonical is None:
             key = composite_key(cmd, parts, ass, out, scratch[1], transition_key=transition_key, clips=clips)
         if use_cache and (hit := cache.get_file("composite", key)):
             return hit, True, key
-        run(cmd, cwd=cwd)
+        run(cmd, cwd=cwd, env=sub_env)
     finally:
         for f in scratch:
             f.unlink(missing_ok=True)
@@ -502,12 +505,29 @@ def mux(tl: Timeline, video: Path, audio_file: Path, out: Path) -> Path:
 
 SUB_NAME = "captions.ass"
 SUB_FONTS = "fonts"
+SUB_FONTCONFIG = "fonts.conf"
 
 
-def subtitle_filter(ass: Path) -> tuple[str, Path]:
-    """(filter, cwd) for burning `ass`: ffmpeg runs in the .ass folder and the filter names only fixed bare
+def _vendor_fontconfig(d: Path) -> Path:
+    """Fontconfig file that exposes only vendor/fonts/ to libass, so caption burn-in can never resolve a
+    system font (e.g. a system Inter on macOS) when a family name exists on both sides."""
+    from xml.sax.saxutils import escape
+    fonts = config.FONTS_DIR.resolve()
+    cache = d / ".fontconfig-cache"
+    conf = d / SUB_FONTCONFIG
+    conf.write_text(
+        '<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "fonts.dtd">\n<fontconfig>\n'
+        f"  <dir>{escape(str(fonts))}</dir>\n"
+        f"  <cachedir>{escape(str(cache))}</cachedir>\n</fontconfig>\n")
+    return conf
+
+
+def subtitle_filter(ass: Path) -> tuple[str, Path, dict]:
+    """(filter, cwd, env) for burning `ass`: ffmpeg runs in the .ass folder and the filter names only fixed bare
     filenames (no filter-graph escaping of arbitrary paths). The .ass is copied to SUB_NAME if named otherwise;
-    SUB_FONTS is a symlink to config.FONTS_DIR."""
+    SUB_FONTS is a symlink to config.FONTS_DIR, and the returned env points FONTCONFIG_FILE at a fontconfig that
+    lists only vendor/fonts/ (pass it to the ffmpeg subprocess so libass never falls back to a system font)."""
+    import os
     import shutil
     d = ass.resolve().parent
     if ass.name != SUB_NAME:
@@ -521,7 +541,8 @@ def subtitle_filter(ass: Path) -> tuple[str, Path]:
                 raise EngineError(f"{link} exists and is not the fonts symlink")
     if not link.exists():
         link.symlink_to(config.FONTS_DIR.resolve(), target_is_directory=True)
-    return f"subtitles=filename={SUB_NAME}:fontsdir={SUB_FONTS}", d
+    env = {**os.environ, "FONTCONFIG_FILE": str(_vendor_fontconfig(d))}
+    return f"subtitles=filename={SUB_NAME}:fontsdir={SUB_FONTS}", d, env
 
 
 def loudness(path: Path, threads: int | None = None) -> dict:

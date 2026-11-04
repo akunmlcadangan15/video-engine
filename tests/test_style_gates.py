@@ -387,14 +387,15 @@ def ink_rows(tl, ws, tmp_path):
     d = tmp_path / "ink"
     d.mkdir()
     (d / "captions.ass").write_text(txt)
-    vf, cwd = audio.subtitle_filter(d / "captions.ass")
+    vf, cwd, env = audio.subtitle_filter(d / "captions.ass")
     S = tl.settings
     subprocess.run([config.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", f"color=c=0x808080:s={S.width}x{S.height}:r={S.fps}",
-                    "-vf", vf, "-frames:v", str(ev[-1][1]), "-pix_fmt", "rgb24", "f_%03d.png"], cwd=cwd, check=True)
+                    "-vf", vf, "-frames:v", str(ev[-1][1]), "-pix_fmt", "rgb24", "f_%03d.png"], cwd=cwd, env=env, check=True)
     out = []
     for e in ev:
         a = np.asarray(Image.open(d / f"f_{(e[0] + e[1]) // 2 + 1:03d}.png")).astype(int)
-        rows = np.where((np.abs(a - 128).max(axis=2) >= 1).any(axis=1))[0]
+        bg = np.median(a, axis=(0, 1))  # lavfi mid-grey lands on 126 or 128 by ffmpeg build; never assume one
+        rows = np.where((np.abs(a - bg).max(axis=2) >= 1).any(axis=1))[0]
         out.append((e, int(rows.min()), int(rows.max())))
     return out
 

@@ -340,13 +340,14 @@ def test_good_subtitle_burn_path_with_special_chars(tmp_path):
     d.mkdir()
     ass = d / "captions.ass"
     ass.write_text(core.compile_ass([("Halo", 0, 10, False)], 320, 240, 10, {"margin_x": 20, "size": 30}, None)[0])
-    vf, cwd = audio.subtitle_filter(ass)
+    vf, cwd, env = audio.subtitle_filter(ass)
     assert str(d) not in vf and cwd == d.resolve()
+    assert env["FONTCONFIG_FILE"] and str(config.FONTS_DIR.resolve()) in Path(env["FONTCONFIG_FILE"]).read_text()
     out = tmp_path / "out.mp4"
     subprocess.run([config.FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x240:r=10:d=1",
-                    "-vf", vf, "-frames:v", "5", str(out)], cwd=cwd, check=True, capture_output=True)
+                    "-vf", vf, "-frames:v", "5", str(out)], cwd=cwd, env=env, check=True, capture_output=True)
     assert out.stat().st_size > 0
-    assert audio.subtitle_filter(ass) == (vf, cwd)   # idempotent (fonts symlink reused)
+    assert audio.subtitle_filter(ass) == (vf, cwd, env)   # idempotent (fonts symlink reused)
 
 
 # --- finding 13: type stubs ----------------------------------------------------------------------------------
