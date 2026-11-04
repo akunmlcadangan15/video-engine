@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import fcntl
+import itertools
 import json
 import os
 import shutil
@@ -281,9 +282,12 @@ def clear(root: Path | None = None) -> dict:
     return out
 
 
+_tmp_counter = itertools.count()  # monotonic per-process sequence; never reused, unlike threading.get_ident()
+
+
 def tmp_name(dst: Path) -> Path:
     """Writer-unique temp path next to dst (concurrent writers of the same key never share a temp file)."""
-    return dst.with_name(f"{dst.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    return dst.with_name(f"{dst.name}.{os.getpid()}.{next(_tmp_counter)}.tmp")
 
 
 def _p(kind: str, key: str, ext: str) -> Path:
