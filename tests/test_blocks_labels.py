@@ -122,7 +122,7 @@ def test_good_rendered_path_prop_matches_props_state(project, tmp_path):
 ], ids=["BAD-path-one-point", "BAD-path-off-map", "BAD-path-and-x"])
 def test_bad_path_prop_rejected(project, bad, msg):
     from tests.test_props import _proj, MAP_PROP
-    with pytest.raises(ValidationError, match=msg):
+    with pytest.raises(EngineError, match=msg):
         _proj(project, {**{k: v for k, v in MAP_PROP.items() if k not in ("x", "y")}, **bad})
 
 
@@ -136,7 +136,7 @@ def test_bad_path_prop_rejected(project, bad, msg):
     ({"morph": {"asset": "assets/map.jpg", "at_frame": 20, "back_at_frame": 10}}, "must be > at_frame"),
 ], ids=["BAD-change-order", "BAD-label-at-without-label", "BAD-style", "BAD-border-off-map", "BAD-morph-back"])
 def test_bad_upgrade_schema(project, cfg, msg):
-    with pytest.raises(ValidationError, match=msg):
+    with pytest.raises(EngineError, match=msg):
         project(_sc(**cfg))
 
 

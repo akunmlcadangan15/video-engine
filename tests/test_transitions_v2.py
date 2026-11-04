@@ -64,5 +64,5 @@ def test_bad_page_turn_and_state_lengths_are_rejected(project):
     def page(d):
         layout(("map", 10, None), ("photo", 10, None), profile="geoverum")(d)
         d["segments"][1]["transition_in"] = "page_turn"
-    with pytest.raises(ValueError, match="page_turn"):
+    with pytest.raises(EngineError, match="page_turn"):
         project(page)

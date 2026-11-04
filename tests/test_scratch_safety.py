@@ -4,7 +4,6 @@ import os
 import threading
 
 import pytest
-from pydantic import ValidationError
 
 from video_engine import build, cli, config, timeline
 from video_engine.gates import runner
@@ -34,7 +33,7 @@ def test_good_project_id_names_a_dir_inside_shm_root(shm, pid):
 def test_bad_dot_and_path_like_project_ids_are_rejected(shm, project, pid):
     with pytest.raises(ValueError):
         config.workdir(pid)
-    with pytest.raises(ValidationError):
+    with pytest.raises(EngineError):
         project(lambda d: d.update(project_id=pid))
     assert list(shm.iterdir()) == []
 

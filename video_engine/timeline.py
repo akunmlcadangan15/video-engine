@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 import hypoverum_core_rs as core
 
@@ -1363,6 +1363,9 @@ def load(path: str | Path) -> Timeline:
         return Timeline.model_validate_json(text)
     except json.JSONDecodeError as e:
         raise EngineError(f"timeline {p} is not valid JSON: {e}") from None
+    except ValidationError as e:
+        details = "; ".join(f"{'.'.join(map(str, x['loc'])) or 'value'}: {x['msg']}" for x in e.errors())
+        raise EngineError(f"timeline {p}: invalid values ({details})") from e
 
 
 def save(tl: Timeline, path: str | Path) -> None:

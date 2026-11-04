@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from video_engine import hyperframes, profiles
 from video_engine.gates import layer2
+from video_engine.util import EngineError
 
 TEAR = {"pin_style": "teardrop", "pin_colour": "#e8322b", "label_font": "script"}
 PATH = [{"at_frame": 0, "focus": [0.5, 0.5], "zoom": 1.2}, {"at_frame": 30, "focus": [0.5, 0.5], "zoom": 1.2},
@@ -112,7 +113,7 @@ def test_bad_pin_colour_not_hex():
 
 
 def test_bad_label_side(project):
-    with pytest.raises(ValidationError, match="'left' or 'right'"):
+    with pytest.raises(EngineError, match="'left' or 'right'"):
         project(_pins([{**PIN, "label_side": "up"}]))
 
 
@@ -120,7 +121,7 @@ def test_bad_label_side(project):
 def test_bad_map_bounds_need_south_north_west_east(project, bounds):
     def mut(d):
         d["segments"][2]["gsap_scene_config"]["map_bounds"] = bounds
-    with pytest.raises(ValidationError, match="map_bounds"):
+    with pytest.raises(EngineError, match="map_bounds"):
         project(mut)
 
 

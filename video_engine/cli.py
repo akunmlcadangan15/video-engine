@@ -55,7 +55,9 @@ def cmd_validate(a) -> int:
     from pydantic import ValidationError
     try:
         _p, tl = _load(a.project)
-    except ValidationError as e:
+    except EngineError as e:
+        if not isinstance(e.__cause__, ValidationError):
+            raise
         print(f"invalid master_timeline.json:\n{e}")
         return 1
     print(f"valid: {tl.project_id} {len(tl.segments)} segments, {tl.total_frames} frames "

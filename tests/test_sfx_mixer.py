@@ -150,7 +150,7 @@ def test_bad_duck_and_fade_values_are_rejected(field, value):
 
 
 def test_bad_music_brief_with_inverted_bpm_is_rejected(project):
-    with pytest.raises(ValidationError):
+    with pytest.raises(EngineError):
         project(_geo(lambda d: d["audio_chain"].update(
             {"music_brief": {"mood": "x", "energy": "low", "bpm_min": 120, "bpm_max": 80, "duration_s": 5}})))
 

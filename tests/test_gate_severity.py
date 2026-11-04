@@ -1,7 +1,6 @@
 """Gate severity split (video_engine/gates/severity.py): technical fails block, style and advisory gates warn unless the
 channel requires them, hold:"read" intent and project waivers lower only non-required style/advisory findings."""
 import pytest
-from pydantic import ValidationError
 
 from video_engine import config, layout, profiles
 from video_engine.gates import severity, style
@@ -95,7 +94,7 @@ def test_bad_unknown_required_gate_in_profile_and_project(project, tmp_path, mon
     chan(tmp_path, monkeypatch, '[gates]\nrequire = ["R14"]\n')
     with pytest.raises(EngineError, match="unknown style gate"):
         profiles.load("chan")
-    with pytest.raises(ValidationError, match="unknown style gate"):
+    with pytest.raises(EngineError, match="unknown style gate"):
         project(two_maps(gates={"require": ["X99"]}))
 
 
@@ -184,5 +183,5 @@ def test_bad_beat_without_hold_keeps_its_pulses(project, monkeypatch):
 
 
 def test_bad_unknown_waived_gate_is_rejected(project):
-    with pytest.raises(ValidationError, match="gates.waive"):
+    with pytest.raises(EngineError, match="gates.waive"):
         project(two_maps(gates={"waive": ["X99"]}))

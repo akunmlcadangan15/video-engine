@@ -5,7 +5,6 @@ import shlex
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
 from video_engine import audio, build, cli, config, deliver, gate_registry, timeline
 from video_engine.gates import layer1, severity
@@ -69,20 +68,20 @@ def test_good_no_waivers_keep_the_report_shape(project):
 
 @pytest.mark.parametrize("gate", ["R63", "T02", "R07", "A01", "M02", "S01", "H01", "NOPE"])
 def test_bad_waive_with_reason_rejects_gates_that_are_not_waivable(project, gate):
-    with pytest.raises(ValidationError, match="cannot be waived"):
+    with pytest.raises(EngineError, match="cannot be waived"):
         project(two_maps(**waiver(gate)))
 
 
 @pytest.mark.parametrize("reason", ["", "   ", "too short"])
 def test_bad_waive_with_reason_needs_a_real_reason(project, reason):
-    with pytest.raises(ValidationError, match="must say why"):
+    with pytest.raises(EngineError, match="must say why"):
         project(two_maps(**waiver("L01", reason=reason)))
 
 
 def test_bad_waive_with_reason_rejects_duplicates_and_unknown_keys(project):
-    with pytest.raises(ValidationError, match="more than once"):
+    with pytest.raises(EngineError, match="more than once"):
         project(two_maps(**waiver("L01", "L01")))
-    with pytest.raises(ValidationError):
+    with pytest.raises(EngineError):
         project(two_maps(gates={"waive_with_reason": [{"gate": "L01", "reason": REASON, "extra": 1}]}))
 
 

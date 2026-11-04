@@ -188,7 +188,7 @@ def test_bad_missing_or_broken_lut_fails_g01(project):
 
 
 def test_bad_grade_fields_rejected_on_segments(project):
-    with pytest.raises(ValidationError):
+    with pytest.raises(EngineError):
         project(lambda d: d["segments"][0].update(grade={"exposure": 1}))
 
 

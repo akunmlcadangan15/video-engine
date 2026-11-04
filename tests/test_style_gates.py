@@ -4,7 +4,6 @@ import subprocess
 from types import SimpleNamespace
 
 import pytest
-from pydantic import ValidationError
 
 from video_engine import audio, captions, config, draft, profiles, timeline
 from video_engine.gates import layer2, run_preflight, style
@@ -183,7 +182,7 @@ def test_bad_v01_cut_between_two_segments_of_one_map_fails(project):
 
 
 def test_bad_visual_type_unknown_value(project):
-    with pytest.raises(ValidationError):
+    with pytest.raises(EngineError):
         project(layout(("map", 20, None), ("photo", 20, {"visual_type": "meme"})))
 
 

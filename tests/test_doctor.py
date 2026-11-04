@@ -100,9 +100,10 @@ def test_good_parse_ffmpeg_major(text, major):
     assert doctor.parse_ffmpeg_major(text) == major
 
 
-def test_good_ffmpeg_version_7_passes_and_other_majors_fail():
-    assert doctor.check_ffmpeg_version("ffmpeg version 7.1.1 Copyright (c) 2000-2025").ok
-    for text in ("ffmpeg version 6.1.1-3ubuntu5 Copyright", "ffmpeg version 8.0 Copyright", "ffmpeg version N-1-gabc Copyright", ""):
+def test_good_ffmpeg_versions_7_to_9_pass_and_other_majors_fail():
+    for version in ("7.1.1", "7.1.5", "8.0", "9.0.2"):
+        assert doctor.check_ffmpeg_version(f"ffmpeg version {version} Copyright (c) 2000-2026").ok, version
+    for text in ("ffmpeg version 6.1.1-3ubuntu5 Copyright", "ffmpeg version 10.0 Copyright", "ffmpeg version N-1-gabc Copyright", ""):
         c = doctor.check_ffmpeg_version(text)
         assert not c.ok and c.name == "ffmpeg-version", c.line()
     assert doctor.check_ffmpeg_version("ffmpeg version 6.1.1-3ubuntu5 Copyright").got == "6.1.1-3ubuntu5"

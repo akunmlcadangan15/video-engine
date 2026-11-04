@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from video_engine import draft, hyperframes, layout, maps, profiles, timeline
 from video_engine.gates import layer2
+from video_engine.util import EngineError
 
 
 def _deep_profile(monkeypatch, mz=16.0):
@@ -55,7 +56,7 @@ def test_good_key_up_to_the_profile_max_zoom_loads(project, monkeypatch):
 
 
 def test_bad_key_beyond_the_profile_max_zoom_is_rejected(project):
-    with pytest.raises(ValidationError, match="max_zoom 4"):
+    with pytest.raises(EngineError, match="max_zoom 4"):
         _deep_proj(project, zoom=4.5)
     with pytest.raises(ValidationError):
         timeline.CameraKey(at_frame=0, focus=[0.5, 0.5], zoom=timeline.ZOOM_LIMIT + 1)

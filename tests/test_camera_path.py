@@ -1,12 +1,13 @@
 """HyperFrames camera_path: multi-key camera legs in one segment (schema, plan, template, R56 per leg, DOM probe,
 draft map_path, renderer profile values in cache keys)."""
+import math
+
 import pytest
 from pydantic import ValidationError
 
-import math
-
 from video_engine import draft, hyperframes, layout, native, profiles
 from video_engine.gates import layer1, layer2, style
+from video_engine.util import EngineError
 
 PATH = [{"at_frame": 0, "focus": [0.3, 0.3], "zoom": 1.2},
         {"at_frame": 30, "focus": [0.5, 0.5], "zoom": 2.0},
@@ -186,7 +187,7 @@ def test_good_turn_back_stops_and_shot_end_keeps_moving(project):
 ], ids=["BAD-one-key", "BAD-first-not-0", "BAD-not-increasing", "BAD-focus-range", "BAD-zoom-below-cover",
         "BAD-hold-into-next-key"])
 def test_bad_path_schema(project, keys, msg):
-    with pytest.raises(ValidationError, match=msg):
+    with pytest.raises(EngineError, match=msg):
         project(_path(keys))
 
 

@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from video_engine import hyperframes, profiles
 from video_engine.gates import layer1, style
+from video_engine.util import EngineError
 
 ROUTE = {"points": [[0.4, 0.5], [0.6, 0.5]], "at_frame": 15, "draw_s": 1.0}
 
@@ -109,7 +110,7 @@ def test_bad_route_drawing_past_segment_end_fails_T02(project):
 @pytest.mark.parametrize("pts, msg", [([[0.4, 0.5]], "at least 2"), ([[0.4, 0.5], [1.2, 0.5]], "within 0..1"),
                                       ([[0.4, 0.5], [0.4, 0.5]], "must not all be the same")])
 def test_bad_route_points(project, pts, msg):
-    with pytest.raises(ValidationError, match=msg):
+    with pytest.raises(EngineError, match=msg):
         project(_scene([{**ROUTE, "points": pts}], _hold(_seg2_frames(project))))
 
 

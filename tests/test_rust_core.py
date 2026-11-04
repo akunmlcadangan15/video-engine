@@ -127,7 +127,7 @@ def test_bad_schema_captions_unsorted(project):
     def mut(doc):
         doc["captions"] = [{"word": "b", "start_frame": 10, "end_frame": 20},
                            {"word": "a", "start_frame": 0, "end_frame": 5}]
-    with pytest.raises(ValueError, match="sorted"):
+    with pytest.raises(EngineError, match="sorted"):
         project(mut)
 
 

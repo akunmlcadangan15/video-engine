@@ -4,6 +4,7 @@ from pydantic import ValidationError
 
 from video_engine import entities, hyperframes, profiles
 from video_engine.gates import layer1, layer2, style
+from video_engine.util import EngineError
 
 SQ = [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]]
 
@@ -115,7 +116,7 @@ def test_good_region_pixels_show_fill_and_edge(project, tmp_path):
     ({"entity": "A", "polygon": SQ, "edge": "neon"}, "'white' or 'glow'"),
 ], ids=["BAD-two-points", "BAD-point-off-map", "BAD-empty-entity", "BAD-edge"])
 def test_bad_region_schema(project, reg, msg):
-    with pytest.raises(ValidationError, match=msg):
+    with pytest.raises(EngineError, match=msg):
         project(_regions([reg]))
 
 

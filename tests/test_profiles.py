@@ -2,7 +2,6 @@
 import json
 
 import pytest
-from pydantic import ValidationError
 
 from video_engine import audio, captions, config, hyperframes, native, profiles, timeline
 from video_engine.util import EngineError
@@ -113,12 +112,12 @@ def test_good_segment_cache_keys_follow_renderer_values_only(project):
 
 # bad ----------------------------------------------------------------------------------------------------------------
 def test_bad_unknown_profile_fails_validation(project):
-    with pytest.raises(ValidationError, match="profile 'nope' not found.*known: .*default"):
+    with pytest.raises(EngineError, match="profile 'nope' not found.*known: .*default"):
         project(lambda d: d.update(profile="nope"))
 
 
 def test_bad_invalid_profile_name(project):
-    with pytest.raises(ValidationError, match="invalid"):
+    with pytest.raises(EngineError, match="invalid"):
         project(lambda d: d.update(profile="../default"))
 
 

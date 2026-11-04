@@ -102,8 +102,8 @@ def test_good_draft_keeps_whip_moves():
 
 # bad ----------------------------------------------------------------------------------------------------------------
 def test_bad_unknown_move(project):
-    from pydantic import ValidationError
-    with pytest.raises(ValidationError, match="'glide', 'whip', 'settle' or 'reveal'"):
+    from video_engine.util import EngineError
+    with pytest.raises(EngineError, match=r"invalid values \(segments\.2\.gsap_scene_config\.camera_path\.1\.move:"):
         project(_path([K0, {**WHIP, "move": "spin"}]))
 
 

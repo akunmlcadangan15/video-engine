@@ -44,7 +44,7 @@ def test_good_ab_sizes_reach_the_ass_compiler_but_stay_python_only(project):
 
 
 def test_bad_forbid_box_rejects_box_bg_from_profile_or_timeline(project):
-    with pytest.raises(ValueError, match="forbid_box"):
+    with pytest.raises(EngineError, match="forbid_box"):
         project(layout(("map", 30, None), cs={"box_bg": True}))
     _, tl = project(layout(("map", 30, None)))
     tl.caption_style = {"box_bg": True}
