@@ -1,0 +1,29 @@
+# Template style hasil distilasi rea-video. Salin ke profiles/<channel>.toml.
+# Isi dari agregasi breakdown.json (median, bukan satu video saja).
+description = "Style template dari hasil rea-video"
+
+[draft]
+min_seg_s = 1.5
+max_seg_s = 7.0
+# rules = ["hook di 3 detik pertama", "CTA di segmen terakhir"]
+
+[style.rea_video.storyboard]
+sequence = []
+
+[style.rea_video.timing]
+shot_median_s = 0.0
+cut_on_beat = false
+
+[style.rea_video.caption]
+primary_color = ""
+outline_px = 0
+position = ""
+
+[style.rea_video.audio]
+bpm_min = 0
+bpm_max = 0
+voice = ""
+music_source = ""
+
+[style.rea_video.assets]
+must_be_original = []
