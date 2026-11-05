@@ -32,7 +32,7 @@ shadow_alpha = 115            # ASS alpha 0x73 = 55 % opaque
 active_word_highlight = true
 emphasis_scale = 1.15
 max_words = 3
-fixed_y = 1498                # caption centre, px at 1920 height (about 0.72 x 1920)
+fixed_y = 1498                # caption centre, px at 1920 height (about 0.78 x 1920)
 max_bottom_y = 1480           # Z01: caption box bottom at or above the Shorts lower UI limit
 forbid_box = false            # advisory since 2026-11-04: captions may use a box (style choice, not blocked)
 auto_place = true             # a caption that would hit a pin, label or figure shifts (R63 fix) ...
@@ -50,12 +50,12 @@ require_source = "epidemic"   # A02: music and SFX from Epidemic Sound only (doc
 min_seg_s = 3.0               # flexible segment pacing; short cuts and montages allowed
 max_seg_s = 20.0
 map_path = true               # map segments may carry a multi-key camera path
-scene = ["globe", "props", "beats", "radar", "terrain3d", "cross_section", "historical", "flag_char", "data_viz"]   # draft map scene opt-ins (draft_scene.py); no "morph": [transitions] map_morph is off
+scene = ["globe", "props", "beats", "radar", "terrain3d", "cross_section", "historical", "flag_char", "data_viz"]   # draft map scene opt-ins
 rules_file = "geoverum/creative.md"   # single source: profiles/geoverum/creative.md (do not duplicate rules here)
 
 [motion]                     # overlay motion token
 overlay_frames = 10          # 10 frames at 30 fps (~333 ms): smooth rise, not snappy
-overlay_frames_range = [4, 6]
+overlay_frames_range = [8, 12]
 
 [theme]
 route_colour = "#FFD417" # kuning putus-putus (referensi: Pan-American, rute)
@@ -96,7 +96,7 @@ same_type = { map = "state" } # map -> map on the same map_asset: 0.2 s state di
 state_s = 0.35                # state dissolve length
 fade_s = 0.5                  # crossfade only when requested explicitly (timeline transition_in = "crossfade")
 page_turn = false             # Arundaya rejects page-turn / paper transitions (Siam revision 2)
-map_morph = true              # boleh morph satelit -> skematik/kertas historis (002,006,011)
+map_morph = true              # morph satellite to schematic or historical paper
 
 [render]                      # best practical quality, under ~300 MB for a 90 s Short
 hf_quality = "high"           # HyperFrames: JPEG q100 screenshots + x264 slow
