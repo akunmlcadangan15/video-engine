@@ -1,0 +1,24 @@
+# TEMPLATE STYLE-SHEET dari rea-video. Ini BUKAN profil engine.
+# Gunanya: isi dari breakdown.json rea-video, lalu terapkan ke profiles/<channel>.toml
+description = "Style-sheet dari rea-video (sumber untuk memperbaiki/membuat profil)"
+
+[storyboard]
+sequence = []          # hook -> problem -> proof -> cta
+
+[timing]
+shot_median_s = 0.0
+cut_on_beat = false
+
+[caption]
+primary_color = ""
+outline_px = 0
+position = ""
+
+[audio]
+bpm_min = 0
+bpm_max = 0
+voice = ""             # tts | real | mixed
+music_source = ""      # library | ai_generated | unknown
+
+[assets]
+must_be_original = []
