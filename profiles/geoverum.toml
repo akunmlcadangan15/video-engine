@@ -31,12 +31,12 @@ shadow_blur = 4               # libass \blur (gaussian); about a CSS 8 px blur
 shadow_alpha = 115            # ASS alpha 0x73 = 55 % opaque
 active_word_highlight = false
 emphasis_scale = 1.0
-max_words = 2
-fixed_y = 1382                # caption centre, px at 1920 height (about 0.72 x 1920)
+max_words = 3
+fixed_y = 1498                # caption centre, px at 1920 height (about 0.72 x 1920)
 max_bottom_y = 1480           # Z01: caption box bottom at or above the Shorts lower UI limit
 forbid_box = false            # advisory since 2026-11-04: captions may use a box (style choice, not blocked)
 auto_place = true             # a caption that would hit a pin, label or figure shifts (R63 fix) ...
-place_band = [0.60, 0.76]     # ... inside the approved lower band, centre 0.60-0.76 H (1152-1459 px)
+place_band = [0.58, 0.82]     # ... inside the approved lower band, centre 0.60-0.76 H (1152-1459 px)
 clearance = 0                 # captions must still not intersect any element box (R63)
 
 [audio]
@@ -121,12 +121,12 @@ vo_fail_s = 0.8
 caption_warn_s = 0.2
 caption_fail_s = 1.0
 graphic_warn_s = 1.5
-graphic_fail_s = 3.0
+graphic_fail_s = 2.5
 open_on_moving_map = true
 
 [gates.camera]                # P01: planned camera motion
 hold_warn_s = 1.7
-hold_fail_s = 3.0
+hold_fail_s = 2.0
 moving_warn = 0.8
 still_zoom_ln_s = 0.05        # zoom speed below this is still; the 0.06 ln/s drift is moving
 still_pan_w_s = 0.02
@@ -136,7 +136,7 @@ min_drift_per_s = 0.06        # P02: the drift between camera moves stays >= 0.0
 max_gap_s = 3.0
 
 [gates.silence]
-max_gap_s = 0.65
+max_gap_s = 0.8
 threshold_db = -40.0
 
 [gates.keyword_return]
