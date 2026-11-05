@@ -18,5 +18,6 @@ single source of truth for these rules: `profiles/geoverum.toml` points here via
 - Place the main title over the active region, the data number beside the object it measures, and the caption below the map focus; keep at most four texts on screen at once so the region remains readable.
 - Keep one dominant colour per video for the focus region and reserve red for danger, yellow for highlights, cyan for data, and blue for water; do not introduce a new accent colour mid-video.
 - Use real footage only as evidence for terrain, weather, or cities; otherwise explain through map overlay, icons, and diagrams so the style stays consistent and no presenter appears.
+- Show street-grid splits and borough divisions as a before/after grid overlay; show radar blind spots as an occluded zone with a range ring, and weather patterns as a flow arrow with a temperature label.
 - The last 5 s show a keyword or the title of the hook again on screen (pin label, card, icon equation, 3D globe summary, or overlay text).
 - No call to action and no end card.

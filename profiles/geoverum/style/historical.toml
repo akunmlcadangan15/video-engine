@@ -2,6 +2,7 @@
 [historical]
 paper_texture = "parchment"
 title_font = "serif"         # EB Garamond / Playfair / Cinzel, bukan Inter
-era_titles = ["15TH CENTURY", "19TH CENTURY EUROPE", "1809", "1885"]
+era_titles = ["15TH CENTURY", "19TH CENTURY EUROPE", "1809", "1885", "1863", "1982"]
+partition = { style = "split_region", colors = ["north", "south"] }
 flashback = { frame = "filmstrip", wash = "vintage" }
 region_fill = "flat_multicolor" # Spanyol merah, Portugal biru, dst untuk era kolonial
