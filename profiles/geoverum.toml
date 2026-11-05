@@ -54,15 +54,15 @@ scene = ["globe", "props", "beats", "radar", "terrain3d", "cross_section", "hist
 rules_file = "geoverum/creative.md"   # single source: profiles/geoverum/creative.md (do not duplicate rules here)
 
 [motion]                     # EXPERIMENTAL (A/B): a slightly snappier small-overlay token
-overlay_frames = 5           # 5 frames at 30 fps (~167 ms); documented A/B range 4-6, default engine 7
+overlay_frames = 10          # 10 frames at 30 fps (~333 ms): smooth rise, not snappy
 overlay_frames_range = [4, 6]
 
 [theme]
 route_colour = "#FFD417" # kuning putus-putus (referensi: Pan-American, rute)
 camera_drift_per_s = 0.06     # scale growth / s of the drift between camera pulses: 0.06 ln/s at the start of a wait,
                               # above [gates.camera] still_zoom_ln_s (moving), below it after 3.3 s
-camera_start_speed = 0.75      # globe and camera_path: first-key speed as a share of the first leg's mean
-camera_end_speed = 1.0         # globe and camera_path: last-key speed as a share of the last leg's mean when the shot ends there
+camera_start_speed = 0.85      # globe and camera_path: first-key speed as a share of the first leg's mean
+camera_end_speed = 0.85         # globe and camera_path: last-key speed as a share of the last leg's mean when the shot ends there
 region_edge = "glow"          # same-colour edge; [legibility] sets fill alpha and a 3-4 px outline, no blur
 region_style = "tint"         # flat translucent fill + glow
 label_style = "plain"         # EXPERIMENTAL: plain adaptive labels; opt into a dark box per pin / region / figure
@@ -88,13 +88,13 @@ bank_roll = 12                # deg of roll per frame width / s sideways
 bank_tilt = 9                 # deg of extra tilt per frame width / s of screen speed
 bank_max_roll = 20
 bank_max_tilt = 16
-bank_smooth_s = 0.5
+bank_smooth_s = 0.8
 
 [transitions]                 # EXPERIMENTAL (A/B): hard cut on a visual-type change, short state change on one map
 kind = "cut"                  # every boundary is a hard cut unless a rule or a segment transition_in says otherwise
 same_type = { map = "state" } # map -> map on the same map_asset: 0.2 s state dissolve, never a long crossfade
-state_s = 0.2                 # EXPERIMENTAL: state dissolve length (0.1-0.4 s)
-fade_s = 0.4                  # crossfade only when requested explicitly (timeline transition_in = "crossfade")
+state_s = 0.35                # EXPERIMENTAL: state dissolve length (0.1-0.4 s)
+fade_s = 0.5                  # crossfade only when requested explicitly (timeline transition_in = "crossfade")
 page_turn = false             # Arundaya rejects page-turn / paper transitions (Siam revision 2)
 map_morph = true              # boleh morph satelit -> skematik/kertas historis (002,006,011)
 

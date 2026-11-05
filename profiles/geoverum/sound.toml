@@ -2,8 +2,8 @@
 
 [sound]                       # SFX cues from render events + music ducked under the voiceover
 duck_db = -12.0               # music under speech (word timestamps of the voiceover)
-duck_attack_s = 0.15
-duck_release_s = 0.4
+duck_attack_s = 0.25
+duck_release_s = 0.6
 duck_merge_s = 0.5            # word gaps up to 0.5 s stay ducked
 fade_in_s = 0.3
 fade_out_s = 1.0

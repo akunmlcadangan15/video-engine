@@ -1,6 +1,8 @@
 # Motion and pacing: camera movement, shot duration, transitions
 [motion_new]
 camera = "continuous_push_in"
+ease = "smooth_cosine"  # rise in, ease out, zero slope at leg ends
+velocity_continuity = true
 shot_duration_s = [5, 20]    # long shot, overlay beat 1-3s inside the shot
 beat_s = [1, 3]
 transitions = ["zoom_through", "morph_satellite_to_flat", "wipe", "circle_mask", "filmstrip"]

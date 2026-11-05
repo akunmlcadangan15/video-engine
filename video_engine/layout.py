@@ -526,14 +526,15 @@ def camera_at(cam: dict, f: float) -> dict:
 
 
 def _glide(t):
-    return 0.35 * t + 0.65 * (1 - math.cos(math.pi * t)) / 2
+    # smooth cosine ease-in-out: rise in and ease out, zero slope at both ends, no velocity jump at leg boundaries
+    return (1 - math.cos(math.pi * t)) / 2
 
 
 def _quart_in_out(t):   # GSAP power3.inOut
     return 8 * t ** 4 if t < 0.5 else 1 - (-2 * t + 2) ** 4 / 2
 
 
-EASES = {"glide": _glide, "drift": lambda t: t, "whip": _quart_in_out, "lin": lambda t: t}
+EASES = {"glide": _glide, "drift": lambda t: t, "smooth": _glide, "whip": _quart_in_out, "lin": lambda t: t}
 PULSE_STEPS = (0.75, 0.5, 0.25, 0.0)    # pulse sizes (fractions of [camera] pulse_zoom) tried when a wait conflicts
 PULSE_FLOOR = 1e-3                      # ln zoom; a smaller pulse size is 0 (drift only)
 _LABEL_MOVE = re.compile(r"\bat frame (\d+)\b")
