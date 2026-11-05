@@ -1,7 +1,6 @@
 # Geoverum camera: what two reference Shorts do
 
-Status: analysis and proposal, nothing built. Measured 2026-11-02 for Arundaya, who named these two Shorts as the
-camera motion wanted for Geoverum Shorts.
+Status: reference analysis of camera motion for the Geoverum channel.
 
 | Ref | Video | Format |
 |---|---|---|

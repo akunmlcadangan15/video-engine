@@ -1,16 +1,10 @@
 # Design: landscape 16:9 output (1080p, 1440p, 4K)
 
-Status: design only, nothing built. Written against the working tree of 2026-11-02.
-Related: [proposals/formats-and-fps.md](formats-and-fps.md) (option 2 "a horizontal format" is the seed of this document; when this is built, fold that option into the reference docs and delete the proposal text).
+Status: proposal for review.
 
-**What this document answers**
-
-- Which code, profile values, JS and docs assume portrait or the 1080x1920 reference.
-- The target model: one reference canvas per orientation and one uniform scale `k`.
-- Every site to change (file:line), gates affected, 4K encoding and performance, a test and rollout plan.
-- What the owner must decide.
-
-Conventions: "confirmed" = read in the source; "uncertain" = inferred or not run. Nothing here was rendered: `vendor/` (Node, Chrome, HyperFrames) is not installed in the audit environment, so every statement about HyperFrames CLI behaviour is uncertain until `hyperframes render --help` and a real 4K render are run (phase 0).
+This document specifies how the engine supports landscape 16:9 output alongside the existing portrait 9:16
+(Shorts) path. It details which code and profile values assume portrait, the proposed model of one reference canvas
+per orientation under a uniform scale `k`, and the affected sites, gates, encoding, performance and test plan.
 
 ---
 

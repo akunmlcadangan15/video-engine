@@ -1,137 +1,93 @@
-# Kamera 3D penuh untuk HyperFrames (dua fase pertama)
+# Proposal: Kamera 3D Penuh untuk HyperFrames
 
-Status: proposal, belum dibangun. Untuk Arundaya, sebagai tindak lanjut riset sistem gerakan kamera
-(dokumen: `camera-research.md` di root workspace) dan kendala bahwa kamera saat ini dibatasi ke tilt tunggal.
+Status: proposal final untuk ditinjau. Dokumen ini mandiri.
 
-## Ringkasan
+## 1. Ringkasan
+Mesin video saat ini memakai model kamera planar 2.5D dengan state `{x, y, s, tilt(rotateX), roll(rotateZ)}`,
+diterapkan sebagai layer CSS 3D pada template HyperFrames dan dicerminkan di Python untuk kebutuhan gate. Model ini
+tidak mendukung translasi kedalaman (`translateZ`), rotasi `rotateY`, maupun pose 3D bebas.
 
-Kamera HyperFrames sekarang adalah transform **2.5D**: state `{x, y, s, tilt(rotateX), roll(rotateZ)}`
-(`hyperframes.camera_plan`), diterapkan sebagai layer CSS 3D di `template/index.html` (`#tilt`/`#roll`),
-dengan "cermin" Python `camera3d.py` untuk gate. Tidak ada `translateZ`, `rotateY`, maupun pose 3D penuh.
+Proposal ini menambahkan **mode kamera 3D penuh (opt-in)** per segmen. Mode baru ini dirender melalui scene
+Three.js di dalam Chrome headless, dengan matematika yang dicerminkan di Python agar gate tetap dapat memvalidasi
+hasilnya. Mode default tetap planar sehingga tidak ada perubahan perilaku untuk proyek yang sudah ada.
 
-Proposal ini menambah **mode kamera 3D penuh (opt-in)** per segmen (default tetap **planar**, tanpa perubahan
-perilaku), dengan state 6-DOF `(eye, target, roll, fov)` + orientasi quaternion, dirender via **scene Three.js**
-(pola yang sudah dipakai `hf/globe.js`), dan dicerminkan Python untuk gate. Dua fase pertama: (1) model data +
-sampler + cermin; (2) scene Three.js + capture determistik + integrasi.
+## 2. Latar belakang dan masalah
+- State kamera saat ini hanya memiliki dua derajat rotasi terbatas (tilt dan roll) dan translasi 2D.
+- Perluasan ke 3D penuh dibutuhkan untuk gerakan kamera sinematik: dolly, orbit, crane, truck, serta yaw/pitch/roll
+  bebas pada konten peta, kartu, dan globe.
+- Karena gate memvalidasi komposisi (misalnya sudut layar yang menampakkan peta), setiap perubahan model kamera harus
+  disertai cermin matematis yang setara di Python.
 
-## Tujuan
-- Memberi **full 3D camera motion** (dolly/orbit/crane/truck, yaw/pitch/roll bebas) untuk segmen peta/kartu/globe.
-- Mempertahankan kompatibilitas penuh dengan mode planar yang ada (tidak merusak build & gate saat ini).
-- Menjaga **determinisme frame-akurat** (kontrak "sampleCamera(frameIndex, fps) murni", ala Remotion `useCurrentFrame()`).
-- Membuat matematika kamera **dapat diperiksa** oleh gate (cermin Python + metrik).
+## 3. Tujuan dan lingkup
+Tujuan:
+- Menyediakan full 3D camera motion untuk segmen HyperFrames dengan tetap mempertahankan kompatibilitas penuh
+  terhadap mode planar yang ada.
+- Memastikan determinisme frame-akurat (sampling berbasis indeks frame).
+- Menjaga setiap transform kamera dapat diperiksa oleh gate melalui cermin Python.
 
-## Non-tujuan (fase ini)
-- Tidak mengganti model kamera native (footage) — tetap 2D crop-pan-zoom via Rust/ffmpeg.
-- Tidak membangun **layer "direktur"** idiom sinematik (Virtual Cinematographer/Darshak) — fase 3, di luar lingkup.
-- Tidak mengubah skema `master_timeline.json` yang ada secara breaking.
+Lingkup yang tidak termasuk:
+- Model kamera native untuk footage (tetap 2D crop-pan-zoom).
+- Lapisan direktur sinematik otomatis (idiom/planning tingkat lanjut).
+- Perubahan skema `master_timeline.json` yang bersifat breaking.
 
-## 1. Model data (Fase 1)
-
-### 1.1 Flag mode
-Profil `[camera]` baru:
-```toml
-[camera]
-mode = "planar"        # "planar" (default, perilaku sekarang) | "3d"
-```
-Bisa dioverride per segmen: `segments[].camera_mode = "3d"`.
-
-### 1.2 CameraKey diperluas (opsional, hanya saat mode=3d)
-Field baru di `timeline.CameraKey`:
+## 4. Desain
+### 4.1 Model data
+Profil baru: `[camera] mode = "planar" | "3d"` (default planar, dapat dioverride per segmen).
+Kunci kamera (`CameraKey`) menerima field opsional saat mode 3D:
 ```json
 { "at_frame": 0,
-  "eye":   [0.0, 0.0, 10.0],   // posisi kamera, koordinat adegan 3D
-  "target": [0.0, 0.0, 0.0],    // titik look-at
-  "roll": 0.0,                  // (deg) sekitar sumbu forward, opsional
-  "fov": 50.0,                  // (deg) opsional; default profil
+  "eye": [0.0, 0.0, 10.0],
+  "target": [0.0, 0.0, 0.0],
+  "roll": 0.0,
+  "fov": 50.0,
   "move": "glide", "hold": 0 }
 ```
-Field planar (focus/zoom/tilt) tetap valid di mode planar. Di mode 3d, `focus/zoom` dapat diturunkan dari
-`eye/target` bila profil memintanya (map ke cover fit), tetapi bentuk kanonik adalah eye/target.
-
-### 1.3 State kamera 3D (wadah serialisasi)
+State kamera 3D diserialisasi sebagai posisi, orientasi quaternion, dan fov:
 ```json
-{ "position": [x, y, z],
-  "orientation": { "quaternion": [x, y, z, w] },
-  "fovDeg": 50, "aspect": 0.5625, "near": 0.1, "far": 1000 }
+{ "position": [x, y, z], "orientation": {"quaternion": [x, y, z, w]}, "fovDeg": 50 }
 ```
-Orientasi disimpan sebagai **quaternion** (hindari gimbal lock); Euler hanya untuk authoring/lapor.
+### 4.2 Sampler determistik
+Fungsi murni `sample_camera_3d(track, frame)` menghasilkan state kamera per frame. Interpolasi posisi memakai
+spline Catmull–Rom atau cubic Bézier dengan parameterisasi arc-length; orientasi memakai quaternion SLERP.
+Tidak ada ketergantungan pada waktu nyata.
+### 4.3 Rendering
+Modul `hf/scene3d.js` dirender memakai Three.js: peta dipasang sebagai plane 3D bertekstur (reuse aset yang ada),
+dan `THREE.PerspectiveCamera` digerakkan dari sampler setiap frame. Sub-frame motion blur bersifat opsional.
+### 4.4 Cermin Python dan gate
+Cermin proyeksi perspektif penuh ditambahkan (position + lookAt + fov). Gate yang terdampak:
+| Gate | Dampak |
+|---|---|
+| M02 (resolusi peta) | dihitung lewat view-projection pada titik terdalam |
+| M03 (tilt cover) | digeneralisasi ke cek sudut layar pada proyeksi 3D |
+| R56 (gerak kamera) | ditambah metrik kecepatan/percepatan serta kecepatan sudut |
 
-### 1.4 Sampler determistik
-Fungsi murni di Python yang menghasilkan state per frame:
-`camera_plan_3d(scene, n, fps, theme) -> {start, legs, ...}` analog `camera_plan`, tetapi leg
-menginterpolasi **posisi** (Catmull–Rom / cubic Bézier + parameterisasi arc-length) dan **orientasi**
-(quaternion SLERP / spline), plus track roll/fov terpisah. Reuse easings yang ada (glide/whip/reveal/flow).
-Kontrak: `sample_camera_3d(track, frame) -> state` murni (tanpa wall-clock).
+## 5. Fitur yang diusulkan
+| Fitur | Hasil |
+|---|---|
+| FP1 | Mode kamera 3D dasar per segmen: peta sebagai plane 3D, kamera eye/target/fov dapat diatur |
+| FP2 | Sampler determistik beserta lintasan sederhana antar kunci |
+| FP3 | Cermin gate 3D minimal agar segmen 3D tetap tervalidasi |
+| FP4 (opsional) | Orientasi quaternion bebas penuh dan sub-frame motion blur |
 
-## 2. Rendering Three.js (Fase 2)
+## 6. Kompatibilitas
+- Default `mode="planar"` => build dan gate yang ada tidak berubah.
+- `engine validate` memisahkan kedua bentuk; penggunaan field 3D di luar mode 3D menghasilkan error yang jelas.
+- Identitas cache render diperluas dengan mode dan toolchain.
 
-### 2.1 Scene minimal yang layak (MV)
-- Modul baru `hf/scene3d.js` (pola `hf/globe.js`): tekstur map yang sama (assets) dipasang pada **plane
-  geometry 3D** (bukan CSS), dan `THREE.PerspectiveCamera` digerakkan dari `sample_camera_3d` tiap frame.
-- Ini memberi 3D sejati di atas konten peta yang sudah ada (parallax, oklusi, roll/pitch/yaw, dolly/orbit) tanpa
-  perlu membangun pipeline aset baru.
-- Mode planar tetap lewat `template/index.html` yang ada (tanpa perubahan).
+## 7. Pengujian
+- Unit test proyeksi terhadap referensi, quaternion SLERP, dan parameterisasi arc-length.
+- Golden frame untuk segmen 3D; perbandingan posisi/sudut Python vs browser dengan epsilon.
+- Benchmark: hold+drift, dolly, orbit, whip-pan, transisi rail, dan path tertutup.
 
-### 2.2 Capture determistik
-- Ikuti pola globe: buat canvas, `THREE.WebGLRenderer`; untuk tiap frame: `cam.position.copy(eye); cam.lookAt(target); cam.applyQuaternion(rollQ)`; `renderer.render(scene, cam)`; baca piksel (screenshot).
-- **Sub-frame motion blur** (opsional, profil): blend N sub-time per frame (shutter curve) untuk whip/pan cepat,
-  sesuai riset (vawe/Unity accumulation). Default mati; aktif hanya dengan `[render] hf_motion_blur = true`.
-
-### 2.3 Skema online (opsional, disarankan)
-```text
-POST /load-scene {scene, cameraTrack3d, seed, rendererConfig}
-POST /render-frame {frame, subframe?}
-GET  /frame/{n}.png
-```
-
-## 3. Cermin Python & dampak gate
-
-### 3.1 Perluas `camera3d.py` (atau module baru `camera_project.py`)
-- Tambah proyeksi kamera perspektif penuh (position + lookAt + fov → view-projection) untuk memetakan titik dunia →
-  layar, dan nilai **texels/piksel** serta **posisi layar** elemen (analog `project/unproject/corners_off_map`).
-
-### 3.2 Gate yang terdampak
-| Gate | Sekarang | Usulan |
-|---|---|---|
-| `M02` Map resolution | texels/px pada zoom terdalam (2D) | hitung via view-projection 3D pada titik terdalam |
-| `M03` Tilt cover | 4 sudut layar menampakkan peta (tilt CSS) | generalisasi: `corners_off_map` versi 3D (pojok layar ↔ sinar kamera memotong plane peta) |
-| `R56` Camera motion | metrik gerak 2D (motion_px) | tambah metrik 3D: posisi + kecepatan/awcepatan sudut + jerk |
-| `R56px` Measured motion (post) | motion luma terukur | tetap berlaku; pembanding baru untuk frame 3D |
-- Gate baru (disarankan, opsional): *subject framing* (error posisi/ukuran subjek di layar) dan *occlusion*.
-
-### 3.3 Benchmark
-Suite tetap (dari riset): hold+drift, dolly linear, push-in eased, orbit, percakapan dua subjek (line-of-interest),
-tracking+lead/lag, whip-pan+blur, transisi rail, oklusi, path tertutup. Rekam determinisme piksel, metrik kamera,
-framing error, rasio visibilitas, waktu render/frame.
-
-## 4. Kompatibilitas & migrasi
-- Default `mode="planar"` → build & gate lama **tidak berubah**.
-- `engine validate` menerima kedua bentuk; di mode planar, field 3D ditolak (dan sebaliknya) — error yang jelas.
-- Cache render diperluas identitasnya dengan `mode` + toolchain (sudah ada `ffmpeg_version`/pin).
-- Draft `engine draft` (map_path) tetap menulis field planar; mapping eye/target dari map_path ada di fase 3 opsional.
-
-## 5. Rencana fase & pengujian
-**Fase 1 (model + cermin):** CameraKey 3D, `camera_plan_3d` + `sample_camera_3d`, `camera_project.py`,
-perluasan M02/M03/R56, unit test (`test_camera3d_full.py`): proyeksi vs referensi, quaternion SLERP, arc-length,
-epsilon posisi/sudut Python vs browser (bila ada harness).
-**Fase 2 (render):** `hf/scene3d.js`, integrasi segmen, capture frame determistik, path perakitan ffmpeg, golden
-frames + benchmark, blur sub-frame opsional.
-
-## 6. Risiko & mitigasi
+## 8. Risiko dan mitigasi
 | Risiko | Mitigasi |
 |---|---|
-| Perubahan gate berisiko mematahkan build planar | mode default planar; gate 3D hanya aktif saat mode 3d |
-| Chrome headless/WebGL tidak deterministik | kontrak sampler murni + verifikasi hash frame; pola globe sudah membuktikan |
-| Biaya render 3D lebih tinggi (WebGL tiap frame) | reuse tekstur/cache segmen; sub-frame blur hanya saat diminta |
-| Math cermin melenceng dari browser | epsilon test lintas platform + golden frame |
+| Perubahan gate berpotensi memengaruhi build planar | mode default planar; gate 3D hanya aktif saat mode 3D |
+| Chrome headless/WebGL tidak deterministik | kontrak sampler murni + verifikasi hash frame |
+| Biaya render 3D lebih tinggi | reuse tekstur dan cache segmen; blur sub-frame hanya saat diminta |
+| Matematika cermin berbeda dari browser | tes epsilon lintas platform dan golden frame |
 
-## 7. Keputusan & pertanyaan tersisa
-**Keputusan (2026-11-05, Arundaya):**
-1. **Reuse aset yang ada** → plane map 3D bertekstur dari aset peta yang ada; bukan adegan three.js umum baru.
-5. **Quaternion bebas penuh** → orientasi 3D bebas; roll diterapkan sebagai rotasi quaternion penuh (bukan sekadar bank).
-
-**Tersisa (default usulan dalam kurung):**
-2. FOV → default **linear/monotone** (hindari overshoot lensa); boleh dibuka per-key di fase lanjutan.
-3. Gate subject framing/occlusion → default **fase lanjutan** (bukan fase 1).
-4. Serialisasi track → default **dokumen JSON utuh** (kesederhanaan); opsi per-frame command bila kinerja menuntut.
-
+## 9. Keputusan desain yang masih terbuka
+1. Apakah `fov` boleh bervariasi per kunci (efek lensa) atau harus tetap linear/monotone?
+2. Apakah gate subject framing/occlusion diperlukan pada fase awal atau cukup pada fase lanjutan?
+3. Bentuk serialisasi track: dokumen JSON utuh versus perintah per-frame.

@@ -1,98 +1,77 @@
-# Geoverum: satu gaya penyutradaraan untuk 9:16 dan 16:9
+# Proposal: Penyutradaraan Satu Gaya untuk Dua Rasio (9:16 dan 16:9)
 
-Status: proposal konsep (analisis + desain), belum dibangun. Terkait: docs/proposals/landscape.md (teknis/geometri).
+Status: proposal final untuk ditinjau. Dokumen ini mandiri.
 
-## 1. Masalah
-- Geoverum sekarang 9:16 (YouTube Shorts). Target berikutnya: 16:9 (video biasa).
-- Keinginan: **satu gaya editing/penyutradaraan** berlaku untuk dua rasio.
-- Kebingungan: apa sebenarnya konsep penyutradaraan bila kanvas-nya berbeda ukuran.
+## 1. Ringkasan
+Profil Geoverum saat ini menyasar format 9:16 (YouTube Shorts). Proposal ini menyiapkan dukungan untuk format
+16:9 tanpa mengubah identitas gaya editing. Gagasan utamanya adalah memisahkan keputusan penyutradaraan menjadi
+dua lapisan: lapisan intent (cerita) yang sama untuk semua rasio, dan lapisan adaptor format yang menempatkan
+intent tersebut pada kanvas sesuai orientasi.
 
-## 2. Temuan riset (Exa)
-- Grabyo (vertical video production): vertikal ≠ horizontal. 16:9 memberi lebar, field of view, wide shot, lower-third;
-  9:16 memberi tinggi dan sedikit lebar, jadi komposisi **harus berubah**, bukan sekadar memotong sisi horizontal.
-  Poin kunci: video vertikal harus **diproduksi untuk platform-nya** (deliberate output), bukan diselamatkan dari feed horizontal.
-- VidFuego (center vs rule-of-thirds): di vertikal, **center framing** cocok untuk direct-address & demonstrasi simetris;
-  off-center memberi ruang untuk subjek kedua/objek/arah pandang. Komposisi diuji pada ukuran layar telepon, sisakan
-  ruang untuk caption & UI platform; jangan letakkan detail penting di tepi.
-- MediaScaleUp & StudioCut: strategi multi-format = **satu ide kreatif → banyak format**, dan tiap format disutradarai
-  dengan sengaja (bukan sekadar crop).
+## 2. Latar belakang dan masalah
+- Geoverum dikembangkan untuk 9:16; kebutuhan berikutnya mencakup 16:9.
+- Keputusan penyutradaraan saat ini tercampur dengan geometri portrait (safe area, penempatan caption, slot overlay).
+- Diperlukan model yang membuat satu gaya editing berlaku untuk kedua rasio tanpa memaksakan hasil.
 
-Kesimpulan riset: yang bisa di-share antar rasio adalah **keputusan cerita/shot** (apa yang dikomunikasikan dan kapan);
-yang harus berbeda adalah **framing/komposisi** (bagaimana menempatkan-nya di kanvas).
+## 3. Tujuan dan lingkup
+Tujuan:
+- Menyediakan satu gaya penyutradaraan yang berlaku untuk 9:16 dan 16:9.
+- Memisahkan keputusan cerita (dibagi lintas rasio) dari keputusan framing (spesifik orientasi).
+- Pastikan setiap format dirender dengan sengaja, bukan sekadar memotong hasil dari orientasi lain.
 
-## 3. Akar kebingungan
-Di engine sekarang, keputusan sutradara **tercampur** dengan geometri portrait:
-- draft prompt menulis `vertical documentary short`, OVERLAY_SLOTS 4 kotak portrait, fixed_y 1382, safe area 60/100,
-  zona layout vertikal, dan gate yang mengukur geometri portrait.
-- Sementara keputusan cerita (beat, hook, novelty, camera hold, cut, silence, keyword) sebenarnya **agnostik rasio**.
+Lingkup yang tidak termasuk:
+- Output 1:1 atau 4:5 sebagai format utama pada tahap awal.
+- Pengubahan ulang identitas visual brand Geoverum.
 
-Jadi tidak ada pemisahan eksplisit antara apa yang disutradarai (cerita) dan bagaimana ditempatkan (framing).
-
-## 4. Model yang diusulkan: Sutradara = Direksi (Intent) + Adaptor Format
-
-### Lapisan A — Directorial Intent (format-agnostik): APA yang disutradarai
-Kosa kata shot-intent yang **sama** untuk kedua rasio, menyatakan tujuan komunikasi, bukan geometri:
-| Intent | Arti kamera | Contoh |
+## 4. Model yang diusulkan
+### 4.1 Lapisan A: Directorial Intent (agnostik rasio)
+Shot intent menyatakan tujuan komunikasi, bukan geometri: establish, track, reveal, compare, journey, hold/read,
+reaction, contrast. Keputusan yang menyertainya (struktur beat, emphasis, ritme, kontinuitas, mood) bersifat sama
+untuk kedua rasio.
+### 4.2 Lapisan B: Format Adapter (spesifik orientasi)
+Setiap intent dipetakan ke framing konkret per orientasi:
+| Aspek | 9:16 | 16:9 |
 |---|---|---|
-| establish | memberi konteks/lingkungan | buka dengan peta luas |
-| track | mengikuti subjek yang bergerak | rute, perjalanan |
-| reveal | membuka fokus dari luas ke spesifik | zoom-in ke negara |
-| compare | menyandingkan dua hal (split) | dua panel, sebelum/sesudah |
-| journey | kamera bepergian (path multi-key) | terbang di sepanjang rute |
-| hold/read | diam agar teks terbaca | judul, fakta, peta statis |
-| reaction | menyorot respons/akibat | peta berubah warna |
-| contrast | menjentikkan kontras naratif | slow vs cepat, besar vs kecil |
+| Posisi subjek | center-dominant | rule-of-thirds |
+| FOV | ketat | lebar, menampilkan lingkungan |
+| Alur baca | atas ke bawah | kiri ke kanan |
+| Slot teks | judul atas, caption bawah | judul kiri-atas, caption lower-third |
+| Gerak kamera | dolly/z dominan | pan lateral, crane |
+| Watermark | kanan-atas | kanan-bawah |
+### 4.3 Profil dua orientasi
+Profil Geoverum membawa tabel nilai per orientasi (geometri + default framing), diadopsi dari pendekatan Units yang
+seragam untuk panjang dan posisi.
+### 4.4 Gate
+- Gate cerita (hook, novelty, camera motion, silence, keyword, CTA) berbasis detik dan dibagi lintas rasio.
+- Gate geometri (safe area, caption, layout, watermark) membaca nilai per orientasi.
 
-Keputusan yang ikut lapisan A (dibagi silang rasio):
-- struktur beat & urutan (draft), skor importance per elemen,
-- ritme: hook, novelty gap, camera hold, cut urgency, silence, keyword return (gate style P01/N01/H01/D01/S01/K*),
-- kontinuitas (line-of-interest sides, cut avoidance), mood & gaya visual (profile brand).
+## 5. Fitur yang diusulkan
+| Fitur | Hasil |
+|---|---|
+| F1 | Render 16:9 pada resolusi pilihan tanpa mengubah output portrait |
+| F2 | Teks, caption, dan safe area proporsional otomatis di 16:9 |
+| F3 | Watermark dan overlay menyesuaikan orientasi |
+| F4 | Gate geometri membaca Units per orientasi |
+| F5 | Draft dan prompt agnostik rasio |
+| F6 (opsional) | Layout zone/grid khusus peta untuk 16:9 |
 
-### Lapisan B — Format Adapter (per orientasi): BAGAIMANA menempatkan intent
-Pemetaan tiap intent ke framing konkret per kanvas. Tabel usulan (nilai = proposal, bukan hasil ukur):
-| Aspek | 9:16 (portrait) | 16:9 (landscape) |
-|---|---|---|
-| Posisi subjek | center-dominant (direct-address, simetris) | rule-of-thirds; subjek di titik kuat; ruang arah pandang |
-| FOV / kedekatan | lebih ketat (subjek mengisi tinggi) | lebih lebar (tampilkan lingkungan) |
-| Alur baca | atas → bawah (vertikal) | kiri → kanan (horizontal) |
-| Ruang negatif | sedikit (layar sempit), dipakai untuk teks | lebih banyak; dipakai untuk atmosfer |
-| Slot teks/overlay | title atas, peta tengah, caption band bawah (0.70-0.82 H) | title kiri-atas, peta tengah, caption tengah-bawah (lower-third) |
-| Zona aman | 60 sisi / 100 atas-bawah; batas bawah UI Shorts | 96 sisi / 54 atas-bawah (5%) |
-| Gerak kamera | dominan dolly/z (masuk-keluar), pan kecil | pan kiri-kanan, crane, dolly lateral, lebih banyak ruang |
-| Watermark | kanan-atas | kanan-bawah (corner) |
+## 6. Kompatibilitas
+- Nilai default tetap portrait; proyek 9:16 yang ada tidak berubah.
+- Profil landscape dikenali melalui deklarasi orientasi; ketidakcocokan profil-orientasi menghasilkan error.
 
-### Profil dua-orientasi
-Profil Geoverum menjadi **kumpulan tabel per orientasi**:
-- `[format] orientation` (default portrait), dan `[landscape]` overlay (langkah B landscape.md) untuk nilai geometri.
-- Tambah tabel framing adaptor (mis. `[framing.portrait]`, `[framing.landscape]`) yang memetakan intent → default
-  FOV/posisi/slot. Ini yang membedakan konsep sutradara adaptor dari sekadar daftar px.
+## 7. Pengujian
+- Contoh proyek landscape (native + satu scene hyperframes) dibangun hingga lolos gate non-geometri.
+- Golden test per gate pada ukuran landscape.
+- Perbandingan visual portrait vs landscape melalui contact sheet untuk tinjauan.
 
-### Gate
-- **Gate cerita (bersama):** H01, N01, P01, P02, P03, D01, S01, C02, K01, K02, V01 — berbasis detik;
-  ambangnya milik ritme brand (diisi per orientasi), bukan logika geometri.
-- **Gate geometri (per orientasi):** O01, R62, R63, Z01, L01-L10, B01, F04 — membaca safe area/zona dari Units per orientasi.
-- **Gate kualitas (bersama):** M01, M02, M03, M04, G01, G02, R38, R56px, A01, A02, T02, R07, R14, W01, L22.
+## 8. Risiko dan mitigasi
+| Risiko | Mitigasi |
+|---|---|
+| Banyak situs memakai konstanta portrait | pemusatan pada modul Units dan penggantian mekanis |
+| Layout vertikal diasumsikan oleh planner | penangguhan fitur layout khusus hingga fase lanjutan |
+| Kualitas sumber untuk resolusi besar | kebijakan kualitas sumber ditetapkan per resolusi |
 
-## 5. Rekomendasi untuk Arundaya
-1. **Terima abstraksi Intent + Adapter** sebagai konsep penyutradaraan: keputusan cerita dibuat sekali (di-share),
-   framing diturunkan per orientasi. Ini yang membuat **satu gaya editing berlaku untuk dua rasio** tanpa memaksakan.
-2. **Jangan salvage/crop**: tiap format diauthor & dirender dengan sengaja (landscape.md memastikan itu).
-3. **Tentukan format utama** untuk nilai default (Shorts dulu) — landscape tinggal menumpang framework yang sama.
-4. **Tulis ulang draft prompt & creative.md agar agnostik rasio**: sebutkan intent, bukan `vertical documentary short`;
-   angka tempo dirunut ke profil per orientasi.
-5. **Urutan implementasi**: (a) units + profile per orientasi (landscape.md) → (b) adaptor framing (tabel di atas) →
-   (c) gate geometri baca Units. Semua tanpa menyentuh kode master sebelum disetujui.
-
-## 6. Pertanyaan terbuka
-- 1. Satu kanvas master untuk authoring narasi lalu render ganda, atau author per format? (Rekomendasi: intent sekali, framing per format.)
-- 2. Apakah 16:9 memakai durasi long-form (menit) atau tetap pendek? Ini menentukan ambang D01/H01/N01.
-- 3. Untuk 16:9, apakah peta tetap menjadi bahasa utama, atau boleh lebih banyak footage? (Brand vs bentuk.)
-- 4. Apakah perlu format 1:1 / 4:5 ke depan?
-
-## Sumber
-- Grabyo, What is vertical video production: https://about.grabyo.com/what-is-vertical-video-production/
-- VidFuego, Rule of Thirds vs Center Framing in Vertical Video: https://www.vidfuego.com/blog/thirds-center-vertical-framing/
-- MediaScaleUp, Aspect Ratios and Framing for Social Video: https://mediascaleup.com/post/aspect-ratios-and-framing-for-social-video-what-actually-works-video
-- StudioCut, Multi-Format Videos (16:9, 9:16, 1:1): https://studiocut.video/help-multi-format.html
-- Repo intern: docs/proposals/landscape.md; profiles/geoverum/creative.md; geoverum.toml; gate_registry.py.
-
+## 9. Keputusan desain yang masih terbuka
+1. Apakah 16:9 memakai durasi long-form atau tetap pendek?
+2. Apakah peta tetap menjadi bahasa visual utama di 16:9 atau boleh lebih banyak footage?
+3. Apakah format 1:1/4:5 perlu didukung ke depan?
