@@ -29,8 +29,8 @@ shadow_dx = 0
 shadow_dy = 3
 shadow_blur = 4               # libass \blur (gaussian); about a CSS 8 px blur
 shadow_alpha = 115            # ASS alpha 0x73 = 55 % opaque
-active_word_highlight = false
-emphasis_scale = 1.0
+active_word_highlight = true
+emphasis_scale = 1.15
 max_words = 3
 fixed_y = 1498                # caption centre, px at 1920 height (about 0.72 x 1920)
 max_bottom_y = 1480           # Z01: caption box bottom at or above the Shorts lower UI limit
