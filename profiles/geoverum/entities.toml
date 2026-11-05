@@ -1,4 +1,4 @@
-# Entity colours of the Geoverum channel: one colour per entity for a whole video (muted OKLCH palette in
+# Entity colours of the Geoverum channel: one colour per entity for a whole video (saturated glow palette (hasil rea-video) in
 # geoverum.toml `[theme] palette`). Loaded by geoverum.toml `include`.
 
 [theme.entities]
