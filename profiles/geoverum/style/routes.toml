@@ -1,0 +1,7 @@
+# Kategori baru: rute & garis ukur (digali dari 002 Pan-American, 004 meridian, 010 NAT)
+[routes]
+# Bukan putih lagi
+colors = { main = "yellow_dashed", danger = "red_solid", border = "white_dashed" }
+dash = { length_px = 18, gap_px = 12 }
+measure = { style = "double_arrow", label_above = true }
+meridian = { color = "cyan_glow", width_px = 4 }

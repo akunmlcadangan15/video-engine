@@ -1,0 +1,8 @@
+# Kategori baru: sistem ikon & karakter (digali dari semua 10 video)
+[icons]
+style = "flat_simple"
+emoji_allowed = true
+character_kinds = ["flag_character", "cartoon_soldier", "stick_figure", "avatar_speech"]
+danger_kinds = ["skull", "red_x", "warning_triangle", "prohibition"]
+tools = ["magnifier_circle", "target_ring", "flag_pin", "teardrop_pin"]
+humor = "light"              # emoji wajah, pun cabai->Chile, COMRADE!

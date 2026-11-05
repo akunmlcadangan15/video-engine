@@ -1,0 +1,10 @@
+# Kategori baru: warna semantik (digali dari semua 10 video)
+[semantic]
+red = "danger_prohibition"
+green = "focus_nature_correct"
+yellow = "highlight_route"
+cyan = "data_number"
+blue = "sea_compare"
+orange = "dry_data"
+# Fill region selalu flat translusen + glow, bukan block 3D
+region_fill = "flat_translucent_glow"

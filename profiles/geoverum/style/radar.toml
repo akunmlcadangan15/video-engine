@@ -1,0 +1,7 @@
+# Kategori baru: radar & flight-data (digali dari 008 Tibet, 010 Jet Stream)
+[radar]
+base = "dark_world"          # peta gelap + titik pesawat kuning
+plane_icon = "yellow_dot"    # bukan pesawat 3D
+features = ["tibetan_plateau_empty", "nat_tracks", "radar_blackout_zone"]
+track_colors = { east = "green", west = "red" }
+overlay_big_text = { text = "NAT", color = "yellow", size = "hero" }

@@ -1,0 +1,10 @@
+# Kategori baru: data-viz (digali dari 003,004,005,007,009,010)
+[dataviz]
+# Setiap video wajib ada minimal 1 elemen data-viz besar di layar
+required_each_video = true
+# Urutan preferensi
+kinds = ["percent_split", "count_up", "measure_bar", "counter", "comparison"]
+percent_split = { colors = ["cyan", "orange"], labels = ["80%", "20%"] }
+count_up = { colors = ["yellow"], style = "bold_big" }
+measure_bar = { dash = "yellow", arrow = "double", labels = ["mi", "km", "ft"] }
+comparison = { targets = ["New York City", "London to Baghdad", "France", "Costco parking lot"] }
