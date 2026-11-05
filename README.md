@@ -16,7 +16,7 @@ seterusnya), karena render yang gagal jauh lebih mahal daripada pemeriksaannya.
 ## Mulai cepat
 
 Syarat: Linux x64 atau macOS Apple Silicon (keduanya platform setara, lihat di bawah), Python 3.10 atau lebih baru, toolchain Rust, `ffmpeg` di `PATH`, dan sekitar 700 MB ruang disk untuk toolchain
-HyperFrames. Mesin render memakai ffmpeg 7.1 sampai 9.0; `engine doctor` memeriksa bahwa ffmpeg punya filter `subtitles`,
+HyperFrames. Mesin render memakai ffmpeg versi 7 atau lebih baru (termasuk yang terbaru); `engine doctor` memeriksa bahwa ffmpeg punya filter `subtitles,
 `loudnorm`, `sidechaincompress` serta encoder `libx264` dan `aac`.
 
 ```bash
@@ -48,19 +48,20 @@ bawah Rosetta).
 ```bash
 xcode-select --install                                       # compiler dan git
 # Homebrew: https://brew.sh
-brew install python@3.12 ffmpeg@7 rustup
-export PATH="$(brew --prefix ffmpeg@7)/bin:$PATH"            # ffmpeg@7 keg-only; atau set VIDEO_ENGINE_FFMPEG / VIDEO_ENGINE_FFPROBE
+brew install python@3.12 ffmpeg rustup            # ffmpeg terbaru; ffmpeg@7 juga didukung
+# Hanya jika memakai ffmpeg@7 (keg-only): export PATH="$(brew --prefix ffmpeg@7)/bin:$PATH" atau atur VIDEO_ENGINE_FFMPEG/FFPROBE
 rustup-init -y && source ~/.cargo/env
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[test]" maturin
 (cd rust/hypoverum_core_rs && maturin develop --release)     # ekstensi Rust
 engine doctor --install                                      # Node arm64, HyperFrames, Chrome mac-arm64 (versi terkunci di vendor/)
-engine doctor                                                # baris platform, ffmpeg mayor 7, filter dan encoder
+engine doctor                                                # baris platform, ffmpeg ≥ 7 (terbaru), filter dan encoder
 ```
 
 Beda dengan Linux: folder scratch bawaan adalah `$TMPDIR/video_engine` (macOS tidak punya `/dev/shm`; atur dengan
-`VIDEO_ENGINE_SHM`), dan Homebrew `ffmpeg@7` tidak masuk `PATH` sendiri. Tetap pakai ffmpeg mayor 7 karena `engine
-doctor` menolak versi lain. Catatan platform lengkap ada di [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#platforms).
+`VIDEO_ENGINE_SHM`), dan formula Homebrew `ffmpeg@7` bersifat keg-only sehingga tidak masuk `PATH` sendiri. Mesin
+menerima ffmpeg versi 7 ke atas, jadi versi terbaru bisa langsung dipakai; `ffmpeg@7` saja yang perlu ditambahkan ke
+`PATH` atau lewat `VIDEO_ENGINE_FFMPEG`. Catatan platform lengkap ada di [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#platforms).
 
 ### Wrapper build
 

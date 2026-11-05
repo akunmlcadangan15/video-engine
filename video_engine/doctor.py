@@ -150,9 +150,9 @@ def check_ffmpeg() -> Check:
     return Check("ffmpeg", not missing, want, f"missing {', '.join(missing)}" if missing else "present")
 
 
-# The engine is built against ffmpeg 7.x and verified on 9.x (8 lies between); other majors change filter and
-# encoder behaviour, and a new major may drop options again, so this is a range, not a floor.
-FFMPEG_MAJOR_MIN, FFMPEG_MAJOR_MAX = 7, 9
+# The engine is built against ffmpeg 7.x and kept forward-compatible: newer majors are accepted as they land so the
+# newest ffmpeg is usable. This is a floor, not a capped range; the filter/encoder check runs separately.
+FFMPEG_MAJOR_MIN = 7
 
 
 def parse_ffmpeg_major(text: str) -> int | None:
@@ -163,7 +163,8 @@ def parse_ffmpeg_major(text: str) -> int | None:
 
 
 def check_ffmpeg_version(text: str | None = None) -> Check:
-    """FAIL unless config.FFMPEG is ffmpeg FFMPEG_MAJOR_MIN..MAX. `text` is the `-version` output (default: run it)."""
+    """FAIL unless config.FFMPEG is ffmpeg major >= FFMPEG_MAJOR_MIN (newer majors are accepted). `text` is the
+    `-version` output (default: run it)."""
     if text is None:
         try:
             text = subprocess.run([config.FFMPEG, "-version"], capture_output=True, text=True, timeout=30).stdout
@@ -172,8 +173,8 @@ def check_ffmpeg_version(text: str | None = None) -> Check:
     first = next(iter(text.splitlines()), "").split(" Copyright")[0].removeprefix("ffmpeg version ").strip()
     major = parse_ffmpeg_major(text)
     got = first if major is not None else (f"unparseable ({first[:60]})" if first else "unrunnable")
-    ok = major is not None and FFMPEG_MAJOR_MIN <= major <= FFMPEG_MAJOR_MAX
-    return Check("ffmpeg-version", ok, f"{FFMPEG_MAJOR_MIN}.x-{FFMPEG_MAJOR_MAX}.x", got)
+    ok = major is not None and major >= FFMPEG_MAJOR_MIN
+    return Check("ffmpeg-version", ok, f"{FFMPEG_MAJOR_MIN}.x or newer", got)
 
 
 def _sha256(f: Path) -> str:
