@@ -106,7 +106,10 @@ def _recent(taste: dict, key: str) -> list[str]:
 
 
 def taste_text(taste: dict) -> str:
-    lines = [f"CHANNEL TASTE ({taste['channel']}; the channel profile rules win over general guidance)"]
+    lines = [f"CHANNEL TASTE ({taste['channel']}; historical preferences, not universal constraints). "
+             "Words such as never/always in these notes describe past preferences, not technical blockers. "
+             "The current project brief and segment intent take precedence for creative choices; "
+             "effective profile settings, source facts and render integrity remain authoritative."]
     lines += [f"- rule: {r}" for r in taste.get("rules", [])]
     lines += [f"- liked: {x['what']} (because {x['why']})" for x in taste.get("liked", [])]
     lines += [f"- rejected: {x['what']} (because {x['why']})" for x in taste.get("rejected", [])]
@@ -175,7 +178,10 @@ FORMAT
 - spans: contiguous word spans (storyboard spans; not to be confused with timeline Beat, the per-frame screen unit of a map scene): the first from_word 0, each from_word = previous to_word + 1, the last to_word = {max(0, len(inp.words) - 1)}.
 - goal: what the viewer must understand or feel at the end of the beat (one sentence).
 - pattern from the library; assets = the asset ids the beat shows; on_screen_text only with facts from the sources.
-- opener: one line describing the first 1.5 s; transition: how the beat is entered (e.g. continuous zoom, whip, cut).
+- opener: one line describing the opening; transition: how the beat is entered (e.g. continuous zoom, hold, cut).
+- The three directions must differ in storytelling strategy, pacing and use of evidence, not only colours or transitions.
+  Grounded may use a documentary hold; contrast may use comparison; bold may use a minimalist reveal or camera journey.
+  A static shot, negative space, a footage-led opener and an ending without a keyword callback are valid when purposeful.
 - self_scores: narration_fit and clarity 0-10, honest.
 Return JSON only, matching the schema."""
 
@@ -385,6 +391,8 @@ def review_parts(tl, inp, frames: list[tuple[float, int, bytes]], goals: dict[in
     words = " ".join(f"[{w.start_frame / fps:.2f}s]{w.word.strip()}" for w in inp.words)
     segs = "\n".join(f"- seg {s.seg_index}: {s.start_frame / fps:.2f}-{s.end_frame / fps:.2f} s, {s.engine_type}, "
                      f"asset {s.asset_id}" + (f", goal: {goals[s.seg_index]}" if goals.get(s.seg_index) else "")
+                     + (f", intent: {s.intent.model_dump(exclude_none=True)}" if s.intent else "")
+                     + (", hold: read" if s.hold == "read" else "")
                      for s in tl.segments)
     parts: list = [Text(f"""DRAFT REVIEW. Frames of the drafted video follow, each labelled with its time and segment.
 

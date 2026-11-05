@@ -216,11 +216,15 @@ def _raise_intensity(motion_at, i0: float, target: float) -> tuple[float, float]
 
 
 def r56_camera(tl: Timeline, project_dir: Path) -> tuple[list[Finding], list[dict]]:
-    """Fails a camera move whose start/end delta is under the minimum; raises intensity in memory when allowed."""
+    """Advise on camera motion; creative intensity changes require explicit local opt-in."""
     out, fixes = [], []
     W, H = tl.settings.width, tl.settings.height
     target = r56_min_px(W, H)
     for s in tl.segments:
+        if s.motion_expectation == "static":
+            evidence = s.intent.reason if s.intent and s.intent.motion else "legacy hold read"
+            out.append(Finding("R56", "info", f"static motion intent: {evidence}; camera left unchanged", s.seg_index))
+            continue
         if s.engine_type == NATIVE:
             cm = s.camera_move
             if cm is None or not (project_dir / s.source).is_file():
@@ -231,7 +235,7 @@ def r56_camera(tl: Timeline, project_dir: Path) -> tuple[list[Finding], list[dic
                 continue
             sw, sh = native.source_size(project_dir / s.source, s.is_still)
             motion_at = lambda i, s=s, sw=sw, sh=sh: _native_motion(s, tl, sw, sh, i)
-            cur, auto, field = cm.intensity, cm.auto_intensity, "camera_move.intensity"
+            cur, auto, field = cm.intensity, s.creative_autofix or cm.auto_intensity, "camera_move.intensity"
         elif s.engine_type == HYPERFRAMES:
             sc = s.gsap_scene_config
             if not (project_dir / sc.map_asset).is_file() or sc.camera_preset not in hyperframes.HF_PRESETS:
@@ -250,7 +254,7 @@ def r56_camera(tl: Timeline, project_dir: Path) -> tuple[list[Finding], list[dic
                 out.append(Finding("R56", "fail", "HyperFrames map with camera_preset 'static' has no motion", s.seg_index))
                 continue
             motion_at = lambda i, s=s: _hf_motion(s, tl, project_dir, i)
-            cur, auto, field = sc.camera_intensity, True, "gsap_scene_config.camera_intensity"
+            cur, auto, field = sc.camera_intensity, s.creative_autofix, "gsap_scene_config.camera_intensity"
         else:
             continue
         m = motion_at(cur)
@@ -258,7 +262,7 @@ def r56_camera(tl: Timeline, project_dir: Path) -> tuple[list[Finding], list[dic
             out.append(Finding("R56", "pass", f"motion {m:.0f}px >= {target:.0f}px at intensity {cur}", s.seg_index))
             continue
         if not auto:
-            out.append(Finding("R56", "fail", f"motion {m:.0f}px < {target:.0f}px at intensity {cur}; auto_intensity is false", s.seg_index))
+            out.append(Finding("R56", "fail", f"motion {m:.0f}px < {target:.0f}px at intensity {cur}; creative autofix is disabled", s.seg_index))
             continue
         r = _raise_intensity(motion_at, cur, target)
         if r is None:
@@ -272,6 +276,15 @@ def r56_camera(tl: Timeline, project_dir: Path) -> tuple[list[Finding], list[dic
             s.gsap_scene_config.camera_intensity = new_i
         fixes.append({"seg": s.seg_index, "path": field, "from": cur, "to": new_i})
         out.append(Finding("R56", "fix", f"motion {m:.0f}px < {target:.0f}px: {field} {cur} -> {new_i} ({new_m:.0f}px)", s.seg_index))
+    segments = {s.seg_index: s for s in tl.segments}
+    for f in out:
+        s = segments.get(f.seg)
+        if f.level == "fail" and s is not None:
+            if s.motion_expectation != "moving":
+                f.level = "warn"
+                f.message += "; no explicit motion expectation"
+            else:
+                f.message += f"; intent motion=moving: {s.intent.reason}"
     return out, fixes
 
 

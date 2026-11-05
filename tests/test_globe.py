@@ -286,7 +286,11 @@ def test_good_r56_and_p01_measure_globe_legs(project):
     seg = mf[s.start_frame + 5:s.start_frame + 35]
     assert all(m is not None and (m[0] > 0 or m[1] > 0) for m in seg)
     keys = [{"at_frame": 0, "lat": 0, "lng": 0, "altitude": 2.0}, {"at_frame": 40, "lat": 0, "lng": 0.01, "altitude": 2.0}]
+    from video_engine.timeline import SegmentIntent
     d, tl = _globe_proj(project, keys=keys, pins=[])
+    r = [x for x in layer2.r56_camera(tl, d)[0] if x.seg == 2]
+    assert r[0].level == "warn"
+    tl.segments[2].intent = SegmentIntent(motion="moving", reason="Expected globe rotation")
     r = [x for x in layer2.r56_camera(tl, d)[0] if x.seg == 2]
     assert r[0].level == "fail"
 

@@ -21,15 +21,15 @@ Schema check only.
 
 All pre-flight gates without rendering.
 `--captions` transcribes the voiceover for caption gates.
-`--write-fixes` writes auto-fixes (camera intensity, caption y overrides) back into the timeline.
+`--write-fixes` writes applied fixes back into the timeline. Camera intensity is only changed after segment `creative_autofix` or native `camera_move.auto_intensity` opt-in; caption placement retains its existing technical fixes.
 `--mode draft` reports a fail of every technical gate that a profile may make advisory as a warning (see [Draft builds](GATES.md#draft-builds)); the default `release` changes nothing.
 
-## `engine build P [--no-cache] [--relock] [--label L] [--timing-tsv F] [--ai-qa [--provider NAME]] [--resume] [--keep-workdir] [--mode release|draft] [--repin]`
+## `engine build P [--no-cache] [--relock] [--label L] [--timing-tsv F] [--ai-qa [--provider NAME]] [--resume] [--keep-workdir] [--mode release|draft] [--quality delivery|proxy] [--repin]`
 
 Full build.
 Alias: `engine render`.
 Exit 0 when the build published `out/final.mp4`; exit 1 on any gate fail or stage error (nothing published, `out/build_report.failed.json` written).
-Missing music or SFX of a profile `[sound]` (docs/SOUND.md): writes `P/out/sound_request/` and exits 3;
+Delivery-quality builds with missing music or SFX of a profile `[sound]` (docs/SOUND.md): write `P/out/sound_request/` and exit 3;
   `--resume` (no `--ai-qa` needed) imports the agent's `response.json` and continues the build.
 `--no-cache` deletes the files of the cache entry directories (`words/`, `segments/`, `maps/`, `models/`, `dom/`) first, except files leased by a running build (printed as `cache: kept N files leased by a running build`);
   the build repopulates them.
@@ -37,6 +37,8 @@ When the build's cache evictions deleted or skipped files, the command prints `c
 Other directories under the cache root are kept.
 `--timing-tsv` appends per-stage wall times.
 `--mode draft` is a trial build: technical gates that a profile may make advisory only warn, and the output goes to `out/draft/final.draft.mp4` with its own `build_report.json` (marked `"mode": "draft"`) and `build_manifest.json`; `out/final.mp4` and its report stay untouched and `engine deliver` refuses a draft (see [Draft builds](GATES.md#draft-builds)).
+Proxy does not create/import sound handoffs or append source credits; prepare missing sounds/credits explicitly with `python -m video_engine.sound P --credits` (resume that command after supplying the agent response).
+`--quality delivery` is the default and preserves the profile render settings. `--quality proxy` requires `--mode draft`: cheaper capture/encoding at unchanged dimensions and fps, output confined to `out/draft/`, separate visual cache keys, and effective settings recorded in report/manifest. It cannot be delivered or combined with `--repin`; it does not pin words back into the source timeline. See [Proxy render quality](BUILD.md#proxy-render-quality).
 `--repin` pins the caption words again before the pre-flight when they are stale (gate W01); it runs the same step as `engine words`. Without the flag a stale pin fails the build.
 `--relock` drops the sound lock of `out/build_manifest.json` and resolves music and SFX again (see [Build manifest](BUILD.md#build-manifest)).
 
@@ -147,7 +149,7 @@ Exit 0 when something was listed; exit 1 for an unknown gate, layer or path, a c
 
 Contact sheet `out/sheet.png`: one tile per segment (middle frame, 1/5 size), labelled `seg N HF|N mm:ss.f`.
 
-## `engine batch [P ...] [--queue F] [--fail-fast] [--label L] [--no-cache] [--relock]`
+## `engine batch [P ...] [--queue F] [--fail-fast] [--label L] [--no-cache] [--relock] [--mode release|draft] [--quality delivery|proxy]`
 
 Builds projects in queue order, one lock per project (`<project>/out/.batch.lock`).
 A failed item does not stop the queue unless `--fail-fast`.

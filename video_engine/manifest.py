@@ -213,7 +213,8 @@ def sounds_entry(tl, mix, kinds_of: dict[str, str], project_dir: Path | None = N
     return {"music": music, "sfx": sfx}
 
 
-def write(out_dir: Path, tl, project_dir: Path, *, mix, kinds_of: dict[str, str], budget, relock: bool) -> dict:
+def write(out_dir: Path, tl, project_dir: Path, *, mix, kinds_of: dict[str, str], budget, relock: bool,
+          quality: str = "delivery", source_profile: dict | None = None) -> dict:
     from . import profiles
     from .mixer import LOCAL_TONES
     prof = profiles.of(tl)
@@ -225,6 +226,8 @@ def write(out_dir: Path, tl, project_dir: Path, *, mix, kinds_of: dict[str, str]
         "relocked": relock,
         "timeline": entry(tf, project_dir) if tf.is_file() else None,
         "profile": {"name": prof.name, "blake3": prof.blake3},
+        "source_profile": source_profile or prof.report(),
+        "quality": quality, "render_quality": profiles.quality_report(tl),
         "inputs": [entry(p, project_dir) for p in timeline_files(tl, project_dir)],
         "fonts": [entry(p, project_dir) for p in font_files()],
         "sounds": sounds_entry(tl, mix, kinds_of, project_dir),

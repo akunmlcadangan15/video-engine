@@ -197,7 +197,10 @@ def test_bad_last_key_beyond_segment_fails_T02(project):
 
 
 def test_bad_leg_without_motion_fails_R56(project):
+    from video_engine.timeline import SegmentIntent
     p, tl = project(_path([PATH[0], {"at_frame": 30, "focus": [0.301, 0.3], "zoom": 1.2}]))
+    assert any(f.level == "warn" for f in layer2.r56_camera(tl, p)[0] if f.seg == 2)
+    tl.segments[2].intent = SegmentIntent(motion="moving", reason="Expected camera travel")
     out, fixes = layer2.r56_camera(tl, p)
     assert any(f.level == "fail" and "leg 1" in f.message for f in out if f.seg == 2) and not fixes
 

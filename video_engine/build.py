@@ -96,6 +96,7 @@ class BuildResult:
     failed: list[str] = field(default_factory=list)
     report: Path | None = None         # build_report.json, or build_report.failed.json when not ok
     cache: dict = field(default_factory=dict)   # cache lease session: leased count, evicted, skipped_leased, reclaimed
+    quality: str = "delivery"
 
 
 class BuildFailed(EngineError):
@@ -196,7 +197,7 @@ DRAFT_DIR = "draft"
 def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build", ai_qa=None,
           out: Path | None = None, keep_workdir: bool = False, pin_words: bool = True, resume: bool = False,
           resume_cmd: str | None = None, raise_on_fail: bool = True, relock: bool = False,
-          mode: str = "release", repin: bool = False) -> BuildResult:
+          mode: str = "release", repin: bool = False, quality: str = "delivery") -> BuildResult:
     """Build and publish `out` (default <project>/out/final.mp4). Any "fail" finding means a failed build: with
     raise_on_fail it raises BuildFailed, else it returns a BuildResult with ok=False and final=None. A stage error
     raises its exception. Every failed build keeps the published final and build_report.json byte-identical and
@@ -210,11 +211,21 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
     repin: when the pinned caption words are stale (gate W01), pin them again before the pre-flight."""
     if mode not in MODES:
         raise EngineError(f"unknown build mode {mode!r} (known: {', '.join(MODES)})")
+    profiles.validate_quality(quality, mode)
+    if quality == "proxy" and repin:
+        raise EngineError("proxy quality cannot --repin the source timeline; pin words separately")
     draft = mode == "draft"
     project_dir = Path(project_dir).resolve()
+    if quality == "proxy":
+        proxy_out = Path(out) if out is not None else project_dir / "out" / DRAFT_DIR / "final.draft.mp4"
+        if not proxy_out.resolve().is_relative_to(project_dir / "out" / DRAFT_DIR):
+            raise EngineError("proxy output must be inside the project out/draft directory")
     timer = Timer(run_label)
     t_all = time.perf_counter()
     tl = timeline.load(project_dir)
+    source_profile = profiles.of(tl).report()
+    tl = profiles.for_quality(tl, quality)
+    render_quality = profiles.quality_report(tl)
     budget = resources.budget(tl)
     timer.monitor = resources.Monitor()
     workdir = project_workdir(tl)
@@ -240,7 +251,7 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
                 fresh, meta = audio.pin_captions(project_dir, use_cache=use_cache)
                 tl.captions, tl.captions_meta = fresh.captions, meta
                 repinned = True
-            words, src = audio.captions_for(tl, project_dir, use_cache=use_cache, pin=pin_words)
+            words, src = audio.captions_for(tl, project_dir, use_cache=use_cache, pin=pin_words and quality != "proxy")
             st["note"] = f"{len(words)} words from {src}" + (" (stale pin replaced: --repin)" if repinned else "")
         with timer.stage("preflight") as st:
             pf_kwargs: dict[str, Any] = {"draft": True} if draft else {}   # release calls stay exactly as they were
@@ -253,14 +264,27 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
         if profiles.of(tl).sound is not None and not relock:
             lock = manifest.locked_sounds(manifest.load(out.parent), tl, sfx_kinds(tl), project_dir)
         if lock is None:
-            sound_request.ensure_sounds(tl, project_dir, resume=resume, resume_cmd=resume_cmd)
+            if quality == "proxy":
+                if sound_cache.missing(tl, profiles.of(tl)):
+                    raise EngineError("proxy quality requires prepared sounds; run python -m video_engine.sound "
+                                      "PROJECT --credits first (follow its --resume instructions), then retry proxy")
+            else:
+                sound_request.ensure_sounds(tl, project_dir, resume=resume, resume_cmd=resume_cmd)
         mix = mixer.plan(tl, project_dir, words, lock=lock)   # None unless the profile has [sound]
         if mix:
-            sound_cache.append_credits(project_dir, [r.provenance for r in mix.sounds.values()]
-                                       + ([mix.music.provenance] if mix.music else []))
+            provenances = [r.provenance for r in mix.sounds.values()] + ([mix.music.provenance] if mix.music else [])
+            if quality == "proxy":
+                credits_file = project_dir / "credits.txt"
+                text = credits_file.read_text() if credits_file.is_file() else ""
+                have = {ln.strip()[2:] for ln in text.splitlines() if ln.strip().startswith("- ")}
+                if any(c not in have for c in sound_cache.credit_lines(provenances)):
+                    raise EngineError("proxy quality cannot append missing sound credits to credits.txt; "
+                                      "run python -m video_engine.sound PROJECT --credits first, then retry proxy")
+            else:
+                sound_cache.append_credits(project_dir, provenances)
         with timer.stage("manifest") as st:
             man = manifest.write(out.parent, tl, project_dir, mix=mix, kinds_of=mix.kinds if mix else {},
-                                 budget=budget, relock=relock)
+                                 budget=budget, relock=relock, quality=quality, source_profile=source_profile)
             st["note"] = f"build_id={man['build_id']} sounds={'locked' if lock else 'resolved'}"
         with timer.stage("segments") as st, ThreadPoolExecutor(max_workers=1) as aud:
             audio_hit = audio.cached_master(tl, project_dir, workdir / "master.m4a", mix=mix,
@@ -317,13 +341,14 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
         failed = [f for f in findings if f.level == "fail"]
         res = BuildResult(None if failed else out, frames, tl.total_frames, segs, rep.summary(),
                           [f.line() for f in findings], loud, timer, ok=not failed, mode=mode,
-                          failed=[f.line() for f in failed], cache=held.report())
+                          failed=[f.line() for f in failed], cache=held.report(), quality=quality)
         L = profiles.loudness(tl)
         report = {
             "ok": not failed, "build_id": man["build_id"], "final": None if failed else str(out),
             **({"mode": "draft"} if draft else {}),
             "final_sha256": manifest.sha256(staged), "frames": frames, "expected_frames": tl.total_frames,
-            "profile": profiles.of(tl).report(),
+            "profile": profiles.of(tl).report(), "source_profile": source_profile,
+            "quality": quality, "render_quality": render_quality,
             "credits_manifest": [c.model_dump() for c in tl.credits_manifest],
             "additional_credits": bool(asset_credits),
             "video": video_info(staged),
@@ -368,6 +393,8 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
         raise
     except Exception as e:
         write_json_atomic(failed_report, {"ok": False, "final": None, "error": f"{type(e).__name__}: {e}"[:4000],
+                                          "mode": mode, "quality": quality, "render_quality": render_quality,
+                                          "source_profile": source_profile, "profile": profiles.of(tl).report(),
                                           **({"gates": gate_rows} if gate_rows else {}),
                                           "timings": [list(r) for r in timer.rows]})
         raise

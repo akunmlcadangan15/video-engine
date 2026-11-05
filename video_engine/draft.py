@@ -259,6 +259,11 @@ def schema(inp: Inputs) -> dict:
         "asset": {"type": "string", "enum": ids}, "narration": s, "why": s, "goal": s, "source_in_s": n,
         "camera_preset": {"type": "string", "enum": core.camera_presets()}, "intensity": n,
         "focus_box": {"type": "array", "items": n},
+        "intent": {"type": "object", "properties": {
+            "motion": {"type": "string", "enum": ["static", "moving"]},
+            "negative_space": b, "reason": {"type": "string", "minLength": 1, "maxLength": 500}},
+            "required": ["reason"], "additionalProperties": False},
+        "creative_autofix": b,
         "map_title": s, "map_camera": {"type": "string", "enum": list(HF_PRESETS)},
         "map_focus": {"type": "array", "items": n},
         "map_pins": {"type": "array", "items": {"type": "object", "properties": {
@@ -299,7 +304,8 @@ def prompt(inp: Inputs) -> str:
     dp = profiles.load(inp.profile or profiles.DEFAULT).draft
     mz = profiles.load(inp.profile or profiles.DEFAULT).camera.max_zoom
     lo, hi = dp.min_seg_s, dp.max_seg_s
-    extra = "".join(f"\n{6 + i}. {r}" for i, r in enumerate(dp.rules))
+    extra = ("\n\nCHANNEL CREATIVE DIRECTION (identity, defaults and alternatives; defaults are not hard constraints)"
+             + "".join(f"\n- {r}" for r in dp.rules)) if dp.rules else ""
     path_rule = ("\n   map_path (optional, instead of map_camera): camera keys {at_s, x, y, zoom, move}; the first at_s 0,"
                  "\n   then increasing; x,y 0..1 = the map point at the frame centre, zoom 1.0-" + f"{mz:.1f}" + "; the camera travels key"
                  "\n   to key inside one segment (one map segment visits several places). move = how the camera reaches"
@@ -329,10 +335,15 @@ CREDITS.TXT LINES (numbered; you only pick numbers, never write URLs):
 
 RULES
 1. Segments are contiguous: first start_frame 0, each start_frame = previous end_frame, last end_frame = {inp.total_frames}.
-   Length {lo}-{hi} s each ({round(lo * fps)}-{round(hi * fps)} frames).
+   Suggested length {lo}-{hi} s each ({round(lo * fps)}-{round(hi * fps)} frames); let the thought and readability decide.
 2. Design every segment from ITS OWN narration: put the words it covers in "narration", pick the asset that shows
    what those words say, and explain the choice in "why". No template: segment lengths, camera moves, overlays and the
-   number of maps follow the content, not a fixed pattern.
+   number of maps follow the content, not a fixed pattern. An opener need not be a moving map; a keyword callback is optional.
+   Optional intent = {{"motion":"static" or "moving", "negative_space":true/false, "reason":"specific purpose"}};
+   provide a motion choice or negative_space true and a nonblank reason. Intent is local to that segment, not a waiver
+   of black frames, broken sources or factual integrity. Static intent describes a deliberate hold; set camera_preset
+   (or map_camera) to static and do not add moving camera paths for a still shot. creative_autofix is false by default;
+   set true only when camera-intensity adjustment has been explicitly requested, never to silence a warning.
 3. kind image -> camera_preset (and intensity 0.6-2.0; use a focus_box [ymin,xmin,ymax,xmax] 0..1000 on the subject
    you saw in the thumbnail when the move should end on it). kind video -> source_in_s within the clip duration minus
    the segment length; camera_preset optional. kind map -> only for a map asset; map_pins x,y are 0..1 positions
@@ -536,6 +547,9 @@ def assemble(inp: Inputs, data: dict) -> tuple[Timeline, list[str], list[dict]]:
         d: dict = {"seg_index": i, "start_frame": s["start_frame"], "end_frame": s["end_frame"], "asset_id": a.id}
         if s.get("goal"):
             d["goal"] = str(s["goal"]).strip()[:200]
+        for key in ("intent", "creative_autofix"):
+            if key in s:
+                d[key] = s[key]
         kind = s.get("kind")
         n = s["end_frame"] - s["start_frame"]
         if kind == "map":

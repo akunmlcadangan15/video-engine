@@ -70,6 +70,12 @@ def apply(findings: list[Finding], tl: Timeline, *, draft: bool = False) -> list
             hint = f"; use gates.waive_with_reason (with a reason) for {g}" if g in WAIVABLE_WITH_REASON else ""
             out.append(Finding("GW01", "warn", f"project waive of {g} ignored: {g} is {why}{hint}"))
     for f in findings:
+        # Negative-space detection emits advisory levels directly. An explicit requirement
+        # must still win over local intent and project waivers, including in draft mode.
+        if f.gate == "R38space" and f.gate in req and f.level in ("warn", "info"):
+            f.level = "fail"
+            f.waived = None
+            f.message += "; R38space explicitly required: local negative-space intent does not waive this requirement"
         if f.level not in ("fail", "warn"):
             continue
         if f.gate in reasons and f.gate not in req:
@@ -98,6 +104,10 @@ def summary(findings: list[Finding], tl: Timeline) -> dict:
                 **({"frames": list(f.frames)} if f.frames else {}), **({"waived": f.waived} if f.waived else {})}
     reasons = waivers(tl)
     return {"required": sorted(required(tl)),
+            "segment_intents": [{"seg": s.seg_index,
+                                  **({"intent": s.intent.model_dump()} if s.intent else {}),
+                                  **({"hold": s.hold} if s.hold else {})}
+                                 for s in tl.segments if s.intent or s.hold],
             "fails": [row(f) for f in findings if f.level == "fail"],
             "warns": [row(f) for f in findings if f.level == "warn"],
             "waived": [row(f) for f in findings if f.waived],

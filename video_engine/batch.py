@@ -80,15 +80,22 @@ def load_queue(path: Path) -> list[Path]:
     return [Path(x).expanduser() if Path(x).is_absolute() else (p.parent / x) for x in items]
 
 
-def _default_build(project: Path, *, run_label: str, use_cache: bool, relock: bool):
+def _default_build(project: Path, *, run_label: str, use_cache: bool, relock: bool,
+                   mode: str = "release", quality: str = "delivery"):
     from . import build
-    return build.build(project, use_cache=use_cache, run_label=run_label, raise_on_fail=False, relock=relock)
+    return build.build(project, use_cache=use_cache, run_label=run_label, raise_on_fail=False, relock=relock,
+                       mode=mode, quality=quality)
 
 
 def run(projects: list[Path], *, build_fn=None, fail_fast: bool = False, run_label: str = "batch",
-        use_cache: bool = True, relock: bool = False) -> dict:
+        use_cache: bool = True, relock: bool = False, mode: str = "release", quality: str = "delivery") -> dict:
     """Build every project in order. A gate fail or exception is recorded; `fail_fast` stops after the first one."""
-    build_fn = build_fn or (lambda p: _default_build(p, run_label=run_label, use_cache=use_cache, relock=relock))
+    from . import profiles
+    profiles.validate_quality(quality, mode)
+    if mode not in ("release", "draft"):
+        raise EngineError(f"unknown build mode {mode!r}")
+    build_fn = build_fn or (lambda p: _default_build(p, run_label=run_label, use_cache=use_cache, relock=relock,
+                                                   mode=mode, quality=quality))
     seen, queue = set(), []
     for p in projects:
         rp = Path(p).resolve()

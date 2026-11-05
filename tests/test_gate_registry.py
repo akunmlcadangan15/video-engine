@@ -8,7 +8,7 @@ import pytest
 from video_engine import cli, gate_registry as reg, gate_tools, profiles
 
 ROOT = Path(__file__).resolve().parents[1]
-GATE_ID = re.compile(r'"((?:[A-Z]\d{2}|AS\d{2}|AIQA|GW01|R56px))"')
+GATE_ID = re.compile(r'"((?:[A-Z]\d{2}|AS\d{2}|AIQA|GW01|R56px|R38space))"')
 # Source files that create findings (a gate id in quotes anywhere in them is a gate id).
 SOURCES = [*(ROOT / "video_engine" / "gates").glob("*.py"), ROOT / "video_engine" / "qa.py",
            ROOT / "video_engine" / "ai" / "tasks.py", ROOT / "video_engine" / "build.py",
@@ -29,7 +29,7 @@ def test_good_registry_ids_are_unique_and_every_layer_is_known():
 
 
 def test_good_derived_id_lists_match_the_lists_before_the_registry():
-    assert set(profiles.STYLE_GATE_IDS) == OLD_STYLE | {"P03"} and len(profiles.STYLE_GATE_IDS) == 18   # + P03 (new)
+    assert set(profiles.STYLE_GATE_IDS) == OLD_STYLE | {"P03", "R38space"} and len(profiles.STYLE_GATE_IDS) == 19
     assert len(profiles.TECHNICAL_GATE_IDS) == 40 and "AS04" in profiles.TECHNICAL_GATE_IDS
     assert set(profiles.NEVER_ADVISORY) == OLD_NEVER
     assert profiles.KNOWN_GATE_IDS == profiles.STYLE_GATE_IDS + profiles.TECHNICAL_GATE_IDS

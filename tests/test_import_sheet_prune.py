@@ -58,6 +58,23 @@ def test_good_import_builds_loadable_project(src, tmp_path):
     assert urls <= {"https://ex.org/map", "https://ex.org/a", "https://ex.org/alt"}  # only URLs from inputs
 
 
+def test_import_does_not_synthesize_creative_autofix_permission(src, tmp_path):
+    from video_engine.gates.layer2 import r56_camera
+
+    dst = tmp_path / "no_autofix"
+    run(src, dst)
+    tl = timeline.load(dst)
+    for seg in tl.segments:
+        assert seg.creative_autofix is False
+        if seg.camera_move:
+            assert seg.camera_move.auto_intensity is False
+            seg.camera_move.intensity = 0.05  # deliberately weak imported camera, still no permission to fix
+    before = tl.model_dump_json()
+    _, fixes = r56_camera(tl, dst)
+    assert not fixes
+    assert tl.model_dump_json() == before
+
+
 def test_bad_substitute_without_manifest_row(src, tmp_path):
     with pytest.raises(EngineError, match="no manifest row"):
         run(src, tmp_path / "p", substitute={"c.jpg": "unknown.jpg"})

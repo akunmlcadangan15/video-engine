@@ -108,5 +108,8 @@ def test_bad_unknown_move(project):
 
 
 def test_bad_whip_without_travel_fails_R56(project):
+    from video_engine.timeline import SegmentIntent
     p, tl = project(_path([K0, {**WHIP, "focus": [0.301, 0.4]}]))
+    assert any(f.level == "warn" for f in layer2.r56_camera(tl, p)[0] if f.seg == 2)
+    tl.segments[2].intent = SegmentIntent(motion="moving", reason="Expected whip travel")
     assert any(f.level == "fail" and "leg 1" in f.message for f in layer2.r56_camera(tl, p)[0] if f.seg == 2)

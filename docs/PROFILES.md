@@ -45,7 +45,7 @@ The format of a channel profile and the profiles that ship with the engine.
   `[sound.kinds.<kind>]` for every mapped kind: `gain_db` (-60 to 0), `align` (`onset`: the file starts on the event; `peak`: its loudest sample lands on the event, default `onset`), `max_s` (cue length cap, default 2.0).
   Kinds: `pop`, `tick`, `whoosh`, `click`, `beep`, `counter_tick`, `impact`, `riser`.
   Unknown events or kinds and events mapped to a kind without a table are errors.
-- `[gates]`: `require`: style gate ids (H01, C01, C02, V01, N01, P01, P02, K01, K02, D01, D02, S01, AS01, AS02, AS03, AS05, AS06) whose fail findings block a build.
+- `[gates]`: `require`: style gate ids (including R38space; see `engine gates`) whose findings block a build. R38space is an explicit opt-in strict composition check; when required it overrides local negative-space intent.
   Every other style gate reports at most warn.
   Technical gates block on fail unless listed in `advisory`.
   `advisory`: technical gate ids this channel lowers from fail to warn (never T02, R07, R14, A01, A02, W01, R38, R56px, M01, M03, G01, L22).
@@ -71,20 +71,19 @@ The format of a channel profile and the profiles that ship with the engine.
 
 - `default`: the engine values; every anti-slop rule warns and no channel gate is required.
 - `geoverum`: map-led geography shorts.
-  - Captions: white Inter Bold 84 px (the approved size; 92 and 104 px were rejected in the 2026-11-01 A/B), no outline, never a backing box, soft shadow 0 3 px with blur 4 at 55 %, no per-word highlight, at most 2 words.
-    `fixed_y` 1382 (about 0.72 H), `max_bottom_y` 1480, `auto_place` inside `place_band` 0.60-0.76 H, `clearance` 0.
+  - Captions: white Inter Bold 84 px, no outline, optional backing box, soft shadow 0 3 px with blur 4 at 55 %, active-word emphasis and at most 3 words.
+    `fixed_y` 1498, `max_bottom_y` 1480, `auto_place` inside `place_band` 0.58-0.82 H, `clearance` 0. The effective timeline/profile, not dated taste notes, determines placement.
   - Audio: -14 LUFS and -1.5 dBTP (the default), music and SFX from Epidemic Sound only (A02), music ducked -12 dB under the voiceover with keyframed ramps.
     SFX cues: pin and figure `pop`, label and region `tick`, route and whip `whoosh` (peak on the move), `counter_tick` per counter step, title `impact`.
-  - Pacing: segments of 0.8-30 s with free cuts; hard cuts, with a 0.2 s state dissolve between segments on one map; no page turns and no map morphs.
+  - Pacing: suggested draft segments of 3-20 s with free cuts; hard cuts, with a 0.35 s state dissolve between segments on one map; page turns disabled and map morphs enabled. Channel creative direction separates identity, defaults and alternatives; these are not universal shot quotas.
   - Camera: zoom up to 16x; drift of 0.06 per second between moves (counts as P01 motion).
   - Render: HyperFrames quality `high` at CRF 8; intermediates CRF 8 `medium`; final CRF 12 `veryslow`, 10-bit (High 10), capped at 40 Mb/s; map JPEG quality 95.
   - Gates: every style gate is on except C01 (cut rate), V01 (visual type) and D02 (exact duration).
-    Only S01 is required.
-    R64, E01, R56, T01, R44, AS04, F03 and L02-L10 (except L06) are advisory.
+    No style gate is required (`require = []`). Technical advisory gates are listed in `profiles/geoverum.toml`; `engine gates --profile geoverum` shows their effective behavior.
     Anti-slop AS01-AS06 warn.
   - Look: muted OKLCH entity palette of 17 colours with six unpinned (teal, umber, wine, mauve, jade, olive), adaptive legibility (`[legibility]`, gate R64), printed typography (`[print]`), watermark "Geoverum" in Inter Bold 40 px, white at 85 % with a shadow.
   - Files: `profiles/geoverum.toml` holds the channel settings and `include`s `profiles/geoverum/entities.toml`, `legibility.toml`, `print.toml`, `sound.toml` and `layout.toml`.
-  - Taste notes: `profiles/taste/geoverum.json`; `engine taste geoverum --lint` checks them against this profile.
+  - Taste notes: `profiles/taste/geoverum.json`; `engine taste geoverum --lint` exposes historical differences from the active profile without rewriting dated feedback. The director labels them historical preferences, not hard constraints.
 
 ## Splitting a profile with `include`
 

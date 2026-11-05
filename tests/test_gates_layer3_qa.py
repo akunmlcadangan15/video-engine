@@ -32,6 +32,7 @@ def test_R38_bad_empty_top_third():
     a[: H // 3] = 128
     fs = layer3.r38_check(stats(a), 0, "t")
     assert len(fs) == 1 and "top third empty" in fs[0].message
+    assert fs[0].gate == "R38space" and fs[0].level == "warn"
 
 
 def test_R38_good_dark_but_detailed():
@@ -103,7 +104,7 @@ def test_R38_bad_alternating_empty_thirds_fail_post_render_qa(project, monkeypat
     frames = [_alternating(k).astype(np.uint8).tobytes() for k in range(6)]
     monkeypatch.setattr(qa, "iter_sample_frames", lambda v, w, h, step=5, threads=4: iter(frames))
     fs, _ = qa.pixel_gates(None, tl)
-    r38 = [f.message for f in fs if f.gate == "R38"]
+    r38 = [f.message for f in fs if f.gate == "R38space" and f.level == "warn"]
     assert any("top third empty" in m for m in r38) and any("middle third empty" in m for m in r38)
 
 
@@ -142,7 +143,7 @@ def test_bad_QA_no_samples_fails_instead_of_passing(project, monkeypatch):
     monkeypatch.setattr(qa, "iter_sample_frames", lambda v, w, h, step=5, threads=4: iter(()))
     fs, info = qa.pixel_gates(None, tl)
     assert info["samples"] == 0
-    assert any(f.gate == "R56px" and f.level == "fail" and "no sampled frames" in f.message for f in fs)
+    assert any(f.gate == "R38" and f.level == "fail" and "no sampled frames" in f.message for f in fs)
 
 
 def test_good_QA_single_sample_is_not_reported_as_no_motion(project, monkeypatch):

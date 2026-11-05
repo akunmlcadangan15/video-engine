@@ -39,6 +39,18 @@ What `engine build` does, in order, and how it stays repeatable.
      stage errors raise their exception.
 9. `build_report.json`: `ok`, `build_id` (same as the manifest), `final_sha256`, profile (`name`, `blake3` of the merged profile), segments (mode, cache hit, seconds), preflight findings, fixes, QA, loudness (with `measured_lra`), captions (`events`, `per_10s`, `mean_s`), timings, `resources` (`budget` and per stage `wall_s`, `cpu_s`, `peak_rss_mb` with per-tool peaks), `stage_keys`, `preflight_subtimings` (`layer2_dom`: seconds summed over HyperFrames segments of `build`, `browser_load`, `r63_rects`, `snapshots`, `bg_screenshots`, `glyph_masks`, `r64_numpy`; `probes` and `cache_hits` of the DOM probe cache, cache kind `dom`), `gates` (see [GATES.md](GATES.md)), `sound` with a profile `[sound]` (`music` provenance, `music_file`, `ducking`, `sfx` provenance per asset id, `cues`), `cache` (the build's lease session: `leased` file count, `evicted`, `skipped_leased`, `reclaimed_leases`; paths `<cache root>/<path>`), and `sfx_events` when the scenes have sound cues: one `{kind: "counter_tick", frame (absolute), seg, figure}` per frame on which a counter's shown text changes.
 
+## Proxy render quality
+
+Policy and rendering cost are independent. `engine build P --mode draft` keeps the profile's delivery settings. For a cheap iteration use:
+
+```bash
+engine-build P --mode draft --quality proxy
+```
+
+`proxy` keeps the source dimensions, fps, coordinates and narration timing. It overrides only build-local render settings: HyperFrames draft/CRF 28, native intermediate and final x264 ultrafast/CRF 28, tune none, 8-bit output, no VBV cap, map JPEG quality 85. It is not a colour/quality proof or a delivery export. `delivery` (the default) means the existing profile settings, not a new fixed preset.
+
+Proxy requires draft mode, confines output to `P/out/draft/`, does not pin captions into the master timeline, and rejects `--repin`. Pin words separately when needed. Proxy also requires sounds and their credit lines to be prepared beforehand: `python -m video_engine.sound P --credits` (and `--resume` after an agent response). It never imports a sound handoff or appends source credits during the preview build; correctly prepared cached/locked sounds still render normally. It does not bypass licence, decode, frame-count, audio or explicit-moving freeze checks. The source timeline/profile remain unchanged; resolved values are recorded as `quality`, `render_quality` and `source_profile` in report/manifest. Effective render configuration changes visual cache keys; audio may be reused when its inputs are unchanged. Existing per-segment/DOM caches and separate audio/composite passes remain in use; this is not a new full dependency scheduler.
+
 ## Build manifest
 
 `out/build_manifest.json`, written before any segment renders: `build_id` (random hex, also in `build_report.json`), `timeline` (sha256), `profile` (`name`, `blake3`), `inputs` (every referenced file), `fonts`, `sounds` (music with `brief_key` and provenance, SFX per kind), `toolchain` (ffmpeg version, x264 args, vendor pins, engine version), `seeds`, `resources`, `stage_keys` (composite and audio cache keys).

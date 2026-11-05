@@ -117,6 +117,17 @@ Penjelasan lengkap tiap tahap ada di [docs/BUILD.md](docs/BUILD.md).
 Semua perintah dan opsinya ada di [docs/CLI.md](docs/CLI.md). Kode keluar: 0 sukses, 1 gate atau engine gagal, 2 salah
 pakai, 3 menunggu jawaban agent.
 
+## Iterasi kreatif
+
+Gate integritas (decode, frame, sumber, audio) tetap wajib. Ruang kosong menjadi saran `R38space`; gerak rendah menjadi peringatan kecuali segmen secara eksplisit mengharapkan gerak. `intent` lokal mendokumentasikan still/negative space yang disengaja; autofix intensitas kamera kini opt-in. Arahan kreatif memisahkan identitas, default, dan alternatif, bukan satu pola cerita wajib. Detail: [timeline](docs/TIMELINE.md) dan [gate](docs/GATES.md).
+
+```bash
+engine-build P --mode draft --quality proxy  # encode/capture murah, geometri tetap
+engine-build P                              # pengaturan delivery profil, gate release
+```
+
+Proxy tidak mengubah timeline sumber atau menimpa final delivery dan tidak dapat dikirim. `--mode draft` tanpa `--quality proxy` tetap memakai kualitas profil. Lihat [kualitas proxy](docs/BUILD.md#proxy-render-quality).
+
 ## Profil channel
 
 Gaya dan aturan per channel ada di `profiles/`: `default.toml` (nilai dasar mesin) dan satu berkas per channel

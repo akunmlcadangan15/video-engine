@@ -1,4 +1,4 @@
-"""Layer 3 visual snapshot gates: R38 (no empty third, no black frame) on one snapshot per segment, computed in Rust.
+"""Layer 3 visual snapshot gates: R38 (black/decode integrity), R38space (negative-space advice) on one snapshot per segment, computed in Rust.
 Snapshots: native segments from the camera math at 60% of the segment (one source frame, warped at 1/4 size);
 HyperFrames segments from the R63 DOM probe screenshot. Optional AI QA (`--ai-qa`, any AI provider) runs on the same snapshots."""
 from __future__ import annotations
@@ -9,7 +9,7 @@ from pathlib import Path
 import hypoverum_core_rs as core
 
 from .. import native
-from ..timeline import NATIVE, Timeline
+from ..timeline import NATIVE, SegmentIntent, Timeline
 from ..util import EngineError
 from .core import Finding
 
@@ -21,7 +21,7 @@ BLACK_MEAN = 12.0
 THIRD_NAMES = ("top", "middle", "bottom")
 
 
-def r38_check(stats: tuple, seg: int | None, what: str) -> list[Finding]:
+def r38_check(stats: tuple, seg: int | None, what: str, intent: SegmentIntent | None = None) -> list[Finding]:
     mean, black, std, det = stats
     out = []
     if black > BLACK_FRAC or mean < BLACK_MEAN:
@@ -29,7 +29,10 @@ def r38_check(stats: tuple, seg: int | None, what: str) -> list[Finding]:
         return out
     for k in range(3):
         if std[k] < EMPTY_STD and det[k] < EMPTY_DETAIL:
-            out.append(Finding("R38", "fail", f"{what}: {THIRD_NAMES[k]} third empty (luma std {std[k]:.1f}, detail {det[k]:.2f})", seg))
+            intentional = intent is not None and intent.negative_space
+            reason = f"; intentional negative space: {intent.reason}" if intentional else ""
+            out.append(Finding("R38space", "info" if intentional else "warn",
+                               f"{what}: {THIRD_NAMES[k]} third empty (luma std {std[k]:.1f}, detail {det[k]:.2f}){reason}", seg))
     return out
 
 
@@ -65,8 +68,9 @@ def r38_snapshots(tl: Timeline, project_dir: Path, dom_snaps: dict[int, str], sa
     stats = core.frame_stats([snaps[k] for k in keys], ow, oh)
     out = []
     paths = {}
+    intents = {s.seg_index: s.intent for s in tl.segments}
     for k, st in zip(keys, stats):
-        out += r38_check(st, k, "snapshot")
+        out += r38_check(st, k, "snapshot", intents.get(k))
         if save_dir:
             from PIL import Image
             save_dir.mkdir(parents=True, exist_ok=True)

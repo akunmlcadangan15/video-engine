@@ -87,6 +87,10 @@ def cmd_preflight(a) -> int:
 
 def cmd_build(a) -> int:
     from . import build
+    from . import profiles
+    profiles.validate_quality(a.quality, a.mode)
+    if a.quality == "proxy" and a.repin:
+        raise EngineError("proxy quality cannot --repin the source timeline; pin words separately")
     p = Path(a.project).resolve()
     if a.no_cache:
         from . import cache
@@ -98,7 +102,7 @@ def cmd_build(a) -> int:
     with ProjectLock(p):   # one build per project at a time (shared with `engine batch`)
         r = build.build(p, use_cache=True, run_label=a.label, ai_qa=_ai_qa(a, p), keep_workdir=a.keep_workdir,
                         resume=a.resume, resume_cmd=shlex.join(["engine", *argv, "--resume"]), raise_on_fail=False,
-                        relock=a.relock, mode=a.mode, repin=a.repin)
+                        relock=a.relock, mode=a.mode, repin=a.repin, quality=a.quality)
     for row in r.timer.rows:
         print("\t".join(str(x) for x in row))
     if a.timing_tsv:
@@ -114,6 +118,8 @@ def cmd_build(a) -> int:
     if r.mode == "draft":
         print("draft build: technical gates were lowered to warnings; out/final.mp4 is untouched and this file "
               "cannot be delivered (build again without --mode draft)")
+    if r.quality == "proxy":
+        print("proxy quality: low-cost full-geometry encode (not delivery quality)")
     _print_cache(r.cache)
     return 0
 
@@ -443,7 +449,8 @@ def cmd_batch(a) -> int:
         projects = [*batch.load_queue(Path(a.queue)), *projects]
     if not projects:
         raise EngineError("batch needs at least one project or --queue")
-    r = batch.run(projects, fail_fast=a.fail_fast, run_label=a.label, use_cache=not a.no_cache, relock=a.relock)
+    r = batch.run(projects, fail_fast=a.fail_fast, run_label=a.label, use_cache=not a.no_cache, relock=a.relock,
+                  mode=a.mode, quality=a.quality)
     print(json.dumps(r, indent=2, ensure_ascii=False))
     return 0 if r["ok"] else 1
 
@@ -581,6 +588,8 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--mode", choices=["release", "draft"], default="release",
                    help="draft: technical gates a profile may make advisory only warn; the output goes to "
                         "out/draft/final.draft.mp4 (out/final.mp4 is untouched) and cannot be delivered")
+    x.add_argument("--quality", choices=["delivery", "proxy"], default="delivery",
+                   help="proxy: low-cost full-geometry encode; requires --mode draft (default: delivery)")
     x.add_argument("--repin", action="store_true",
                    help="when the pinned caption words are stale (gate W01), pin them again before the pre-flight "
                         "(the same step as `engine words`)")
@@ -719,6 +728,9 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--label", default="batch")
     x.add_argument("--no-cache", action="store_true")
     x.add_argument("--relock", action="store_true")
+    x.add_argument("--mode", choices=["release", "draft"], default="release")
+    x.add_argument("--quality", choices=["delivery", "proxy"], default="delivery",
+                   help="proxy: low-cost full-geometry encode; requires --mode draft")
     x = add("cache", cmd_cache, "Cache maintenance. --prune deletes words/segments/maps entries not referenced by "
                                   "the current keys of the projects (default: every project passed via --project) and broken "
                                   "entries of the sound cache (sound/). Files leased by a running build are kept and "

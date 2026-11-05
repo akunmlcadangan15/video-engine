@@ -7,6 +7,10 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Ditambahkan
 
+- **Iterasi kreatif berbasis intent**: `segments[].intent` memisahkan static/moving dan negative space yang disengaja, dengan alasan lokal; `R38space` bersifat advisory, sementara black/decode dan integritas frame tetap wajib. Gerak rendah `R56px` hanya gagal untuk intent moving; static/read menjadi info. Kamera tidak lagi dinaikkan otomatis tanpa `creative_autofix` atau native `auto_intensity` eksplisit.
+- **Kualitas proxy terpisah dari kebijakan**: build/render/batch menerima `--quality proxy` hanya bersama `--mode draft`; capture/encode lebih murah dengan dimensi/fps tetap, output terisolasi, kunci cache visual mengikuti setting, provenance kualitas di laporan/manifest. Kualitas default tetap pengaturan delivery profil.
+- **Arahan kreatif fleksibel**: identitas/default/alternatif Geoverum, tiga strategi storyboard berbeda, review membaca intent; catatan selera lama dipertahankan sebagai preferensi historis, bukan aturan universal.
+
 - **Struktur P0 (kejelasan pemisahan lapisan)**: creative rules Geoverum kini satu sumber di
   `profiles/geoverum/creative.md` (`[draft] rules_file`, saling eksklusif dengan `rules` inline);
   konsep storyboard memakai `spans` (alias lama `beats` diterima saat membaca); tabel kanonis

@@ -26,6 +26,8 @@ Indeks seluruh dokumentasi. Cari pertanyaan Anda di tabel pertama, lalu buka dok
 | Ikut menulis kode | [CONTRIBUTING.md](../CONTRIBUTING.md) |
 | Melihat apa yang berubah | [CHANGELOG.md](../CHANGELOG.md) |
 | Membaca usulan yang belum dikerjakan | [proposals/](proposals/) |
+| Mengolah hasil bedah video menjadi profil | [REA-VIDEO.md](REA-VIDEO.md) |
+| Menjelajahi kategori gaya | [style-categories/](style-categories/) |
 
 ## Bahasa dan pembaca
 

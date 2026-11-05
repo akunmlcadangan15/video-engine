@@ -96,8 +96,8 @@ GATES: tuple[Gate, ...] = (
        "`require_land` a pin over water fails.",
        "math", "[gates.geo]"),
     _t("R56", "Camera motion",
-       "At least 100 px of camera motion at 1080x1920. Too little raises the intensity automatically (fix); every "
-       "`camera_path` leg is checked separately.",
+       "Camera motion under 100 px at 1080x1920 warns unless local intent expects motion; static intent is informational. "
+       "Intensity changes require segment.creative_autofix or explicit camera_move.auto_intensity.",
        "math"),
     _t("R62", "Caption margins",
        "The caption font stays at least 0.6 of the configured size after fitting, and the caption is inside the "
@@ -174,8 +174,11 @@ GATES: tuple[Gate, ...] = (
        "props"),
     # --- layer 3: visual -------------------------------------------------------------------------------------
     _t("R38", "Snapshot quality",
-       "One snapshot per segment: no black frame (black fraction above 0.85 or mean luma below 12) and no empty third.",
+       "Snapshots and sampled video frames must decode; no black frame (black fraction above 0.85 or mean luma below 12).",
        "visual", never=True),
+    Gate("R38space", "Negative space",
+         "Low-detail empty thirds warn by default; local intentional negative space with a reason is informational.",
+         "visual", "style", "segments[].intent.negative_space"),
     _t("AIQA", "AI visual QA",
        "Optional (`--ai-qa`): AI models judge the snapshots; overlapping or cut-off text fails, an unavailable "
        "provider warns.",
@@ -245,8 +248,8 @@ GATES: tuple[Gate, ...] = (
        "[gates.anti_slop] palette"),
     # --- finished file ---------------------------------------------------------------------------------------
     _t("R56px", "Measured motion",
-       "Sampled frames of every segment show visible motion (mean luma difference of at least 0.5); the frame count "
-       "equals the timeline.",
+       "Low sampled luma motion warns by default, is informational for static/read intent, and fails for explicit "
+       "moving intent. Motion expectations never exempt black frames or decode failures.",
        "post", never=True),
     _t("A01", "Loudness",
        "The final file is at `target_lufs` within `tolerance_lu` and its true peak is at most `true_peak`.",

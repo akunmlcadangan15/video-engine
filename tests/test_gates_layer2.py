@@ -31,7 +31,7 @@ def test_R56_good(project):
 
 
 def test_R56_fix_auto_raises_intensity(project):
-    p, tl = project(lambda d: d["segments"][0]["camera_move"].update(intensity=0.2))
+    p, tl = project(lambda d: d["segments"][0]["camera_move"].update(intensity=0.2, auto_intensity=True))
     fs, fixes = layer2.r56_camera(tl, p)
     assert fixes and fixes[0]["seg"] == 0 and fixes[0]["to"] > 0.2
     assert tl.segments[0].camera_move.intensity == fixes[0]["to"]
@@ -39,19 +39,24 @@ def test_R56_fix_auto_raises_intensity(project):
 
 
 def test_R56_fix_hyperframes_intensity(project):
-    p, tl = project(lambda d: d["segments"][2]["gsap_scene_config"].update(camera_intensity=0.1))
+    def mut(d):
+        d["segments"][2]["gsap_scene_config"].update(camera_intensity=0.1)
+        d["segments"][2]["creative_autofix"] = True
+    p, tl = project(mut)
     fs, fixes = layer2.r56_camera(tl, p)
     assert fixes and fixes[0]["path"] == "gsap_scene_config.camera_intensity"
 
 
 def test_R56_bad_auto_disabled(project):
     p, tl = project(lambda d: d["segments"][0]["camera_move"].update(intensity=0.2, auto_intensity=False))
-    assert "auto_intensity is false" in fails(layer2.r56_camera(tl, p)[0], "R56")[0].message
+    fs, fixes = layer2.r56_camera(tl, p)
+    assert not fixes
+    assert any(f.gate == "R56" and f.level == "warn" and "autofix is disabled" in f.message for f in fs)
 
 
 def test_R56_bad_static_still(project):
     p, tl = project(lambda d: d["segments"][0]["camera_move"].update(preset="static"))
-    assert fails(layer2.r56_camera(tl, p)[0], "R56")
+    assert any(f.gate == "R56" and f.level == "warn" for f in layer2.r56_camera(tl, p)[0])
 
 
 # R62 ---------------------------------------------------------------------------------------------------------------

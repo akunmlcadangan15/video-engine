@@ -137,7 +137,7 @@ class CameraMove(Strict):
     preset: str = "ken_burns_zoom_in"
     intensity: float = Field(1.0, ge=0.0, le=6.0)
     focus_box: Optional[list[float]] = Field(None, min_length=4, max_length=4)   # [ymin, xmin, ymax, xmax] 0..1000 (Gemini box order)
-    auto_intensity: bool = True
+    auto_intensity: bool = Field(False, strict=True)   # creative mutation requires explicit opt-in
 
     @model_validator(mode="after")
     def _focus(self):
@@ -1133,6 +1133,22 @@ class Overlay(Strict):
         return self.kind != "reserve"
 
 
+class SegmentIntent(Strict):
+    """Local creative expectations, never an exemption from render/decode integrity."""
+    motion: Optional[Literal["static", "moving"]] = None
+    negative_space: bool = Field(False, strict=True)
+    reason: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def _intent(self):
+        self.reason = self.reason.strip()
+        if not self.reason:
+            raise ValueError("intent.reason must not be blank")
+        if self.motion is None and not self.negative_space:
+            raise ValueError("intent needs motion or intentional negative_space")
+        return self
+
+
 class Segment(Strict):
     seg_index: int = Field(ge=0)
     engine_type: Literal["NATIVE_RUST_FFMPEG", "HYPERFRAMES_GSAP"]
@@ -1149,7 +1165,16 @@ class Segment(Strict):
     transition_in: Optional[Literal["cut", "crossfade", "state", "zoom_whip", "zoom_through", "page_turn"]] = None   # overrides profile
     grade: Optional[Grade] = None              # full-frame grade (video_engine/grade.py); None = profile [grade]
     hold: Optional[Literal["read"]] = None     # intent: the viewer reads over the whole segment (gates/severity.py)
+    intent: Optional[SegmentIntent] = None
+    creative_autofix: bool = Field(False, strict=True)
     goal: Optional[str] = Field(None, max_length=200)   # what the viewer must understand or feel (information)
+
+    @property
+    def motion_expectation(self) -> Optional[str]:
+        # Explicit local intent takes precedence over the backwards-compatible read hold.
+        if self.intent and self.intent.motion is not None:
+            return self.intent.motion
+        return "static" if self.hold == "read" else None
 
     @property
     def kind(self) -> str:

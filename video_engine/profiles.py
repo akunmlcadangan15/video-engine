@@ -1322,6 +1322,42 @@ def _inline_rules_file(name: str, flat: str) -> str:
         raise EngineError(f"profile '{name}': cannot inline [draft] rules_file")
     return flat
 
+QUALITIES = ("delivery", "proxy")
+
+
+def validate_quality(quality: str, mode: str) -> None:
+    if quality not in QUALITIES:
+        raise EngineError(f"unknown render quality {quality!r} (known: {', '.join(QUALITIES)})")
+    if quality == "proxy" and mode != "draft":
+        raise EngineError("proxy quality requires --mode draft")
+
+
+def for_quality(tl: "Timeline", quality: str) -> "Timeline":
+    """Build-local render override; geometry, creative settings and the source timeline remain unchanged."""
+    if quality not in QUALITIES:
+        raise EngineError(f"unknown render quality {quality!r}")
+    if quality == "delivery":
+        return tl
+    render = RenderProfile(
+        hf_quality="draft", hf_crf=28, segment_crf=28, segment_preset="ultrafast", segment_tune="none",
+        final_crf=28, final_preset="ultrafast", final_tune="none", final_maxrate_kbps=None,
+        final_bit_depth=8, map_jpeg_quality=85,
+    )
+    local = tl.model_copy(deep=True)
+    local.profile_overrides = {**local.profile_overrides, "render": render.model_dump()}
+    return local
+
+
+def quality_report(tl: "Timeline") -> dict:
+    """Resolved settings actually passed to capture and encode, not nullable profile defaults."""
+    from . import hyperframes, maps
+    r = of(tl).render
+    q, crf, segment = hyperframes.encode_settings(tl)
+    return {"width": tl.settings.width, "height": tl.settings.height, "fps": tl.settings.fps,
+            "hf_quality": q, "hf_crf": crf, "segment_x264": segment, "final_x264": r.x264("final"),
+            "final_pix_fmt": r.final_pix_fmt(), "map_jpeg_quality": r.map_jpeg_quality or maps.MAP_JPEG_QUALITY}
+
+
 def of(tl: "Timeline") -> Profile:
     return load(tl.profile, tl.profile_overrides)
 

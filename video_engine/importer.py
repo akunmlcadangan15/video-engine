@@ -171,7 +171,7 @@ def import_shots(csv_path: Path, dst: Path, search: list[Path], *, credits_txt: 
             if key == "source_image":
                 preset = STILL_PRESETS[still_i % 2]
                 still_i += 1
-            seg["camera_move"] = {"preset": preset, "intensity": 1.0, "auto_intensity": True}
+            seg["camera_move"] = {"preset": preset, "intensity": 1.0, "auto_intensity": False}
         segs.append(seg)
     doc = {"project_id": dst.name, "settings": {"width": 1080, "height": 1920, "fps": fps, **(settings or {})},
            "credits_manifest": list(credits.values()),
