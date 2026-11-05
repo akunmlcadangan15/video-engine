@@ -1,7 +1,0 @@
-# Routes and measurement lines: highway, border, meridian systems
-[routes]
-# Bukan putih lagi
-colors = { main = "yellow_dashed", danger = "red_solid", border = "white_dashed" }
-dash = { length_px = 18, gap_px = 12 }
-measure = { style = "double_arrow", label_above = true }
-meridian = { color = "cyan_glow", width_px = 4 }

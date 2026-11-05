@@ -1,9 +1,0 @@
-# Radar and flight data: dark map, aircraft dots, track charts
-[radar]
-base = "dark_world"          # peta gelap + titik pesawat kuning
-plane_icon = "yellow_dot"    # bukan pesawat 3D
-features = ["tibetan_plateau_empty", "nat_tracks", "radar_blackout_zone", "blind_spot", "range_ring"]
-blind_spot_style = "occluded_zone"
-range_ring = { color = "white", alpha = 0.3 }
-track_colors = { east = "green", west = "red" }
-overlay_big_text = { text = "NAT", color = "yellow", size = "hero" }

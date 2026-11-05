@@ -1,6 +1,0 @@
-# Timeline and history: year titles, flashback, territory claims, treemap
-[timeline]
-year_big = { font = "serif", size = 120, color = "white_glow" } # 1802, 1959, 1337
-flashback_style = "filmstrip" # 011, 035
-territory_claim_wheel = { style = "pie_chart", labels = "flags" } # 031 Antarctica pie
-treemap = true # 031
