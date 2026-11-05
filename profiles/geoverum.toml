@@ -121,7 +121,7 @@ vo_fail_s = 0.8
 caption_warn_s = 0.2
 caption_fail_s = 1.0
 graphic_warn_s = 1.5
-graphic_fail_s = 2.5
+graphic_fail_s = 2.0
 open_on_moving_map = true
 
 [gates.camera]                # P01: planned camera motion
