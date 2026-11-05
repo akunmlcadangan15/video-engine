@@ -1,0 +1,6 @@
+# Kategori baru: motion & pacing (digali dari semua 027-046)
+[motion_new]
+camera = "continuous_push_in" # bukan pulse, bukan cut tiap detik
+shot_duration_s = [5, 20]    # rea: shot panjang, beat overlay 1-3s di dalam shot
+beat_s = [1, 3]
+transitions = ["zoom_through", "morph_satellite_to_flat", "wipe", "circle_mask", "filmstrip"]

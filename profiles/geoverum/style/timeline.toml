@@ -1,0 +1,6 @@
+# Kategori baru: timeline & sejarah (digali dari 027 Louisiana 1802, 031 Antarctica 1959, 035 France 1337, 037 Lake Tulare 1870-1950)
+[timeline]
+year_big = { font = "serif", size = 120, color = "white_glow" } # 1802, 1959, 1337
+flashback_style = "filmstrip" # 011, 035
+territory_claim_wheel = { style = "pie_chart", labels = "flags" } # 031 Antarctica pie
+treemap = true # 031
