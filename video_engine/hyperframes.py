@@ -22,6 +22,7 @@ from .maps import (MAP_JPEG_QUALITY, _map_copy, _need_w, _q, deep_entries, deep_
                    map_key, morph_data, texture_dim, textures)
 from .timeline import HYPERFRAMES, Segment, Timeline
 from .util import EngineError, blake3_files, blake3_json, code_hash, run
+from .units import units
 
 CODE = (Path(__file__),)   # writes the build dir (html, scene.js); legibility.py is keyed in the scene (legibility.code_hash)
 HF_VERSION = "hf-2"   # hf-2: capture/encode profile HF_QUALITY + HF_CRF
@@ -82,6 +83,19 @@ HF_QUALITY = "standard"  # defaults; profile [render] hf_quality / hf_crf overri
 HF_CRF = 14
 CARD_TOP = {"top": 0.12, "bottom": 0.77}
 TITLE_TOP = 0.11                       # big title top edge (fraction of the frame height)
+CARD_TOP_LANDSCAPE = {"top": 0.10, "bottom": 0.70}   # landscape (units.py): cards fit the z1 / z2 bands
+TITLE_TOP_LANDSCAPE = 0.10
+TEMPLATE_SCALED = {"label_box_radius_px"}   # the template scales these itself (S.width / reference width)
+
+
+def landscape_theme(theme: dict, k: float) -> dict:
+    """Theme px lengths (keys ending in `_px`, px at the 1920x1080 reference canvas) in output px for a landscape
+    frame (units.k; 1 at 1920x1080). Portrait themes are passed unchanged (the template takes them as output px)."""
+    if k == 1.0:
+        return theme
+    return {key: (v * k if key.endswith("_px") and key not in TEMPLATE_SCALED and isinstance(v, (int, float))
+                  and not isinstance(v, bool) else v)
+            for key, v in theme.items()}
 
 
 def _state(c: tuple[float, float], s: float, W: int, H: int, mw: float, mh: float) -> dict:
@@ -609,6 +623,10 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     n = seg.n_frames
     prof = profiles.of(tl)
     theme = prof.render_values("hf")
+    U = units(tl)
+    if U.landscape:
+        theme = landscape_theme(theme, U.k)
+    card_top, title_top = (CARD_TOP_LANDSCAPE, TITLE_TOP_LANDSCAPE) if U.landscape else (CARD_TOP, TITLE_TOP)
     G = None
     if sc.globe:   # the 2D camera stays at identity over a frame-sized #cam; hf/globe.js draws the globe and moves pins
         G = globe.scene_block(seg, tl, project_dir, theme)
@@ -648,7 +666,7 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
             if cr is None or not cr.path:
                 raise EngineError(f"card '{c.title}': asset_ref '{c.asset_ref}' has no credits_manifest entry with a path")
             img = cr.path
-        cards.append({"title": c.title, "subtitle": c.subtitle, "img": img, "top": round(CARD_TOP[c.position] * S.height),
+        cards.append({"title": c.title, "subtitle": c.subtitle, "img": img, "top": round(card_top[c.position] * S.height),
                       "at_frame": card_frame(c, n, S.fps)})
     ecol = entities.colours(tl)
     if theme["label_style"] == "box":
@@ -659,6 +677,8 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
                                                                **({"tilt": {"p": camera3d.perspective_px(S.height)}}
                                                                   if "t" in cam["start"] else {})},
            "motion_px": round(motion, 2), "pins": pins, "cards": cards, "theme": theme}
+    if U.landscape:   # JS reads S.units (k, ref, safe) instead of the portrait W/1080, H/1920; portrait scenes keep their key
+        out["units"] = U.scene()
     if (mq := prof.render.map_jpeg_quality) and mq != MAP_JPEG_QUALITY:
         out["map_q"] = mq
     if sc.regions:
@@ -687,7 +707,7 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     if sc.title:
         out["title"] = {"text": sc.title, "entity": sc.title_entity,
                         "colour": tint(col.get(sc.title_entity, "#ffffff"), theme["title_tint"]),
-                        "at_frame": sc.title_at_frame or 0, "top": round(TITLE_TOP * S.height)}
+                        "at_frame": sc.title_at_frame or 0, "top": round(title_top * S.height)}
     if sc.figures:
         out["figures"] = [{"kind": f.kind, "text": figure_text(f, f.value, theme), "value": f.value, "from": f.count_from,
                            "decimals": f.decimals, "prefix": f.prefix, "suffix": f.suffix, "motion": f.motion,

@@ -1,0 +1,6 @@
+# Geoverum landscape print positions (16:9). Merged after geoverum/print.toml; px at 1920 x 1080.
+# Approved ranges per orientation: video_engine/profiles.py PRINT_RANGES.
+[print]
+year_cx = 960
+year_cy = 380
+heading_baseline_y = 150

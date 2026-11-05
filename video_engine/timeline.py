@@ -1331,6 +1331,7 @@ class Timeline(Strict):
         try:
             prof = profiles.load(self.profile, self.profile_overrides)
             mz = prof.camera.max_zoom
+            profiles.check_orientation(prof, self.settings.width, self.settings.height)
         except EngineError as e:
             raise ValueError(str(e)) from e
         for s in self.segments[1:]:

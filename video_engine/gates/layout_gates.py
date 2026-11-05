@@ -8,6 +8,7 @@ from pathlib import Path
 from .. import layout as lay
 from ..layout import Item, LayoutProfile, Plan, corners_box, inflate, inside, overlap_area
 from ..timeline import Segment, Timeline
+from ..units import Units
 from .core import Finding
 
 TEXT = ("title", "year", "time", "label", "area", "heading", "note", "caption")
@@ -30,7 +31,8 @@ DOM_IDS = {"title": "title", "year": "figure", "time": "figure", "label": "pin",
 
 
 def _k(L: LayoutProfile, W: int, H: int):
-    return W / 1080, H / 1920
+    u = Units.of(W, H)
+    return u.kx, u.ky
 
 
 def _z(b, kx, ky):
@@ -227,7 +229,7 @@ def anchors(p: Plan, sc) -> list[str]:
         end = p.to_screen(f, pts[-1])
         hb = lay.head_box(p, r.to_pin, f)
         d = lay.seg_box_dist(end, end, hb)
-        gap = p.L.labels.route_pin_gap * p.W / 1080
+        gap = Units.of(p.W, p.H).x(p.L.labels.route_pin_gap)
         if not gap - 2 <= d <= gap + 4:
             out.append(f"route:{i} ends {d:.0f} px from pin {r.to_pin} head (want {gap:.0f})")
     return out

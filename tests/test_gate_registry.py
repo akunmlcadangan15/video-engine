@@ -30,7 +30,7 @@ def test_good_registry_ids_are_unique_and_every_layer_is_known():
 
 def test_good_derived_id_lists_match_the_lists_before_the_registry():
     assert set(profiles.STYLE_GATE_IDS) == OLD_STYLE | {"P03", "R38space"} and len(profiles.STYLE_GATE_IDS) == 19
-    assert len(profiles.TECHNICAL_GATE_IDS) == 40 and "AS04" in profiles.TECHNICAL_GATE_IDS
+    assert len(profiles.TECHNICAL_GATE_IDS) == 41 and "U01" in profiles.TECHNICAL_GATE_IDS and "AS04" in profiles.TECHNICAL_GATE_IDS
     assert set(profiles.NEVER_ADVISORY) == OLD_NEVER
     assert profiles.KNOWN_GATE_IDS == profiles.STYLE_GATE_IDS + profiles.TECHNICAL_GATE_IDS
     assert set(profiles.ANTI_SLOP_IDS) == {f"AS0{i}" for i in range(1, 7)}

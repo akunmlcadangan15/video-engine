@@ -7,6 +7,18 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Ditambahkan
 
+- **Output landscape 16:9** (1920×1080, 2560×1440, 3840×2160) di samping Shorts portrait. Modul baru
+  `video_engine/units.py`: kanvas referensi per orientasi (1080×1920 / 1920×1080), skala seragam `k`, safe area
+  per orientasi (landscape 96/54 px); semua situs `W/1080`, `H/1920` (gate R62/R63/O01/F04/B01/Z01, layout, overlay,
+  watermark, fx, transisi, recipes, draft, twin JS) memakainya dengan urutan operasi yang sama, jadi render, hash
+  profil dan kunci cache portrait tidak berubah (diverifikasi: MD5 video build native portrait identik). Profil
+  `[format] orientation` (ketidakcocokan dengan frame ditolak), rentang `[print]` per orientasi, `[watermark] corner`
+  (landscape: kanan bawah), caption landscape diskalakan `k` (58 px bawaan), gate advisory U01 untuk aspek di luar
+  9:16/16:9, metadata delivery YouTube biasa + thumbnail 1280×720, slot overlay draft landscape, RAM per worker
+  diskalakan jumlah piksel, cek level H.264 ≤ 5.2 pada final mux, `engine import-shots --format`. Profil
+  `geoverum_landscape` dan include generik `profiles/landscape/format.toml`; contoh `examples/landscape`. Proposal
+  `docs/proposals/landscape.md` dihapus (isinya di docs/PROFILES.md, Orientation).
+
 - **Iterasi kreatif berbasis intent**: `segments[].intent` memisahkan static/moving dan negative space yang disengaja, dengan alasan lokal; `R38space` bersifat advisory, sementara black/decode dan integritas frame tetap wajib. Gerak rendah `R56px` hanya gagal untuk intent moving; static/read menjadi info. Kamera tidak lagi dinaikkan otomatis tanpa `creative_autofix` atau native `auto_intensity` eksplisit.
 - **Kualitas proxy terpisah dari kebijakan**: build/render/batch menerima `--quality proxy` hanya bersama `--mode draft`; capture/encode lebih murah dengan dimensi/fps tetap, output terisolasi, kunci cache visual mengikuti setting, provenance kualitas di laporan/manifest. Kualitas default tetap pengaturan delivery profil.
 - **Arahan kreatif fleksibel**: identitas/default/alternatif Geoverum, tiga strategi storyboard berbeda, review membaca intent; catatan selera lama dipertahankan sebagai preferensi historis, bukan aturan universal.

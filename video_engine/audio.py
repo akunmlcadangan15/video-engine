@@ -513,6 +513,7 @@ def mux(tl: Timeline, video: Path, audio_file: Path, out: Path) -> Path:
     run([config.FFMPEG, "-v", "error", "-y", "-i", video, "-i", audio_file, "-map", "0:v:0", "-map", "1:a:0",
          "-c", "copy", "-movflags", "+faststart", out])
     streams.verify(out, tl.total_frames, tl.settings.fps, "final mux")
+    streams.verify_level(out, "final mux")
     return out
 
 

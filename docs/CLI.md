@@ -66,7 +66,7 @@ Prints the delivery plan as JSON. No upload exists.
 
 ## `engine deliver P --export DIR [--final F]`
 
-Writes the upload-ready tree (video or byte-split parts, JOIN, credits, SRT from pinned words, middle-frame thumbnail, YouTube Shorts / Reels metadata).
+Writes the upload-ready tree (video or byte-split parts, JOIN, credits, SRT from pinned words, middle-frame thumbnail, YouTube Shorts / Reels metadata). A landscape project gets normal YouTube metadata (platform `youtube`, `shorts: false`, no `#Shorts`, no Reels block) and a 1280x720 thumbnail.
 No upload; the Projects Manager bot handles Google Drive delivery.
 
 ## `engine draft P [--out F] [--force] [--max-repairs 0-2] [--no-director] [--review [--review-rounds 1-2]] [--video-proxies N] [--voiceover F] [--script F] [--no-dom] [--provider NAME] [--resume]`
@@ -113,10 +113,11 @@ Other directories under the cache root are not touched.
 Files leased by a running build are kept and listed in `skipped_leased`; lease files of dead processes are deleted and listed in `reclaimed_leases`.
 A project that fails to load stops the prune (exit 1, nothing deleted).
 
-## `engine import-shots CSV DST --search DIR [--search DIR ...] --credits F --voiceover F [--manifest F] [--substitute OLD=NEW ...] [--exclude SHOT ...] [--watermark-checked] [--project-number N] [--topic T] [--date D] [--force]`
+## `engine import-shots CSV DST --search DIR [--search DIR ...] --credits F --voiceover F [--manifest F] [--substitute OLD=NEW ...] [--exclude SHOT ...] [--watermark-checked] [--project-number N] [--topic T] [--date D] [--format F] [--force]`
 
 Builds a project (`master_timeline.json`, `credits.txt`, `assets/`) from a shot-list CSV (`shot,type,file,title,source_url,author,licence,on_screen_s`) of an existing edit.
 Sources are only read.
+`--format` sets the output size: `short` (1080x1920, default), `short-4k`, `landscape-1080p`, `landscape-1440p` or `landscape-4k` (`units.FORMATS`); a landscape project needs a landscape profile such as `geoverum_landscape`.
 Credits come only from CSV or manifest rows; a row without `source_url` is an error.
 `--substitute` takes the new file's credit from the manifest (no row = error).
 `--exclude` merges a shot into the previous one.

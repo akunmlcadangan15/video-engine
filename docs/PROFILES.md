@@ -82,8 +82,59 @@ The format of a channel profile and the profiles that ship with the engine.
     No style gate is required (`require = []`). Technical advisory gates are listed in `profiles/geoverum.toml`; `engine gates --profile geoverum` shows their effective behavior.
     Anti-slop AS01-AS06 warn.
   - Look: muted OKLCH entity palette of 17 colours with six unpinned (teal, umber, wine, mauve, jade, olive), adaptive legibility (`[legibility]`, gate R64), printed typography (`[print]`), watermark "Geoverum" in Inter Bold 40 px, white at 85 % with a shadow.
+  - Landscape variant: `geoverum_landscape` (see Orientation).
   - Files: `profiles/geoverum.toml` holds the channel settings and `include`s `profiles/geoverum/entities.toml`, `legibility.toml`, `print.toml`, `sound.toml` and `layout.toml`.
   - Taste notes: `profiles/taste/geoverum.json`; `engine taste geoverum --lint` exposes historical differences from the active profile without rewriting dated feedback. The director labels them historical preferences, not hard constraints.
+
+## Orientation (portrait and landscape)
+
+The engine renders portrait 9:16 (Shorts: 1080x1920, 2160x3840) and landscape 16:9 (1920x1080, 2560x1440,
+3840x2160). The orientation comes from the frame: `settings.width > settings.height` is landscape, anything else
+(square included) portrait. A timeline needs no new field.
+
+- Reference canvas (`video_engine/units.py`): profile lengths and positions are px at 1080x1920 for portrait and at
+  1920x1080 for landscape. Positions scale by `W / ref_w` and `H / ref_h`, lengths by the uniform `k = W / ref_w`
+  (1440p: 1.333, 4K: 2). For an exact 9:16 or 16:9 frame the three are equal. Portrait numbers are evaluated with the
+  same operands as before, so portrait renders, profile hashes and cache keys are unchanged.
+- Safe area (R63, O01, F04, B01, R62): portrait 60 px sides and 100 px top/bottom; landscape 96 px sides and 54 px
+  top/bottom (5 % title safe), at the reference canvas.
+- Gate U01 warns when the frame aspect differs from its reference by more than 1 % (for example 1080x1350): layout
+  values are then scaled non-uniformly as before.
+- `[format] orientation = "portrait" | "landscape"` declares what a profile is written for. Undeclared: a profile with
+  portrait geometry (`caption_style.fixed_y`, `max_bottom_y`, `place_band`, `[layout]` or `[print]`) counts as
+  portrait, any other profile (the default) fits both. A timeline whose frame disagrees with its profile is rejected at
+  load (`engine validate`). An undeclared `[format]` adds nothing to the profile hash.
+- Captions in landscape: the Rust length keys (`size`, `margin_x`, `outline`, `shadow`, `shadow_blur`, `shadow_dx`,
+  `shadow_dy`, `ab_sizes`) are px at 1920x1080 and are scaled by `k` (`captions.effective_style`, read by the
+  compiler and by R62). Without a `size` / `margin_x` a landscape caption is 58 / 160 px (portrait Rust defaults 84 /
+  90). `fixed_y`, `max_bottom_y` and `clearance` are px at 1080 height. Portrait caption styles pass unchanged.
+- `[print]` positions have an approved range per orientation (`profiles.PRINT_RANGES`): portrait `year_cy` 520-600,
+  `heading_baseline_y` 360-400, `year_cx` 0-1080; landscape `year_cy` 300-460, `heading_baseline_y` 120-200,
+  `year_cx` 0-1920. `fixed_y` and `max_bottom_y` must lie in 0..1920 (portrait) or 0..1080 (landscape).
+- `[watermark] corner`: `top_right`, `bottom_right`, `top_left` or `bottom_left`; absent = top right in portrait,
+  bottom right in landscape. The text sits in that corner of the safe area. `px` is px at the reference height.
+- HyperFrames scenes of a landscape frame carry `units` (`k`, `ref`, `safe`) for the JS twins, and theme `*_px`
+  lengths are multiplied by `k` (1 at 1920x1080); cards and the big title sit at 0.10 / 0.70 and 0.10 of the height.
+  Portrait scenes are unchanged.
+- Native overlays (O01): fonts and paddings scale from the reference height; the heading baseline band is 120-200 px
+  in landscape (portrait 360-400).
+- Worker budget: one worker needs 1.8 GB at 1080p-class frames, scaled by pixel count above (4K: 7.2 GB).
+- The final file's H.264 level must be 5.2 or lower (`streams.verify_level`; x264 picks 4.0/4.1 at 1080p, 5.1 at
+  2160p30, 5.2 at 2160p60).
+
+Landscape profiles:
+
+- `profiles/landscape/format.toml`: an include for any landscape channel: `[format] orientation = "landscape"`,
+  caption geometry (58 px, `margin_x` 160, `max_words` 4, `fixed_y` 900, `place_band` 0.74-0.88, `clearance` 90).
+- `geoverum_landscape`: the Geoverum brand on 16:9. It includes the Geoverum tables plus `landscape/format.toml`,
+  `geoverum/landscape/layout.toml` (12 columns of 104 px from x0 116; safe `[96,54,1824,1026]`, Z1 title band at the
+  top left `[116,72,1100,200]`, Z2 map `[116,216,1804,880]`, title 88, year 112) and `geoverum/landscape/print.toml`
+  (year 960 / 380, heading baseline 150). Watermark 28 px bottom right; duration 60-3600 s. Its channel tables repeat
+  `geoverum.toml` (an included file cannot include others): keep both in step.
+- Values still open for the owner: rhythm gates and duration for long-form, the landscape grid and title placement,
+  the O01 minimum font per orientation, R38 thirds for landscape, the grid backdrop cell basis (`fx.grid.cell_pct` is
+  a share of H in both orientations), source quality policy at 4K, delivery metadata and thumbnail rule,
+  and whether portrait captions at 2160x3840 should also scale (today they do not).
 
 ## Splitting a profile with `include`
 
@@ -107,7 +158,7 @@ include = ["geoverum/entities.toml", "geoverum/layout.toml"]
 - Global safety limits: a profile may set `audio.true_peak` and `audio.tolerance_lu` only at or below the default profile value; a looser value is an error.
   Gates T02, R07, R14, A01, A02, W01, R38, R56px, M01, M03, G01 and L22 (`profiles.NEVER_ADVISORY`) and post-render QA are identical for every profile;
     no `[gates] advisory` list can lower them.
-- Unknown keys, wrong types, `clearance` < 0, `fixed_y` or `max_bottom_y` outside 0-1920 or `lra` <= 0 are errors naming the profile.
+- Unknown keys, wrong types, `clearance` < 0, `fixed_y` or `max_bottom_y` outside 0-1920 (portrait) or 0-1080 (landscape) or `lra` <= 0 are errors naming the profile.
 - Segment cache keys contain the profile values that reach the segment's renderer: the HyperFrames key contains the scene, which holds `theme`, `print`, `layout` and `legibility`, plus the map derivative key and the toolchain identity (docs/RUST.md, Cache-key rules);
     native segment keys contain no profile value (no profile key reaches the native renderer).
   `build_report.json` -> `profile` records the name and the BLAKE3 hash of the merged profile.

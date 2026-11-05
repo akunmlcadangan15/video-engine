@@ -31,6 +31,7 @@ from .licence import is_licence_field
 from .timeline import (HYPERFRAMES, IMAGE_EXT, NATIVE, ROLL_MAX, AudioChain, CaptionWord, CaptionsMeta, Settings, Timeline,
                        sec_to_frame)
 from .util import EngineError, video_info
+from .units import units
 
 VIDEO_EXT = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
 AUDIO_EXT = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
@@ -39,11 +40,17 @@ VIDEO_THUMBS = 3
 PROXY_SECONDS = 20.0
 DEFAULT_REPAIRS = 2
 URL_RE = re.compile(r"https?://\S+")
-# Overlay slots at 1080x1920 (scaled to the output size): kind -> position -> [x, y, w, h]
+# Overlay slots at the reference canvas (units.py; scaled to the output size): kind -> position -> [x, y, w, h].
+# OVERLAY_SLOTS: portrait 1080x1920; OVERLAY_SLOTS_LANDSCAPE: 1920x1080 (inside the 96/54 px landscape safe area).
 OVERLAY_SLOTS = {
     "text_card": {"top": [90, 230, 900, 300], "bottom": [90, 1420, 900, 300]},
     "label": {"top": [190, 260, 700, 110], "bottom": [190, 1560, 700, 110]},
     "lower_third": {"top": [90, 230, 800, 180], "bottom": [90, 1500, 800, 180]},
+}
+OVERLAY_SLOTS_LANDSCAPE = {
+    "text_card": {"top": [96, 96, 760, 180], "bottom": [96, 790, 760, 180]},
+    "label": {"top": [96, 120, 520, 80], "bottom": [96, 880, 520, 80]},
+    "lower_third": {"top": [96, 96, 760, 140], "bottom": [96, 820, 760, 140]},
 }
 
 
@@ -315,7 +322,7 @@ def prompt(inp: Inputs) -> str:
     prof = profiles.load(inp.profile or profiles.DEFAULT)
     scene_rule = draft_scene.prompt(prof.draft, prof.layout is not None)
     recipes_rule = RECIPE_RULE
-    return f"""You are the editor of a vertical documentary short ({S.width}x{S.height}, {fps} fps, Indonesian narration).
+    return f"""You are the editor of a {_format_words(S)} ({S.width}x{S.height}, {fps} fps, Indonesian narration).
 Draft the visual edit for the attached narration. Total length: frames 0..{inp.total_frames} (exclusive end).
 
 NARRATION WORDS with start frame (pinned STT transcript, authoritative timing):
@@ -410,9 +417,15 @@ def attachments(inp: Inputs) -> dict:
 
 
 # -------------------------------------------------------------------------------------------------------- assemble
+def _format_words(S) -> str:
+    """How the draft prompt names the format (units.py orientation)."""
+    return "landscape 16:9 documentary video" if units(S).landscape else "vertical documentary short"
+
+
 def _slot(kind: str, pos: str, S: Settings) -> list[float]:
-    x, y, w, h = OVERLAY_SLOTS[kind][pos]
-    kx, ky = S.width / 1080, S.height / 1920
+    u = units(S)
+    x, y, w, h = (OVERLAY_SLOTS_LANDSCAPE if u.landscape else OVERLAY_SLOTS)[kind][pos]
+    kx, ky = u.kx, u.ky
     return [round(x * kx), round(y * ky), round(w * kx), round(h * ky)]
 
 

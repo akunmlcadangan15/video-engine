@@ -66,9 +66,13 @@ GATES: tuple[Gate, ...] = (
        "No repeated adjacent caption word, no card text that repeats the spoken line, no duplicate overlay text.",
        "static"),
     _t("O01", "Drawn overlays",
-       "Overlay text fits its box (at least 26 px at 1920 height), the box is inside the safe area, and no two "
+       "Overlay text fits its box (at least 26 px at the reference canvas: 1920 high portrait, 1080 high landscape), the box is inside the safe area, and no two "
        "overlays overlap. Native segments only.",
        "static", waivable=True),
+    _t("U01", "Frame aspect",
+       "The frame is 9:16 (portrait reference 1080x1920) or 16:9 (landscape reference 1920x1080) within 1 %; other "
+       "aspects scale profile lengths non-uniformly. Warning only.",
+       "static"),
     _t("W01", "Pinned captions are current",
        "Pinned caption words match the voiceover bytes, `caption_fixes`, STT model and keyterms, language and fps.",
        "static", never=True),
@@ -96,7 +100,7 @@ GATES: tuple[Gate, ...] = (
        "`require_land` a pin over water fails.",
        "math", "[gates.geo]"),
     _t("R56", "Camera motion",
-       "Camera motion under 100 px at 1080x1920 warns unless local intent expects motion; static intent is informational. "
+       "Camera motion under 100 px at a 1080p-class diagonal (1080x1920 or 1920x1080) warns unless local intent expects motion; static intent is informational. "
        "Intensity changes require segment.creative_autofix or explicit camera_move.auto_intensity.",
        "math"),
     _t("R62", "Caption margins",

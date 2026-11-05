@@ -463,7 +463,7 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   zones, sequencing and camera framing only; colour, halo and contrast stay with F. A profile without `[layout]`
   has no layout, and its profile hash and output do not depend on this section. A beats scene under such a profile
   fails L06.
-- Units: output px at 1080x1920 (scaled for other sizes); map px = map image at cover scale; times in frames of the
+- Units: px at the reference canvas (1080x1920 portrait, 1920x1080 landscape; docs/PROFILES.md, Orientation), scaled to the output size; map px = map image at cover scale; times in frames of the
   timeline fps; `at_frame` of a beat is relative to the segment start.
 - Grid (`[layout.grid]`): `columns` columns of `col_w` with `gutter` from `x0` (edges 64, 208, 352, 496, 640, 784);
   every top and gap is a multiple of `unit`.

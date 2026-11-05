@@ -5,12 +5,13 @@ const S=window.SCENE, B=S.bubbles;
 if(!B||!B.length)return;
 const W=S.width, H=S.height, FPS=S.fps, tl=window.__timelines.main, ui=document.getElementById('ui');
 const MO=window.__motion||{};
-const sx=60*W/1080, st=100*H/1920, sb=H-100*H/1920;
+const U=S.units, sx=U?U.safe.x:60*W/1080, st=U?U.safe.top:100*H/1920, sb=U?U.safe.bottom:H-100*H/1920;
+const HR=U?U.ref[1]:1920;   // reference canvas height (units.py): font_px and gap_px are px at it
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const items=B.map((b,i)=>{
   const el=document.createElement('div');el.className='bubble'+(b.style==='dark'?' dark':'')+' s-'+(b.side==='auto'?'top':b.side);
   el.setAttribute('data-qa','bubble:'+i);el.textContent=b.text;
-  el.style.fontSize=(b.font_px*H/1920)+'px';
+  el.style.fontSize=(b.font_px*H/HR)+'px';
   el.style.maxWidth=(b.max_width_pct*W)+'px';
   el.style.setProperty('--tail-colour',b.style==='dark'?'#15181d':'#fff');
   ui.appendChild(el);
@@ -47,7 +48,7 @@ const anchorAt=a=>{
 const place=()=>{
   items.forEach(({b,el})=>{
     const p=anchorAt(b.anchor);if(!p)return;
-    const ax=p[0], ay=p[1], lr=p[2]||null, bw=el.offsetWidth, bh=el.offsetHeight, gap=b.gap_px*H/1920;
+    const ax=p[0], ay=p[1], lr=p[2]||null, bw=el.offsetWidth, bh=el.offsetHeight, gap=b.gap_px*H/HR;
     let side=b.side, left=0, top=0;
     if(side==='auto'){
       if(ax+gap+bw<=W-sx)side='right';

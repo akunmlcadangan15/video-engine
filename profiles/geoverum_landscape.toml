@@ -1,0 +1,166 @@
+# Geoverum landscape (16:9) channel profile: the Geoverum brand on a normal YouTube video, 1920x1080, 2560x1440 or
+# 3840x2160 (docs/PROFILES.md, Orientation). Starting point for the owner to approve: geometry and caption values are
+# the landscape proposals; rhythm gates and duration wait for the owner (long-form). Channel tables are repeated from
+# geoverum.toml (an included file cannot include others); keep the two in step.
+description = "Geoverum landscape: map-led geography videos (16:9)"
+# Large tables and the entity colours live in profiles/geoverum/ (merged under this file; keys here win).
+include = ["geoverum/entities.toml", "geoverum/legibility.toml", "geoverum/print.toml", "geoverum/sound.toml", "geoverum/layout.toml", "landscape/format.toml", "geoverum/landscape/layout.toml", "geoverum/landscape/print.toml"]
+
+# Flag settings inherit the engine defaults unless overridden.
+[flags]
+alpha = 0.85
+reveal_s = 0.45
+edge_px = 3
+glow_px = 6
+fit = "auto"           # per region: cover, contain where cropping would cut > auto_max_loss
+pin_height_pct = 4.5
+
+[type]              # canonical type scale: matches [theme] title_px/pin_label_px and [print] title_px
+title_px = 112
+title_px_paper = 88
+pin_label_px = 52
+
+[caption_style]
+# Look approved for Shorts (bold Inter, white, soft shadow, no outline, no box); geometry from landscape/format.toml.
+font = "Inter"
+bold = true
+outline = 0
+soft_shadow = true
+shadow_dx = 0
+shadow_dy = 3
+shadow_blur = 4
+shadow_alpha = 115
+active_word_highlight = true
+emphasis_scale = 1.15
+forbid_box = false
+auto_place = true
+
+[audio]
+target_lufs = -14.0
+true_peak = -1.5
+lra = 11.0
+tolerance_lu = 0.2
+require_source = "epidemic"   # A02: music and SFX from Epidemic Sound only (docs/SOUND.md)
+
+[draft]
+min_seg_s = 3.0               # flexible segment pacing; short cuts and montages allowed
+max_seg_s = 20.0
+map_path = true               # map segments may carry a multi-key camera path
+scene = ["globe", "props", "beats", "radar", "terrain3d", "cross_section", "historical", "flag_char", "data_viz", "blind_spot", "grid_split"]   # draft map scene opt-ins
+rules_file = "geoverum/creative.md"   # single source: profiles/geoverum/creative.md (do not duplicate rules here)
+
+[motion]                     # overlay motion token
+overlay_frames = 10          # 10 frames at 30 fps (~333 ms): smooth rise, not snappy
+overlay_frames_range = [8, 12]
+
+[theme]
+route_colour = "#FFD417" # kuning putus-putus (referensi: Pan-American, rute)
+camera_drift_per_s = 0.06     # scale growth / s of the drift between camera pulses: 0.06 ln/s at the start of a wait,
+                              # above [gates.camera] still_zoom_ln_s (moving), below it after 3.3 s
+camera_start_speed = 0.85      # globe and camera_path: first-key speed as a share of the first leg's mean
+camera_end_speed = 0.85         # globe and camera_path: last-key speed as a share of the last leg's mean when the shot ends there
+region_edge = "glow"          # same-colour edge; [legibility] sets fill alpha and a 3-4 px outline, no blur
+region_style = "tint"         # flat translucent fill + glow
+label_style = "plain"         # plain adaptive labels; opt into a dark box per pin / region / figure
+year_box_colour = "#f6efe0"   # years on a bright cream box with paper grain, dark serif digits, about label size
+year_box_ink = "#2a231d"
+year_box_px = 88
+year_box_texture = "grain-paper002.jpg"
+pin_style = "teardrop"        # red teardrop with a white dot, paper outline and shadow, bounce drop-in, label beside
+pin_colour = "#c4302a"
+label_font = "inter"          # map labels; [print] sets the printed roles per surface
+title_font = "inter"          # titles and numbers; [print] sets the printed roles per surface
+title_px = 112
+# region colours, muted OKLCH (L 0.40-0.82, C <= 0.12); entities missing from [theme.entities] take the free ones in
+# this order; teal and indigo never adjacent
+palette = ["#00E676", "#FF9100", "#FF1744", "#2979FF", "#FFEA00", "#00B0FF", "#76FF03", "#FF4081", "#FF6D00", "#18FFFF"] # saturated glow palette
+
+[camera]                      # camera: continuous push-in/pull-back
+                              # frames break a layout rule (0.75, 0.5, 0.25, 0 of this size)
+max_zoom = 16                 # deepest camera zoom: country-scale close-ups from a whole-map source
+# flow camera paths (camera key move "flow") lean into their motion like a drone: fitted to the Amazon reference
+# (UW3mWOVzWvU, 2026-11-02): perspective grows with screen speed, the map banks with sideways travel
+bank_roll = 12                # deg of roll per frame width / s sideways
+bank_tilt = 9                 # deg of extra tilt per frame width / s of screen speed
+bank_max_roll = 20
+bank_max_tilt = 16
+bank_smooth_s = 0.8
+
+[transitions]                 # hard cut on a visual-type change, short state change on one map
+kind = "cut"                  # every boundary is a hard cut unless a rule or a segment transition_in says otherwise
+same_type = { map = "state" } # map -> map on the same map_asset: 0.2 s state dissolve, never a long crossfade
+state_s = 0.35                # state dissolve length
+fade_s = 0.5                  # crossfade only when requested explicitly (timeline transition_in = "crossfade")
+page_turn = false             # Arundaya rejects page-turn / paper transitions (Siam revision 2)
+map_morph = true              # morph satellite to schematic or historical paper
+
+[render]                      # upload master; 1440p / 4K: raise final_maxrate_kbps (45000 / 100000) in the project
+hf_quality = "high"           # HyperFrames: JPEG q100 screenshots + x264 slow
+hf_crf = 8
+segment_crf = 8               # intermediates: near-lossless, no fastdecode tune (keeps CABAC and deblocking)
+segment_preset = "medium"
+segment_tune = "none"
+final_crf = 12                # upload file: x264 veryslow, CRF 12, 10-bit High 10, capped at 40 Mb/s
+final_preset = "veryslow"
+final_tune = "none"
+final_maxrate_kbps = 40000
+final_bit_depth = 10          # no encoder banding in sky, sea and glow gradients; YouTube accepts 10-bit uploads
+map_jpeg_quality = 95         # map derivatives and deep tiles
+
+[gates]                       # style gates whose fails block a build; every other style gate only warns
+require = []                  # 2026-11-04: no style gate blocks; all style gates only warn
+advisory = ["R64", "E01", "R56", "T01", "R44", "AS04", "F01", "F02", "F03", "F04", "L01", "L02", "L03", "L04", "L05", "L06", "L07", "L08", "L09", "L10", "R62", "R63", "Z01", "O01", "M02", "M04", "G02", "B01"]
+
+[gates.hook]
+vo_warn_s = 0.2
+vo_fail_s = 0.8
+caption_warn_s = 0.2
+caption_fail_s = 1.0
+graphic_warn_s = 1.5
+graphic_fail_s = 2.0
+open_on_moving_map = true
+
+[gates.camera]                # P01: planned camera motion
+hold_warn_s = 1.7
+hold_fail_s = 2.0
+moving_warn = 0.8
+still_zoom_ln_s = 0.05        # zoom speed below this is still; the 0.06 ln/s drift is moving
+still_pan_w_s = 0.02
+min_drift_per_s = 0.06        # P02: the drift between camera moves stays >= 0.06 ln/s (theme camera_drift_per_s)
+
+[gates.novelty]
+max_gap_s = 3.0
+
+[gates.silence]
+max_gap_s = 0.8
+threshold_db = -40.0
+
+[gates.keyword_return]
+hook_s = 3.0
+end_s = 5.0
+min_chars = 4
+
+[gates.ending_keyword]         # K02: the keyword is still readable on the final frame
+hook_s = 3.0
+end_s = 5.0
+min_chars = 4
+
+[gates.cta]                    # C02: no call to action and no end card
+phrases = ["terima kasih", "subscribe", "follow", "like", "share", "tonton", "kunjungi", "link di bio",
+           "sampai jumpa", "jangan lupa", "selesai"]
+
+[gates.geo]                    # G02: pins on land, labels inside their own region
+require_land = true
+
+[gates.duration]              # long-form: owner to set (Shorts: 45..100 s)
+min_s = 60.0
+max_s = 3600.0
+
+[watermark]
+text = "Geoverum"             # channel mark, bottom right inside the safe area in landscape (burned in by the final mux)
+font = "inter"
+px = 28
+corner = "bottom_right"
+colour = "#ffffff"
+opacity = 0.85
+shadow = true

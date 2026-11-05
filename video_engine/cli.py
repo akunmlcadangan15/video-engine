@@ -362,6 +362,9 @@ def cmd_import_shots(a) -> int:
     from . import importer
     subs = _pairs(a.substitute, "--substitute")
     settings = {k: v for k, v in {"project_number": a.project_number, "topic": a.topic, "date": a.date}.items() if v}
+    if a.format:
+        from .units import FORMATS
+        settings["width"], settings["height"] = FORMATS[a.format]
     r = importer.import_shots(Path(a.csv), Path(a.dst), [Path(d) for d in a.search], credits_txt=Path(a.credits),
                               voiceover=Path(a.voiceover), manifest=Path(a.manifest) if a.manifest else None,
                               substitute=subs, exclude=set(a.exclude), watermark_checked=a.watermark_checked,
@@ -676,6 +679,9 @@ def parser() -> argparse.ArgumentParser:
     x = add("import-shots", cmd_import_shots, "Build a project (master_timeline.json, credits.txt, assets/) from a "
                                                 "shot-list CSV of an existing edit. Sources are only read.")
     x.add_argument("csv")
+    x.add_argument("--format", choices=["short", "short-4k", "landscape-1080p", "landscape-1440p", "landscape-4k"],
+                   help="output size (units.FORMATS; default short = 1080x1920). Landscape needs a landscape profile, "
+                        "for example geoverum_landscape")
     x.add_argument("dst")
     x.add_argument("--search", action="append", required=True, help="directory searched for shot files (repeatable)")
     x.add_argument("--credits", required=True, help="credits.txt copied into the project")

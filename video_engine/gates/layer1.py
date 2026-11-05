@@ -303,9 +303,21 @@ def o01_overlays(tl: Timeline) -> list[Finding]:
     return out
 
 
+def u01_frame_aspect(tl: Timeline) -> list[Finding]:
+    """U01 (advisory): the frame aspect differs from its reference canvas (9:16 portrait, 16:9 landscape) by more
+    than units.ASPECT_TOL, so profile lengths and positions are scaled non-uniformly."""
+    from ..units import ASPECT_TOL, units
+    u = units(tl)
+    if u.uniform():
+        return []
+    return [Finding("U01", "warn", f"frame {u.W}x{u.H} differs from the {u.orientation} reference canvas "
+                    f"{u.ref_str()} by {u.aspect_error():.1%} (> {ASPECT_TOL:.0%}); layout values are scaled non-uniformly")]
+
+
 def run_layer1(tl: Timeline, project_dir: Path, words: list[CaptionWord] | None) -> list[Finding]:
     fs = t02_integrity(tl, project_dir) + r07_credits(tl, project_dir) + r14_licence(tl) + w01_pinned_words(tl, project_dir)
     fs += o01_overlays(tl)
+    fs += u01_frame_aspect(tl)
     if words is None:
         fs.append(Finding("R44", "skip", "no captions yet (run `engine audio`); overlay-only checks ran"))
         fs += [f for f in r44_duplicates(tl, []) if f.level != "pass"]

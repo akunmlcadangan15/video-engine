@@ -13,20 +13,22 @@ from pathlib import Path
 
 from . import config
 from .timeline import Overlay, Segment, Timeline
+from .units import scale_height, units
 from .util import EngineError, blake3_files
 
 OVERLAY_VERSION = "ov-2"   # ov-2: labels on a themed plate that hugs the text
 FONT_BOLD, FONT_SEMI = "Inter-Bold.otf", "Inter-SemiBold.otf"
-MIN_FONT_PX = 26                 # at 1920 px output height; scaled with height
+MIN_FONT_PX = 26                 # px at the reference canvas (1920 high portrait, 1080 high landscape)
 MAX_FONT_PX = {"label": 54, "text_card": 72, "lower_third": 64}
 SUB_RATIO = 0.62                 # subtitle size / title size
 PAD = {"label": (22, 14), "text_card": (40, 32), "lower_third": (36, 22)}   # (x, y) padding at 1920 height
 ACCENT = (242, 177, 52, 255)
 BG = {"label": (12, 16, 22, 196), "text_card": (14, 18, 24, 214), "lower_third": (10, 12, 16, 200)}
 FADE_S = 0.20
-SAFE_X, SAFE_TOP, SAFE_BOTTOM = 60, 100, 100   # same safe area as R63
+SAFE_X, SAFE_TOP, SAFE_BOTTOM = 60, 100, 100   # portrait R63 safe area (landscape: units.SAFE)
 HEADING_PAD = 16                 # px at 1920: box bottom to the heading baseline (room for the shadow)
-HEADING_BASE = (360, 400)        # px at 1920: allowed heading baseline y (brand profile)
+HEADING_BASE = (360, 400)        # px at 1920: allowed heading baseline y (brand profile, portrait)
+HEADING_BASE_LANDSCAPE = (120, 200)   # px at 1080 high: landscape heading band (top title band)
 HEADING_SS = 4                   # supersampling of the heading PNG (1.5 px rules)
 LABEL_BOX = ("#15181d", 3.0, 44.0)   # label plate fallback (colour, radius px, font cap px at 1080 width) = default theme
 LABEL_PAD = (0.45, 0.20, 0.24)   # label plate padding in em (x, top, bottom), as the map scene's .box labels
@@ -66,6 +68,7 @@ def _wrap(text: str, font, max_w: float) -> list[str] | None:
 
 
 def _scale(H: int) -> float:
+    """Length scale of a portrait-equivalent height H (units.scale_height for landscape frames)."""
     return H / 1920.0
 
 
@@ -306,7 +309,8 @@ def ffmpeg_parts(seg: Segment, tl: Timeline, png_dir: Path, first_input: int) ->
     chain: list[str] = []
     cur = "vbase"
     for i, ov in enumerate(drawn(seg)):
-        png = render_png(ov, png_dir / f"seg{seg.seg_index:03d}_ov{i}.png", tl.settings.height, pr, prof.theme)
+        png = render_png(ov, png_dir / f"seg{seg.seg_index:03d}_ov{i}.png", scale_height(tl.settings.width, tl.settings.height),
+                         pr, prof.theme)
         args += ["-loop", "1", "-framerate", str(fps), "-t", f"{dur:.6f}", "-i", str(png)]
         a, b = frame_range(ov, seg)
         fd = min(_fade_s(ov, pr, motion), (b - a) / fps / 3)
@@ -331,7 +335,7 @@ def composite_rgb(frame: bytes, W: int, H: int, seg: Segment, frame_idx: int, sc
     from PIL import Image
     base = Image.frombytes("RGB", (W, H), frame).convert("RGBA")
     for o in ds:
-        ov = render_im(o, round(H / scale), pr, th)
+        ov = render_im(o, scale_height(round(W / scale), round(H / scale)), pr, th)
         if scale != 1.0:
             ov = ov.resize((max(1, round(ov.width * scale)), max(1, round(ov.height * scale))))
         base.alpha_composite(ov, (round(o.box[0] * scale), round(o.box[1] * scale)))
@@ -343,28 +347,32 @@ def check(seg: Segment, tl: Timeline) -> list[str]:
     from . import profiles
     pr = profiles.of(tl).print
     W, H = tl.settings.width, tl.settings.height
-    k = _scale(H)
-    kx, ky = W / 1080.0, H / 1920.0
+    u = units(tl)
+    Hs = scale_height(W, H)
+    k = _scale(Hs)
+    sx_ref, st_ref, sb_ref = u.safe_ref()
+    sx, st, sb = u.safe()
+    hb = HEADING_BASE_LANDSCAPE if u.landscape else HEADING_BASE
     errs = []
     ds = drawn(seg)
     for o in ds:
         x, y, w, h = o.box
-        if (x < SAFE_X * kx - 0.5 or x + w > W - SAFE_X * kx + 0.5
-                or y < SAFE_TOP * ky - 0.5 or y + h > H - SAFE_BOTTOM * ky + 0.5):
-            errs.append(f"overlay '{o.id}' box {o.box} leaves the safe area ({SAFE_X} px sides, {SAFE_TOP}/{SAFE_BOTTOM} px top/bottom)")
+        if x < sx - 0.5 or x + w > W - sx + 0.5 or y < st - 0.5 or y + h > sb + 0.5:
+            errs.append(f"overlay '{o.id}' box {o.box} leaves the safe area ({sx_ref} px sides, {st_ref}/{sb_ref} px "
+                        f"top/bottom at {u.ref_str()})")
         a, b = frame_range(o, seg)
         end = o.end_frame if o.end_frame is not None else seg.n_frames
         if (o.start_frame or 0) >= seg.n_frames or end > seg.n_frames or b <= a:
             errs.append(f"overlay '{o.id}' frame range {o.start_frame}..{o.end_frame} is outside the segment (length {seg.n_frames})")
         try:
-            fit(o, H, pr)
+            fit(o, Hs, pr)
         except EngineError as e:
             errs.append(str(e))
             continue
         if o.kind == "heading":
             base = y + h - HEADING_PAD * k
-            if not HEADING_BASE[0] * k - 0.5 <= base <= HEADING_BASE[1] * k + 0.5:
-                errs.append(f"heading '{o.id}' baseline y {base:.0f} outside {HEADING_BASE[0]}-{HEADING_BASE[1]} "
+            if not hb[0] * k - 0.5 <= base <= hb[1] * k + 0.5:
+                errs.append(f"heading '{o.id}' baseline y {base:.0f} outside {hb[0]}-{hb[1]} "
                             f"(box y + h - {HEADING_PAD})")
             if abs(x + w / 2 - W / 2) > 1.0:
                 errs.append(f"heading '{o.id}' box centre x {x + w / 2:.0f} is not the frame centre {W / 2:.0f}")

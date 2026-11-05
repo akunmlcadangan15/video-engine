@@ -1,7 +1,7 @@
 # video-engine
 
 Mesin video vertikal hybrid milik Hypoverum. Masukannya satu folder proyek berisi `master_timeline.json`. Keluarannya
-`out/final.mp4` (H.264 1080×1920, AAC 48 kHz) dan `out/build_report.json`. Kalau ada gate yang gagal, build tidak
+`out/final.mp4` (H.264 1080×1920 untuk Shorts, atau landscape 16:9 1920×1080 / 2560×1440 / 3840×2160; AAC 48 kHz) dan `out/build_report.json`. Kalau ada gate yang gagal, build tidak
 menerbitkan apa pun dan hanya menulis `out/build_report.failed.json`.
 
 Mesin ini punya dua jalur render:

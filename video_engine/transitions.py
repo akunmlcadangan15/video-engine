@@ -33,6 +33,7 @@ import hypoverum_core_rs as core
 from . import config, profiles
 from .timeline import HYPERFRAMES, Timeline
 from .util import EngineError
+from .units import Units
 
 TRANSITION_VERSION = "trans-1"   # bump when a transition clip's pixels change without a source-code change
 BLUR_TAPS = 8          # zoomed copies averaged for the radial blur
@@ -240,7 +241,7 @@ def page_frame(page: np.ndarray, under: np.ndarray, d: float, shade_amt: float =
     out = under.astype(np.float32)
     turned = s <= d
     gap = np.clip(d - s, 0, None)
-    shade = 1 - shade_amt * np.exp(-gap / (PAGE_SHADE_PX * W / 1080))
+    shade = 1 - shade_amt * np.exp(-gap / Units.of(W, H).x(PAGE_SHADE_PX))
     out *= np.where(turned, shade, 1.0)[..., None]
     rest = ~turned
     out[rest] = page[rest]

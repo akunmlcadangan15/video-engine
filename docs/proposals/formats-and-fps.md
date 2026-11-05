@@ -32,7 +32,7 @@ No such channel is defined yet, so this document records what is known and what 
 1. **Another vertical size at an integer frame rate** (for example 720×1280 or 1080×1350 at 25 or 30 fps).
    Probably works today for the native path and the gates that scale; needs a real build to find what does not.
    Cost: low. Do this first, as an experiment.
-2. **A horizontal format (1920×1080).**
+2. **A horizontal format (1920×1080).** Built: docs/PROFILES.md, Orientation (`video_engine/units.py`, `geoverum_landscape`).
    Needs a new channel profile with its own safe zones and layout (the Shorts constants do not apply), and a check of the beats layout planner.
    Cost: medium, mostly profile work.
 3. **Fractional frame rates (29.97, 59.94).**

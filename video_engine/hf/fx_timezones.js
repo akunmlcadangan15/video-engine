@@ -4,7 +4,8 @@
 const S=window.SCENE, T=S.timezones;
 if(!T||!T.bands||S.globe)return;
 const W=S.width, H=S.height, FPS=S.fps, C=S.camera, tl=window.__timelines.main;
-const ui=document.getElementById('ui'), sx=60*W/1080, st=100*H/1920, sb=H-100*H/1920;
+const ui=document.getElementById('ui');
+const U=S.units, sx=U?U.safe.x:60*W/1080, st=U?U.safe.top:100*H/1920, sb=U?U.safe.bottom:H-100*H/1920;
 const legs=window.__legs(C,FPS);
 const camAt=t=>{let x=C.start.x,y=C.start.y,s=C.start.s;
   for(const g of legs){if(t<g.t0)break;

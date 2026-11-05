@@ -21,6 +21,7 @@ from PIL import Image
 from .. import hyperframes, layout as lay, props
 from ..timeline import HYPERFRAMES, Segment, Timeline
 from ..util import EngineError
+from ..units import Units
 from . import layer2
 from .core import Finding
 
@@ -84,7 +85,7 @@ def check_segment(s: Segment, tl: Timeline, project_dir: Path, events: list[tupl
     except EngineError as e:
         return out + [Finding("F01", "fail", str(e), s.seg_index)]
     W, H, cam, fps = scene["width"], scene["height"], scene["camera"], scene["fps"]
-    sx, st, sb = layer2.SAFE_X * W / 1080, layer2.SAFE_TOP * H / 1920, H - layer2.SAFE_BOTTOM * H / 1920
+    sx, st, sb = Units.of(W, H).safe()
     plan = lay.plan(s, tl, project_dir) if lay.is_beats(s, tl) else None
     dom_at = {}
     dom_ok = plan is not None or bool(dom and dom.get("times"))

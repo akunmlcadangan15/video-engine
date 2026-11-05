@@ -17,6 +17,7 @@ from PIL import Image
 
 from . import assets, projection
 from .timeline import Segment, Timeline, sec_to_frame
+from .units import Units
 from .util import EngineError
 
 JS = Path(__file__).with_name("hf")
@@ -45,6 +46,13 @@ def _lcg(seed: int):
         return a / 4294967296.0
 
     return draw
+
+
+def _k(W: int, H: int) -> float:
+    """Length scale of the reference canvas (units.py): min(W / 1080, H / 1920) in portrait, min(W / 1920, H / 1080)
+    in landscape."""
+    u = Units.of(W, H)
+    return min(u.kx, u.ky)
 
 
 def _bounds(sc) -> tuple[float, float, float, float]:
@@ -183,7 +191,7 @@ def flag_characters(seg: Segment, tl: Timeline, project_dir: Path, pins: list[di
                     "wave_amp": round(cfg.wave_amplitude * h, 3), "wave_hz": cfg.wave_hz, "slices": cfg.slices,
                     "eye_px": round(cfg.eye_pct / 100.0 * h, 3),
                     "blink_period_f": round(cfg.blink_period_s * fps, 6), "blink_frames": cfg.blink_frames,
-                    "shadow_px": round(cfg.shadow_px * min(W / 1080.0, H / 1920.0), 3)})
+                    "shadow_px": round(cfg.shadow_px * _k(W, H), 3)})
     return out
 
 
@@ -192,7 +200,7 @@ def cutaway_block(seg: Segment, tl: Timeline, prof) -> dict:
     cfg = prof.fx.cutaway
     W, H, fps = tl.settings.width, tl.settings.height, tl.settings.fps
     c = seg.gsap_scene_config.cutaway
-    k = min(W / 1080.0, H / 1920.0)
+    k = _k(W, H)
     width = c.width_pct / 100.0 * W
     height = width * cfg.height_ratio
     total = sum(layer.thickness for layer in c.layers)
@@ -227,7 +235,7 @@ def inset_blocks(seg: Segment, tl: Timeline, project_dir: Path, pins: list[dict]
     prof = profiles.of(tl)
     cfg = prof.fx.cutaway
     W, H, fps = tl.settings.width, tl.settings.height, tl.settings.fps
-    k = min(W / 1080.0, H / 1920.0)
+    k = _k(W, H)
     margin, gap = 48.0 * k, cfg.inset_gap_px * k
     out = []
     for i, ins in enumerate(seg.gsap_scene_config.insets or []):

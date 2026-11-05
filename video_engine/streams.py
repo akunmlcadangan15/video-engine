@@ -122,3 +122,18 @@ def verify(path: str | Path, n: int, fps: int, what: str) -> None:
     if got != n or abs(start) > half or abs(dur - n / fps) > half:
         raise EngineError(f"{what}: {got} frames from {start:.6f} s lasting {dur:.6f} s, expected {n} frames from 0 "
                           f"lasting {n / fps:.6f} s")
+
+
+MAX_H264_LEVEL = 52   # level 5.2 (ffprobe reports level x 10): 3840x2160 at 60 fps; anything above is not deliverable
+
+
+def verify_level(path: str | Path, what: str, max_level: int = MAX_H264_LEVEL) -> int:
+    """Raise EngineError when the first video stream of an H.264 file signals a level above `max_level`; returns the
+    level (x 10). x264 picks the lowest level that fits (4.1 at 1080p30, 5.1 at 2160p30, 5.2 at 2160p60)."""
+    ps = params(path, "v:0")
+    if not ps or ps[0].get("codec_name") != "h264":
+        return 0
+    lvl = int(ps[0].get("level") or 0)
+    if lvl > max_level:
+        raise EngineError(f"{what}: H.264 level {lvl / 10:g} is above {max_level / 10:g}")
+    return lvl

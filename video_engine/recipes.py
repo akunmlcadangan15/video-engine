@@ -21,8 +21,8 @@ import math
 from dataclasses import dataclass, field
 
 from . import geodata, projection
-from .gates.layer2 import SAFE_BOTTOM, SAFE_TOP, SAFE_X
 from .hyperframes import _state, motion_px
+from .units import Units
 
 FIG_TOP, FIG_BOTTOM = 0.27, 0.72      # figure centres (frame height fractions) in the top / bottom text band
 BAND_TOP, BAND_BOTTOM = 0.36, 0.33    # frame height reserved for the top band (card + figure) / the bottom band
@@ -111,7 +111,7 @@ def fit(m: MapInfo, f: Frame, b, *, top: float = 0.0, bottom: float = 0.0, max_z
     area, checked through the renderer's clamped transform. `labels`: pin label texts at points of b; their boxes
     (centred above each pin) must fit too. Returns (view, fits); fits False = best effort at min_zoom."""
     mw, mh = cover(m, f)
-    sx, st_, sb = SAFE_X * f.W / 1080, SAFE_TOP * f.H / 1920, f.H - SAFE_BOTTOM * f.H / 1920
+    sx, st_, sb = Units.of(f.W, f.H).safe()
     lx = label_half_px(labels)
     up, down = (PIN_UP_PX, PIN_DOWN_PX) if labels else (0, 0)
     ax0, ax1 = sx + PAD_PX + lx, f.W - sx - PAD_PX - lx
@@ -352,8 +352,8 @@ def compare_places(m: MapInfo, f: Frame, *, a: dict, b: dict, source: str | None
     small, big = sorted((a, b), key=lambda p: _num(p["value"]))
     wide = opening(m, f, view, pa if small is a else pb)
     t_small, t_big = _fr(f, at_s + 0.4), _fr(f, at_s + 0.4 + gap_s)
-    sx, st_, sb = SAFE_X * f.W / 1080, SAFE_TOP * f.H / 1920, f.H - SAFE_BOTTOM * f.H / 1920
-    half = 0.5 * 150 * f.H / 1920 + 10                     # half a figure (theme figure_px 150) + margin
+    sx, st_, sb = Units.of(f.W, f.H).safe()
+    half = Units.of(f.W, f.H).y(0.5 * 150) + 10                     # half a figure (theme figure_px 150) + margin
     figs, pins = [], []
     for p, pt in ((a, pa), (b, pb)):
         first = p is small

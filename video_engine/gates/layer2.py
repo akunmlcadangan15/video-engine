@@ -14,15 +14,16 @@ from pathlib import Path
 import hypoverum_core_rs as core
 
 from .. import captions, entities, hyperframes, legibility, maps, native, profiles, props, watermark
+from ..units import units
 from ..timeline import HYPERFRAMES, NATIVE, CaptionWord, Segment, Timeline
 from ..util import EngineError, decode_colour, video_info
 from .core import Finding
 
-R56_MIN_PX_1080P = 100.0     # minimum camera motion over a segment, output px, for a 1080x1920 frame
+R56_MIN_PX_1080P = 100.0     # minimum camera motion over a segment, output px, at a 1080p-class diagonal (1080x1920 or 1920x1080)
 INTENSITY_MAX = 6.0
 INTENSITY_STEP = 0.05
 R62_MIN_FONT_FRAC = 0.6      # caption font may shrink to this fraction of the style size to fit the safe width
-SAFE_X = 60                  # px at 1080 wide; scaled with width
+SAFE_X = 60                  # portrait safe area, px at 1080 wide; scaled with width (landscape: units.SAFE)
 SAFE_TOP = 100               # px at 1920 high; scaled with height
 SAFE_BOTTOM = 100
 CAPTION_BAND_HALF = 0.75     # caption box half-height as a fraction of font size
@@ -299,9 +300,10 @@ def r62_caption_margins(tl: Timeline, words: list[CaptionWord]) -> tuple[list[Fi
         events = caption_events(tl, words)
     except ValueError as e:
         return [Finding("L22", "fail", f"caption_style invalid: {e}")], []
-    size = float(st.get("size", 84))
-    margin_x = float(st.get("margin_x", 90))
-    safe_top, safe_bottom = SAFE_TOP * H / 1920, H - SAFE_BOTTOM * H / 1920
+    eff = captions.effective_style(tl)
+    size = float(eff.get("size", 84))
+    margin_x = float(eff.get("margin_x", 90))
+    _, safe_top, safe_bottom = units(tl).safe()
     out = []
     for (a, b, text, fs, est_w, x, y) in events:
         if est_w > W - 2 * margin_x + 1:
@@ -361,7 +363,7 @@ def check_rects(rects: list[dict], W: int, H: int, t: float, seg: int) -> list[F
     camera may carry past the frame edge), no pairwise overlap.
     rects: {id, text, x, y, w, h, opacity}; elements with opacity <= 0.05 are ignored."""
     out = []
-    sx, st, sb = SAFE_X * W / 1080, SAFE_TOP * H / 1920, H - SAFE_BOTTOM * H / 1920
+    sx, st, sb = units((W, H)).safe()
     vis = visible(rects)
     for r in vis:
         if r["id"].startswith("maptext:"):
@@ -458,7 +460,7 @@ def caption_pad(tl: Timeline) -> float:
         reach = (shadow * 1.5 if dy is None else float(dy)) + outline + 2.0 + 2.0 * float(st.get("shadow_blur", 6.0))
     else:
         reach = outline + max(0.0, shadow)
-    return max(0.0, reach - CAPTION_REACH_BAND) * tl.settings.height / 1920
+    return units(tl).y(max(0.0, reach - CAPTION_REACH_BAND))
 
 
 def max_bottom(tl: Timeline) -> float | None:
@@ -468,7 +470,7 @@ def max_bottom(tl: Timeline) -> float | None:
         return None
     if isinstance(m, bool) or not isinstance(m, (int, float)):
         raise ValueError(f"caption_style.max_bottom_y must be a number, got {m!r}")
-    return float(m) * tl.settings.height / 1920
+    return units(tl).y(float(m))
 
 
 def z01_caption_bottom(tl: Timeline, events: list[tuple]) -> list[Finding]:
@@ -561,7 +563,7 @@ def element_boxes(tl: Timeline, project_dir: Path, dom: dict[int, dict]) -> dict
     HyperFrames DOM element rects, props (boxes with the absolute frame range `frames` they hold for) and native declared
     overlays: caption_style.clearance (px at 1920 height). Camera focus_box frames the subject rather than drawn UI text,
     so it does not block captions."""
-    clear = float(profiles.caption_style(tl)["clearance"]) * tl.settings.height / 1920
+    clear = units(tl).y(float(profiles.caption_style(tl)["clearance"]))
     out: dict[int, list[dict]] = {}
     for s in tl.segments:
         boxes = ([dict(r, clear=clear) for r in element_windows(dom[s.seg_index], s, tl.settings.fps)]
@@ -613,7 +615,7 @@ def place_captions(tl: Timeline, events: list[tuple], boxes: dict[int, list[dict
     each caption is shown in.
     Returns (y_overrides [(seg.start_frame, seg.end_frame, y)], findings)."""
     H = tl.settings.height
-    top, bottom = SAFE_TOP * H / 1920, H - SAFE_BOTTOM * H / 1920
+    _, top, bottom = units(tl).safe()
     try:
         lim = max_bottom(tl)
     except ValueError:
@@ -772,10 +774,10 @@ def b01_watermark(tl: Timeline, events: list[tuple], boxes: dict[int, list[dict]
     W, H = tl.settings.width, tl.settings.height
     r = pl.text_rect()
     pr = profiles.of(tl).data.print
-    gap = pr.watermark_clear_px * H / 1920 if pr is not None else 0.0
+    gap = units(tl).y(pr.watermark_clear_px) if pr is not None else 0.0
     rt = (r["x"], r["y"], r["x"] + r["w"], r["y"] + r["h"])
     out = []
-    sx, st, sb = SAFE_X * W / 1080, SAFE_TOP * H / 1920, H - SAFE_BOTTOM * H / 1920
+    sx, st, sb = units(tl).safe()
     if (r["x"] < sx - 0.5 or r["x"] + r["w"] > W - sx + 0.5 or r["y"] < st - 0.5
             or r["y"] + r["h"] > sb + 0.5):
         out.append(Finding("B01", "fail", f"watermark ({r['x']:.0f},{r['y']:.0f},{r['w']:.0f}x{r['h']:.0f}) leaves the "

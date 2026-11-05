@@ -202,7 +202,7 @@ if('r' in C.start){const rw=document.createElement('div');rw.id='roll';
   ZS.push(()=>{const r=camR(tl.time());rw.style.transform='rotate('+r+'deg) scale('+cover(r)+')';});}
 const NS='http://www.w3.org/2000/svg', mk=(tag,at)=>{const e=document.createElementNS(NS,tag);for(const k in at)e.setAttribute(k,at[k]);return e;};
 const mapSvg=()=>{const v=mk('svg',{width:S.map_size[0],height:S.map_size[1]});v.style.cssText='position:absolute;left:0;top:0;overflow:visible';base.appendChild(v);return v;};
-const TH=S.theme, BOXR=TH.label_box_radius_px*S.width/1080;
+const TH=S.theme, BOXR=TH.label_box_radius_px*S.width/(S.units?S.units.ref[0]:1080);
 // solid box label: elastic pop-in at t0
 const pop=(el,t0)=>{tl.fromTo(el,{opacity:0},{opacity:1,duration:0.12,ease:'none',immediateRender:true},t0);
   tl.fromTo(el,{scale:0.35},{scale:1,duration:TH.label_pop_s,ease:'elastic.out(1,0.55)',immediateRender:true},t0);};
@@ -342,10 +342,10 @@ if(S.regions&&S.regions.length){
       });
       const f=R.flag||R.changes.find(c=>c.flag).flag;
       const outline=shp({fill:'none',stroke:R.edge_colour||'#ffffff','stroke-linejoin':'round',...geo(R,i)});
-      outline.style.filter='drop-shadow(0 0 '+(f.glow_px*S.width/1080)+'px white)';svg.appendChild(outline);
+      outline.style.filter='drop-shadow(0 0 '+(f.glow_px*S.width/(S.units?S.units.ref[0]:1080))+'px white)';svg.appendChild(outline);
       tl.fromTo(outline,{opacity:0},{opacity:1,duration:f.reveal_s,ease:MO.entrance,immediateRender:true},t0);
-      legs.forEach(g=>tl.fromTo(outline,{attr:{'stroke-width':f.edge_px*S.width/1080/g.from.s}},
-        {attr:{'stroke-width':f.edge_px*S.width/1080/g.L.to.s},duration:g.d,ease:g.inv,immediateRender:g.k===0},g.t0));
+      legs.forEach(g=>tl.fromTo(outline,{attr:{'stroke-width':f.edge_px*S.width/(S.units?S.units.ref[0]:1080)/g.from.s}},
+        {attr:{'stroke-width':f.edge_px*S.width/(S.units?S.units.ref[0]:1080)/g.L.to.s},duration:g.d,ease:g.inv,immediateRender:g.k===0},g.t0));
     }
     hatch(i,shp,svg,t0,R);
     // region label: a solid box (owner's box colour) anchored on the map, counter-scaled, popping in

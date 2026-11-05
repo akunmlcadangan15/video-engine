@@ -139,8 +139,13 @@ def srt(tl: Timeline) -> str:
                    for i, c in enumerate(cues, start=1))
 
 
+THUMB_LANDSCAPE = (1280, 720)
+
+
 def metadata(tl: Timeline) -> dict:
-    """YouTube Shorts / Instagram Reels metadata from the timeline: title, description, tags and hashtags."""
+    """Metadata from the timeline: title, description, tags and hashtags. Portrait: YouTube Shorts / Instagram Reels;
+    landscape (units.py): a normal YouTube video (no #Shorts, shorts false, no Reels block)."""
+    from .units import units
     S = tl.settings
     title = clean(S.topic or tl.project_id)[:100]
     script = " ".join(w.word.strip() for w in tl.captions if w.word.strip())
@@ -156,7 +161,12 @@ def metadata(tl: Timeline) -> dict:
         if k not in seen and len(tags) < 15:
             seen.add(k)
             tags.append(w)
-    hashtags = ["#Shorts"] + ["#" + re.sub(r"[^\w]", "", w) for w in tags[:5] if re.sub(r"[^\w]", "", w)]
+    landscape = units(tl).landscape
+    hashtags = ([] if landscape else ["#Shorts"]) + ["#" + re.sub(r"[^\w]", "", w) for w in tags[:5] if re.sub(r"[^\w]", "", w)]
+    if landscape:
+        return {"platforms": ["youtube"], "title": title, "description": desc, "tags": tags, "category": "Education",
+                "language": tl.audio_chain.language, "made_for_kids": False,
+                "youtube": {"title": title, "description": desc, "tags": tags, "shorts": False, "hashtags": hashtags}}
     reel = title + (("\n\n" + script[:2200]) if script else "") + "\n\n" + " ".join(hashtags)
     return {"platforms": ["youtube-shorts", "instagram-reels"],
             "title": title,
@@ -181,6 +191,8 @@ def thumbnail(tl: Timeline, final: Path, out: Path) -> Path:
     S = tl.settings
     frame = max(0, tl.total_frames // 2)
     img = Image.frombytes("RGB", (S.width, S.height), frame_rgb(final, frame, S.fps, S.width, S.height))
+    if S.width > S.height and S.width > THUMB_LANDSCAPE[0]:   # landscape: YouTube thumbnail 1280x720 (< 2 MB)
+        img = img.resize(THUMB_LANDSCAPE, Image.LANCZOS)
     out.parent.mkdir(parents=True, exist_ok=True)
     img.save(out, format="JPEG", quality=90)
     return out

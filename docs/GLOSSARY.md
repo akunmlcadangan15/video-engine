@@ -36,7 +36,8 @@ Istilah dan singkatan yang dipakai di kode dan dokumentasi. Istilah tetap dalam 
 | **Waive** | Menurunkan temuan gate menjadi informasi lewat timeline (`gates.waive`, atau `gates.waive_with_reason` dengan alasan tertulis). |
 | **Finding** | Satu hasil gate dengan level `pass`, `fix`, `info`, `warn`, `skip`, atau `fail`. |
 | **DOM probe** | Pengukuran kotak elemen HyperFrames di Chrome pada beberapa waktu, dipakai gate R63, E01, dan R64. |
-| **Safe area** | Area aman teks: 60 px dari sisi dan 100 px dari atas dan bawah (pada 1080×1920). |
+| **Safe area** | Area aman teks: portrait 60 px dari sisi dan 100 px dari atas dan bawah (pada 1080×1920); landscape 96 px dari sisi dan 54 px dari atas dan bawah (pada 1920×1080). |
+| **Kanvas referensi** | Ukuran tempat nilai px profil ditulis: 1080×1920 (portrait) atau 1920×1080 (landscape); `video_engine/units.py` menskalakannya ke ukuran output. |
 | **Shorts safe zone** | Bagian layar yang tidak tertutup UI YouTube Shorts. Caption Geoverum berakhir di y ≤ 1480. |
 
 ## Waktu dan caption

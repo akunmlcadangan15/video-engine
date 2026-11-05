@@ -2,7 +2,8 @@
 
 Budget: one number `workers` (env VIDEO_ENGINE_WORKERS > profile `[resources] workers` > auto) caps every
 parallel consumer of a build at once:
-  auto workers   = clamp(min(CPU count, total RAM GB // RAM_PER_WORKER_GB), 2, 64)
+  auto workers   = clamp(min(CPU count, total RAM GB // ram_per_worker_gb(W, H)), 2, 64); per worker 1.8 GB at
+                   1080x1920, scaled by pixel count above it (4K: 7.2 GB)
   native_workers = max(1, workers // 4)   native segments rendered in parallel, X264_THREADS (2) x264 threads each
   hf_workers     = max(1, workers // 4)   HyperFrames Chrome capture workers of one HF segment render
   hf_segments    = 2 when 2 * hf_workers * 2 <= workers, else 1: HF segments rendered at once at most; a build
@@ -95,8 +96,14 @@ def ram_gb() -> float:
     return 8.0
 
 
-def auto_workers(cpus: int, gb: float) -> int:
-    return max(2, min(64, cpus, int(gb // RAM_PER_WORKER_GB)))
+def ram_per_worker_gb(W: int = 1080, H: int = 1920) -> float:
+    """RAM one worker needs: RAM_PER_WORKER_GB at 1080x1920 (and 1920x1080), times the pixel-count ratio for larger
+    frames (2560x1440: 3.2 GB, 3840x2160: 7.2 GB). Smaller frames keep the 1080p figure."""
+    return RAM_PER_WORKER_GB * max(1.0, (W * H) / (1080 * 1920))
+
+
+def auto_workers(cpus: int, gb: float, per_worker: float = RAM_PER_WORKER_GB) -> int:
+    return max(2, min(64, cpus, int(gb // per_worker)))
 
 
 def plan(workers: int, source: str = "explicit", cpus: int | None = None, gb: float | None = None) -> Budget:
@@ -121,7 +128,8 @@ def budget(tl=None) -> Budget:
         w = profiles.of(tl).data.resources.workers
         if w:
             return plan(w, "profile", cpus, gb)
-    return plan(auto_workers(cpus, gb), "auto", cpus, gb)
+    per = ram_per_worker_gb(tl.settings.width, tl.settings.height) if tl is not None else RAM_PER_WORKER_GB
+    return plan(auto_workers(cpus, gb, per), "auto", cpus, gb)
 
 
 # ------------------------------------------------------------------------------------------------ measurement

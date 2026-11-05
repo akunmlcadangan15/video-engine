@@ -496,6 +496,9 @@ def test_good_layout_without_fly_keeps_its_hash(tmp_path, monkeypatch):
     for k in ("duration_exact",):             # an absent optional gate table adds nothing
         assert dump["gates"].pop(k) is None
     dump.pop("resources")                     # the worker budget is a machine setting, never hashed
+    assert dump.pop("format") == {"orientation": None}   # an undeclared [format] adds nothing to the hash
+    if isinstance(dump.get("watermark"), dict) and dump["watermark"].get("corner") is None:
+        dump["watermark"].pop("corner")       # the orientation's default watermark corner adds nothing
     if dump.get("flags") == json.loads(profiles.FlagsProfile().model_dump_json()):
         dump.pop("flags")                     # default flag settings add nothing to the hash
     if dump.get("fx") == json.loads(profiles.FxProfile().model_dump_json()):

@@ -121,7 +121,7 @@ The rules of `master_timeline.json` and of captions.
   - Drawn kinds need `text`.
     `start_frame` / `end_frame` are relative to the segment start (half-open; defaults: whole segment).
     Fade in/out 0.2 s (shortened to a third of a short range).
-  - Rendering: Pillow draws an RGBA PNG exactly the box size (Inter Bold/SemiBold; text wrapped, font shrunk from 54/72/64 px down to 26 px at 1920 height until it fits);
+  - Rendering: Pillow draws an RGBA PNG exactly the box size (Inter Bold/SemiBold; text wrapped, font shrunk from 54/72/64 px down to 26 px at the reference canvas height (1920 portrait, 1080 landscape) until it fits);
       ffmpeg composites it in the same encode as the segment (`overlay` with `enable=between(n,a,b-1)`).
     A segment with drawn overlays is never stream-copied.
     Overlay spec, font hashes and the Pillow version are part of the segment cache key.
@@ -143,11 +143,11 @@ The rules of `master_timeline.json` and of captions.
 - Compiled to `.ass` by Rust (`compile_ass`). 1-2 words per event.
   No background box (BorderStyle 1).
   White bold Inter, outline 5, soft offset shadow layer.
-  Default font size 84 at 1920 px height.
+  Default font size 84 at 1920 px height (portrait); landscape: 58 at 1080 px height, and every length key scales with the frame (docs/PROFILES.md, Orientation).
 - `caption_style` keys passed to Rust: `slot` (`lower` 0.70H, `mid` 0.50H, `upper` 0.24H), `font`, `size`, `bold`, `outline`, `soft_shadow`, `max_words`, `max_chars`, `active_word_highlight`, `margin_x`, and the other keys of the Rust `Style`.
   Unknown keys fail gate L22.
 - Effective style = profile `caption_style` with the project `caption_style` keys on top.
-- Python-only keys: `auto_place` (default profile: true), `clearance` (px at 1920 height between a caption box and an element box; default profile: 160; 0 = must not intersect), `y_overrides` (`[[start_frame, end_frame, y_px], ...]`; a caption whose start frame is in `[start, end)` is centred at `y_px`), `fixed_y` (px at 1920 height, scaled to the output height; centre y of every caption no `y_overrides` entry or placement override matches; absent = the slot y), `max_bottom_y` (px at 1920 height, scaled to the output height; lowest allowed caption box bottom, gate Z01; default profile: none).
+- Python-only keys: `auto_place` (default profile: true), `clearance` (px at the reference canvas height between a caption box and an element box; default profile: 160; 0 = must not intersect), `y_overrides` (`[[start_frame, end_frame, y_px], ...]`; a caption whose start frame is in `[start, end)` is centred at `y_px`), `fixed_y` (px at the reference canvas height, scaled to the output height; centre y of every caption no `y_overrides` entry or placement override matches; absent = the slot y), `max_bottom_y` (px at the reference canvas height, scaled to the output height; lowest allowed caption box bottom, gate Z01; default profile: none).
 - Caption box: centre y +/- 0.75 x font size, the caption width wide;
     it contains the rendered ink (glyphs, descenders, soft shadow) and is the box R62, R63, Z01 and automatic placement use.
 - Caption timing always comes from the voiceover word timestamps (pinned words); no profile sets a caption rhythm.

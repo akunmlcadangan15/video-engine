@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from .units import Units
 
 if TYPE_CHECKING:
     from .timeline import Segment, Timeline
@@ -486,7 +487,8 @@ class Plan:
         return (c["x"] + c["s"] * p[0], c["y"] + c["s"] * p[1])
 
     def k(self) -> tuple[float, float]:
-        return self.W / 1080, self.H / 1920
+        u = Units.of(self.W, self.H)   # reference canvas of the orientation (units.py)
+        return u.kx, u.ky
 
     def scaled(self, b) -> Box:
         kx, ky = self.k()
@@ -671,7 +673,8 @@ class _Planner:
         iw, ih = maps.map_image_size(self.map_path)
         cover = max(self.W / iw, self.H / ih)
         self.mw, self.mh = iw * cover, ih * cover
-        self.kx, self.ky = self.W / 1080, self.H / 1920
+        u = Units.of(self.W, self.H)
+        self.kx, self.ky = u.kx, u.ky
         sc = self.sc
         self.pins = [hyperframes._pin_xy(p, sc, self.mw, self.mh) for p in sc.pins]
         self.regions = [[(x * self.mw, y * self.mh) for x, y in r.polygon] for r in sc.regions or []]

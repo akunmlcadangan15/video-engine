@@ -25,6 +25,7 @@ from .gate_registry import (  # noqa: F401  (re-exported: other modules read the
 )
 from .grade import Grade
 from .layout import LayoutProfile
+from . import units
 from .util import EngineError, blake3_json
 
 if TYPE_CHECKING:
@@ -671,10 +672,12 @@ class Watermark(_Strict):
     """Channel text mark burned into the final video (top right, inside the safe area) by the final mux."""
     text: str = Field(min_length=1, max_length=40)
     font: Literal["inter", "title"] = "inter"          # inter = Inter Bold, title = Archivo Black
-    px: float = Field(36, ge=16, le=120)                # font size, px at 1920 height
+    px: float = Field(36, ge=16, le=120)                # font size, px at the reference canvas height
     colour: str = "#ffffff"
     opacity: float = Field(0.85, gt=0, le=1)
     shadow: bool = True                                 # soft dark shadow under the text
+    corner: Literal["top_right", "bottom_right", "top_left", "bottom_left"] | None = None   # None = by orientation:
+                                                        # top_right in portrait, bottom_right in landscape
 
     @model_validator(mode="after")
     def _hex(self):
@@ -691,7 +694,7 @@ SOUND_EVENTS = ("pin", "region", "route", "whip", "label", "title", "figure", "c
 class PrintStyle(_Strict):
     """Profile [print]: printed typography. On paper maps (map p50 APCA Y >= paper_min_y) map text is dark ink
     printed into the map (multiply, no halo, no glow, no box); on dark imagery it is light text with a soft shadow.
-    Lengths are px at 1080 x 1920. Absent = the theme typography."""
+    Lengths are px at the reference canvas (1080 x 1920 portrait, 1920 x 1080 landscape). Absent = the theme typography."""
     paper_min_y: float = Field(0.3, ge=0.05, le=0.9)          # map p50 APCA Y at or above this = paper surface
     max_typefaces: int = Field(2, ge=1, le=4)                 # T01: typefaces per frame (caption and watermark excluded)
     watermark_clear_px: float = Field(32, ge=0, le=200)       # B01: element boxes keep this far from the watermark text
@@ -724,8 +727,8 @@ class PrintStyle(_Strict):
     emboss_alpha: float = Field(0.40, ge=0, le=1)
     emboss_dy: float = Field(2, ge=0, le=6)
     # year standing alone, centred
-    year_cx: float = Field(540, ge=0, le=1080)
-    year_cy: float = Field(560, ge=520, le=600)               # ink centre y
+    year_cx: float = Field(540, ge=0, le=1920)                # brand ranges per orientation: PRINT_RANGES
+    year_cy: float = Field(560, ge=0, le=1920)                # ink centre y
     year_width: float = Field(0.38, ge=0.35, le=0.40)         # ink width / frame width (within the px range)
     year_px_min: float = Field(220, ge=120, le=400)
     year_px_max: float = Field(250, ge=120, le=400)
@@ -740,7 +743,7 @@ class PrintStyle(_Strict):
     heading_px: float = Field(42, ge=40, le=44)
     heading_tracking: float = Field(0.14, ge=0, le=0.3)
     heading_weight: int = Field(600, ge=400, le=900)
-    heading_baseline_y: float = Field(384, ge=360, le=400)
+    heading_baseline_y: float = Field(384, ge=0, le=1920)     # brand range per orientation: PRINT_RANGES
     heading_ink: str = "#5B3A23"                              # light backgrounds
     heading_light: str = "#F3EAD8"                            # photos and dark backgrounds (shadow 0 2px 6px)
     heading_shadow_alpha: float = Field(0.40, ge=0, le=0.6)
@@ -924,8 +927,16 @@ class FxProfile(_Strict):
     particles: FxParticles = FxParticles()
 
 
+class FormatProfile(_Strict):
+    """Profile [format]: the frame orientation the profile is written for (units.py). None = not declared: a profile
+    with portrait geometry (caption fixed_y / max_bottom_y / place_band, [layout] or [print]) counts as portrait,
+    any other (the default profile) fits both orientations."""
+    orientation: Literal["portrait", "landscape"] | None = None
+
+
 class ProfileData(_Strict):
     description: str = ""
+    format: FormatProfile = FormatProfile()
     caption_style: dict = {}
     audio: AudioProfile
     draft: DraftProfile
@@ -1062,7 +1073,8 @@ def names() -> list[str]:
     return sorted(p.stem for p in config.PROFILES_DIR.glob("*.toml"))
 
 
-def _check_python_keys(name: str, cs: dict) -> None:
+def _check_python_keys(name: str, cs: dict, orient: str = "portrait") -> None:
+    ref_h = units.REF[orient][1]
     if "auto_place" in cs and not isinstance(cs["auto_place"], bool):
         raise EngineError(f"profile '{name}': caption_style.auto_place must be true or false")
     if "forbid_box" in cs and not isinstance(cs["forbid_box"], bool):
@@ -1077,15 +1089,54 @@ def _check_python_keys(name: str, cs: dict) -> None:
     if c is not None and (isinstance(c, bool) or not isinstance(c, (int, float)) or c < 0):
         raise EngineError(f"profile '{name}': caption_style.clearance must be a number >= 0")
     y = cs.get("fixed_y")
-    if y is not None and (isinstance(y, bool) or not isinstance(y, (int, float)) or not 0 < y < 1920):
-        raise EngineError(f"profile '{name}': caption_style.fixed_y must be a number in 0..1920 (px at 1920 height)")
+    if y is not None and (isinstance(y, bool) or not isinstance(y, (int, float)) or not 0 < y < ref_h):
+        raise EngineError(f"profile '{name}': caption_style.fixed_y must be a number in 0..{ref_h} "
+                          f"(px at {ref_h} height, {orient})")
     b = cs.get("place_band")
     if b is not None and (not isinstance(b, list) or len(b) != 2 or any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in b)
                           or not 0 < b[0] <= b[1] < 1):
         raise EngineError(f"profile '{name}': caption_style.place_band must be [lo, hi] with 0 < lo <= hi < 1 (fractions of H)")
     m = cs.get("max_bottom_y")
-    if m is not None and (isinstance(m, bool) or not isinstance(m, (int, float)) or not 0 < m <= 1920):
-        raise EngineError(f"profile '{name}': caption_style.max_bottom_y must be a number in 0..1920 (px at 1920 height)")
+    if m is not None and (isinstance(m, bool) or not isinstance(m, (int, float)) or not 0 < m <= ref_h):
+        raise EngineError(f"profile '{name}': caption_style.max_bottom_y must be a number in 0..{ref_h} "
+                          f"(px at {ref_h} height, {orient})")
+
+
+PORTRAIT_GEOMETRY_CAPTION_KEYS = ("fixed_y", "max_bottom_y", "place_band")
+# Approved brand ranges of the [print] positions, px at the reference canvas of each orientation.
+PRINT_RANGES = {
+    "portrait": {"year_cx": (0, 1080), "year_cy": (520, 600), "heading_baseline_y": (360, 400)},
+    "landscape": {"year_cx": (0, 1920), "year_cy": (300, 460), "heading_baseline_y": (120, 200)},
+}
+
+
+def profile_orientation(d: ProfileData) -> str | None:
+    """Declared [format] orientation, else "portrait" for a profile with portrait geometry, else None (any)."""
+    if d.format.orientation is not None:
+        return d.format.orientation
+    if d.layout is not None or d.print is not None or any(k in d.caption_style for k in PORTRAIT_GEOMETRY_CAPTION_KEYS):
+        return "portrait"
+    return None
+
+
+def _check_print(name: str, d: ProfileData) -> None:
+    if d.print is None:
+        return
+    orient = profile_orientation(d) or "portrait"
+    for key, (lo, hi) in PRINT_RANGES[orient].items():
+        v = getattr(d.print, key)
+        if not lo <= v <= hi:
+            raise EngineError(f"profile '{name}': print.{key} = {v:g} outside the approved {orient} range {lo:g}..{hi:g} "
+                              f"(px at {units.REF[orient][0]}x{units.REF[orient][1]})")
+
+
+def check_orientation(prof: "Profile", W: int, H: int) -> None:
+    """EngineError when the profile is written for the other orientation than the W x H frame."""
+    want = profile_orientation(prof.data)
+    have = units.orientation_of(W, H)
+    if want is not None and want != have:
+        raise EngineError(f"profile '{prof.name}' is a {want} profile but the frame {W}x{H} is {have}; "
+                          f"use a {have} profile (for example geoverum_landscape) or change settings.width/height")
 
 
 def _check_safety(name: str, d: ProfileData, base: ProfileData) -> None:
@@ -1184,7 +1235,8 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
         base = data if name == DEFAULT else ProfileData.model_validate(toml(0))
     except ValidationError as e:
         raise EngineError(f"profile '{name}': {e}") from e
-    _check_python_keys(name, data.caption_style)
+    _check_python_keys(name, data.caption_style, profile_orientation(data) or "portrait")
+    _check_print(name, data)
     _check_safety(name, data, base)
     if data.draft.rules_file:
         data.draft.rules = _creative_rules(name, data.draft.rules_file)
@@ -1227,6 +1279,10 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
             dump["gates"].pop(k, None)       # absent new gate tables add nothing to the hash
     if dump.get("type") == json.loads(TypeScale().model_dump_json()):
         dump.pop("type", None)   # profiles without [type] values keep their hash
+    if dump.get("format") == json.loads(FormatProfile().model_dump_json()):
+        dump.pop("format", None)   # profiles without [format] keep their hash
+    if isinstance(dump.get("watermark"), dict) and dump["watermark"].get("corner") is None:
+        dump["watermark"].pop("corner", None)   # the orientation's default corner adds nothing to the hash
     dump.pop("resources", None)   # the worker budget is a machine setting; stage keys carry the thread counts
     return Profile(name, data, blake3_json(dump))
 

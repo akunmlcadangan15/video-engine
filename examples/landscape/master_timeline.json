@@ -1,0 +1,54 @@
+{
+  "project_id": "example_landscape",
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "project_number": "00",
+    "topic": "Contoh landscape",
+    "date": "2026-01-01"
+  },
+  "credits_manifest": [
+    {
+      "asset_id": "still",
+      "path": "assets/still.jpg",
+      "source_url": "https://example.org/example-still",
+      "license": "Public Domain",
+      "watermark_free": true
+    }
+  ],
+  "audio_chain": {
+    "voiceover_path": "assets/narration.wav",
+    "auto_captions": false,
+    "language": "id"
+  },
+  "segments": [
+    {
+      "seg_index": 0,
+      "engine_type": "NATIVE_RUST_FFMPEG",
+      "start_frame": 0,
+      "end_frame": 120,
+      "source_image": "assets/still.jpg",
+      "asset_id": "still",
+      "camera_move": {
+        "preset": "ken_burns_zoom_in",
+        "intensity": 1.0,
+        "auto_intensity": false
+      },
+      "overlays": [
+        {
+          "id": "card",
+          "kind": "lower_third",
+          "text": "Contoh 16:9",
+          "subtitle": "1920 x 1080",
+          "box": [
+            96,
+            820,
+            760,
+            140
+          ]
+        }
+      ]
+    }
+  ]
+}
