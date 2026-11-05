@@ -27,7 +27,7 @@ area_tracking = 0.08
 hero_ratio = 1.5
 
 [layout.budget]
-texts = 4
+texts = 3
 labelled_pins = 2
 routes = 1
 animating = 2
@@ -38,7 +38,7 @@ exit_s = 0.3                   # fly-through exit time
 exit_max_s = 0.3
 stagger_s = 0.2
 settle_s = 0.8
-min_hold_s = 1.0
+min_hold_s = 2.0
 chars_per_s = 20
 
 [layout.labels]
