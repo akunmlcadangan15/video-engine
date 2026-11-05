@@ -3,7 +3,7 @@ description = "Geoverum: map-led geography shorts"
 # Large tables and the entity colours live in profiles/geoverum/ (merged under this file; keys here win).
 include = ["geoverum/entities.toml", "geoverum/legibility.toml", "geoverum/print.toml", "geoverum/sound.toml", "geoverum/layout.toml", "geoverum/style/dataviz.toml", "geoverum/style/radar.toml", "geoverum/style/historical.toml", "geoverum/style/icons.toml", "geoverum/style/routes.toml", "geoverum/style/semantic.toml", "geoverum/style/climate.toml", "geoverum/style/geoform.toml", "geoverum/style/timeline.toml", "geoverum/style/motion.toml"]
 
-# EXPERIMENTAL: flag settings inherit the engine defaults unless overridden.
+# Flag settings inherit the engine defaults unless overridden.
 [flags]
 alpha = 0.85
 reveal_s = 0.45
@@ -53,7 +53,7 @@ map_path = true               # map segments may carry a multi-key camera path
 scene = ["globe", "props", "beats", "radar", "terrain3d", "cross_section", "historical", "flag_char", "data_viz"]   # draft map scene opt-ins (draft_scene.py); no "morph": [transitions] map_morph is off
 rules_file = "geoverum/creative.md"   # single source: profiles/geoverum/creative.md (do not duplicate rules here)
 
-[motion]                     # EXPERIMENTAL (A/B): a slightly snappier small-overlay token
+[motion]                     # overlay motion token
 overlay_frames = 10          # 10 frames at 30 fps (~333 ms): smooth rise, not snappy
 overlay_frames_range = [4, 6]
 
@@ -65,7 +65,7 @@ camera_start_speed = 0.85      # globe and camera_path: first-key speed as a sha
 camera_end_speed = 0.85         # globe and camera_path: last-key speed as a share of the last leg's mean when the shot ends there
 region_edge = "glow"          # same-colour edge; [legibility] sets fill alpha and a 3-4 px outline, no blur
 region_style = "tint"         # flat translucent fill + glow
-label_style = "plain"         # EXPERIMENTAL: plain adaptive labels; opt into a dark box per pin / region / figure
+label_style = "plain"         # plain adaptive labels; opt into a dark box per pin / region / figure
 year_box_colour = "#f6efe0"   # years on a bright cream box with paper grain, dark serif digits, about label size
 year_box_ink = "#2a231d"
 year_box_px = 88
@@ -90,10 +90,10 @@ bank_max_roll = 20
 bank_max_tilt = 16
 bank_smooth_s = 0.8
 
-[transitions]                 # EXPERIMENTAL (A/B): hard cut on a visual-type change, short state change on one map
+[transitions]                 # hard cut on a visual-type change, short state change on one map
 kind = "cut"                  # every boundary is a hard cut unless a rule or a segment transition_in says otherwise
 same_type = { map = "state" } # map -> map on the same map_asset: 0.2 s state dissolve, never a long crossfade
-state_s = 0.35                # EXPERIMENTAL: state dissolve length (0.1-0.4 s)
+state_s = 0.35                # state dissolve length
 fade_s = 0.5                  # crossfade only when requested explicitly (timeline transition_in = "crossfade")
 page_turn = false             # Arundaya rejects page-turn / paper transitions (Siam revision 2)
 map_morph = true              # boleh morph satelit -> skematik/kertas historis (002,006,011)
