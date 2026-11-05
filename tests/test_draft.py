@@ -27,7 +27,7 @@ def storyboards(**over):
     """3 concepts over the 4 fixture words (Surabaya | bergadir malabi tewas.); `over` patches concept 0."""
     def concept(name, direction, fit, clar, pattern="establish", text="Surabaya"):
         return {"name": name, "direction": direction, "opener": f"{name} opener", "hero_moment": "Mallaby",
-                "beats": [{"from_word": 0, "to_word": 0, "goal": "where: Surabaya", "pattern": pattern,
+                "spans": [{"from_word": 0, "to_word": 0, "goal": "where: Surabaya", "pattern": pattern,
                            "assets": ["still"], "on_screen_text": text, "transition": "continuous zoom"},
                           {"from_word": 1, "to_word": 3, "goal": "what happened to Mallaby", "pattern": "footage_beat",
                            "assets": ["clip_1080x1920_30"], "transition": "whip"}],

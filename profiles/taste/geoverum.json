@@ -68,8 +68,8 @@
           "value": 1382
         },
         {
-          "key": "caption_style.box_bg",
-          "op": "exists",
+          "key": "caption_style.forbid_box",
+          "op": "==",
           "value": false
         },
         {
@@ -196,8 +196,8 @@
           ]
         },
         {
-          "key": "caption_style.box_bg",
-          "op": "exists",
+          "key": "caption_style.forbid_box",
+          "op": "==",
           "value": false
         }
       ]

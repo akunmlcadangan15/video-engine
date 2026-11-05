@@ -233,6 +233,7 @@ class DraftProfile(_Strict):
     min_seg_s: float = Field(gt=0)
     max_seg_s: float = Field(gt=0)
     rules: list[str] = []
+    rules_file: str | None = Field(None, exclude_if=lambda v: v is None)  # single source of creative rules (profiles-relative .md, `- ` lines); mutually exclusive with `rules`
     map_path: bool = False   # the model may give a map segment a multi-key camera path (map_path)
     scene: list[Literal["globe", "props", "morph", "beats"]] = Field([], exclude_if=lambda v: not v)   # opt-in map
                                                     # scene keys (draft_scene.py; beats also need [layout]); empty
@@ -241,11 +242,25 @@ class DraftProfile(_Strict):
     @model_validator(mode="after")
     def _o(self):
         _order(self.min_seg_s, self.max_seg_s, "draft segment length")
+        if self.rules and self.rules_file:
+            raise ValueError("[draft] rules and rules_file are mutually exclusive (one source of truth)")
         return self
 
 
 REVEAL_EASE = (0.28, 0.37, 0.29, 0.91)   # fitted to the reveals of the Pan-American reference Short (peak speed at
                                          # 19 % of the move; docs/proposals/geoverum-camera-reference.md)
+
+
+class TypeScale(_Strict):
+    """Canonical type scale (px at 1080x1920). Single source for base text sizes; [theme] title_px/pin_label_px,
+    [print] title_px and [layout] sizes are per-surface overrides on top of this base (see docs/STRUCTURE.md).
+    Caption size stays in [caption_style] (it is a caption rule, not scene type)."""
+    title_px: float = Field(96, ge=40, le=200)        # base big-title size (dark/theme surface)
+    title_px_paper: float = Field(88, ge=40, le=200)  # big-title size on paper/print surface
+    pin_label_px: float = Field(52, ge=20, le=120)    # teardrop pin label size (px, constant on screen)
+
+    def title_for(self, paper: bool = False) -> float:
+        return self.title_px_paper if paper else self.title_px
 
 
 class Theme(_Strict):
@@ -915,6 +930,7 @@ class ProfileData(_Strict):
     audio: AudioProfile
     draft: DraftProfile
     theme: Theme
+    type: TypeScale = TypeScale()
     gates: StyleGates = StyleGates()
     watermark: Watermark | None = None
     sound: SoundProfile | None = None
@@ -956,6 +972,10 @@ class Profile:
     @property
     def theme(self) -> Theme:
         return self.data.theme
+
+    @property
+    def type(self) -> TypeScale:
+        return self.data.type
 
     @property
     def watermark(self) -> Watermark | None:
@@ -1105,6 +1125,26 @@ def _read_include(name: str, rel: str) -> str:
         raise EngineError(f"profile {path}: {e}") from e
 
 
+def _creative_rules(name: str, rel: str) -> list[str]:
+    """Creative rules from the single-source markdown file `rel` (profiles-relative): every `- ` line is one rule."""
+    base = config.PROFILES_DIR.resolve()
+    if Path(rel).is_absolute() or not rel.endswith(".md"):
+        raise EngineError(f"profile '{name}': [draft] rules_file {rel!r} must be a relative path ending in .md")
+    path = (base / rel).resolve()
+    if base not in path.parents:
+        raise EngineError(f"profile '{name}': [draft] rules_file {rel!r} leaves the profiles directory {base}")
+    try:
+        text = path.read_text()
+    except FileNotFoundError:
+        raise EngineError(f"profile '{name}': [draft] rules_file {rel!r} not found: {path}") from None
+    except OSError as e:
+        raise EngineError(f"profile {path}: {e}") from e
+    rules = [line[2:].strip() for line in text.splitlines() if line.startswith("- ") and line[2:].strip()]
+    if not rules:
+        raise EngineError(f"profile '{name}': [draft] rules_file {rel!r} has no `- ` rule lines")
+    return rules
+
+
 @lru_cache(maxsize=32)
 def _parse(name: str, texts: tuple[str, ...]) -> Profile:
     """texts: default.toml, the channel file, then the files the channel `include`s, in that order (the cache key is
@@ -1146,6 +1186,8 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
         raise EngineError(f"profile '{name}': {e}") from e
     _check_python_keys(name, data.caption_style)
     _check_safety(name, data, base)
+    if data.draft.rules_file:
+        data.draft.rules = _creative_rules(name, data.draft.rules_file)
     dump = json.loads(data.model_dump_json())
     if dump.get("print") is None:
         dump.pop("print", None)    # profiles without [print] keep their hash
@@ -1183,6 +1225,8 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
     for k in ("cta", "ending_keyword", "duration_exact", "geo"):
         if dump["gates"].get(k) is None:
             dump["gates"].pop(k, None)       # absent new gate tables add nothing to the hash
+    if dump.get("type") == json.loads(TypeScale().model_dump_json()):
+        dump.pop("type", None)   # profiles without [type] values keep their hash
     dump.pop("resources", None)   # the worker budget is a machine setting; stage keys carry the thread counts
     return Profile(name, data, blake3_json(dump))
 
@@ -1259,8 +1303,24 @@ def flatten(name: str) -> str:
     text, n = _INCLUDE_LINE.subn("", text, count=1)
     if n != 1:
         raise EngineError(f"profile {path_of(name)}: write `{INCLUDE_KEY}` as a single-line list to flatten the profile")
-    return text.rstrip("\n") + "\n\n" + "\n\n".join(_read_include(name, rel).strip("\n") for rel in listed) + "\n"
+    flat = text.rstrip("\n") + "\n\n" + "\n\n".join(_read_include(name, rel).strip("\n") for rel in listed) + "\n"
+    return _inline_rules_file(name, flat)
 
+
+def _inline_rules_file(name: str, flat: str) -> str:
+    """Flattened text with `[draft] rules_file` replaced by the inline `rules` list it loads, so a flattened
+    profile is self-contained (tools/tests that copy one TOML to another directory keep working)."""
+    import json as _json
+    raw = tomllib.loads(flat)
+    rel = (raw.get("draft") or {}).get("rules_file")
+    if not rel:
+        return flat
+    rules = _creative_rules(name, rel)
+    inline = "rules = [" + ", ".join(_json.dumps(r) for r in rules) + "]"
+    flat, n = re.subn(r'(?m)^rules_file\s*=.*$', inline, flat, count=1)
+    if n != 1:
+        raise EngineError(f"profile '{name}': cannot inline [draft] rules_file")
+    return flat
 
 def of(tl: "Timeline") -> Profile:
     return load(tl.profile, tl.profile_overrides)

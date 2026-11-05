@@ -11,10 +11,13 @@ Istilah dan singkatan yang dipakai di kode dan dokumentasi. Istilah tetap dalam 
 | **Segmen** | Satu potongan timeline yang dirender oleh satu jalur (native atau HyperFrames). Segmen berurutan tanpa celah dari frame 0. |
 | **Native** | Jalur render ffmpeg dan Rust untuk foto dan footage (`NATIVE_RUST_FFMPEG`). |
 | **HyperFrames** | Jalur render HTML dan GSAP di Chrome tanpa layar untuk peta, pin, kartu, dan judul (`HYPERFRAMES_GSAP`). |
-| **Beats** | Cara menulis scene peta sebagai urutan kejadian; planner tata letak menurunkan kamera dan posisi elemen darinya. |
+| **Storyboard span** (`spans`) | Rentang kata narasi `from_word..to_word` dalam satu konsep storyboard, dengan `goal` dan `pattern`. Alias lama `beats` diterima saat membaca. |
+| **Timeline `Beat`** | Unit isi layar per `at_frame` di scene peta (butuh `[layout]`). Bukan storyboard span; skala waktunya berbeda. |
 | **Profil channel** | Berkas TOML di `profiles/` berisi gaya dan aturan satu channel. Prioritas: default, profil channel, proyek. |
 | **Taste store** | `profiles/taste/<channel>.json`: hal yang disukai dan ditolak beserta alasannya, dipakai director saat draft. |
 | **Director** | Tahap draft yang membuat tiga konsep storyboard dan memilih satu berdasarkan skor. |
+| **Creative rules** | Aturan keras per channel di `profiles/<channel>/creative.md` (sumber tunggal, dimuat sebagai `[draft] rules`). Bukan taste, bukan guidance. |
+| **Type scale** | Basis kanonis ukuran teks `[type]` di profil; `[theme]`/`[print]`/`[layout]` adalah override per-surface. |
 | **Agent handoff** | Provider AI `agent`: mesin menulis paket permintaan ke berkas dan keluar dengan kode 3; agent menjawab lewat `response.json`. |
 | **Build report** | `out/build_report.json` (sukses) atau `out/build_report.failed.json` (gagal). |
 | **Manifest** | `out/build_manifest.json`: id build, hash input, toolchain, dan kunci tahap. |

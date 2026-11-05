@@ -11,6 +11,7 @@ Indeks seluruh dokumentasi. Cari pertanyaan Anda di tabel pertama, lalu buka dok
 | Menyiapkan environment dan variabel `VIDEO_ENGINE_*` | [ENVIRONMENT.md](ENVIRONMENT.md) |
 | Menulis atau memahami `master_timeline.json` dan caption | [TIMELINE.md](TIMELINE.md) |
 | Mengatur gaya dan aturan sebuah channel | [PROFILES.md](PROFILES.md) |
+| Tahu pemisahan lapisan profil/konsep/struktur/presentasi/selera | [STRUCTURE.md](STRUCTURE.md) |
 | Tahu arti sebuah gate (R63, S01, H01, ...) dan cara melonggarkannya | [GATES.md](GATES.md) |
 | Memahami tahap build, cache, manifest, dan sumber daya | [BUILD.md](BUILD.md) |
 | Menyiapkan paket unggah | [DELIVERY.md](DELIVERY.md) |

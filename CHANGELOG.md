@@ -7,6 +7,13 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Ditambahkan
 
+- **Struktur P0 (kejelasan pemisahan lapisan)**: creative rules Geoverum kini satu sumber di
+  `profiles/geoverum/creative.md` (`[draft] rules_file`, saling eksklusif dengan `rules` inline);
+  konsep storyboard memakai `spans` (alias lama `beats` diterima saat membaca); tabel kanonis
+  `[type]` menjadi basis ukuran teks (`[theme]`/`[print]`/`[layout]` adalah override per-surface);
+  check caption-box di `profiles/taste/geoverum.json` diperbaiki menjadi `caption_style.forbid_box == false`
+  (setelah pelonggaran 2026-11-04). Lihat `docs/STRUCTURE.md` dan `tests/test_p0_structure.py`.
+
 - **Versi HyperFrames bisa dipilih** (`video_engine/hfversion.py`, `engine toolchain [show|list|use SPEC]`): env
   `VIDEO_ENGINE_HYPERFRAMES_VERSION` atau `vendor/hyperframes.select` memilih `pinned` (bawaan), versi pasti `X.Y.Z`
   (dipasang ke `vendor/hf/X.Y.Z`), `latest` atau `system` (CLI global). `engine doctor` menampilkan versi aktif

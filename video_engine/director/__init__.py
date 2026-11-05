@@ -1,7 +1,7 @@
 """Director stage of `engine draft`: storyboard concepts before the timeline, and a frame review after it.
 
 storyboard: one request (`draft/storyboard`, one repair `draft/storyboard1`) -> 3 concepts over the locked narration
-(beats = contiguous word spans in VO order, each with a goal and a pattern from patterns.toml) -> engine validation
+(spans = contiguous word spans in VO order, each with a goal and a pattern from patterns.toml) -> engine validation
 (order, spans, facts only from narration/script/asset notes/credits) -> score (narration fit, clarity, asset
 availability, render cost, taste penalties) -> the best valid concept is appended to the draft prompt.
 review: frames sampled at critical times of the drafted timeline + narration timing -> timestamped findings ->
@@ -127,17 +127,17 @@ def asset_kinds(a) -> set[str]:
 
 def schema(inp) -> dict:
     s, i, n = {"type": "string"}, {"type": "integer"}, {"type": "number"}
-    beat = {"type": "object", "properties": {
+    span = {"type": "object", "properties": {
         "from_word": i, "to_word": i, "goal": s, "pattern": {"type": "string", "enum": sorted(patterns())},
         "assets": {"type": "array", "items": {"type": "string", "enum": [a.id for a in inp.assets]}},
         "on_screen_text": s, "camera": s, "transition": s},
         "required": ["from_word", "to_word", "goal", "pattern", "assets"]}
     concept = {"type": "object", "properties": {
         "name": s, "direction": {"type": "string", "enum": list(DIRECTIONS)}, "opener": s, "hero_moment": s,
-        "beats": {"type": "array", "items": beat, "minItems": 1},
+        "spans": {"type": "array", "items": span, "minItems": 1},
         "self_scores": {"type": "object", "properties": {"narration_fit": n, "clarity": n},
                         "required": ["narration_fit", "clarity"]}},
-        "required": ["name", "direction", "opener", "beats", "self_scores"]}
+        "required": ["name", "direction", "opener", "spans", "self_scores"]}
     return {"type": "object", "properties": {"concepts": {"type": "array", "items": concept, "minItems": 3,
                                                           "maxItems": 3}}, "required": ["concepts"]}
 
@@ -172,7 +172,7 @@ PATTERNS (pattern library):
 {taste_text(taste)}
 
 FORMAT
-- beats: contiguous word spans: the first from_word 0, each from_word = previous to_word + 1, the last to_word = {max(0, len(inp.words) - 1)}.
+- spans: contiguous word spans (storyboard spans; not to be confused with timeline Beat, the per-frame screen unit of a map scene): the first from_word 0, each from_word = previous to_word + 1, the last to_word = {max(0, len(inp.words) - 1)}.
 - goal: what the viewer must understand or feel at the end of the beat (one sentence).
 - pattern from the library; assets = the asset ids the beat shows; on_screen_text only with facts from the sources.
 - opener: one line describing the first 1.5 s; transition: how the beat is entered (e.g. continuous zoom, whip, cut).
@@ -208,31 +208,31 @@ def invented(text: str, sources: str) -> list[str]:
 
 
 def validate(c: dict, inp, pats: dict) -> dict:
-    """Engine checks of one concept -> {errors, availability, render, beats_checked}."""
+    """Engine checks of one concept -> {errors, availability, render, spans_checked}."""
     errs: list[str] = []
-    beats = c.get("beats") or []
+    spans = c.get("spans") or c.get("beats") or []  # "beats" is the legacy alias, normalised to spans
     n = len(inp.words)
     by_id = {a.id: a for a in inp.assets}
     want = 0
-    for k, b in enumerate(beats):
+    for k, b in enumerate(spans):
         f, t = b.get("from_word"), b.get("to_word")
         if not isinstance(f, int) or not isinstance(t, int) or f > t:
-            errs.append(f"beat {k}: bad word span {f}-{t}")
+            errs.append(f"span {k}: bad word span {f}-{t}")
             continue
         if f != want:
-            errs.append(f"beat {k}: starts at word {f}, expected {want} (narration order is locked; no gaps or overlaps)")
+            errs.append(f"span {k}: starts at word {f}, expected {want} (narration order is locked; no gaps or overlaps)")
         want = t + 1
         if b.get("pattern") not in pats:
-            errs.append(f"beat {k}: unknown pattern {b.get('pattern')!r}")
+            errs.append(f"span {k}: unknown pattern {b.get('pattern')!r}")
         bad = invented(b.get("on_screen_text", ""), sources_text(inp))
         if bad:
-            errs.append(f"beat {k}: on-screen text states facts not in the sources: {', '.join(bad)}")
-    if beats and n and want != n:
-        errs.append(f"beats end at word {want - 1}, narration has {n} words (cover every word)")
-    if not beats:
-        errs.append("no beats")
+            errs.append(f"span {k}: on-screen text states facts not in the sources: {', '.join(bad)}")
+    if spans and n and want != n:
+        errs.append(f"spans end at word {want - 1}, narration has {n} words (cover every word)")
+    if not spans:
+        errs.append("no spans")
     avail, costs = [], []
-    for b in beats:
+    for b in spans:
         p = pats.get(b.get("pattern"), {})
         ids = b.get("assets") or []
         known = [by_id[x] for x in ids if x in by_id]
@@ -257,7 +257,7 @@ def score(c: dict, v: dict, taste: dict) -> dict:
         pen += OPENER_PENALTY
         why.append("opener used recently")
     rec_t = {_norm(t) for t in _recent(taste, "transitions")}
-    rep = [b.get("transition") for b in c.get("beats") or [] if b.get("transition") and _norm(b["transition"]) in rec_t]
+    rep = [b.get("transition") for b in (c.get("spans") or c.get("beats") or []) if b.get("transition") and _norm(b["transition"]) in rec_t]
     if rep:
         pen += min(TRANSITION_PENALTY_MAX, TRANSITION_PENALTY * len(rep))
         why.append(f"{len(rep)} recently used transition(s)")
@@ -283,12 +283,12 @@ def beat_narration(inp, b: dict) -> str:
 
 def chosen_text(inp, c: dict) -> str:
     fps = inp.settings.fps
-    lines = [f"CHOSEN STORYBOARD ({c.get('direction')}: {c.get('name')}). Build the segments from these beats in order: "
-             "a beat may span several segments, and segments may be split for timing, but keep its goal, pattern and "
+    lines = [f"CHOSEN STORYBOARD ({c.get('direction')}: {c.get('name')}). Build the segments from these spans in order: "
+             "a span may cover several segments, and segments may be split for timing, but keep its goal, pattern and "
              "assets. Copy the beat goal into each segment's \"goal\".",
              f"Opener (first 1.5 s): {c.get('opener')}", f"Hero moment: {c.get('hero_moment') or '-'}"]
     pats = patterns()
-    for k, b in enumerate(c["beats"]):
+    for k, b in enumerate(c.get("spans") or c.get("beats") or []):
         w0, w1 = inp.words[b["from_word"]], inp.words[b["to_word"]]
         rec = pats.get(b["pattern"], {}).get("recipe")
         lines.append(f"{k}. frames {w0.start_frame}-{w1.end_frame} ({w0.start_frame / fps:.1f}-{w1.end_frame / fps:.1f} s) "

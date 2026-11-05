@@ -795,7 +795,7 @@ def draft(pdir: Path, *, out: Path | None = None, provider=None, max_repairs: in
                               for s in tl.segments]
         if ok and sb and sb["chosen"]:
             c = sb["chosen"]["concept"]
-            dr.remember(channel, c.get("opener"), [b.get("transition") for b in c["beats"]])
+            dr.remember(channel, c.get("opener"), [b.get("transition") for b in (c.get("spans") or c.get("beats") or [])])
     report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
     return DraftResult(path if ok else None, report_path, ok, report)
 

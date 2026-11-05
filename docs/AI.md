@@ -112,7 +112,7 @@ Replies in a ```` ```json ```` fence are accepted.
 ## Director stage (`engine draft`)
 
 Before the timeline request the provider writes 3 storyboard concepts (request `draft/storyboard`, one repair `draft/storyboard1`).
-A concept is a list of beats (`from_word`, `to_word`, `goal`, `pattern`, `assets`, `on_screen_text`, `camera`, `transition`) with self scores.
+A concept is a list of spans (`spans`; alias lama `beats`) (`from_word`, `to_word`, `goal`, `pattern`, `assets`, `on_screen_text`, `camera`, `transition`) with self scores.
 The engine rejects concepts that use unknown assets or facts absent from the narration, script, asset hints and credits, then scores the rest: fit 0.35, clarity 0.25, asset availability 0.25, render cost 0.15, minus 0.15 for an opener used in the last `avoid_recent` drafts and 0.03 per recently used transition (max 0.15).
 The best concept goes into the timeline request as `CHOSEN STORYBOARD`; each segment carries its `goal`.
 Prompt text and patterns: `video_engine/director/guidance.md`, `video_engine/director/patterns.toml` (establish, progressive_reveal, comparison, tracing, meaningful_repetition, emphasis_by_pause, footage_beat, paradox_hook, border_anomaly_tour, scale_overlay, causal_barrier, cross_section_depth, historical_flashback).

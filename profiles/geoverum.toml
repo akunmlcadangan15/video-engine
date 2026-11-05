@@ -12,6 +12,11 @@ glow_px = 6
 fit = "auto"           # per region: cover, contain where cropping would cut > auto_max_loss
 pin_height_pct = 4.5
 
+[type]              # canonical type scale: matches [theme] title_px/pin_label_px and [print] title_px
+title_px = 112
+title_px_paper = 88
+pin_label_px = 52
+
 [caption_style]
 # Approved 2026-11-01 (style-lab upgrade-v2 A/B): bold Inter 84 px, white, no outline, no box, at about 0.72 H.
 font = "Inter"                # family Inter; bold=true makes libass pick vendor/fonts/Inter-Bold.otf
@@ -46,14 +51,7 @@ min_seg_s = 0.8               # flexible segment pacing; short cuts and montages
 max_seg_s = 30.0
 map_path = true               # map segments may carry a multi-key camera path
 scene = ["globe", "props", "beats"]   # draft map scene opt-ins (draft_scene.py); no "morph": [transitions] map_morph is off
-rules = [
-  "Open on a moving map (kind map, camera zoom_in or a pan) with a geographical paradox, visual pun, stark dividing line, or magnifying-glass mystery and the first pin, route, or card within 1.5 s; narration and the first caption start at 0.0-0.2 s.",
-  "Use HyperFrames scenes as the primary visual composer (satellite maps, historical parchment maps, 2D side-view cross-section diagrams, 3D space globes, cards, and props). Move between places on one map with a map_path (zooming up to 16x for enclaves/straits) or cut freely whenever the narrative rhythm calls for a new shot.",
-  "Something new on screen every 1-3 s: a pin with dot-and-leader label, a glowing or striped region fill, a white-bordered cutout sticker, a flag-character, a route or dimension bar (mi / km), an animated counter or stat pill, a true-scale polygon drag/tile comparison, or a new shot.",
-  "Match typography to the surface: geometric sans-serif (Inter Bold / SemiBold) on dark satellite, globe, radar, and cross-section scenes (ALL CAPS for macro countries/mountains, Title Case for features/cities/peaks, yellow initial letters for acronyms), and serif/engraved type (EB Garamond / Playfair Display / Cinzel) strictly on historical parchment or blueprint maps.",
-  "The last 5 s show a keyword or the title of the hook again on screen (pin label, card, icon equation, 3D globe summary, or overlay text).",
-  "No call to action and no end card.",
-]
+rules_file = "geoverum/creative.md"   # single source: profiles/geoverum/creative.md (do not duplicate rules here)
 
 [motion]                     # EXPERIMENTAL (A/B): a slightly snappier small-overlay token
 overlay_frames = 5           # 5 frames at 30 fps (~167 ms); documented A/B range 4-6, default engine 7

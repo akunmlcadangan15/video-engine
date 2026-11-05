@@ -221,6 +221,11 @@ def strict_geoverum(tmp_path, monkeypatch):
     d.mkdir(exist_ok=True)
     (d / "default.toml").write_text((config.PROFILES_DIR / "default.toml").read_text())
     (d / "geoverum.toml").write_text(text)
+    # single-source creative rules live outside the TOML: copy them with the profile
+    creative = config.PROFILES_DIR / "geoverum" / "creative.md"
+    if creative.is_file():
+        (d / "geoverum").mkdir(exist_ok=True)
+        (d / "geoverum" / "creative.md").write_text(creative.read_text())
     monkeypatch.setattr(config, "PROFILES_DIR", d)
     return d
 

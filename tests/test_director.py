@@ -72,7 +72,7 @@ def test_good_scores_availability_and_render_cost(proj):
 def test_good_map_asset_satisfies_tracing(proj):
     inp = draft.collect(proj)
     sb = storyboards()
-    sb["concepts"][2]["beats"][0]["assets"] = ["map"]
+    sb["concepts"][2]["spans"][0]["assets"] = ["map"]
     row = next(x for x in director.rank(sb, inp, director.load_taste("default")) if x["index"] == 2)
     assert row["score"]["availability"] == 1.0
 
@@ -80,8 +80,8 @@ def test_good_map_asset_satisfies_tracing(proj):
 def test_bad_concept_out_of_order_or_invented_fact_is_not_picked(proj):
     inp = draft.collect(proj)
     sb = storyboards()
-    sb["concepts"][0]["beats"][1]["from_word"] = 2                            # skips word 1
-    sb["concepts"][1]["beats"][0]["on_screen_text"] = "Surabaya 1946"          # 1946 is in no source
+    sb["concepts"][0]["spans"][1]["from_word"] = 2                            # skips word 1
+    sb["concepts"][1]["spans"][0]["on_screen_text"] = "Surabaya 1946"          # 1946 is in no source
     ranked = director.rank(sb, inp, director.load_taste("default"))
     bad = {x["index"]: x for x in ranked if not x["valid"]}
     assert set(bad) == {0, 1}
@@ -99,7 +99,7 @@ def test_good_facts_from_script_and_credits_are_allowed(proj):
 def test_bad_all_concepts_invalid_repairs_then_drafts_without_storyboard(proj):
     sb = storyboards()
     for c in sb["concepts"]:
-        c["beats"][1]["to_word"] = 2                                             # word 3 never covered
+        c["spans"][1]["to_word"] = 2                                             # word 3 never covered
     c = client({"m38": [good_plan()]}, sb=[sb])
     r = run(proj, c)
     assert r.ok and len(c.models.side_calls["STORYBOARD REQUEST"]) == 2           # one repair round
@@ -112,7 +112,7 @@ def test_bad_all_concepts_invalid_repairs_then_drafts_without_storyboard(proj):
 def test_good_repaired_storyboard_is_used(proj):
     bad = storyboards()
     for c in bad["concepts"]:
-        c["beats"][1]["to_word"] = 2
+        c["spans"][1]["to_word"] = 2
     c = client({"m38": [good_plan()]}, sb=[bad, storyboards()])
     r = run(proj, c)
     assert r.report["storyboard"]["chosen"] == 0 and "warning" not in r.report["storyboard"]
@@ -293,7 +293,7 @@ def test_bad_agent_storyboard_invalid_writes_repair_bundle(proj):
     assert main(args) == 3
     bad = storyboards()
     for c in bad["concepts"]:
-        c["beats"][0]["from_word"] = 1
+        c["spans"][0]["from_word"] = 1
     (root / "storyboard" / "response.json").write_text(json.dumps(bad))
     assert main(args + ["--resume"]) == 3
     assert "expected 0" in (root / "storyboard1" / "storyboard_errors.txt").read_text()

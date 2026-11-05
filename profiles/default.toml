@@ -11,6 +11,11 @@ glow_px = 6
 fit = "auto"           # per region: cover, contain where cropping would cut > auto_max_loss
 pin_height_pct = 4.5
 
+[type]              # canonical type scale (base sizes; theme/print/layout override per surface)
+title_px = 96
+title_px_paper = 88
+pin_label_px = 52
+
 [caption_style]
 # Python-side caption keys. Rust Style fields not listed use the compiler defaults
 # (rust/hypoverum_core_rs/src/ass.rs, Style::default).
