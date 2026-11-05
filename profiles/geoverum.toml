@@ -1,7 +1,7 @@
 # Geoverum channel profile. Spec: Style Lab brand profile (brand/geoverum/brand-profile.md).
 description = "Geoverum: map-led geography shorts"
 # Large tables and the entity colours live in profiles/geoverum/ (merged under this file; keys here win).
-include = ["geoverum/entities.toml", "geoverum/legibility.toml", "geoverum/print.toml", "geoverum/sound.toml", "geoverum/layout.toml", "geoverum/style/dataviz.toml", "geoverum/style/radar.toml", "geoverum/style/historical.toml", "geoverum/style/icons.toml", "geoverum/style/routes.toml", "geoverum/style/semantic.toml"]
+include = ["geoverum/entities.toml", "geoverum/legibility.toml", "geoverum/print.toml", "geoverum/sound.toml", "geoverum/layout.toml", "geoverum/style/dataviz.toml", "geoverum/style/radar.toml", "geoverum/style/historical.toml", "geoverum/style/icons.toml", "geoverum/style/routes.toml", "geoverum/style/semantic.toml", "geoverum/style/climate.toml", "geoverum/style/geoform.toml"]
 
 # EXPERIMENTAL: flag settings inherit the engine defaults unless overridden.
 [flags]
@@ -47,7 +47,7 @@ tolerance_lu = 0.2
 require_source = "epidemic"   # A02: music and SFX from Epidemic Sound only (docs/SOUND.md)
 
 [draft]
-min_seg_s = 0.8               # flexible segment pacing; short cuts and montages allowed
+min_seg_s = 3.0               # flexible segment pacing; short cuts and montages allowed
 max_seg_s = 30.0
 map_path = true               # map segments may carry a multi-key camera path
 scene = ["globe", "props", "beats", "radar", "terrain3d", "cross_section", "historical", "flag_char", "data_viz"]   # draft map scene opt-ins (draft_scene.py); no "morph": [transitions] map_morph is off

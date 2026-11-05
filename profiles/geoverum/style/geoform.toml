@@ -1,0 +1,6 @@
+# Kategori baru: geoform & cross-section (digali dari 012 Everest, 015 Gibraltar, 024 Amazon, 021 Centralia)
+[geoform]
+terrain_variants = ["satellite_terrain", "geoid_globe", "cross_section", "underground_mine", "river_width"]
+cross_section = { layers = true, labels = true }
+underground = { fire = "orange_glow", depth_label = true }
+river_width = { measure = "white_double_arrow" }

@@ -1,0 +1,6 @@
+# Kategori baru: climate & flow (digali dari 023 Gulf Stream, 026 Tornado Alley)
+[climate]
+flows = ["gulf_stream", "tornado_alley", "jet_stream"]
+flow_style = "red_arrow_dashed"
+temperature_style = "thermometer_label"
+convergence_diagram = { warm = "red", cold = "blue", mixed = "green" }
