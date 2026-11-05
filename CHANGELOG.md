@@ -7,6 +7,13 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Ditambahkan
 
+- **Penyutradaraan satu gaya untuk dua rasio**: `segments[].intent.shot` (establish, track, reveal, compare,
+  journey, hold, reaction, contrast) adalah lapisan cerita yang sama untuk 9:16 dan 16:9; `video_engine/framing.py`
+  (adaptor format) mengisi kamera yang dibiarkan kosong sesuai orientasi (portrait: push/dolly, ketat, subjek di
+  tengah; landscape: pan lateral/crane, lebar, rule of thirds). Override per profil `[framing.<orientasi>.<shot>]`;
+  prompt draft memuat kosakata shot dan framing orientasi proyek. Segmen tanpa `shot` dan hash profil tidak berubah.
+  Proposal `docs/proposals/geoverum-direksi-dua-aspek.md` dihapus (isinya di docs/PROFILES.md dan docs/TIMELINE.md).
+
 - **Output landscape 16:9** (1920×1080, 2560×1440, 3840×2160) di samping Shorts portrait. Modul baru
   `video_engine/units.py`: kanvas referensi per orientasi (1080×1920 / 1920×1080), skala seragam `k`, safe area
   per orientasi (landscape 96/54 px); semua situs `W/1080`, `H/1920` (gate R62/R63/O01/F04/B01/Z01, layout, overlay,

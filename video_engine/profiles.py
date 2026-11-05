@@ -937,6 +937,7 @@ class FormatProfile(_Strict):
 class ProfileData(_Strict):
     description: str = ""
     format: FormatProfile = FormatProfile()
+    framing: dict = {}                      # [framing.<orientation>.<shot>] overrides of video_engine/framing.py
     caption_style: dict = {}
     audio: AudioProfile
     draft: DraftProfile
@@ -1237,6 +1238,11 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
         raise EngineError(f"profile '{name}': {e}") from e
     _check_python_keys(name, data.caption_style, profile_orientation(data) or "portrait")
     _check_print(name, data)
+    try:
+        from . import framing
+        framing.check_overrides(data.framing)
+    except ValueError as e:
+        raise EngineError(f"profile '{name}': {e}") from None
     _check_safety(name, data, base)
     if data.draft.rules_file:
         data.draft.rules = _creative_rules(name, data.draft.rules_file)
@@ -1279,6 +1285,8 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
             dump["gates"].pop(k, None)       # absent new gate tables add nothing to the hash
     if dump.get("type") == json.loads(TypeScale().model_dump_json()):
         dump.pop("type", None)   # profiles without [type] values keep their hash
+    if not dump.get("framing"):
+        dump.pop("framing", None)   # profiles without [framing] keep their hash
     if dump.get("format") == json.loads(FormatProfile().model_dump_json()):
         dump.pop("format", None)   # profiles without [format] keep their hash
     if isinstance(dump.get("watermark"), dict) and dump["watermark"].get("corner") is None:

@@ -1134,18 +1134,21 @@ class Overlay(Strict):
 
 
 class SegmentIntent(Strict):
-    """Local creative expectations, never an exemption from render/decode integrity."""
+    """Local creative expectations, never an exemption from render/decode integrity. `shot` is the aspect-agnostic
+    shot intent (video_engine/framing.py): the engine fills open camera fields from its per-orientation framing."""
     motion: Optional[Literal["static", "moving"]] = None
     negative_space: bool = Field(False, strict=True)
     reason: str = Field(min_length=1, max_length=500)
+    shot: Optional[Literal["establish", "track", "reveal", "compare", "journey", "hold", "reaction", "contrast"]] = \
+        Field(None, exclude_if=lambda v: v is None)
 
     @model_validator(mode="after")
     def _intent(self):
         self.reason = self.reason.strip()
         if not self.reason:
             raise ValueError("intent.reason must not be blank")
-        if self.motion is None and not self.negative_space:
-            raise ValueError("intent needs motion or intentional negative_space")
+        if self.motion is None and not self.negative_space and self.shot is None:
+            raise ValueError("intent needs motion, intentional negative_space or a shot")
         return self
 
 
@@ -1350,6 +1353,11 @@ class Timeline(Strict):
             if st.get("forbid_box") and st.get("box_bg") is True:
                 raise EngineError("caption_style.forbid_box = true but box_bg = true; captions never use a box")
         except EngineError as e:
+            raise ValueError(str(e)) from e
+        try:
+            from . import framing
+            framing.apply(self)
+        except (EngineError, ValueError) as e:
             raise ValueError(str(e)) from e
         for s in self.segments:
             for i, k in enumerate((s.gsap_scene_config.camera_path or []) if s.gsap_scene_config else []):

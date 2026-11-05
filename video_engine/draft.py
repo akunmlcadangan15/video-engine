@@ -31,6 +31,7 @@ from .licence import is_licence_field
 from .timeline import (HYPERFRAMES, IMAGE_EXT, NATIVE, ROLL_MAX, AudioChain, CaptionWord, CaptionsMeta, Settings, Timeline,
                        sec_to_frame)
 from .util import EngineError, video_info
+from . import framing
 from .units import units
 
 VIDEO_EXT = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
@@ -268,7 +269,8 @@ def schema(inp: Inputs) -> dict:
         "focus_box": {"type": "array", "items": n},
         "intent": {"type": "object", "properties": {
             "motion": {"type": "string", "enum": ["static", "moving"]},
-            "negative_space": b, "reason": {"type": "string", "minLength": 1, "maxLength": 500}},
+            "negative_space": b, "reason": {"type": "string", "minLength": 1, "maxLength": 500},
+            "shot": {"type": "string", "enum": list(framing.SHOTS)}},
             "required": ["reason"], "additionalProperties": False},
         "creative_autofix": b,
         "map_title": s, "map_camera": {"type": "string", "enum": list(HF_PRESETS)},
@@ -347,7 +349,10 @@ RULES
    what those words say, and explain the choice in "why". No template: segment lengths, camera moves, overlays and the
    number of maps follow the content, not a fixed pattern. An opener need not be a moving map; a keyword callback is optional.
    Optional intent = {{"motion":"static" or "moving", "negative_space":true/false, "reason":"specific purpose"}};
-   provide a motion choice or negative_space true and a nonblank reason. Intent is local to that segment, not a waiver
+   provide a motion choice, negative_space true or a shot, and a nonblank reason. Optional intent.shot names what the
+   shot communicates; the same story works for 9:16 and 16:9 and the engine frames it for this frame:
+{framing.describe(units(S).orientation, prof.data.framing)}
+   Intent is local to that segment, not a waiver
    of black frames, broken sources or factual integrity. Static intent describes a deliberate hold; set camera_preset
    (or map_camera) to static and do not add moving camera paths for a still shot. creative_autofix is false by default;
    set true only when camera-intensity adjustment has been explicitly requested, never to silence a warning.

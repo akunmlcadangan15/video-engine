@@ -136,6 +136,38 @@ Landscape profiles:
   a share of H in both orientations), source quality policy at 4K, delivery metadata and thumbnail rule,
   and whether portrait captions at 2160x3840 should also scale (today they do not).
 
+## Directing for two aspects (`[framing]`)
+
+One story, two frames: the shot intent (`segments[].intent.shot`, docs/TIMELINE.md) and the second-based story gates
+(hook, novelty, camera holds, silence, keyword, CTA) are the same for 9:16 and 16:9; the geometry gates read the
+orientation's values (Orientation, above). `video_engine/framing.py` maps each shot to framing per orientation:
+
+| Aspect | 9:16 | 16:9 |
+|---|---|---|
+| Subject | centre (0.5, 0.45) | rule of thirds (1/3, 0.5); compare side by side |
+| Field of view | tight (intensity 1.0-1.2) | wide (intensity 0.6-0.9) |
+| Reading order | top to bottom | left to right |
+| Text slots | title top, caption bottom | title top left, caption lower third |
+| Camera | push (`ken_burns_*`, `zoom_*`), vertical pans | lateral pans (`pan_right` / `pan_east`), crane (`pan_up`) |
+| Watermark | top right | bottom right |
+
+A profile may change single values per orientation and shot:
+
+```toml
+[framing.landscape.establish]
+native = "pan_left"        # native camera preset of a still without camera_move
+hf = "pan_west"            # HyperFrames camera_preset of a map scene without one
+intensity = 0.6
+subject = [0.66, 0.5]      # guidance for the draft and director
+```
+
+Keys: `native`, `hf`, `intensity`, `subject`, `read`, `title_slot`, `caption_slot`. Unknown orientations, shots or
+keys are errors. A profile without `[framing]` keeps its hash. The draft prompt lists the shot vocabulary with the
+framing of the project's orientation.
+
+Open for the owner: whether 16:9 is long-form or stays short, and whether maps stay the main visual language in
+16:9 or footage may take a larger share.
+
 ## Splitting a profile with `include`
 
 A channel profile may list other `.toml` files of the profiles directory on a single top-level line, before its first table:
