@@ -1,0 +1,7 @@
+# Climate and flow: currents, storm tracks, wind systems
+[climate]
+flows = ["gulf_stream", "tornado_alley", "jet_stream", "el_nino", "gulf_stream_warm"]
+weather_patterns = ["unpredictable", "rainy"]
+flow_style = "red_arrow_dashed"
+temperature_style = "thermometer_label"
+convergence_diagram = { warm = "red", cold = "blue", mixed = "green" }
