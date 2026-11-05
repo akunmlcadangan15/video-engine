@@ -5,9 +5,9 @@ paper_min_y = 0.30            # map p50 APCA Y >= this: paper surface (dark ink,
 max_typefaces = 2             # T01, caption and watermark excluded
 watermark_clear_px = 32       # B01
 ink = "#2A231D"
-vignette_alpha = 0.12
-grade_saturate = 0.9
-grade_contrast = 0.8
+vignette_alpha = 0.15
+grade_saturate = 1.15
+grade_contrast = 0.95
 paper_texture = "paper-F1E8D4.jpg"
 paper_alpha = 0.35
 grain = "grain-512.png"

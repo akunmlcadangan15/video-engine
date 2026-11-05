@@ -50,7 +50,7 @@ require_source = "epidemic"   # A02: music and SFX from Epidemic Sound only (doc
 min_seg_s = 3.0               # flexible segment pacing; short cuts and montages allowed
 max_seg_s = 20.0
 map_path = true               # map segments may carry a multi-key camera path
-scene = ["globe", "props", "beats"]   # draft map scene opt-ins
+scene = ["globe", "props", "beats", "radar", "terrain3d", "cross_section", "historical", "flag_char", "data_viz", "blind_spot", "grid_split"]   # draft map scene opt-ins
 rules_file = "geoverum/creative.md"   # single source: profiles/geoverum/creative.md (do not duplicate rules here)
 
 [motion]                     # overlay motion token

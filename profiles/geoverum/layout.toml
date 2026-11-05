@@ -14,6 +14,7 @@ safe = [48, 288, 888, 1248]   # text safe area x0, y0, x1, y1
 z1 = [64, 304, 888, 440]      # top slot: title or data card, left-aligned
 z2 = [64, 488, 888, 1100]     # map focus: active region, pins, map labels, routes
 z2_pad = 48
+z3 = [64, 1100, 888, 1248]
 group_gap = 48            # between groups (area label to pins, routes, other text)
 
 [layout.sizes]

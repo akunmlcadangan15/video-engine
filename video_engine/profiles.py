@@ -235,7 +235,7 @@ class DraftProfile(_Strict):
     rules: list[str] = []
     rules_file: str | None = Field(None, exclude_if=lambda v: v is None)  # single source of creative rules (profiles-relative .md, `- ` lines); mutually exclusive with `rules`
     map_path: bool = False   # the model may give a map segment a multi-key camera path (map_path)
-    scene: list[Literal["globe", "props", "morph", "beats"]] = Field([], exclude_if=lambda v: not v)   # opt-in map
+    scene: list[Literal["globe", "props", "morph", "beats", "radar", "terrain3d", "cross_section", "historical", "flag_char", "data_viz", "blind_spot", "grid_split"]] = Field([], exclude_if=lambda v: not v)   # opt-in map
                                                     # scene keys (draft_scene.py; beats also need [layout]); empty
                                                     # = not in the profile hash
 
@@ -697,9 +697,9 @@ class PrintStyle(_Strict):
     watermark_clear_px: float = Field(32, ge=0, le=200)       # B01: element boxes keep this far from the watermark text
     ink: str = "#2A231D"                                      # paper ink: pin labels, years, the time under a year
     # map grade (paper surface)
-    vignette_alpha: float = Field(0.10, ge=0, le=0.12)        # frame vignette (replaces the theme shade)
-    grade_saturate: float = Field(0.88, ge=0.85, le=0.9)
-    grade_contrast: float = Field(0.78, ge=0.75, le=0.8)
+    vignette_alpha: float = Field(0.10, ge=0, le=0.20)        # frame vignette (replaces the theme shade)
+    grade_saturate: float = Field(0.88, ge=0.85, le=1.2)
+    grade_contrast: float = Field(0.78, ge=0.75, le=1.0)
     paper_texture: str = "paper-F1E8D4.jpg"                   # vendor/textures file, multiply over the map
     paper_alpha: float = Field(0.5, ge=0, le=1)
     grain: str = "grain-512.png"                              # vendor/textures file, multiply (2.5 % mean darkening)
