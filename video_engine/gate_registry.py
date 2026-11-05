@@ -84,10 +84,11 @@ GATES: tuple[Gate, ...] = (
        "The source video is long enough for `source_in_frame + n_frames` and is not HDR (PQ/HLG).",
        "math", never=True),
     _t("M02", "Map resolution",
-       "Map texels per screen pixel at the deepest zoom: warn below 1.2, fail below 0.85.",
+       "Map texels per screen pixel at the deepest zoom (3D camera: the largest on-screen magnification of any frame): "
+       "warn below 1.2, fail below 0.85.",
        "math"),
     _t("M03", "Tilt cover",
-       "Every screen corner of every frame of a tilted camera shows map, not the map edge or the horizon.",
+       "Every screen corner of every frame of a tilted or 3D camera shows map, not the map edge or the horizon.",
        "math", never=True),
     _t("M04", "Globe resolution",
        "Globe texels per degree at the view centre: warn below 1.0x, fail below 0.5x of the screen density.",

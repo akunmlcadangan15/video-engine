@@ -942,6 +942,10 @@ class GsapScene(Strict):
     camera_intensity: float = Field(1.0, ge=0.0, le=6.0)
     focus: Optional[list[float]] = Field(None, min_length=2, max_length=2)  # normalised [x, y] the camera centres on
     camera_path: Optional[list[CameraKey]] = None   # >= 2 keys: replaces camera_preset with key-to-key legs
+    camera_mode: Optional[Literal["planar", "3d"]] = Field(None, exclude_if=lambda v: v is None)   # None = profile
+                                                    # [camera] mode
+    camera3d: Optional[list[CameraKey3D]] = Field(None, exclude_if=lambda v: v is None)   # full 3D camera keys
+                                                    # (camera mode "3d"; video_engine/camera_full3d.py)
     regions: Optional[list[Region]] = None          # entity highlights drawn on the map under the pins
     borders: Optional[list[Border]] = None          # self-drawing neon border lines (dashed: sea borders)
     morph: Optional[MapMorph] = None                # second map texture crossfaded over the map
@@ -1070,6 +1074,27 @@ class GsapScene(Strict):
         return self
 
     @model_validator(mode="after")
+    def _camera3d(self):
+        k = self.camera3d
+        if not k:
+            return self
+        if k[0].at_frame != 0:
+            raise ValueError(f"camera3d[0].at_frame is {k[0].at_frame}; the first key is the opening view at frame 0")
+        for i in range(1, len(k)):
+            if k[i].at_frame <= k[i - 1].at_frame + k[i - 1].hold:
+                raise ValueError(f"camera3d[{i}].at_frame {k[i].at_frame} must be > camera3d[{i - 1}].at_frame "
+                                 f"{k[i - 1].at_frame} + hold {k[i - 1].hold}")
+        bad = sorted(f for f in self.model_fields_set - CAMERA3D_FIELDS
+                     if getattr(self, f) not in (None, [], False) and f in type(self).model_fields
+                     and getattr(self, f) != type(self).model_fields[f].default)
+        if bad:
+            raise ValueError(f"3D camera scenes take only pins, cards, title and screen figures; remove {', '.join(bad)}")
+        for f in self.figures or []:
+            if f.anchor == "map":
+                raise ValueError("3D camera scenes take screen-anchored figures only (anchor 'map' rides the planar camera)")
+        return self
+
+    @model_validator(mode="after")
     def _path(self):
         k = self.camera_path
         if not k:
@@ -1083,6 +1108,37 @@ class GsapScene(Strict):
                 raise ValueError(f"camera_path[{i}].at_frame {k[i].at_frame} must be > camera_path[{i - 1}].at_frame "
                                  f"{k[i - 1].at_frame} + hold {k[i - 1].hold}")
         return self
+
+
+class CameraKey3D(Strict):
+    """One view of the full 3D camera (gsap_scene_config.camera3d; video_engine/camera_full3d.py). `eye` and `target`
+    are [u, v, h]: a normalised map point (v down) and the height above the map in map widths."""
+    at_frame: int = Field(ge=0)
+    eye: list[float] = Field(min_length=3, max_length=3)
+    target: list[float] = Field([0.5, 0.5, 0.0], min_length=2, max_length=3)
+    roll: float = Field(0.0, ge=-180.0, le=180.0)      # deg, the map turns clockwise on screen
+    fov: float = Field(50.0, ge=10.0, le=120.0)        # vertical field of view (deg)
+    move: Literal["glide", "linear"] = "glide"         # progress of the leg into this key
+    hold: int = Field(0, ge=0, le=90)                  # frames the camera stays on this view after at_frame
+
+    @model_validator(mode="after")
+    def _k(self):
+        if not all(math.isfinite(v) for v in self.eye + self.target):
+            raise ValueError(f"camera3d key at_frame {self.at_frame}: eye and target must be finite")
+        if self.eye[2] <= 0:
+            raise ValueError(f"camera3d key at_frame {self.at_frame}: eye height {self.eye[2]:g} must be above the "
+                             "map (> 0)")
+        if len(self.target) == 2:
+            self.target = [*self.target, 0.0]
+        if math.dist(self.eye, self.target) < 1e-6:
+            raise ValueError(f"camera3d key at_frame {self.at_frame}: eye and target coincide")
+        return self
+
+
+# Scene fields a 3D-camera scene supports (screen-anchored or pin-anchored); every other optional table is refused.
+CAMERA3D_FIELDS = {"pins", "cards", "title", "title_entity", "title_at_frame", "figures", "camera3d", "camera_mode",
+                   "map_asset", "map_asset_id", "map_region", "template", "camera_preset", "camera_intensity",
+                   "map_projection"}
 
 
 class SplitView(Strict):
@@ -1354,6 +1410,19 @@ class Timeline(Strict):
                 raise EngineError("caption_style.forbid_box = true but box_bg = true; captions never use a box")
         except EngineError as e:
             raise ValueError(str(e)) from e
+        for s in self.segments:
+            sc = s.gsap_scene_config
+            if sc is None:
+                continue
+            mode = sc.camera_mode or prof.camera.mode
+            if mode == "3d" and not sc.camera3d:
+                raise ValueError(f"segment {s.seg_index}: camera mode '3d' needs gsap_scene_config.camera3d keys")
+            if sc.camera3d and mode != "3d":
+                raise ValueError(f"segment {s.seg_index}: camera3d keys need camera mode '3d' (set "
+                                 "gsap_scene_config.camera_mode = \"3d\" or the profile [camera] mode)")
+            if sc.camera3d and sc.camera3d[-1].at_frame >= s.n_frames:
+                raise ValueError(f"segment {s.seg_index}: camera3d key at_frame {sc.camera3d[-1].at_frame} is past the "
+                                 f"segment ({s.n_frames} frames)")
         try:
             from . import framing
             framing.apply(self)

@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 import hypoverum_core_rs as core
 
-from . import assets, cache, camera3d, config, entities, fx, globe, hfversion, legibility, parallax, printstyle, profiles, projection, props, streams, toolchain
+from . import assets, cache, camera3d, camera_full3d, config, entities, fx, globe, hfversion, legibility, parallax, printstyle, profiles, projection, props, streams, toolchain
 from . import components
 from .maps import (MAP_JPEG_QUALITY, _map_copy, _need_w, _q, deep_entries, deep_plan, deep_tiles, map_image_size,
                    map_key, morph_data, texture_dim, textures)
@@ -627,7 +627,7 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     if U.landscape:
         theme = landscape_theme(theme, U.k)
     card_top, title_top = (CARD_TOP_LANDSCAPE, TITLE_TOP_LANDSCAPE) if U.landscape else (CARD_TOP, TITLE_TOP)
-    G = None
+    G = C3 = None
     if sc.globe:   # the 2D camera stays at identity over a frame-sized #cam; hf/globe.js draws the globe and moves pins
         G = globe.scene_block(seg, tl, project_dir, theme)
         if sc.globe.halo:
@@ -639,6 +639,18 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
         cam = {"start": still, "end": still, "legs": [{"f0": 0, "f1": n, "to": still, "ease": "glide"}], "leg_motion": []}
         km = globe.key_motion(G, S.width, S.height)
         motion = min(km) if km else 0.0
+    elif sc.camera3d:   # full 3D camera: #cam stays at identity; hf/scene3d.js draws the map plane and moves pins
+        iw, ih = map_image_size(project_dir / sc.map_asset)
+        cover = max(S.width / iw, S.height / ih)
+        mw, mh = iw * cover, ih * cover
+        states = camera_full3d.frames(sc.camera3d, n, mw, mh)
+        still = {"x": 0.0, "y": 0.0, "s": 1.0}
+        cam = {"start": still, "end": still, "legs": [{"f0": 0, "f1": n, "to": still, "ease": "glide"}], "leg_motion": []}
+        met = camera_full3d.metrics(states, S.width, S.height, S.fps)
+        motion = met["motion_px"]
+        C3 = {"frames": [st.as_list() for st in states], "near_frac": camera_full3d.NEAR_FRAC,
+              "need_w": round(camera_full3d.need_w(states, S.width, S.height, mw), 2),
+              "metrics": {k: round(v, 3) for k, v in met.items()}}
     else:
         iw, ih = map_image_size(project_dir / sc.map_asset)
         cover = max(S.width / iw, S.height / ih)
@@ -651,12 +663,18 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
         if G:
             xy = globe.project(globe.camera_at(G, f, S.fps), p.lat, p.lng, S.width, S.height) or (-1000.0, -1000.0)
             px, py = xy
+        elif C3:
+            x0, y0 = _pin_xy(p, sc, mw, mh)
+            st = states[min(f, n - 1)]
+            px, py, _ = camera_full3d.project(st, (x0, -y0, 0.0), S.width, S.height)
+            px, py = (-1000.0, -1000.0) if px is None else (px, py)
         else:
             px, py = _pin_xy(p, sc, mw, mh)
         pins.append({"label": p.label, "px": round(px, 2), "py": round(py, 2),
                      "at_frame": f, **({"label_side": p.label_side} if p.label_side else {}),
                      **({"box": p.box} if p.box is not None else {}),
                      **({"lat": p.lat, "lng": p.lng} if G else {}),
+                     **({"mx": round(x0, 3), "my": round(y0, 3)} if C3 else {}),
                      **({"flag": _flag_data(p.flag, prof, project_dir)} if p.flag else {})})
     cards = []
     for i, c in enumerate(sc.cards):
@@ -677,6 +695,8 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
                                                                **({"tilt": {"p": camera3d.perspective_px(S.height)}}
                                                                   if "t" in cam["start"] else {})},
            "motion_px": round(motion, 2), "pins": pins, "cards": cards, "theme": theme}
+    if C3:
+        out["cam3d"] = C3
     if U.landscape:   # JS reads S.units (k, ref, safe) instead of the portrait W/1080, H/1920; portrait scenes keep their key
         out["units"] = U.scene()
     if (mq := prof.render.map_jpeg_quality) and mq != MAP_JPEG_QUALITY:
@@ -888,6 +908,7 @@ PROPS_JS = config.PKG / "hf" / "props.js"   # props layer script; in the build d
 FX_BACKDROP_JS = config.PKG / "hf" / "fx_backdrop.js"
 FX_TIMEZONE_JS = config.PKG / "hf" / "fx_timezones.js"
 FX_BUBBLE_JS = config.PKG / "hf" / "fx_bubbles.js"
+SCENE3D_JS = config.PKG / "hf" / "scene3d.js"   # full 3D camera (camera_full3d.py), an ES module like globe.js
 FX2_JS = fx.FX2_JS
 
 
@@ -899,7 +920,7 @@ def script_files(scene: dict) -> list[Path]:
         ([FX_TIMEZONE_JS] if scene.get("timezones") else []) + \
         ([FX_BUBBLE_JS] if scene.get("bubbles") else []) + \
         ([FX2_JS] if any(scene.get(k) for k in ("flag_characters", "cutaway", "insets", "particles")) else []) + \
-        ([globe.JS] if scene.get("globe") else [])
+        ([globe.JS] if scene.get("globe") else []) + ([SCENE3D_JS] if scene.get("cam3d") else [])
 
 
 def _card_name(src: Path) -> str:
@@ -958,6 +979,10 @@ def build_dir(seg: Segment, tl: Timeline, project_dir: Path, out_dir: Path) -> t
         for f in globe.THREE_FILES:
             shutil.copyfile(f, out_dir / "assets" / "three" / f.name)
     else:
+        if "cam3d" in scene:
+            (out_dir / "assets" / "three").mkdir()
+            for f in globe.THREE_FILES:
+                shutil.copyfile(f, out_dir / "assets" / "three" / f.name)
         mp = _map_copy(project_dir / scene["map"], _need_w(scene), _q(scene))
         shutil.copyfile(mp, out_dir / "assets" / "map.jpg")
         for name, f in deep_tiles(project_dir / scene["map"], scene).items():
@@ -991,7 +1016,7 @@ def build_dir(seg: Segment, tl: Timeline, project_dir: Path, out_dir: Path) -> t
         html = html.replace(k, str(v))
     for f in script_files(scene):
         shutil.copyfile(f, out_dir / f.name)
-        mod = ' type="module"' if f == globe.JS else ""
+        mod = ' type="module"' if f in (globe.JS, SCENE3D_JS) else ""
         html = html.replace("</body>", f'<script{mod} src="{f.name}"></script>\n</body>', 1)
     (out_dir / "index.html").write_text(html)
     (out_dir / "scene.js").write_text("window.SCENE=" + json.dumps(scene, ensure_ascii=False) + ";\n")
@@ -1204,7 +1229,7 @@ def probe_dom(seg_dir: Path, times: list[float], width: int, height: int, snap_d
     env = config.hf_env()
     env["ENGINE_PUPPETEER"] = str(config.PUPPETEER)
     env["ENGINE_CHROME"] = str(config.CHROME)
-    if (seg_dir / globe.JS.name).exists():
+    if (seg_dir / globe.JS.name).exists() or (seg_dir / SCENE3D_JS.name).exists():
         env["ENGINE_WEBGL"] = "1"     # globe scenes: SwiftShader WebGL in the probe browser
     if snap_dir:
         snap_dir.mkdir(parents=True, exist_ok=True)

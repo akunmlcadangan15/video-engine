@@ -7,6 +7,15 @@ Versi paket belum diberi nomor rilis (`0.1.0`), jadi semua catatan ada di bagian
 
 ### Ditambahkan
 
+- **Kamera 3D penuh (opt-in)** untuk scene peta HyperFrames: `gsap_scene_config.camera_mode = "3d"` (atau profil
+  `[camera] mode`) dengan kunci `camera3d` (`eye`/`target` [u, v, h], `roll`, `fov`, `move`, `hold`). Sampler murni
+  per frame (`video_engine/camera_full3d.py`: Catmull-Rom ber-parameter panjang busur, SLERP quaternion, fov linear);
+  state tiap frame dihitung sekali di Python dan dirender Three.js (`hf/scene3d.js`) sebagai bidang peta bertekstur,
+  pin diproyeksikan per frame. Cermin proyeksi Python = Three.js (tes twin, selisih < 0,05 px; uji render Chromium:
+  pin selisih 0,001 px). Gate: M02 memakai magnifikasi layar terbesar, M03 memeriksa keempat sudut layar tiap frame,
+  R56 melaporkan gerak, kecepatan, percepatan dan kecepatan sudut. Mode planar tetap bawaan: scene, kunci cache dan
+  hash profil yang ada tidak berubah. Proposal `docs/proposals/3d-camera.md` dihapus (isinya di docs/TIMELINE.md).
+
 - **Penyutradaraan satu gaya untuk dua rasio**: `segments[].intent.shot` (establish, track, reveal, compare,
   journey, hold, reaction, contrast) adalah lapisan cerita yang sama untuk 9:16 dan 16:9; `video_engine/framing.py`
   (adaptor format) mengisi kamera yang dibiarkan kosong sesuai orientasi (portrait: push/dolly, ketat, subjek di

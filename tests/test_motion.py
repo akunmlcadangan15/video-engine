@@ -498,6 +498,8 @@ def test_good_layout_without_fly_keeps_its_hash(tmp_path, monkeypatch):
     dump.pop("resources")                     # the worker budget is a machine setting, never hashed
     assert dump.pop("format") == {"orientation": None}   # an undeclared [format] adds nothing to the hash
     assert dump.pop("framing") == {}                      # nor does an absent [framing]
+    if isinstance(dump.get("camera"), dict) and dump["camera"].get("mode") == "planar":
+        dump["camera"].pop("mode")                         # nor the planar default camera mode
     if isinstance(dump.get("watermark"), dict) and dump["watermark"].get("corner") is None:
         dump["watermark"].pop("corner")       # the orientation's default watermark corner adds nothing
     if dump.get("flags") == json.loads(profiles.FlagsProfile().model_dump_json()):

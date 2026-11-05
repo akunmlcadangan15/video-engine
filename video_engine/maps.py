@@ -52,6 +52,8 @@ def map_key(src: Path, need_w: float, q: int | None = None) -> str:
 def _need_w(scene: dict) -> float:
     """Widest on-screen map width: map width x the largest camera scale (x the tilt magnification at the bottom edge
     of the most tilted transform, camera3d.max_mag)."""
+    if "cam3d" in scene:   # full 3D camera: the deepest on-screen magnification over every frame
+        return scene["cam3d"]["need_w"]
     c = scene["camera"]
     st = [c["start"], c["end"]] + [L["to"] for L in c["legs"]]
     W, H = scene["width"], scene["height"]

@@ -104,8 +104,24 @@ def m02_map_resolution(tl: Timeline, project_dir: Path) -> list[Finding]:
 def m03_tilt_cover(tl: Timeline, project_dir: Path) -> list[Finding]:
     """Tilted HyperFrames cameras: every screen corner of every frame shows map (camera3d.uncovered); fail otherwise."""
     from .. import camera3d
+    from .. import camera_full3d
     out, n = [], 0
     for s in tl.segments:
+        if s.engine_type == HYPERFRAMES and s.gsap_scene_config.camera3d:
+            n += 1
+            try:
+                sc3 = hyperframes.scene_data(s, tl, project_dir)
+            except (EngineError, OSError) as e:
+                out.append(Finding("M03", "fail", f"3D camera: {e}", s.seg_index))
+                continue
+            states = [camera_full3d.State(tuple(v[0:3]), tuple(v[3:7]), v[7]) for v in sc3["cam3d"]["frames"]]
+            bad = camera_full3d.uncovered(states, sc3["width"], sc3["height"], *sc3["map_size"])
+            if bad:
+                f, corners = bad[0]
+                out.append(Finding("M03", "fail", f"3D camera shows no map at the {', '.join(corners)} corner(s) on "
+                                   f"{len(bad)} frames (first: frame {f}); lower the eye, aim the target at the map "
+                                   "or narrow the fov", s.seg_index))
+            continue
         if s.engine_type != HYPERFRAMES or not any(k.tilt for k in s.gsap_scene_config.camera_path or []):
             continue
         n += 1
@@ -119,7 +135,7 @@ def m03_tilt_cover(tl: Timeline, project_dir: Path) -> list[Finding]:
             out.append(Finding("M03", "fail", f"tilted camera shows no map at the {', '.join(corners)} corner(s) on "
                                f"{len(bad)} frames (first: frame {f}); zoom in, move the focus off the map edge or "
                                "tilt less", s.seg_index))
-    return out or [Finding("M03", "pass", f"{n} tilted segments, map under every corner" if n else "no tilted camera")]
+    return out or [Finding("M03", "pass", f"{n} tilted or 3D segments, map under every corner" if n else "no tilted camera")]
 
 
 def m04_globe_resolution(tl: Timeline, project_dir: Path) -> list[Finding]:
@@ -190,6 +206,17 @@ def _r56_path(s: Segment, tl: Timeline, project_dir: Path, target: float) -> lis
                                           f"(min {min(motion):.0f}px)", s.seg_index)]
 
 
+def _r56_cam3d(s: Segment, tl: Timeline, project_dir: Path, target: float) -> list[Finding]:
+    """R56 on a full 3D camera: screen motion of the map over the segment (camera_full3d.metrics), with the peak
+    speed, acceleration and angular speed in the message."""
+    m = hyperframes.scene_data(s, tl, project_dir)["cam3d"]["metrics"]
+    ok = m["motion_px"] >= target
+    return [Finding("R56", "pass" if ok else "fail",
+                    f"3D camera moves {m['motion_px']:.0f}px {'>=' if ok else '<'} {target:.0f}px (peak "
+                    f"{m['peak_speed']:.0f}px/s, accel {m['peak_accel']:.0f}px/s2, turn {m['peak_ang_speed']:.1f}deg/s)"
+                    + ("" if ok else "; move the eye or target further"), s.seg_index)]
+
+
 def _r56_globe(s: Segment, tl: Timeline, project_dir: Path, target: float) -> list[Finding]:
     """R56 on a globe: every key-to-key leg moves at least the minimum; one key: the drift zoom over the segment."""
     from .. import globe
@@ -243,6 +270,9 @@ def r56_camera(tl: Timeline, project_dir: Path) -> tuple[list[Finding], list[dic
                 continue
             if sc.globe:
                 out += _r56_globe(s, tl, project_dir, target)
+                continue
+            if sc.camera3d:
+                out += _r56_cam3d(s, tl, project_dir, target)
                 continue
             if sc.split is not None:   # each panel's own camera_path, at the panel size
                 for ps, pt in hyperframes.split_panels(s, tl):

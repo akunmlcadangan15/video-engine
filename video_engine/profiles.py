@@ -420,6 +420,9 @@ class CameraProfile(_Strict):
     pulse_anchor: tuple[float, float] = (0.5, 0.5)     # screen point (frame fractions) that stays put in a pulse
     pulse_direction: Literal["in", "out"] = "out"       # first pulse of a pair: push in or pull out
     max_zoom: float = Field(4.0, ge=1.0, le=64.0)       # largest camera zoom over the cover fit (keys, layout fit)
+    mode: Literal["planar", "3d"] = "planar"            # map scene camera: planar 2.5D, or the full 3D camera
+                                                        # (gsap_scene_config.camera3d) for every map scene; a scene's
+                                                        # camera_mode overrides it
     # banking of "flow" camera paths (hyperframes.flow_legs): the camera leans into its own motion like a drone
     bank_roll: float = Field(0.0, ge=0, le=60)          # roll (deg) per frame width / s of sideways screen travel
     bank_tilt: float = Field(0.0, ge=0, le=60)          # extra tilt (deg) per frame width / s of screen speed
@@ -1257,6 +1260,8 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
                    ("render", RenderProfile), ("flags", FlagsProfile), ("fx", FxProfile)):
         if dump.get(k) == json.loads(cls().model_dump_json()):
             dump.pop(k)            # profiles without [camera] / [motion] / [transitions] / [render] / [fx] values keep their hash
+    if isinstance(dump.get("camera"), dict) and dump["camera"].get("mode") == "planar":
+        dump["camera"].pop("mode")   # the planar default camera mode adds nothing to the hash
     if isinstance(dump.get("transitions"), dict):   # zoom_through keys at their defaults add nothing to the hash
         dflt = json.loads(TransitionsProfile().model_dump_json())
         for k in [k for k in dump["transitions"] if k.startswith("through_") and dump["transitions"][k] == dflt[k]]:
