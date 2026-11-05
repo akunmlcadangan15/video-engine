@@ -33,8 +33,8 @@ routes = 1
 animating = 2
 
 [layout.timing]
-enter_s = 0.35                 # fly-through scale time ([layout.fly])
-exit_s = 0.3                   # fly-through exit time
+enter_s = 0.33                 # fly-through scale time ([layout.fly])
+exit_s = 0.33                   # fly-through exit time
 exit_max_s = 0.3
 stagger_s = 0.2
 settle_s = 0.8
@@ -60,5 +60,5 @@ label_in = 3.0
 out = 2.6
 title_opacity_in_s = 0.15
 figure_opacity_in_s = 0.40
-ease_in = "expo.out"
-ease_out = "power2.in"         # cubic ease-in
+ease_in = "power2.inOut"
+ease_out = "power2.out"         # cubic ease-in
