@@ -1,7 +1,7 @@
 # Geoverum channel profile. Spec: Style Lab brand profile (brand/geoverum/brand-profile.md).
 description = "Geoverum: map-led geography shorts"
 # Large tables and the entity colours live in profiles/geoverum/ (merged under this file; keys here win).
-include = ["geoverum/entities.toml", "geoverum/legibility.toml", "geoverum/print.toml", "geoverum/sound.toml", "geoverum/layout.toml"]
+include = ["geoverum/entities.toml", "geoverum/legibility.toml", "geoverum/print.toml", "geoverum/sound.toml", "geoverum/layout.toml", "geoverum/style/dataviz.toml", "geoverum/style/radar.toml", "geoverum/style/historical.toml", "geoverum/style/icons.toml", "geoverum/style/routes.toml", "geoverum/style/semantic.toml"]
 
 # EXPERIMENTAL: flag settings inherit the engine defaults unless overridden.
 [flags]
