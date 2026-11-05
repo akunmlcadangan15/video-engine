@@ -1,16 +1,18 @@
-# Geoverum — kategori style baru dari hasil rea-video (10 video 002-011)
+# Geoverum — style categories
 
-File-file ini KATEGORI BARU, bukan pengubahan isi style lama.
-Semua file di folder ini diposisikan sebagai include tambahan untuk geoverum.toml,
-tetap dengan aturan audio Epidemic di geoverum.toml [audio] require_source.
+This folder holds additional style categories for the Geoverum channel.
+Each file defines one category and is loaded through the include list in profiles/geoverum.toml.
 
-Kategori:
-- dataviz.toml    : data-viz wajib (%, hitung, ukur, counter, banding relatable)
-- radar.toml      : peta radar gelap Flightradar + jalur pesawat + zona blackout
-- historical.toml : peta kertas kuno, filmstrip flashback, judul serif era
-- icons.toml      : ikon flat, emoji, karakter bendera, skull/X, target, magnifier
-- routes.toml     : sistem rute & garis ukur (kuning putus-putus, merah solid, putih)
-- semantic.toml   : sistem warna semantik (merah=bahaya, hijau=fokus, kuning=highlight, cyan=data)
+Categories:
+- dataviz.toml: percentages, counts, measurements, comparisons
+- radar.toml: dark radar map, aircraft, track charts
+- historical.toml: parchment maps, flashback, era titles
+- icons.toml: flat icons, emoji, characters, markers
+- routes.toml: route and measurement line systems
+- semantic.toml: colour meaning system
+- climate.toml: currents, storm tracks, wind systems
+- geoform.toml: terrain variants, cross-section, underground
+- timeline.toml: year titles, flashback, territory claims
+- motion.toml: camera movement, shot duration, transitions
 
-Sumber: rea decompose + review (stealth-crouton-alpha) 10 video,
-breakdown di _analysis2/*/breakdown.json, sheet di /tmp/geoverum-analysis/
+Audio rules are defined in profiles/geoverum.toml [audio] and remain unchanged.

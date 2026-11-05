@@ -1,4 +1,4 @@
-# Kategori baru: rute & garis ukur (digali dari 002 Pan-American, 004 meridian, 010 NAT)
+# Routes and measurement lines: highway, border, meridian systems
 [routes]
 # Bukan putih lagi
 colors = { main = "yellow_dashed", danger = "red_solid", border = "white_dashed" }

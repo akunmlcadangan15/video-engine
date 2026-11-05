@@ -1,4 +1,4 @@
-# Kategori baru: climate & flow (digali dari 023 Gulf Stream, 026 Tornado Alley)
+# Climate and flow: currents, storm tracks, wind systems
 [climate]
 flows = ["gulf_stream", "tornado_alley", "jet_stream"]
 flow_style = "red_arrow_dashed"

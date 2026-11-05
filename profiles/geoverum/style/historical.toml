@@ -1,4 +1,4 @@
-# Kategori baru: historical (digali dari 006 Chile, 011 Sweden-Finland)
+# Historical maps: parchment, filmstrip flashback, serif era titles
 [historical]
 paper_texture = "parchment"
 title_font = "serif"         # EB Garamond / Playfair / Cinzel, bukan Inter

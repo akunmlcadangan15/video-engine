@@ -64,7 +64,7 @@ camera_drift_per_s = 0.06     # scale growth / s of the drift between camera pul
 camera_start_speed = 0.75      # globe and camera_path: first-key speed as a share of the first leg's mean
 camera_end_speed = 1.0         # globe and camera_path: last-key speed as a share of the last leg's mean when the shot ends there
 region_edge = "glow"          # same-colour edge; [legibility] sets fill alpha and a 3-4 px outline, no blur
-region_style = "tint"         # flat translucent fill + glow, bukan block 3D (hasil rea-video 10 video)
+region_style = "tint"         # flat translucent fill + glow
 label_style = "plain"         # EXPERIMENTAL: plain adaptive labels; opt into a dark box per pin / region / figure
 year_box_colour = "#f6efe0"   # years on a bright cream box with paper grain, dark serif digits, about label size
 year_box_ink = "#2a231d"
@@ -77,9 +77,9 @@ title_font = "inter"          # titles and numbers; [print] sets the printed rol
 title_px = 112
 # region colours, muted OKLCH (L 0.40-0.82, C <= 0.12); entities missing from [theme.entities] take the free ones in
 # this order; teal and indigo never adjacent
-palette = ["#00E676", "#FF9100", "#FF1744", "#2979FF", "#FFEA00", "#00B0FF", "#76FF03", "#FF4081", "#FF6D00", "#18FFFF"] # saturasi tinggi glow (referensi), bukan muted OKLCH
+palette = ["#00E676", "#FF9100", "#FF1744", "#2979FF", "#FFEA00", "#00B0FF", "#76FF03", "#FF4081", "#FF6D00", "#18FFFF"] # saturated glow palette
 
-[camera]                      # kamera: continuous push-in/pull-back, bukan pulse (hasil rea)
+[camera]                      # camera: continuous push-in/pull-back
                               # frames break a layout rule (0.75, 0.5, 0.25, 0 of this size)
 max_zoom = 16                 # deepest camera zoom: country-scale close-ups from a whole-map source
 # flow camera paths (camera key move "flow") lean into their motion like a drone: fitted to the Amazon reference

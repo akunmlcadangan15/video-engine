@@ -1,4 +1,4 @@
-# Kategori baru: warna semantik (digali dari semua 10 video)
+# Semantic colour system: meaning assigned to each colour
 [semantic]
 red = "danger_prohibition"
 green = "focus_nature_correct"

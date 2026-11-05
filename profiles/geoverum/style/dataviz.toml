@@ -1,4 +1,4 @@
-# Kategori baru: data-viz (digali dari 003,004,005,007,009,010)
+# Data visualisation: percentages, counts, measurements, comparisons
 [dataviz]
 # Setiap video wajib ada minimal 1 elemen data-viz besar di layar
 required_each_video = true

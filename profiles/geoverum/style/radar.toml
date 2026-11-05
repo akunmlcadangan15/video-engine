@@ -1,4 +1,4 @@
-# Kategori baru: radar & flight-data (digali dari 008 Tibet, 010 Jet Stream)
+# Radar and flight data: dark map, aircraft dots, track charts
 [radar]
 base = "dark_world"          # peta gelap + titik pesawat kuning
 plane_icon = "yellow_dot"    # bukan pesawat 3D
