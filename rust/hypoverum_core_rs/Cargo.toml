@@ -1,0 +1,23 @@
+[package]
+name = "hypoverum_core_rs"
+version = "0.1.0"
+edition = "2021"
+description = "Native core of the universal hybrid video engine: hashing, frame math, .ass captions, camera warp, pixel QA"
+
+[lib]
+name = "hypoverum_core_rs"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["py"]
+py = ["dep:pyo3"]
+
+[dependencies]
+pyo3 = { version = "0.27", features = ["abi3-py310"], optional = true }
+rayon = "1.10"
+blake3 = { version = "1.8", features = ["rayon"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4

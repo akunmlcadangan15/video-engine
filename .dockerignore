@@ -1,0 +1,9 @@
+.git
+vendor/node
+vendor/npm/node_modules
+vendor/chrome
+vendor/hf
+**/__pycache__
+.pytest_cache
+dist
+*.egg-info

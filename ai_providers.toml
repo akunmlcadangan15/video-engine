@@ -1,0 +1,32 @@
+# AI providers for `engine draft`, `engine director`, `--ai-qa`, and STT.
+# Override the default provider with `--provider NAME` or env VIDEO_ENGINE_AI_PROVIDER.
+# Override this file path with env VIDEO_ENGINE_AI_CONFIG.
+# API keys are read from the named environment variable at call time and are never written to reports or logs.
+
+default = "gemini"
+
+[gemini]
+models = ["gemini-3.8-flash"]
+qa_models = ["gemini-3.8-flash"]
+fallback_provider = "deepseek"
+
+[agent]
+# Label written to draft_report.json when --provider agent is used (no HTTP call is made).
+model_label = "grok-bot"
+
+[stt]
+provider = "xai"
+url = "https://api.x.ai/v1/stt"
+model = "grok-voice-transcribe-2.0"
+api_key_env = "XAI_API_KEY"
+timeout_s = 300
+
+# Automatic fallback for `gemini` when GEMINI_API_KEY is missing or Gemini fails all retries, and selectable via
+# `--provider deepseek`. Key: OPENGATEWAY_API_KEY.
+[providers.deepseek]
+base_url = "https://opengateway.trycloudflare.com/v1"
+models = ["deepseek/deepseek-v4.1-flash-ultrafast"]
+qa_models = ["deepseek/deepseek-v4.1-flash-ultrafast"]
+api_key_env = "OPENGATEWAY_API_KEY"
+capabilities = ["image"]
+json_mode = "json_object"

@@ -1,0 +1,7 @@
+#!/bin/sh
+# engine-draft: guarded `engine draft-preview` (same lock, disk check, environment and nice as engine-build).
+# Renders the first 5 segments and joins them with the concat demuxer; no final encode.
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 2
+VIDEO_ENGINE_WRAPPER_SUBCMD=draft-preview
+export VIDEO_ENGINE_WRAPPER_SUBCMD
+exec "$here/engine-build" "$@"

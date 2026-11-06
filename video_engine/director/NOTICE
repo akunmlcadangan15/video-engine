@@ -1,0 +1,7 @@
+director/guidance.md adapts text from the Qwen video-editing skill documents
+(art-direction.md, pacing-rhythm.md, audio-first-cutting.md, scene-review.md, final-review.md),
+Copyright the Qwen authors, licensed under the Apache License, Version 2.0
+(http://www.apache.org/licenses/LICENSE-2.0). Modifications: condensed, reworded for vertical documentary shorts,
+rules requiring minimum numbers of effects or transitions removed, channel profile rules take precedence.
+The planning ladder (script -> scene -> shot -> camera) follows the structure of showlab/MovieAgent; no code or model
+is included.

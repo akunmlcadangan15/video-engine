@@ -1,0 +1,155 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 19 * * *"   # 02:17 WIB nightly, full suite with vendor Chrome
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m pip install ruff
+      # Syntax errors, undefined names, and unused imports and variables (everything else in ruff is not enforced yet).
+      - run: ruff check --select E9,F63,F7,F82,F401,F841 video_engine tests scripts
+      - run: python -m compileall -q video_engine tests scripts
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      # Links, anchors, the docs index, the generated gate index and the docs named in comments; standard library only.
+      - run: python scripts/check_docs.py
+
+  rust:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust/hypoverum_core_rs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: "rustfmt, clippy" }
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: cargo fmt --check
+      - run: cargo clippy -j 4 --all-targets -- -D warnings
+      # --no-default-features: the system Python has no shared libpython, so the Python module cannot link in tests
+      - run: cargo test -j 4 --no-default-features
+
+  calls:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m pip install mypy
+      # Blocking: a call with unknown keyword or wrong argument count (mypy call-arg) fails the run. The gradual
+      # `types` job below still reports every other mypy error without blocking.
+      - run: |
+          mypy --ignore-missing-imports --follow-imports=skip video_engine > mypy.txt || true
+          if grep -E "\[call-arg\]" mypy.txt; then exit 1; fi
+
+  types:
+    runs-on: ubuntu-latest
+    continue-on-error: true   # mypy is gradual; the job reports, it does not block yet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m pip install mypy
+      - run: mypy --ignore-missing-imports --follow-imports=skip video_engine
+
+  fast:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]   # 3.13 = the box that renders (Debian 13)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python-version }}" }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: python -m pip install --upgrade pip maturin
+      - run: python -m pip install -e ".[test]" faster-whisper google-genai
+      - run: python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist
+      - run: python -m pip install --force-reinstall dist/hypoverum_core_rs-*.whl
+      - run: >-
+          python -m pytest -q
+          tests/test_cli.py tests/test_cli_aux.py tests/test_gate_severity.py tests/test_geo_gate.py
+          tests/test_profiles.py tests/test_blocks_library.py tests/test_import_sheet_prune.py
+          tests/test_scratch_safety.py tests/test_cache_lease.py tests/test_timeline_frames.py
+          tests/test_gates_layer1.py tests/test_examples.py tests/test_audio_mix_exact.py tests/test_overlays.py
+          tests/test_gate_registry.py tests/test_profile_include.py tests/test_taste_lint.py tests/test_check_docs.py
+          tests/test_workspace_config.py
+
+  macos-fast:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      VIDEO_ENGINE_FFMPEG: /opt/homebrew/opt/ffmpeg@7/bin/ffmpeg
+      VIDEO_ENGINE_FFPROBE: /opt/homebrew/opt/ffmpeg@7/bin/ffprobe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: brew install ffmpeg@7
+      - run: python -m pip install --upgrade pip maturin
+      - run: python -m pip install -e ".[test]" faster-whisper google-genai
+      - run: python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist
+      - run: python -m pip install --force-reinstall dist/hypoverum_core_rs-*.whl
+      - run: >-
+          python -m pytest -q
+          tests/test_cli.py tests/test_cli_aux.py tests/test_gate_severity.py tests/test_geo_gate.py
+          tests/test_profiles.py tests/test_blocks_library.py tests/test_import_sheet_prune.py
+          tests/test_scratch_safety.py tests/test_cache_lease.py tests/test_timeline_frames.py
+          tests/test_gates_layer1.py tests/test_examples.py tests/test_audio_mix_exact.py tests/test_overlays.py
+          tests/test_gate_registry.py tests/test_profile_include.py tests/test_taste_lint.py tests/test_check_docs.py
+          tests/test_workspace_config.py
+
+  macos-nightly:
+    if: github.event_name == 'schedule'
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      VIDEO_ENGINE_FFMPEG: /opt/homebrew/opt/ffmpeg@7/bin/ffmpeg
+      VIDEO_ENGINE_FFPROBE: /opt/homebrew/opt/ffmpeg@7/bin/ffprobe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: brew install ffmpeg@7
+      - run: python -m pip install --upgrade pip maturin
+      - run: python -m pip install -e ".[test]" faster-whisper google-genai
+      - run: python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist
+      - run: python -m pip install --force-reinstall dist/hypoverum_core_rs-*.whl
+      - run: python -m video_engine.cli doctor --install
+      - run: python -m pytest -q
+        env: { VIDEO_ENGINE_REQUIRE_TOOLCHAIN: "1" }   # toolchain installed: a missing vendored file is a failure
+
+  nightly:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: python -m pip install --upgrade pip maturin
+      - run: python -m pip install -e ".[test]" faster-whisper google-genai
+      - run: python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist
+      - run: python -m pip install --force-reinstall dist/hypoverum_core_rs-*.whl
+      - run: python -m video_engine.cli doctor --install
+      - run: python -m pytest -q
+        env: { VIDEO_ENGINE_REQUIRE_TOOLCHAIN: "1" }   # toolchain installed: a missing vendored file is a failure

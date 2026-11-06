@@ -1,0 +1,40 @@
+# SFX cues from render events and the music ducking. Loaded by geoverum.toml `include`.
+
+[sound]                       # SFX cues from render events + music ducked under the voiceover
+duck_db = -12.0               # music under speech (word timestamps of the voiceover)
+duck_attack_s = 0.25
+duck_release_s = 0.6
+duck_merge_s = 0.7            # word gaps up to 0.7 s stay ducked
+fade_in_s = 0.3
+fade_out_s = 1.0
+
+[sound.events]                # render event -> SFX kind (clicks and beeps allowed for this channel)
+pin = "pop"
+figure = "pop"
+label = "tick"
+region = "tick"
+route = "whoosh"
+whip = "whoosh"
+counter_tick = "counter_tick"
+title = "impact"
+
+[sound.kinds.pop]
+gain_db = -12.0
+max_s = 0.6
+
+[sound.kinds.tick]
+gain_db = -16.0
+max_s = 0.4
+
+[sound.kinds.whoosh]
+gain_db = -12.0
+align = "peak"                # whoosh peak on the middle of the move
+max_s = 1.5
+
+[sound.kinds.counter_tick]
+gain_db = -20.0
+max_s = 0.08
+
+[sound.kinds.impact]
+gain_db = -10.0
+max_s = 2.0

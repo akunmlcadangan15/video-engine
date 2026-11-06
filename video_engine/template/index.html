@@ -1,0 +1,991 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=__W__, height=__H__" />
+<script src="assets/gsap.min.js"></script>
+<script src="scene.js"></script>
+<style>
+@font-face{font-family:'EngInter';src:url('assets/Inter-Bold.otf') format('opentype');font-weight:700}
+@font-face{font-family:'EngInterS';src:url('assets/Inter-SemiBold.otf') format('opentype');font-weight:600}__FONTFACES__
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:__W__px;height:__H__px;overflow:hidden;background:#0b1118}
+#root{position:relative;width:__W__px;height:__H__px;overflow:hidden;background:#0b1118;font-family:EngInter,sans-serif;--pin:#ffd84a}
+#cam{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+#cam>img,#base>img{position:absolute;left:0;top:0;display:block}
+#shade{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,rgba(5,10,16,0) 45%,rgba(5,10,16,.55) 100%),linear-gradient(180deg,rgba(5,10,16,.45) 0%,rgba(5,10,16,0) 22%,rgba(5,10,16,0) 78%,rgba(5,10,16,.4) 100%)}
+.pin{position:absolute;width:0;height:0;visibility:hidden}
+.pin .dot{position:absolute;left:-13px;top:-13px;width:26px;height:26px;border-radius:50%;background:var(--pin);border:4px solid #fff;box-shadow:0 0 14px 4px rgba(255,200,60,.8)}
+.pin .ring{position:absolute;left:-13px;top:-13px;width:26px;height:26px;border-radius:50%;border:4px solid var(--pin)}
+.pin .pb{position:absolute;left:0;top:0;transform-origin:0 0}
+.pin .shadow{position:absolute;left:-17px;top:-7px;width:34px;height:14px;border-radius:50%;background:rgba(0,0,0,.45);filter:blur(3px)}
+.pin .drop{position:absolute;left:-22px;top:-53px;width:44px;height:44px}
+.pin .tear{position:absolute;inset:0;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--pin);box-shadow:-3px 5px 10px rgba(0,0,0,.45)}
+.pin .tear i{position:absolute;left:14px;top:14px;width:16px;height:16px;border-radius:50%;background:#fff}
+.pin .beside{position:absolute;top:-31px;white-space:nowrap;color:#fff;font-size:var(--lab-size);line-height:1;font-family:var(--lab-font);text-shadow:0 3px 8px rgba(0,0,0,.85),0 0 3px rgba(0,0,0,.9)}
+.pin .lab{position:absolute;left:0;bottom:30px;transform:translateX(-50%);transform-origin:50% 100%;white-space:nowrap;padding:10px 20px 12px;border-radius:12px;background:rgba(8,12,18,.82);color:#fff;font-size:44px;line-height:1;box-shadow:0 6px 18px rgba(0,0,0,.5)}
+.legible .beside,.legible .title{-webkit-text-stroke:calc(2*var(--txt-outline-px)) var(--txt-outline);paint-order:stroke fill}
+.legible .beside{text-shadow:var(--txt-shadow)}
+.title{position:absolute;left:50%;width:max-content;max-width:900px;text-align:center;line-height:1.04;visibility:hidden;white-space:normal}
+.fig{position:absolute;white-space:nowrap;line-height:1;visibility:hidden;font-variant-numeric:tabular-nums}
+.card{position:absolute;left:50%;transform:translateX(-50%);width:max-content;min-width:520px;max-width:880px;padding:26px 40px 30px;border-radius:22px;background:rgba(10,14,22,.86);color:#fff;text-align:center;visibility:hidden;box-shadow:0 14px 34px rgba(0,0,0,.55)}
+.adapt::before{content:'';position:absolute;left:50%;top:50%;width:var(--vw,0);height:var(--vh,0);transform:translate(-50%,-50%);background:var(--vig,none);z-index:-1;pointer-events:none}
+.ink-measure [data-ink]{color:transparent!important;-webkit-text-stroke-color:transparent!important;text-shadow:none!important}
+.adapt::after{content:'';position:absolute;left:calc(-1*var(--hm,0px));top:calc(-1*var(--hm,0px));width:calc(100% + 2*var(--hm,0px));height:calc(100% + 2*var(--hm,0px));background:var(--halo-c,transparent);-webkit-mask-image:var(--halo-mask,none);-webkit-mask-size:100% 100%;z-index:-1;pointer-events:none}
+.ink-measure [data-ink-ghost],.line-measure [data-ink-ghost]{visibility:hidden!important}
+.ink-measure [data-ink]::before,.ink-mask [data-ink]::before,.ink-measure [data-ink]::after,.ink-mask [data-ink]::after{display:none!important}
+#root.ink-mask{background:#fff!important}
+.ink-mask *{visibility:hidden!important}
+.ink-mask [data-ink]{visibility:visible!important;color:#000!important;-webkit-text-stroke:0!important;text-shadow:none!important}
+#root.line-mask{background:#fff!important}
+.line-mask *{visibility:hidden!important}
+.line-mask [data-line],.line-mask [data-line] *{visibility:visible!important}
+.line-mask polygon[data-line],.line-mask [data-shape][data-line]{fill-opacity:0!important}
+.line-mask [data-line-casing],.line-mask mask *{visibility:visible!important}
+.line-measure [data-line]:not(polygon):not([data-shape]),.line-measure [data-line] *{visibility:hidden!important}
+.line-measure polygon[data-line],.line-measure [data-shape][data-line]{stroke-opacity:0!important}
+.line-measure [data-line-casing]{visibility:hidden!important}
+.card .t{font-size:64px;line-height:1.05;white-space:nowrap}
+.card .s{font-family:EngInterS;font-size:36px;line-height:1.2;color:#ffd84a;margin-top:10px}
+.card img{display:block;width:100%;max-height:360px;object-fit:cover;border-radius:12px;margin-bottom:18px}
+.box{white-space:nowrap;color:#fff;font-family:EngInter,sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.02em;line-height:1;padding:.2em .45em .24em;text-shadow:none;box-shadow:0 6px 14px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.35)}
+.rl{position:absolute;width:0;height:0;visibility:hidden}
+.rl .pb{position:absolute;left:0;top:0;transform-origin:0 0}
+.rl .box{position:absolute;left:0;top:0}
+.card.box{min-width:0;padding:20px 36px 22px;box-shadow:0 10px 24px rgba(0,0,0,.5)}
+.card.box img{border-radius:0}
+.card.box .s{color:#fff;text-transform:none}
+.bubble{position:absolute;visibility:hidden;background:#fff;color:#14181c;font-family:EngInterS,sans-serif;font-weight:600;
+  line-height:1.22;border-radius:18px;padding:16px 22px;box-shadow:0 10px 26px rgba(0,0,0,.35);
+  white-space:pre-wrap;overflow-wrap:break-word;--tail-colour:#fff}
+.bubble.dark{background:#15181d;color:#fff;--tail-colour:#15181d}
+.bubble::after{content:'';position:absolute;width:0;height:0;border:16px solid transparent}
+.bubble.s-top::after{left:var(--tail,50%);top:100%;transform:translateX(-16px);
+  border-left:16px solid transparent;border-right:16px solid transparent;border-top:22px solid var(--tail-colour);border-bottom:0}
+.bubble.s-right::after{right:100%;top:var(--tail,50%);transform:translateY(-16px);
+  border-top:16px solid transparent;border-bottom:16px solid transparent;border-right:22px solid var(--tail-colour);border-left:0}
+.bubble.s-left::after{left:100%;top:var(--tail,50%);transform:translateY(-16px);
+  border-top:16px solid transparent;border-bottom:16px solid transparent;border-left:22px solid var(--tail-colour);border-right:0}
+.tzl{position:absolute;width:0;height:0;visibility:hidden}
+.tzl .pb{position:absolute;left:0;top:0;transform-origin:0 0;white-space:nowrap;font-family:EngInterS,sans-serif;font-weight:600;
+  font-size:26px;line-height:1;letter-spacing:.04em;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.75)}
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-start="0" data-duration="__DUR__" data-width="__W__" data-height="__H__">
+  <div id="cam"><img id="map" src="__MAP__" width="__MW__" height="__MH__" /></div>
+  <div id="shade"></div>
+  <div id="ui"></div>
+</div>
+<script>
+// camera pulse ease (profile [camera], legs with `bez`): CSS cubic-bezier(x1,y1,x2,y2), x solved by bisection
+// (same math as layout.cubic_bezier)
+window.__bez=function(b){return function(t){if(t<=0||t>=1)return Math.min(1,Math.max(0,t));
+  const bx=u=>3*(1-u)*(1-u)*u*b[0]+3*(1-u)*u*u*b[2]+u*u*u;let lo=0,hi=1;
+  for(let i=0;i<40;i++){const m=(lo+hi)/2;if(bx(m)<t)lo=m;else hi=m;}
+  const u=(lo+hi)/2;return 3*(1-u)*(1-u)*u*b[1]+3*(1-u)*u*u*b[3]+u*u*u;};};
+// a camera ease as a function: GSAP ease names resolve through gsap.parseEase, functions pass through
+window.__ease=function(E){return typeof E==='function'?E:gsap.parseEase(E);};
+// counter-scale ease of a camera leg (zoom a -> z under ease E, any ease): a tween of v/a -> v/z with this ease equals
+// v / (camera scale of the same frame), so counter-scaled labels, heads, strokes and dashes keep their planned
+// on-screen size on every frame of every leg
+window.__inv=function(a,z,E){const e=window.__ease(E);if(Math.abs(z-a)<1e-9)return e;
+  return function(p){return (1/(a+(z-a)*e(p))-1/a)/(1/z-1/a);};};
+// camera legs, one definition for every block: leg k tweens the camera from the previous leg's end over frames
+// [f0, f1) under `ease` (`v` [a, b] = the cubic with those end slopes, glide, whip = power3.inOut, drift = constant
+// ln-rate zoom (rho^t-1)/(rho-1), pulse = base drift `lr` plus the cubic-bezier share; hyperframes.leg_ease is the
+// same math); `inv` as above
+window.__legs=function(C,FPS){
+  const glide=t=>{t=Math.min(Math.max(t,0),1);return 0.35*t+0.65*(1-Math.cos(Math.PI*t))/2;};
+  const quart=t=>t<0.5?8*t*t*t*t:1-Math.pow(-2*t+2,4)/2;   // GSAP power3.inOut
+  const EASE={glide:glide,whip:quart,lin:t=>t};   // lin: the one-frame legs of a flow path
+  const legEase=(L,s0)=>{if(L.v){const a=L.v[0],b=L.v[1];return t=>((a+b-2)*t+3-2*a-b)*t*t+a*t;}
+    const rho=L.to.s/s0, flat=Math.abs(rho-1)<1e-9;
+    if(!L.bez&&L.ease==='drift')return flat?(t=>t):(t=>(Math.pow(rho,t)-1)/(rho-1));
+    const B=L.bez?window.__bez(L.bez):EASE[L.ease];
+    if(flat||L.lr===undefined)return B;
+    const ln=Math.log(rho), r=Math.sign(ln)*Math.min(Math.abs(L.lr),Math.abs(ln));
+    return t=>(Math.exp(r*t+(ln-r)*B(t))-1)/(rho-1);};
+  return C.legs.map((L,k)=>{const from=k?C.legs[k-1].to:C.start, ease=window.__ease(legEase(L,from.s));
+    return {L:L,k:k,from:from,t0:L.f0/FPS,d:(L.f1-L.f0)/FPS,ease:ease,inv:window.__inv(from.s,L.to.s,ease)};});};
+</script>
+<script>
+(function(){
+const S=window.SCENE, FPS=S.fps, f2t=f=>f/FPS;
+const rgba=(hex,a)=>'rgba('+[1,3,5].map(k=>parseInt(hex.slice(k,k+2),16)).join(',')+','+a+')';
+const cam=document.getElementById('cam'), ui=document.getElementById('ui'), LG=S.legibility||null;
+// deep tiles (zoom past the whole-map derivative): the map image and its tiles share one #map box, so every map filter
+// covers both; each tile sits at its raster box scaled to map px; each image is its own layer, drawn from its own pixels
+// at any camera scale (inside one painted layer Chrome would keep the first raster scale)
+const tiles=(d,deep)=>deep.forEach(t=>{const e=document.createElement('img'), kx=S.map_size[0]/t.raster[0], ky=S.map_size[1]/t.raster[1];
+  e.src=t.img;e.setAttribute('data-deep','');
+  e.style.cssText='position:absolute;left:'+(t.box[0]*kx)+'px;top:'+(t.box[1]*ky)+'px;width:'+((t.box[2]-t.box[0])*kx)+
+    'px;height:'+((t.box[3]-t.box[1])*ky)+'px;max-width:none;will-change:transform';d.appendChild(e);});
+const mapBox=()=>{const d=document.createElement('div');
+  d.style.cssText='position:absolute;left:0;top:0;width:'+S.map_size[0]+'px;height:'+S.map_size[1]+'px';return d;};
+if(S.deep&&S.deep.length){const im=document.getElementById('map'), d=mapBox();
+  d.id='map';im.removeAttribute('id');im.style.cssText='position:absolute;left:0;top:0;width:100%;height:100%;will-change:transform';
+  im.replaceWith(d);d.appendChild(im);tiles(d,S.deep);}
+// legibility profiles: map, regions and routes sit in #base, so camera motion blur never touches text layers
+const base=LG?(()=>{const b=document.createElement('div');b.id='base';
+  b.style.cssText='position:absolute;left:0;top:0;width:'+S.map_size[0]+'px;height:'+S.map_size[1]+'px';
+  b.appendChild(document.getElementById('map'));cam.appendChild(b);return b;})():cam;
+const tl=gsap.timeline({paused:true});
+window.__timelines=window.__timelines||{};window.__timelines["main"]=tl;
+// motion tokens (profile [motion]): named curves and role eases; defaults keep the engine look
+const MO=window.__motion=Object.assign({ease_out:[0.23,1,0.32,1],ease_in_out:[0.77,0,0.175,1],ease_drawer:[0.32,0.72,0,1],entrance:'power2.out',move:'power2.inOut',exit:'power2.in',entrance_scale:0.96},(S.theme&&S.theme.motion)||{});
+// map morph: a second map (same extent) over #map under the regions, toned and paper-multiplied inside its own
+// group, crossfading in (at_frame 0: shown from the first frame) and back out; optional screen grain over the camera
+// while it shows
+if(S.morph){const M=S.morph, mo=mapBox(), tone=mapBox(), im=document.createElement('img');
+  mo.id='morph';mo.style.opacity=M.at_frame?'0':'1';im.src=M.img;im.style.cssText='position:absolute;left:0;top:0;width:100%;height:100%;max-width:none';
+  tone.appendChild(im);tiles(tone,M.deep);if(M.sepia>0)tone.style.filter='sepia('+M.sepia+')';mo.appendChild(tone);
+  if(M.paper>0){const pp=mapBox();pp.style.cssText+=';background:url("assets/'+M.paper_texture+'") repeat;background-size:512px 512px;mix-blend-mode:multiply;opacity:'+M.paper;mo.appendChild(pp);}
+  document.getElementById('map').after(mo);
+  const gr=M.grain>0?document.createElement('div'):null;
+  if(gr){gr.setAttribute('data-grade','morph-grain');gr.style.cssText='position:absolute;inset:0;background:url("assets/'+M.grain_texture+'") repeat;mix-blend-mode:multiply;opacity:'+(M.at_frame?0:M.grain)+';pointer-events:none';
+    document.getElementById('shade').before(gr);}
+  const fade=(a,b,f)=>{tl.fromTo(mo,{opacity:a},{opacity:b,duration:M.s,ease:'power1.inOut',immediateRender:false},f2t(f));
+    if(gr)tl.fromTo(gr,{opacity:a*M.grain},{opacity:b*M.grain,duration:M.s,ease:'power1.inOut',immediateRender:false},f2t(f));};
+  if(M.at_frame)fade(0,1,M.at_frame);if(M.back_at_frame!==null)fade(1,0,M.back_at_frame);}
+// camera: legs of transforms computed by the engine (same math as the R56 gate); each leg tweens from the previous one
+const C=S.camera;
+// tilted camera: #cam, the map and its deep tiles must not be composited layers of their own. Under #tilt's perspective
+// Chrome cannot read a 2D scale off a layer's screen transform and rasterizes it at scale 1, so a layer zoomed 5x
+// showed map, regions, flags and labels 5x upscaled (blocky edges). Painted into #tilt's layer instead (no
+// will-change, no translate3d: force3D false), they are drawn at the camera scale and only #tilt's own magnification
+// (camera3d.max_mag, at most about 1.4) is left to the compositor.
+const F3=C.tilt?{force3D:false}:{};
+if(C.tilt){cam.style.willChange='auto';cam.setAttribute('data-flat-raster','');
+  document.querySelectorAll('#map,#map>img,[data-deep]').forEach(e=>{e.style.willChange='auto';});}
+gsap.set(cam,{x:C.start.x,y:C.start.y,scale:C.start.s,...F3});
+const legs=window.__legs(C,FPS);
+legs.forEach(g=>tl.fromTo(cam,{x:g.from.x,y:g.from.y,scale:g.from.s},
+  {x:g.L.to.x,y:g.L.to.y,scale:g.L.to.s,duration:g.d,ease:g.ease,immediateRender:g.k===0,...F3},g.t0));
+// perspective tilt (camera key `tilt`, camera3d.py): #cam and the map props layer sit in #tilt, which turns about the
+// frame centre under perspective(C.tilt.p) to each leg's tilt with the leg's ease
+if(C.tilt){const tw=document.createElement('div');tw.id='tilt';
+  tw.style.cssText='position:absolute;left:0;top:0;width:'+S.width+'px;height:'+S.height+'px;transform-origin:50% 50%';
+  cam.before(tw);tw.appendChild(cam);
+  gsap.set(tw,{transformPerspective:C.tilt.p,rotationX:C.start.t});
+  legs.forEach(g=>{if(g.from.t!==g.L.to.t)tl.fromTo(tw,{rotationX:g.from.t},
+    {rotationX:g.L.to.t,transformPerspective:C.tilt.p,duration:g.d,ease:g.ease,immediateRender:false},g.t0);});}
+// whip motion blur: an SVG Gaussian blur on the camera only strictly between a whip's first and last frame (half a
+// frame inside, so both are sharp); deviations are in map pixels, so the on-screen blur is divided by the zoom
+const whips=legs.filter(g=>g.L.blur);
+if(whips.length){
+  const NS='http://www.w3.org/2000/svg', svg=document.createElementNS(NS,'svg');
+  svg.setAttribute('width','0');svg.setAttribute('height','0');svg.style.position='absolute';
+  svg.innerHTML='<filter id="mb" filterUnits="userSpaceOnUse" x="0" y="0" width="'+S.map_size[0]+'" height="'+S.map_size[1]+
+    '" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="0 0" edgeMode="duplicate"/></filter>';
+  document.body.appendChild(svg);
+  const fe=svg.querySelector('feGaussianBlur');
+  whips.forEach(g=>{const z=(g.from.s+g.L.to.s)/2, b=(g.L.blur[0]/z)+' '+(g.L.blur[1]/z);
+    const h=0.5/FPS, a=g.t0+h, m=g.t0+g.d/2, e=g.t0+g.d-h;
+    tl.set(base,{filter:'url(#mb)'},a);
+    tl.fromTo(fe,{attr:{stdDeviation:'0 0'}},{attr:{stdDeviation:b},duration:m-a,ease:MO.exit,immediateRender:false},a);
+    tl.fromTo(fe,{attr:{stdDeviation:b}},{attr:{stdDeviation:'0 0'},duration:e-m,ease:MO.entrance,immediateRender:false},m);
+    tl.set(base,{filter:'none'},e);});
+}
+// counter-scaling on every frame: `zs` callbacks get the camera scale of the frame (the legs' math; 1 on the globe)
+const ZS=[], camS=t=>{let s=C.start.s;for(const g of legs){if(t<g.t0)break;s=t>=g.t0+g.d?g.L.to.s:g.from.s+(g.L.to.s-g.from.s)*g.ease((t-g.t0)/g.d);}return s;};
+const zsRun=()=>{const s=S.globe?1:camS(tl.time());ZS.forEach(f=>f(s));};
+// camera roll (camera key `roll`, deg): #cam (inside #tilt when tilted) sits in #roll, turned about the frame centre
+// to the legs' roll and scaled by the angle's cover factor, so the map still fills every corner; the roll of a frame
+// comes from the legs' math like the scale (no tween state); screen texts in #ui stay level, map labels turn with it
+if('r' in C.start){const rw=document.createElement('div');rw.id='roll';
+  rw.style.cssText='position:absolute;left:0;top:0;width:'+S.width+'px;height:'+S.height+'px;transform-origin:50% 50%';
+  const inner=document.getElementById('tilt')||cam;inner.before(rw);rw.appendChild(inner);
+  const camR=t=>{let r=C.start.r;for(const g of legs){if(t<g.t0)break;r=t>=g.t0+g.d?g.L.to.r:g.from.r+(g.L.to.r-g.from.r)*g.ease((t-g.t0)/g.d);}return r;};
+  const cover=r=>{const a=Math.abs(r)*Math.PI/180, c=Math.cos(a), n=Math.sin(a);return Math.max(c+S.height/S.width*n,c+S.width/S.height*n);};
+  window.__roll=camR;
+  ZS.push(()=>{const r=camR(tl.time());rw.style.transform='rotate('+r+'deg) scale('+cover(r)+')';});}
+const NS='http://www.w3.org/2000/svg', mk=(tag,at)=>{const e=document.createElementNS(NS,tag);for(const k in at)e.setAttribute(k,at[k]);return e;};
+const mapSvg=()=>{const v=mk('svg',{width:S.map_size[0],height:S.map_size[1]});v.style.cssText='position:absolute;left:0;top:0;overflow:visible';base.appendChild(v);return v;};
+const TH=S.theme, BOXR=TH.label_box_radius_px*S.width/(S.units?S.units.ref[0]:1080);
+// solid box label: elastic pop-in at t0
+const pop=(el,t0)=>{tl.fromTo(el,{opacity:0},{opacity:1,duration:0.12,ease:'none',immediateRender:true},t0);
+  tl.fromTo(el,{scale:0.35},{scale:1,duration:TH.label_pop_s,ease:'elastic.out(1,0.55)',immediateRender:true},t0);};
+const boxify=(el,col,px)=>{el.classList.add('box');el.style.background=col;el.style.borderRadius=BOXR+'px';
+  if(px)el.style.fontSize=px+'px';el.setAttribute('data-box',TH.label_box_lc);return el;};
+window.__boxify=boxify;   // the layout block runs in its own script scope
+// title and figures in a box: white text without their glow, shadow or outline
+const unbox=(el,ink)=>{el.style.color=ink||'#fff';el.style.textShadow='none';el.style.webkitTextStroke='0';};
+// neon line (block edges, borders): dark casing under a glowing stroke, drawn on along its length by a mask stroke
+// (pathLength 1); widths, dashes and glow keep their on-screen size; data-line for R64 on legibility profiles
+// o (optional): {glow: glow radius instead of theme block_glow_px, grow: widths scale as camera scale^grow, so a river
+// widens as the camera comes closer, nocase: no dark casing}
+function neon(par,tag,at,col,cas,w,dashed,t0,ds,id,geo,o){
+  o=o||{};const GL=o.glow===undefined?TH.block_glow_px:o.glow, GR=o.grow||0;
+  const cw=o.nocase?0:TH.block_casing_px, g=mk('g',{'data-line':id}), u=id.replace(':','-');
+  lineInk(g,cw>0?[col,cas]:[col]);g.style.visibility='hidden';
+  const mask=mk('mask',{id:'nm-'+u,maskUnits:'userSpaceOnUse',x:-S.map_size[0],y:-S.map_size[1],width:3*S.map_size[0],height:3*S.map_size[1]});
+  const mp=mk(tag,{...at,fill:'none',stroke:'#fff',pathLength:1,'stroke-dasharray':'1 1','stroke-dashoffset':1,'stroke-linejoin':'round',...geo});
+  mask.appendChild(mp);par.appendChild(mask);
+  const line=a=>mk(tag,{...at,fill:'none','stroke-linejoin':'round','stroke-linecap':'round',...a,...geo});
+  const c=cw>0?line({stroke:cas}):null, e=line({stroke:col});
+  if(c)g.appendChild(c);g.appendChild(e);g.setAttribute('mask','url(#nm-'+u+')');par.appendChild(g);
+  const dash=s=>dashed?(TH.border_dash_px/s)+' '+(TH.border_gap_px/s):'none';
+  ZS.push(s0=>{const s=s0/Math.pow(s0,GR);mp.setAttribute('stroke-width',(w+2*cw+4*GL)/s);
+    if(c){c.setAttribute('stroke-width',(w+2*cw)/s);c.setAttribute('stroke-dasharray',dash(s));}
+    e.setAttribute('stroke-width',w/s);e.setAttribute('stroke-dasharray',dash(s));
+    if(GL>0)e.style.filter='drop-shadow(0 0 '+(GL/s)+'px '+col+') drop-shadow(0 0 '+(GL/3/s)+'px '+col+')';});
+  tl.set(g,{visibility:'visible'},t0);
+  tl.fromTo(mp,{attr:{'stroke-dashoffset':1}},{attr:{'stroke-dashoffset':0},duration:Math.max(ds,1/FPS),ease:'power1.inOut',immediateRender:true},t0);
+  return g;}
+// region highlights: SVG in map pixels under the pins; the edge keeps its on-screen width while the camera zooms
+if(S.regions&&S.regions.length){
+  // legibility profiles: translucent fill, full-colour outline, no glow
+  const svg=mapSvg(), P=S.print, paper=P&&P.surface==='paper',
+    T=LG?Object.assign({},S.theme,{region_fill_opacity:LG.entity_fill_alpha,region_edge_px:LG.entity_outline_px,region_glow_px:0}):S.theme;
+  const geo=(r,i)=>r.ll?{'data-geo':i}:{}, chg=(r,el,from,to,t)=>tl.fromTo(el,from,{...to,duration:TH.block_change_s,ease:MO.move,immediateRender:false},t);
+  // P5 flag fit, computed here: Chrome lays an <image>-referenced SVG out as `meet` and ignores `slice`,
+  // so cover/contain are explicit rects (preserveAspectRatio none) clipped by the region polygon.
+  function flagRect(x,y,w,h,f){const a=+(f.aspect||4/3);if(f.fit==='stretch'||!(w>0&&h>0))return {x,y,width:w,height:h};
+    const s=(f.fit==='cover'?Math.max:Math.min)(w/a,h), W=s*a;return {x:x+(w-W)/2,y:y+(h-s)/2,width:W,height:s};}
+  window.__flagRect=flagRect;
+  // P17 hatching: a diagonal SVG pattern clipped to the region polygon, over the fill (and under a flag / edge)
+  const hatch=(i,shp,parent,t0,R)=>{
+    if(!R.hatch)return null;
+    const H=R.hatch, s=H.spacing_px, id='hatch'+i, pat=mk('pattern',{id,width:s,height:s,patternUnits:'userSpaceOnUse',
+      patternTransform:'rotate('+H.angle+')'});
+    pat.appendChild(mk('line',{x1:0,y1:0,x2:s,y2:0,stroke:H.colour,'stroke-width':H.line_px}));
+    svg.appendChild(pat);
+    const hp=shp({fill:'url(#'+id+')','fill-opacity':0,...geo(R,i)});
+    parent.appendChild(hp);
+    tl.fromTo(hp,{attr:{'fill-opacity':0}},{attr:{'fill-opacity':H.alpha},duration:0.4,ease:MO.entrance,immediateRender:true},t0);
+    const m=document.createElement('div');m.setAttribute('data-qa','fx:hatch:'+i);
+    m.style.cssText='position:absolute;left:0;top:0;width:0;height:0';cam.appendChild(m);
+    return hp;};
+  S.regions.forEach((R,i)=>{
+    const pts=R.points.map(p=>p[0]+','+p[1]).join(' '), t0=f2t(R.at_frame);
+    // islands and holes (R.rings): one even-odd path for every shape of the region; one ring stays a polygon
+    const D=R.rings?R.rings.map(g=>'M'+g.map(p=>p[0]+' '+p[1]).join('L')+'Z').join(''):null,
+      shp=at=>D?mk('path',{d:D,'fill-rule':'evenodd','clip-rule':'evenodd','data-shape':'region',...at}):mk('polygon',{points:pts,...at});
+    let prev=R;
+    if(R.style==='block'){
+      // block: blurred drop shadow, an extruded side (stacked copies down to block_depth_px), the saturated face,
+      // a bevel (lighter stroke clipped inside the face), then the neon edge drawn on; owner changes recolour it
+      const g=mk('g',{'data-block':i}), n=4, sides=[];g.style.opacity=0;svg.appendChild(g);
+      const sh=shp({fill:'#000','fill-opacity':TH.block_shadow_alpha,'stroke-linejoin':'round',...geo(R,i)});g.appendChild(sh);
+      for(let k=n;k>=1;k--){const sp=shp({'stroke-linejoin':'round',...geo(R,i)});sp.style.fill=R.side;sp.style.stroke=R.side;g.appendChild(sp);sides.push([sp,k/n]);}
+      const face=shp({'fill-opacity':TH.block_fill_alpha,'data-entity':R.entity,'data-paint':'block','data-region':i,...geo(R,i)});
+      face.style.fill=R.block;g.appendChild(face);
+      const cp=mk('clipPath',{id:'bc'+i});cp.appendChild(shp({...geo(R,i)}));svg.appendChild(cp);
+      const bv=shp({fill:'none','stroke-opacity':0.85,'stroke-linejoin':'round','clip-path':'url(#bc'+i+')',...geo(R,i)});
+      bv.style.stroke=R.bevel;g.appendChild(bv);
+      ZS.push(s=>{const D=TH.block_depth_px/s;
+        sh.setAttribute('transform','translate(0 '+(D+TH.block_shadow_px/s)+')');sh.style.filter='blur('+(TH.block_shadow_blur_px/s)+'px)';
+        sides.forEach(([sp,k])=>{sp.setAttribute('transform','translate(0 '+(k*D)+')');sp.setAttribute('stroke-width',1/s);});
+        bv.setAttribute('stroke-width',2*TH.block_bevel_px/s);});
+      tl.fromTo(g,{opacity:0},{opacity:1,duration:0.45,ease:MO.entrance,immediateRender:true},t0);
+      neon(svg,D?'path':'polygon',D?{d:D,'fill-rule':'evenodd'}:{points:pts},R.edge_colour,R.casing||TH.label_box_colour,TH.block_edge_px,R.dashed,t0,R.draw_s,'region:'+i,geo(R,i));
+      R.changes.forEach(c=>{const t=f2t(c.at_frame);
+        chg(R,face,{fill:prev.block},{fill:c.block},t);chg(R,bv,{stroke:prev.bevel},{stroke:c.bevel},t);
+        sides.forEach(([sp])=>chg(R,sp,{fill:prev.side,stroke:prev.side},{fill:c.side,stroke:c.side},t));
+        tl.set(face,{attr:{'data-entity':c.entity}},t);prev=c;});
+    }else{
+    const r=LG?Object.assign({},R,{edge:'glow'}):R;
+    const pg=shp({...geo(R,i)});
+    pg.setAttribute('fill',r.colour);pg.setAttribute('fill-opacity','0');pg.setAttribute('stroke-linejoin','round');
+    pg.setAttribute('stroke',r.edge==='glow'?r.colour:'#ffffff');pg.setAttribute('stroke-opacity','0');
+    const soft=r.edge==='glow'&&T.region_glow_px>0&&T.region_glow_alpha<1, glow=rgba(r.colour,T.region_glow_alpha);
+    // a full-strength glow filters the filled polygon; a softer glow sits on a stroke-only copy underneath, so the
+    // fill keeps exactly region_fill_opacity
+    if(r.edge==='glow'&&T.region_glow_px>0&&!soft)pg.style.filter='drop-shadow(0 0 '+T.region_glow_px+'px '+r.colour+') drop-shadow(0 0 '+(T.region_glow_px/3)+'px '+r.colour+')';
+    pg.setAttribute('data-entity',r.entity);pg.setAttribute('data-paint','fill');pg.setAttribute('data-region',i);
+    const cased=LG&&LG.region_casing_px>0, ink=c=>P?rgba(c.edge_ink,P.region_edge_alpha):c.colour,
+      inks=c=>{const e=P?c.edge_ink:c.colour;return cased?[e,c.casing]:[e];};
+    // [print]: solid edge in the entity's ink, fill multiplied into a paper surface
+    if(P){pg.setAttribute('stroke',ink(r));if(paper&&P.region_multiply)svg.style.mixBlendMode='multiply';}
+    if(LG){pg.setAttribute('data-line','region:'+i);lineInk(pg,inks(r));}
+    const edges=[pg];
+    // legibility profiles: a casing in the outline's opposite tone (r.casing) under it (stroke only; the fill stays on the polygon)
+    const cg=cased?shp({...geo(R,i)}):null;
+    if(cased){cg.setAttribute('fill','none');cg.setAttribute('stroke',r.casing);
+      cg.setAttribute('stroke-opacity','0');cg.setAttribute('stroke-linejoin','round');cg.setAttribute('data-line-casing','region:'+i);svg.appendChild(cg);}
+    if(soft){
+      const ge=shp({...geo(R,i)});
+      ge.setAttribute('fill','none');ge.setAttribute('stroke',r.colour);ge.setAttribute('stroke-opacity','0');ge.setAttribute('stroke-linejoin','round');
+      ge.style.filter='drop-shadow(0 0 '+T.region_glow_px+'px '+glow+') drop-shadow(0 0 '+(T.region_glow_px/3)+'px '+glow+')';
+      svg.appendChild(ge);edges.push(ge);
+    }
+    svg.appendChild(pg);
+    tl.fromTo(pg,{attr:{'fill-opacity':0,'stroke-opacity':0}},{attr:{'fill-opacity':T.region_fill_opacity,'stroke-opacity':1},duration:0.5,ease:MO.entrance,immediateRender:true},t0);
+    if(cased)tl.fromTo(cg,{attr:{'stroke-opacity':0}},{attr:{'stroke-opacity':1},duration:0.5,ease:MO.entrance,immediateRender:true},t0);
+    if(cased)legs.forEach(g=>tl.fromTo(cg,{attr:{'stroke-width':(T.region_edge_px+2*LG.region_casing_px)/g.from.s}},{attr:{'stroke-width':(T.region_edge_px+2*LG.region_casing_px)/g.L.to.s},duration:g.d,ease:g.inv,immediateRender:g.k===0},g.t0));
+    if(soft)tl.fromTo(edges[1],{attr:{'stroke-opacity':0}},{attr:{'stroke-opacity':T.region_glow_alpha},duration:0.5,ease:MO.entrance,immediateRender:true},t0);
+    legs.forEach(g=>tl.fromTo(edges,{attr:{'stroke-width':T.region_edge_px/g.from.s}},{attr:{'stroke-width':T.region_edge_px/g.L.to.s},duration:g.d,ease:g.inv,immediateRender:g.k===0},g.t0));
+    R.changes.forEach(c=>{const t=f2t(c.at_frame);
+      chg(R,pg,{attr:{fill:prev.colour}},{attr:{fill:c.colour,...(P?{}:{stroke:r.edge==='glow'?c.colour:'#ffffff'})}},t);
+      if(P)chg(R,pg,{stroke:ink(prev)},{stroke:ink(c)},t);
+      if(cased)chg(R,cg,{attr:{stroke:prev.casing}},{attr:{stroke:c.casing}},t);
+      tl.set(pg,{attr:{'data-entity':c.entity,...(LG?{'data-line-ink':JSON.stringify(inks(c))}:{})}},t);prev=c;});
+    }
+    if(R.flag||R.changes.some(c=>c.flag)){
+      const cp=mk('clipPath',{id:'flagclip'+i}), polygon=shp({...geo(R,i)});
+      cp.appendChild(polygon);svg.appendChild(cp);
+      const xs=R.points.map(p=>p[0]), ys=R.points.map(p=>p[1]), B=R.bbox||[Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)],
+        x=B[0], y=B[1], w=B[2]-x, h=B[3]-y;   // one flag domain over every island
+      let previous=null;
+      [R,...R.changes].forEach((owner,k)=>{
+        const f=owner.flag, t=f2t(owner.at_frame);
+        if(previous)tl.to(previous.el,{opacity:0,duration:f?f.reveal_s:previous.f.reveal_s,ease:MO.entrance},t);
+        if(!f){previous=null;return;}
+        const img=mk('image',{href:f.href,...flagRect(x,y,w,h,f),'clip-path':'url(#flagclip'+i+')',
+          preserveAspectRatio:'none','data-fit':f.fit,'data-aspect':f.aspect||4/3,
+          ...(R.ll?{'data-flag-geo':i}:{})});
+        img.style.opacity=0;svg.appendChild(img);
+        tl.fromTo(img,{opacity:0,scale:0.98,transformOrigin:'center center'},
+          {opacity:f.alpha,scale:1,duration:f.reveal_s,ease:MO.entrance,immediateRender:true},t);
+        previous={el:img,f};
+      });
+      const f=R.flag||R.changes.find(c=>c.flag).flag;
+      const outline=shp({fill:'none',stroke:R.edge_colour||'#ffffff','stroke-linejoin':'round',...geo(R,i)});
+      outline.style.filter='drop-shadow(0 0 '+(f.glow_px*S.width/(S.units?S.units.ref[0]:1080))+'px white)';svg.appendChild(outline);
+      tl.fromTo(outline,{opacity:0},{opacity:1,duration:f.reveal_s,ease:MO.entrance,immediateRender:true},t0);
+      legs.forEach(g=>tl.fromTo(outline,{attr:{'stroke-width':f.edge_px*S.width/(S.units?S.units.ref[0]:1080)/g.from.s}},
+        {attr:{'stroke-width':f.edge_px*S.width/(S.units?S.units.ref[0]:1080)/g.L.to.s},duration:g.d,ease:g.inv,immediateRender:g.k===0},g.t0));
+    }
+    hatch(i,shp,svg,t0,R);
+    // region label: a solid box (owner's box colour) anchored on the map, counter-scaled, popping in
+    if(R.label){const L=R.label, el=document.createElement('div');el.className='rl';
+      el.style.left=L.x+'px';el.style.top=L.y+'px';if(L.ll)el.setAttribute('data-ll',L.ll.join(','));
+      el.innerHTML='<div class="pb"><div data-qa="region:'+i+'"></div></div>';
+      const pb=el.firstChild, bx=pb.firstChild, boxed=!!R.box;bx.textContent=L.text;
+      if(boxed){boxify(bx,R.box,TH.label_box_px);}
+      else{bx.style.cssText+=';color:#fff;font-family:EngInter,sans-serif;font-weight:700;text-transform:uppercase;line-height:1;font-size:'+TH.label_box_px+'px;text-shadow:0 3px 8px rgba(0,0,0,.85),0 0 3px rgba(0,0,0,.9)';}
+      cam.appendChild(el);
+      gsap.set(bx,{xPercent:-50,yPercent:-50});
+      ZS.push(s=>pb.style.transform='scale('+(1/s)+')');
+      const lt=f2t(L.at_frame);tl.set(el,{visibility:'visible'},lt);
+      if(boxed){pop(bx,lt);let pv=R;R.changes.forEach(c=>{chg(R,bx,{backgroundColor:pv.box},{backgroundColor:c.box},f2t(c.at_frame));pv=c;});}
+      else{if(LG)adapt(bx,'region:'+i,LG.halo_width_em);tl.fromTo(bx,{opacity:0},{opacity:1,duration:0.3,ease:MO.entrance},lt);}}
+  });
+}
+// borders: neon lines (open or closed, solid or dashed) drawn on along their length
+if(S.borders&&S.borders.length){const svg=mapSvg();
+  S.borders.forEach((b,i)=>neon(svg,'path',{d:'M'+b.points.map(q=>q[0]+' '+q[1]).join(' L')+(b.closed?' Z':'')},
+    b.colour,b.casing||TH.label_box_colour,b.w||TH.border_px,b.dashed,f2t(b.at_frame),b.draw_s,'border:'+i,{},
+    {glow:b.glow,grow:b.grow,nocase:b.nocase}));}
+// map texts: a name set along a map curve (textPath), letters revealed one by one, a darker extrusion of `depth` map
+// px under the face and a soft shadow; it lies on the map, so it zooms, tilts and rolls with it
+if(S.map_texts&&S.map_texts.length){const svg=mapSvg();
+  const dark=(hex,k)=>'#'+[1,3,5].map(j=>Math.round(parseInt(hex.slice(j,j+2),16)*k).toString(16).padStart(2,'0')).join('');
+  S.map_texts.forEach((T,i)=>{const pid='mtp-'+i, t0=f2t(T.at_frame), chars=[...T.text], step=chars.length>1?T.reveal_s/(chars.length-1):0;
+    svg.appendChild(mk('path',{id:pid,d:'M'+T.points.map(q=>q[0]+' '+q[1]).join(' L'),fill:'none',stroke:'none'}));
+    const g=mk('g',{'data-qa':'maptext:'+i});g.style.visibility='hidden';
+    g.style.filter='drop-shadow(0 '+(T.px*0.08)+'px '+(T.px*0.1)+'px rgba(0,0,0,.55))';svg.appendChild(g);
+    const cols=[], n=T.depth>0?8:0;   // 8 extrusion layers whatever the depth (map px)
+    for(let k=n;k>=1;k--)cols.push([dark(T.colour,0.42),T.depth*k/n]);
+    cols.push([T.colour,0]);
+    const spans=chars.map(()=>[]);
+    cols.forEach(([fill,dy])=>{const t=mk('text',{'font-family':"'EngTitle',EngInter,sans-serif",'font-size':T.px,fill:fill,
+        'text-anchor':'middle','dominant-baseline':'middle',transform:'translate(0 '+dy+')'});
+      const tp=mk('textPath',{href:'#'+pid,startOffset:'50%'});
+      chars.forEach((ch,j)=>{const sp=mk('tspan',{'fill-opacity':0});sp.textContent=ch;tp.appendChild(sp);spans[j].push(sp);});
+      t.appendChild(tp);g.appendChild(t);});
+    tl.set(g,{visibility:'visible'},t0);
+    spans.forEach((sp,j)=>tl.fromTo(sp,{attr:{'fill-opacity':0}},{attr:{'fill-opacity':1},duration:0.12,ease:'none',immediateRender:true},t0+j*step));
+    if(T.out_frame!==null)tl.fromTo(g,{opacity:1},{opacity:0,duration:0.3,ease:MO.exit,immediateRender:false},f2t(T.out_frame));});}
+// routes: a dashed line revealed along its length by a solid mask stroke, an arrowhead riding the drawing tip; line,
+// dashes and arrowhead keep their on-screen size while the camera zooms
+if(S.routes&&S.routes.length){
+  const NS='http://www.w3.org/2000/svg', T=S.theme, svg=document.createElementNS(NS,'svg');
+  svg.setAttribute('width',S.map_size[0]);svg.setAttribute('height',S.map_size[1]);svg.style.cssText='position:absolute;left:0;top:0;overflow:visible';
+  base.appendChild(svg);
+  const mk=(tag,at)=>{const e=document.createElementNS(NS,tag);for(const k in at)e.setAttribute(k,at[k]);return e;};
+  const dash=s=>(T.route_dash_px/s)+' '+(T.route_gap_px/s);
+  S.routes.forEach((r,i)=>{
+    const d='M'+r.points.map(q=>q[0]+' '+q[1]).join(' L');
+    const mask=mk('mask',{id:'route-mask-'+i,maskUnits:'userSpaceOnUse',x:-S.map_size[0],y:-S.map_size[1],width:3*S.map_size[0],height:3*S.map_size[1]});
+    const mp=mk('path',{d:d,fill:'none',stroke:'#fff','stroke-width':4*T.route_width_px,'stroke-linecap':'butt','stroke-linejoin':'round'});
+    mask.appendChild(mp);svg.appendChild(mask);
+    // the soft shadow is an SVG filter, not CSS drop-shadow: on Linux Chrome a CSS filter inside #base re-rasterises the
+    // whole map layer, shifting map edges by tens of levels before the route has drawn a pixel; offset and blur keep
+    // their on-screen size through zooms, like the line
+    const sh=mk('filter',{id:'route-shadow-'+i,filterUnits:'userSpaceOnUse',x:-S.map_size[0],y:-S.map_size[1],width:3*S.map_size[0],height:3*S.map_size[1],'color-interpolation-filters':'sRGB'});
+    const ds=mk('feDropShadow',{dx:0,dy:2/C.start.s,stdDeviation:1.5/C.start.s,'flood-color':'#000','flood-opacity':0.6});sh.appendChild(ds);svg.appendChild(sh);
+    const g=mk('g',{'data-route':i,filter:'url(#route-shadow-'+i+')'});
+    const line=mk('path',{d:d,fill:'none',stroke:T.route_colour,'stroke-width':T.route_width_px/C.start.s,'stroke-dasharray':dash(C.start.s),
+      'stroke-linecap':'round','stroke-linejoin':'round',mask:'url(#route-mask-'+i+')'});
+    const a=T.route_arrow_px, head=mk('g',{}), sc=mk('g',{transform:'scale('+(1/C.start.s)+')'});
+    sc.appendChild(mk('polygon',{points:'0,0 '+(-a)+','+(-0.55*a)+' '+(-0.72*a)+',0 '+(-a)+','+(0.55*a),fill:T.route_colour}));
+    // legibility profiles: a dark-ink casing under the dashes and around the arrowhead
+    const cw=LG?T.route_width_px+2*LG.route_casing_px:0, casing=LG?line.cloneNode():null;
+    if(LG){casing.setAttribute('stroke',LG.route_casing_colour);casing.setAttribute('stroke-width',cw/C.start.s);g.appendChild(casing);
+      const hp=sc.firstChild;hp.setAttribute('stroke',LG.route_casing_colour);hp.setAttribute('stroke-width',2*LG.route_casing_px);
+      hp.setAttribute('stroke-linejoin','round');hp.setAttribute('paint-order','stroke');}
+    head.appendChild(sc);g.appendChild(line);g.appendChild(head);svg.appendChild(g);
+    if(LG){g.setAttribute('data-line','route:'+i);lineInk(g,[T.route_colour,LG.route_casing_colour]);}
+    const L=mp.getTotalLength(), t0=f2t(r.at_frame), pr={p:0};
+    mp.setAttribute('stroke-dasharray',L+' '+L);
+    const draw=()=>{const l=pr.p*L, q=mp.getPointAtLength(l), b=mp.getPointAtLength(Math.max(0,l-1)), f=mp.getPointAtLength(Math.min(L,Math.max(l,1)));
+      const ang=Math.atan2(f.y-b.y,f.x-b.x)*180/Math.PI;
+      mp.setAttribute('stroke-dashoffset',L*(1-pr.p));head.setAttribute('transform','translate('+q.x+' '+q.y+') rotate('+ang+')');};
+    draw();head.style.opacity=0;
+    tl.fromTo(head,{opacity:0},{opacity:1,duration:0.15,ease:'none',immediateRender:true},t0);
+    tl.fromTo(pr,{p:0},{p:1,duration:r.draw_s,ease:'power1.inOut',onUpdate:draw,immediateRender:true},t0);
+    legs.forEach(gl=>{
+      tl.fromTo(line,{attr:{'stroke-width':T.route_width_px/gl.from.s,'stroke-dasharray':dash(gl.from.s)}},
+        {attr:{'stroke-width':T.route_width_px/gl.L.to.s,'stroke-dasharray':dash(gl.L.to.s)},duration:gl.d,ease:gl.inv,immediateRender:gl.k===0},gl.t0);
+      if(LG)tl.fromTo(casing,{attr:{'stroke-width':cw/gl.from.s,'stroke-dasharray':dash(gl.from.s)}},
+        {attr:{'stroke-width':cw/gl.L.to.s,'stroke-dasharray':dash(gl.L.to.s)},duration:gl.d,ease:gl.inv,immediateRender:gl.k===0},gl.t0);
+      tl.fromTo(ds,{attr:{dy:2/gl.from.s,stdDeviation:1.5/gl.from.s}},{attr:{dy:2/gl.L.to.s,stdDeviation:1.5/gl.L.to.s},duration:gl.d,ease:gl.inv,immediateRender:gl.k===0},gl.t0);
+      tl.fromTo(sc,{attr:{transform:'scale('+(1/gl.from.s)+')'}},{attr:{transform:'scale('+(1/gl.L.to.s)+')'},duration:gl.d,ease:gl.inv,immediateRender:gl.k===0},gl.t0);
+    });
+  });
+}
+// legibility profiles: basemap chroma muted while regions or routes are on screen
+if(LG){const ov=[...(S.regions||[]),...(S.routes||[])].map(o=>o.at_frame);
+  if(ov.length)tl.fromTo(document.getElementById('map'),{filter:'saturate(1)'},{filter:'saturate('+LG.basemap_chroma+')',duration:0.5,ease:MO.entrance,immediateRender:true},f2t(Math.min(...ov)));}
+// pin theme: CSS variables from the scene theme (the default values are the CSS defaults above)
+const root=document.getElementById('root');
+root.style.setProperty('--pin',TH.pin_colour);
+// outlined labels and titles: thin outline (stroke painted under the fill) + soft drop shadow
+const TXT_SHADOW='0 '+TH.text_shadow_dy_px+'px '+TH.text_shadow_blur_px+'px rgba(0,0,0,'+TH.text_shadow_alpha+')';
+if(TH.text_outline_px>0){
+  root.classList.add('legible');
+  root.style.setProperty('--txt-outline-px',TH.text_outline_px+'px');
+  root.style.setProperty('--txt-outline',rgba(TH.text_outline_colour,TH.text_outline_alpha));
+  root.style.setProperty('--txt-shadow',TXT_SHADOW);
+}
+// adaptive text (legibility profiles): S.inks[id].segs = [{t,pol,ink,halo,ha,va,step}] chosen by the engine from
+// the measured background; colours crossfade over crossfade_ms ending on a segment start, halo and vignette alpha
+// approach their new value with time constant ema_tau_ms starting crossfade_ms + 2 tau before it
+const ADAPT=[], hx=h=>[1,3,5].map(k=>parseInt(h.slice(k,k+2),16));
+const mixHex=(a,b,k)=>'#'+hx(a).map((v,j)=>Math.round(v+(hx(b)[j]-v)*k).toString(16).padStart(2,'0')).join('');
+// em: halo width as a fraction of the element's font size; lines: leader lines that follow the element's ink
+function adapt(el,id,em){el.classList.add('adapt');el.setAttribute('data-ink',id);if(S.inks&&S.inks[id])ADAPT.push({el:el,sc:S.inks[id],em:em,lines:[]});}
+function lineInk(el,cols){el.setAttribute('data-line-ink',JSON.stringify(cols));}
+// halo of an adaptive element: a mask (local px, margin m) = the glyphs stroked with width 2 hw (round joins) plus the
+// fill, Gaussian blur sd, 0 in every enclosed counter (background not connected to the border); painted by ::after in
+// the halo colour. Glyph positions come from an untransformed clone laid out like the element.
+const NUMF={'lining-nums':'lnum','oldstyle-nums':'onum','proportional-nums':'pnum','tabular-nums':'tnum','slashed-zero':'zero','diagonal-fractions':'frac','stacked-fractions':'afrc','ordinal':'ordn'}, TWIN=new Map();
+const numFeats=v=>String(v||'normal').split(/\s+/).map(w=>NUMF[w]).filter(Boolean);
+// canvas text ignores font-variant-numeric: twin each @font-face with those features baked in so the halo mask draws the DOM's digit glyphs
+function twinFaces(vs){for(const sh of document.styleSheets)for(const r of sh.cssRules){if(!(r instanceof CSSFontFaceRule))continue;
+  const fam=r.style.getPropertyValue('font-family').replace(/['"]/g,'').trim(), src=r.style.getPropertyValue('src');
+  vs.forEach(v=>{const fs=numFeats(v);if(!fs.length||TWIN.has(fam+'|'+fs.join('-')))return;const name=fam+'~'+fs.join('-');
+    const f=new FontFace(name,src,{weight:r.style.getPropertyValue('font-weight')||'normal',style:r.style.getPropertyValue('font-style')||'normal',
+      featureSettings:fs.map(x=>'"'+x+'" 1').join(', ')});document.fonts.add(f);f.load().catch(()=>{});TWIN.set(fam+'|'+fs.join('-'),name);});}}
+function canvasFamily(cs){const fs=numFeats(cs.fontVariantNumeric).join('-');if(!fs)return cs.fontFamily;
+  return cs.fontFamily.split(',').map(s=>{const t=TWIN.get(s.trim().replace(/['"]/g,'')+'|'+fs);return t?'"'+t+'"':s.trim();}).join(',');}
+function haloMask(el,hw,sd,fill){   // fill: light text on a dark halo keeps its counters dark (no holes)
+  const cs=getComputedStyle(el), w=el.offsetWidth, h=el.offsetHeight, m=Math.ceil(hw+3*sd)+2, W=w+2*m, H=h+2*m;
+  const k=document.createElement('div');
+  k.style.cssText='position:absolute;left:0;top:0;visibility:hidden;width:'+w+'px;white-space:'+cs.whiteSpace+';line-height:'+cs.lineHeight+
+    ';font-family:'+cs.fontFamily+';font-size:'+cs.fontSize+';font-style:'+cs.fontStyle+';font-weight:'+cs.fontWeight+';letter-spacing:'+cs.letterSpacing+
+    ';font-variant-numeric:'+cs.fontVariantNumeric+';text-align:'+cs.textAlign+';padding:'+cs.padding;
+  k.textContent=el.textContent;document.body.appendChild(k);
+  const kr=k.getBoundingClientRect(), n=k.firstChild, rg=document.createRange(), ch=[];
+  for(let i=0;n&&i<n.length;i++){const c=n.data[i];if(!c.trim())continue;rg.setStart(n,i);rg.setEnd(n,i+1);
+    const r=rg.getClientRects()[0];if(r)ch.push([c,r.left-kr.left,r.top-kr.top]);}
+  k.remove();
+  let asc=0;
+  const cv=f=>{const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+    x.font=cs.fontStyle+' '+cs.fontWeight+' '+cs.fontSize+' '+canvasFamily(cs);asc=x.measureText('H').fontBoundingBoxAscent;f(x);return c;};
+  const ga=cv(x=>ch.forEach(([c,a,b])=>x.fillText(c,m+a,m+b+asc))).getContext('2d').getImageData(0,0,W,H).data;
+  const out=new Uint8Array(W*H), st=[], bgp=p=>ga[4*p+3]<128;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x+=(y===0||y===H-1)?1:W-1){const p=y*W+x;if(bgp(p)&&!out[p]){out[p]=1;st.push(p);}}
+  while(st.length){const p=st.pop(), x=p%W, y=(p-x)/W;
+    for(const q of [x>0?p-1:-1,x<W-1?p+1:-1,y>0?p-W:-1,y<H-1?p+W:-1])if(q>=0&&!out[q]&&bgp(q)){out[q]=1;st.push(q);}}
+  const s=cv(x=>{x.lineJoin='round';x.lineWidth=2*hw;ch.forEach(([c,a,b])=>{x.strokeText(c,m+a,m+b+asc);x.fillText(c,m+a,m+b+asc);});});
+  const b=document.createElement('canvas');b.width=W;b.height=H;const bx=b.getContext('2d');
+  if(sd>0)bx.filter='blur('+sd+'px)';bx.drawImage(s,0,0);
+  const im=bx.getImageData(0,0,W,H);let holes=0;
+  if(!fill)for(let p=0;p<W*H;p++)if(!out[p]&&bgp(p)){im.data[4*p+3]=0;holes++;}
+  bx.putImageData(im,0,0);
+  return {url:b.toDataURL(),m:m,holes:holes};
+}
+function inkState(sc,t){
+  const FADE=LG.crossfade_ms/1000, TAU=LG.ema_tau_ms/1000, s0=sc.segs[0], fx=p=>p==='light'?1:0;
+  let ink=s0.ink, ha=s0.ha, va=s0.va, lt=fx(s0.pol), cur=s0;
+  for(let j=1;j<sc.segs.length;j++){const g=sc.segs[j];
+    const c=FADE>0?Math.min(1,Math.max(0,(t-g.t)/FADE)):(t>=g.t?1:0);
+    const e=t<g.t?0:(TAU>0?1-Math.exp(-(t-g.t)/TAU):1);
+    ink=mixHex(ink,g.ink,c);ha+=(g.ha-ha)*e;va+=(g.va-va)*e;lt+=(fx(g.pol)-lt)*e;if(t>=g.t+FADE/2)cur=g;}
+  return {pol:cur.pol,ink:ink,halo:s0.halo,ha:ha,va:va,lt:lt,step:cur.step,flag:sc.flag};
+}
+function applyInk(a,t){
+  const st=inkState(a.sc,t), el=a.el;
+  el.style.color=st.ink;el.style.webkitTextStroke='0px transparent';
+  const px=parseFloat(getComputedStyle(el).fontSize), hw=a.em*px, sd=LG.halo_blur_ratio*hw,
+    key=[el.textContent,px,el.offsetWidth,el.offsetHeight,getComputedStyle(el).font].join('|');
+  if(a.key!==key&&el.offsetWidth>0&&document.fonts.status==='loaded'){a.key=key;const r=haloMask(el,hw,sd,LG.light_halo_alpha_max>0&&a.sc.segs.every(g=>g.pol==='light'));
+    el.style.setProperty('--hm',r.m+'px');el.style.setProperty('--halo-mask','url('+r.url+')');
+    el.setAttribute('data-halo',JSON.stringify({w:hw,blur:sd,em:a.em,px:px,holes:r.holes}));}
+  el.style.setProperty('--halo-c',rgba(st.halo,st.ha));
+  const cas=st.lt<0.5?st.halo:LG.route_casing_colour;
+  a.lines.forEach(ln=>{ln.style.background=st.ink;ln.style.boxShadow='0 0 0 '+LG.leader_casing_px+'px '+cas;lineInk(ln,[st.ink,cas]);});
+  // glow in the ink colour, or (glow_colour "entity") in the element's entity colour and none without one; a.shadow
+  // = [dy, blur, alpha] per element overrides the profile shadow
+  const gc=LG.glow_colour==='entity'?a.sc.glow:st.ink, sh=a.shadow||[LG.shadow_dy_px,LG.shadow_blur_px,LG.shadow_alpha];
+  el.style.textShadow=st.lt>0?(gc?'0 0 '+LG.glow_px+'px '+rgba(gc,LG.glow_alpha*st.lt)+',':'')+'0 '+sh[0]+'px '+sh[1]+'px '+rgba(LG.shadow_colour,sh[2]*st.lt):'none';
+  const w=el.offsetWidth, h=el.offsetHeight, ea=LG.vignette_scale*w/2*Math.SQRT2, eb=LG.vignette_scale*h/2*Math.SQRT2;
+  el.style.setProperty('--vw',2*ea+'px');el.style.setProperty('--vh',2*eb+'px');
+  el.style.setProperty('--vig',st.va>0?'radial-gradient(closest-side,'+rgba(st.halo,st.va)+' '+(100*Math.max(0,1-LG.vignette_feather*h/eb))+'%,'+rgba(st.halo,0)+' 100%)':'none');
+  el.setAttribute('data-ink-state',JSON.stringify(st));
+}
+root.style.setProperty('--lab-font',TH.label_font==='script'?"'EngScript',cursive":"EngInter,sans-serif");
+root.style.setProperty('--lab-size',TH.pin_label_px+'px');
+// label_style "box" (no layout): pin labels in solid boxes of label_box_colour, white caps, not adaptive
+const BOXED=TH.label_style==='box'&&!(S.print&&S.layout);
+S.pins.forEach((p,i)=>{
+  if(TH.pin_style==='teardrop'){teardrop(p,i);return;}
+  const el=document.createElement('div');el.className='pin';el.style.left=p.px+'px';el.style.top=p.py+'px';
+  el.setAttribute('data-qa','anchor:pin:'+i);   // zero-size map point: probed position, ignored by R63 (no area)
+  el.innerHTML='<div class="ring"></div><div class="dot"></div><div class="lab" data-qa="pin:'+i+'"></div>';
+  el.querySelector('.lab').textContent=p.label;cam.appendChild(el);
+  if(p.flag)pinFlag(el.querySelector('.lab'),p.flag);
+  if(p.box===undefined?BOXED:p.box)boxify(el.querySelector('.lab'),TH.label_box_colour);
+  const t0=f2t(p.at_frame);
+  tl.set(el,{visibility:'visible'},t0);
+  tl.fromTo(el.querySelector('.dot'),{scale:0},{scale:1,duration:0.35,ease:'back.out(2.5)'},t0);
+  tl.fromTo(el.querySelector('.lab'),{opacity:0,y:16},{opacity:1,y:0,duration:0.4,ease:MO.entrance},t0+0.1);
+  tl.fromTo(el.querySelector('.ring'),{scale:1,opacity:.9},{scale:3.2,opacity:0,duration:1.1,ease:'power1.out',repeat:Math.max(0,Math.floor((f2t(S.n_frames)-t0)/1.4)),repeatDelay:0.3},t0);
+  // labels keep a constant on-screen size while the camera zooms
+  legs.forEach(g=>tl.fromTo(el.querySelector('.lab'),{scale:1/g.from.s},{scale:1/g.L.to.s,duration:g.d,ease:g.inv,immediateRender:g.k===0},g.t0));
+});
+// teardrop pin: drops in with a bounce onto its shadow; the label sits beside the head; the whole pin body keeps a
+// constant on-screen size while the camera zooms
+function teardrop(p,i){
+  const el=document.createElement('div');el.className='pin';el.style.left=p.px+'px';el.style.top=p.py+'px';
+  el.setAttribute('data-qa','anchor:pin:'+i);
+  el.innerHTML='<div class="pb"><div class="shadow"></div><div class="drop" data-qa="pinhead:'+i+'"><div class="tear"><i></i></div></div><div class="beside" data-qa="pin:'+i+'"></div></div>';
+  const lab=el.querySelector('.beside'), left=p.label_side==='left', boxed=p.box===undefined?BOXED:p.box;
+  if(boxed)boxify(lab,TH.label_box_colour);
+  if(LG){el.querySelector('.tear').style.boxShadow='0 0 0 '+LG.pin_outline_px+'px '+LG.paper_colour+',-3px 5px 10px rgba(0,0,0,.45)';if(!boxed)adapt(lab,'pin:'+i,LG.label_halo_width_em);
+    const dr=el.querySelector('.drop');dr.setAttribute('data-line','pin:'+i);lineInk(dr,[TH.pin_colour,LG.paper_colour]);}
+  lab.textContent=p.label;lab.style[left?'right':'left']='34px';cam.appendChild(el);
+  if(p.flag)pinFlag(lab,p.flag);
+  gsap.set(lab,{yPercent:-50,transformOrigin:(left?'100%':'0%')+' 50%'});
+  const pb=el.querySelector('.pb'), t0=f2t(p.at_frame);
+  tl.set(el,{visibility:'visible'},t0);
+  tl.fromTo(el.querySelector('.drop'),{y:-150},{y:0,duration:0.6,ease:'bounce.out',immediateRender:true},t0);
+  tl.fromTo(el.querySelector('.drop'),{opacity:0},{opacity:1,duration:0.12,ease:'none',immediateRender:true},t0);
+  tl.fromTo(el.querySelector('.shadow'),{scale:0.3,opacity:0},{scale:1,opacity:1,duration:0.6,ease:MO.entrance,immediateRender:true},t0);
+  if(boxed)pop(lab,t0+0.3);
+  else tl.fromTo(lab,{opacity:0,x:left?14:-14},{opacity:1,x:0,duration:0.4,ease:MO.entrance,immediateRender:true},t0+0.3);
+  legs.forEach(g=>tl.fromTo(pb,{scale:1/g.from.s},{scale:1/g.L.to.s,duration:g.d,ease:g.inv,immediateRender:g.k===0},g.t0));
+}
+function pinFlag(parent,f){
+  const img=document.createElement('img');img.src=f.href;img.alt='';
+  img.style.cssText='height:'+(S.height*f.pin_height_pct/100)+'px;width:auto;border-radius:3px;box-shadow:0 2px 5px #0008;vertical-align:middle;margin-right:8px';
+  parent.style.background='transparent';parent.style.boxShadow='none';
+  parent.prepend(img);
+}
+// big title: entity colour with a same-colour glow; years: bold white serif with a shadow; numbers: elastic bounce or
+// a counter (same rounding as hyperframes.figure_text)
+const FONT={inter:{f:'EngInter,sans-serif',w:700},title:{f:"'EngTitle',EngInter,sans-serif",w:400}}[TH.title_font];
+const paint=(el,ent)=>{if(ent){el.setAttribute('data-entity',ent);el.setAttribute('data-paint','text');}};
+if(S.title){
+  const T=S.title, el=document.createElement('div');el.className='title';el.setAttribute('data-qa','title');if(!T.box)paint(el,T.entity);
+  el.textContent=T.text;el.style.cssText+=';top:'+T.top+'px;color:'+T.colour+';font-family:'+FONT.f+';font-weight:'+FONT.w+';font-size:'+TH.title_px+'px;'+
+    'text-shadow:0 0 '+TH.title_glow_px+'px '+T.colour+',0 0 '+(TH.title_glow_px/2)+'px '+T.colour+','+(TH.text_outline_px>0?TXT_SHADOW:'0 4px 12px rgba(0,0,0,.7)');
+  if(T.box)unbox(boxify(el,T.box));else if(LG)adapt(el,'title',LG.halo_width_em);
+  ui.appendChild(el);gsap.set(el,{xPercent:-50});const t0=f2t(T.at_frame);
+  tl.set(el,{visibility:'visible'},t0);
+  if(T.box)pop(el,t0);
+  else tl.fromTo(el,{opacity:0,scale:0.86},{opacity:1,scale:1,duration:0.5,ease:'power3.out',immediateRender:true},t0);
+}
+const figText=(F,v)=>{
+  if(F.kind==='year')return F.prefix+Math.trunc(v)+F.suffix;
+  const m=10**F.decimals, n=Math.floor(Math.abs(v)*m+0.5);
+  const w=String(Math.floor(n/m)).replace(/\B(?=(\d{3})+(?!\d))/g,TH.number_group);
+  return F.prefix+(v<0&&n?'-':'')+w+(F.decimals?TH.number_decimal+String(n%m).padStart(F.decimals,'0'):'')+F.suffix;
+};
+(S.figures||[]).forEach((F,i)=>{
+  const el=document.createElement('div');el.className='fig';el.setAttribute('data-qa','figure:'+i);if(!F.box)paint(el,F.entity);
+  el.style.cssText+=';left:'+F.x+'px;top:'+F.y+'px;color:'+F.colour+';font-size:'+(F.px||TH.figure_px)+'px;'+
+    (F.kind==='year'?"font-family:'EngSerif',serif;font-weight:800;":'font-family:'+FONT.f+';font-weight:'+FONT.w+';')+
+    'text-shadow:0 5px 14px rgba(0,0,0,.8),0 0 4px rgba(0,0,0,.9)';
+  if(F.box)unbox(boxify(el,F.box),F.ink);else if(LG)adapt(el,'figure:'+i,LG.halo_width_em);
+  if(F.texture){el.style.backgroundImage='url("assets/'+F.texture+'")';el.style.backgroundBlendMode='multiply';
+    el.style.backgroundSize='512px auto';el.setAttribute('data-box-dim',F.dim);}
+  if(F.map){   // map figure: a holder at the map point inside the camera, counter-scaled to a constant on-screen size
+    const hd=document.createElement('div');hd.style.cssText='position:absolute;left:'+F.x+'px;top:'+F.y+'px;width:0;height:0';
+    el.style.left='0px';el.style.top='0px';hd.appendChild(el);cam.appendChild(hd);
+    ZS.push(s=>{hd.style.transform='scale('+(1/s)+')';});}
+  else ui.appendChild(el);
+  gsap.set(el,{xPercent:-50,yPercent:-50});const t0=f2t(F.at_frame);
+  tl.set(el,{visibility:'visible'},t0);
+  if(F.motion==='counter'){
+    const pr={v:F.from}, show=()=>{el.textContent=figText(F,pr.v);};show();
+    tl.fromTo(el,{opacity:0},{opacity:1,duration:0.2,ease:'none',immediateRender:true},t0);
+    tl.fromTo(pr,{v:F.from},{v:F.value,duration:F.count_s,ease:MO.entrance,onUpdate:show,immediateRender:true},t0);
+  }else{
+    el.textContent=F.text;
+    tl.fromTo(el,{opacity:0},{opacity:1,duration:0.15,ease:'none',immediateRender:true},t0);
+    tl.fromTo(el,{scale:0},{scale:1,duration:0.9,ease:'elastic.out(1,0.45)',immediateRender:true},t0);
+  }
+});
+// native scene overlays rendered directly inside HyperFrames DOM (label, text_card, lower_third, heading)
+(S.overlays||[]).forEach((O,i)=>{
+  const [bx,by,bw,bh]=O.box, el=document.createElement('div');
+  el.className='hf-overlay hf-ov-'+O.kind;el.setAttribute('data-qa','overlay:'+O.id);
+  el.style.cssText='position:absolute;left:'+bx+'px;top:'+by+'px;width:'+bw+'px;height:'+bh+'px;visibility:hidden;display:flex;flex-direction:column;justify-content:center;box-sizing:border-box';
+  if(O.kind==='heading'){
+    el.style.cssText+=';align-items:center;color:'+(O.on==='light'?'#5B3A23':'#F3EAD8')+";font-family:'EngCinzel',serif;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;font-size:42px";
+    el.textContent=O.text||'';
+  }else{
+    el.style.cssText+=';background:rgba(12,16,22,0.84);border-radius:12px;padding:18px 28px;color:#fff;box-shadow:0 8px 22px rgba(0,0,0,0.45)';
+    const t=document.createElement('div');t.style.cssText='font-family:EngInter,sans-serif;font-weight:700;font-size:'+(O.kind==='label'?42:52)+'px;line-height:1.12';
+    t.textContent=O.text||'';el.appendChild(t);
+    if(O.subtitle){const s=document.createElement('div');s.style.cssText='font-family:EngInterS,sans-serif;font-weight:600;font-size:32px;color:#ffd84a;margin-top:6px';s.textContent=O.subtitle;el.appendChild(s);}
+  }
+  ui.appendChild(el);
+  const t0=f2t(O.start_frame||0), t1=f2t(O.end_frame||S.n_frames), fd=Math.min(0.2,(t1-t0)/3);
+  tl.set(el,{visibility:'visible'},t0);
+  tl.fromTo(el,{opacity:0,y:10},{opacity:1,y:0,duration:fd,ease:MO.entrance,immediateRender:true},t0);
+  if(O.end_frame&&O.end_frame<S.n_frames){tl.to(el,{opacity:0,duration:fd,ease:MO.exit},t1-fd);tl.set(el,{visibility:'hidden'},t1);}
+});
+(S.cards||[]).forEach((c,i)=>{
+  const el=document.createElement('div');el.className='card';el.setAttribute('data-qa','card:'+i);
+  el.style.top=c.top+'px';
+  if(c.img){const im=document.createElement('img');im.src=c.img;el.appendChild(im);}
+  const t=document.createElement('div');t.className='t';t.textContent=c.title;el.appendChild(t);
+  if(c.subtitle){const s=document.createElement('div');s.className='s';s.textContent=c.subtitle;el.appendChild(s);}
+  ui.appendChild(el);const t0=f2t(c.at_frame);
+  tl.set(el,{visibility:'visible'},t0);
+  if(c.box){boxify(el,c.box);el.style.transform='none';gsap.set(el,{xPercent:-50});pop(el,t0);}
+  else tl.fromTo(el,{opacity:0,y:-30},{opacity:1,y:0,duration:0.45,ease:'power3.out'},t0);
+});
+// thermometers (components.py): one value v tweened from min to value drives the fill height, the fill colour
+// (linear RGB mix low -> high) and the number together
+const mix=(a,b,k)=>'#'+[1,3,5].map(i=>Math.round(parseInt(a.slice(i,i+2),16)+(parseInt(b.slice(i,i+2),16)-parseInt(a.slice(i,i+2),16))*k).toString(16).padStart(2,'0')).join('');
+(S.thermometers||[]).forEach((T,i)=>{
+  const el=document.createElement('div');el.className='thermo';el.setAttribute('data-qa','thermo:'+i);
+  el.style.cssText='position:absolute;left:'+T.x+'px;top:'+T.y+'px;width:'+T.w+'px;height:'+T.h+'px;visibility:hidden';
+  const tw=T.tube_w, bd=T.bulb_d, th=T.h-bd*0.85, bw=Math.max(3,tw*0.14), cx=T.w/2;
+  const tube=document.createElement('div');
+  tube.style.cssText='position:absolute;left:'+(cx-tw/2)+'px;top:0;width:'+tw+'px;height:'+(th+bd*0.3)+'px;border-radius:'+(tw/2)+'px;'+
+    'background:rgba(255,255,255,.14);border:'+bw+'px solid #fff;box-sizing:border-box;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.55)';
+  const fill=document.createElement('div');fill.setAttribute('data-thermo-fill',i);
+  fill.style.cssText='position:absolute;left:0;right:0;bottom:0;height:0';tube.appendChild(fill);
+  const bulb=document.createElement('div');
+  bulb.style.cssText='position:absolute;left:'+(cx-bd/2)+'px;top:'+(T.h-bd)+'px;width:'+bd+'px;height:'+bd+'px;border-radius:50%;'+
+    'border:'+bw+'px solid #fff;box-sizing:border-box;box-shadow:0 6px 18px rgba(0,0,0,.55)';
+  const num=document.createElement('div');num.setAttribute('data-thermo-num',i);
+  num.style.cssText='position:absolute;left:'+cx+'px;top:'+(-0.08*T.h)+'px;transform:translate(-50%,-100%);font-size:'+(0.16*T.h)+'px;'+
+    'font-family:'+FONT.f+';font-weight:'+FONT.w+';color:#fff;white-space:nowrap;text-shadow:0 4px 12px rgba(0,0,0,.8)';
+  el.append(tube,bulb,num);
+  const cap=document.createElement('div');
+  cap.style.cssText='position:absolute;left:'+cx+'px;top:'+(T.h+0.04*T.h)+'px;transform:translateX(-50%);text-align:center;white-space:nowrap;'+
+    'color:#fff;font-family:EngInter,sans-serif;text-shadow:0 3px 10px rgba(0,0,0,.85)';
+  if(T.label){const l=document.createElement('div');l.textContent=T.label;l.style.cssText='font-weight:700;font-size:'+(0.085*T.h)+'px';cap.appendChild(l);}
+  if(T.note){const n=document.createElement('div');n.textContent=T.note;n.style.cssText='font-size:'+(0.06*T.h)+'px;opacity:.85';cap.appendChild(n);}
+  el.appendChild(cap);ui.appendChild(el);
+  const F={kind:'number',prefix:'',suffix:T.unit,decimals:T.decimals}, pr={v:T.min},
+    show=()=>{const k=(pr.v-T.min)/(T.max-T.min), c=mix(T.low,T.high,k);
+      fill.style.height=(k*100)+'%';fill.style.background=c;bulb.style.background=c;num.textContent=figText(F,pr.v);};
+  show();const t0=f2t(T.at_frame);
+  tl.set(el,{visibility:'visible'},t0);
+  tl.fromTo(el,{opacity:0},{opacity:1,duration:0.3,ease:'none',immediateRender:true},t0);
+  tl.fromTo(pr,{v:T.min},{v:T.value,duration:T.fill_s,ease:MO.entrance,onUpdate:show,immediateRender:true},t0+0.2);
+  if(T.out_frame!==null)tl.to(el,{opacity:0,duration:0.4,ease:MO.exit},f2t(T.out_frame));
+});
+// flows (components.py): dashed streams moving toward each path's end at speed_px screen px per second of render
+// time from at_frame (offset = phase + speed x (t - t0), set on every frame with the counter-scale, no tween state);
+// widths and dashes keep their on-screen size; an arrowhead at each end; labelled flows fill the legend box
+if(S.flows&&S.flows.length){const svg=mapSvg();svg.setAttribute('data-flows','');
+  S.flows.forEach((F,i)=>{
+    const g=mk('g',{'data-flow':i});g.style.opacity=0;svg.appendChild(g);
+    const P=F.paths.map((pts,k)=>{
+      const e=mk('path',{d:'M'+pts.map(q=>q[0]+' '+q[1]).join('L'),fill:'none',stroke:F.colour,'stroke-linecap':'round','stroke-linejoin':'round'});
+      g.appendChild(e);const a=F.arrows?mk('path',{d:'M0 0L-1 -0.6L-0.7 0L-1 0.6Z',fill:F.colour}):null;if(a)g.appendChild(a);
+      return {e,a,ph:F.phase[k],end:pts[pts.length-1],prev:pts[pts.length-2]};});
+    const t0=f2t(F.at_frame), per=F.dash_px+F.gap_px;
+    tl.fromTo(g,{opacity:0},{opacity:F.alpha,duration:Math.max(F.reveal_s,1/FPS),ease:MO.entrance,immediateRender:true},t0);
+    if(F.out_frame!==null)tl.to(g,{opacity:0,duration:F.fade_s,ease:MO.exit},f2t(F.out_frame));
+    ZS.push(s=>{const t=tl.time(), off=-((F.speed_px*Math.max(0,t-t0))%per);
+      P.forEach(p=>{p.e.setAttribute('stroke-width',F.width_px/s);p.e.setAttribute('stroke-dasharray',(F.dash_px/s)+' '+(F.gap_px/s));
+        p.e.setAttribute('stroke-dashoffset',((off-p.ph)%per)/s);
+        if(p.a){const ang=Math.atan2(p.end[1]-p.prev[1],p.end[0]-p.prev[0])*180/Math.PI;
+          p.a.setAttribute('transform','translate('+p.end[0]+' '+p.end[1]+') rotate('+ang+') scale('+(F.width_px*3.2/s)+')');}});});
+  });
+  const L=S.flows.filter(F=>F.label);
+  if(L.length){const box=document.createElement('div');box.className='card';box.setAttribute('data-qa','legend');
+    box.style.top=(S.flow_legend==='top'?0.12:0.8)*S.height+'px';
+    L.forEach(F=>{const r=document.createElement('div');r.className='s';r.style.cssText='display:flex;align-items:center;gap:16px;color:#fff';
+      const sw=document.createElement('span');sw.style.cssText='display:inline-block;width:56px;height:10px;border-radius:5px;background:'+F.colour;
+      const tx=document.createElement('span');tx.textContent=F.label;r.append(sw,tx);box.appendChild(r);});
+    ui.appendChild(box);const t0=f2t(Math.min(...L.map(F=>F.at_frame)));
+    tl.set(box,{visibility:'visible'},t0);tl.fromTo(box,{opacity:0},{opacity:1,duration:0.45,ease:MO.entrance,immediateRender:true},t0);}
+}
+if(LG){const drv={t:0}, D=f2t(S.n_frames), up=()=>ADAPT.forEach(a=>applyInk(a,drv.t));
+  twinFaces(['tabular-nums','lining-nums tabular-nums']);
+  // the layout block adapts area labels and leader lines after this script
+  window.__adapt={el:adapt,line:(lab,ln)=>{const a=ADAPT.find(a=>a.el===lab);if(a)a.lines.push(ln);},up:up,
+    shadow:(el,sh)=>{const a=ADAPT.find(a=>a.el===el);if(a)a.shadow=sh;}};
+  tl.fromTo(drv,{t:0},{t:D,duration:D,ease:'none',immediateRender:true,onUpdate:up},0);up();document.fonts.ready.then(up);}
+if(ZS.length){const D=f2t(S.n_frames);tl.fromTo({t:0},{t:0},{t:D,duration:D,ease:'none',immediateRender:true,onUpdate:zsRun},0);zsRun();}
+tl.set({},{},f2t(S.n_frames));
+})();
+</script>
+<script>
+// layout block (beats scenes, video_engine/layout.py): sets positions, sizes and entry / exit / move times of the
+// managed elements and replaces their entry tweens; camera, zoom counter-scale, route drawing and counters stay as
+// built above. Sets no colours except the neutral leader line (legibility profiles: area labels and leader lines
+// follow the adaptive ink of the first block).
+(function(){
+const S=window.SCENE, LY=S.layout;
+if(!LY)return;
+const MO=window.__motion;
+const TH=S.theme, BOXED=TH.label_style==='box'&&!(S.print&&S.layout);
+const tl=window.__timelines.main, NS='http://www.w3.org/2000/svg', C=S.camera, FPS=S.fps;
+const q=s=>document.querySelector(s);
+const MANAGED=['opacity','visibility','scale','x','y','autoAlpha'];
+const kill=el=>{if(!el)return;tl.getTweensOf(el).forEach(tw=>{const v=tw.vars||{}, a=v.attr||{};
+  if(MANAGED.some(k=>k in v)||'fill-opacity' in a||'stroke-opacity' in a)tw.kill();});};
+const legs=window.__legs(C,FPS);
+// show spans [t_in, d_in, t_out|null, d_out] as opacity fades on el
+const fades=(el,spans,ein,eout)=>{
+  gsap.set(el,{opacity:0});
+  (spans||[]).forEach((s,j)=>{
+    tl.fromTo(el,{opacity:0},{opacity:1,duration:Math.max(s[1],1e-3),ease:ein||MO.entrance,immediateRender:j===0},s[0]);
+    if(s[2]!==null)tl.fromTo(el,{opacity:1},{opacity:0,duration:Math.max(s[3],1e-3),ease:eout||'power1.in',immediateRender:false},s[2]);
+  });
+};
+// fly-through (LY.fly, [layout.fly]): spans scale in from LY.fly[kind+'_in'] and out to LY.fly.out with opacity;
+// without LY.fly the spans are plain opacity fades
+const fly=(el,spans,kind)=>{const F=LY.fly, s0=F[kind+'_in'], oi=F[kind+'_opacity_in_s'];
+  gsap.set(el,{opacity:0,scale:1});
+  (spans||[]).forEach((s,j)=>{const d=Math.max(s[1],1e-3);
+    tl.fromTo(el,{scale:s0},{scale:1,duration:d,ease:F.ease_in,immediateRender:j===0},s[0]);
+    tl.fromTo(el,{opacity:0},{opacity:1,duration:oi==null?d:oi,ease:'none',immediateRender:j===0},s[0]);
+    if(s[2]!==null){const o=Math.max(s[3],1e-3);
+      tl.fromTo(el,{scale:1},{scale:F.out,duration:o,ease:F.ease_out,immediateRender:false},s[2]);
+      tl.fromTo(el,{opacity:1},{opacity:0,duration:o,ease:F.ease_out,immediateRender:false},s[2]);}
+  });
+};
+const show=(el,spans,kind)=>LY.fly?fly(el,spans,kind):fades(el,spans);
+// regions: parts (edge copies precede their polygon) step between levels (1 = full, else fill and edge scaled)
+const R0=q('[data-region="0"]');
+if(R0){
+  const parts={};let pend=[];
+  [...R0.ownerSVGElement.children].forEach(e=>{pend.push(e);const r=e.getAttribute('data-region');if(r!==null){parts[r]=pend;pend=[];}});
+  Object.keys(parts).forEach(r=>{
+    const steps=LY.regions[+r]||[];
+    parts[r].forEach(e=>{
+      const full={};
+      tl.getTweensOf(e).forEach(tw=>{const a=(tw.vars||{}).attr||{};let hit=false;
+        ['fill-opacity','stroke-opacity'].forEach(k=>{if(k in a){full[k]=+a[k];hit=true;}});if(hit)tw.kill();});
+      const at=lv=>{const o={};for(const k in full)o[k]=full[k]*lv;return o;};
+      if(!Object.keys(full).length)return;
+      for(const k in full)e.setAttribute(k,'0');
+      steps.forEach((st,j)=>tl.fromTo(e,{attr:at(st[2])},{attr:at(st[3]),duration:Math.max(st[1],1e-3),ease:MO.entrance,immediateRender:j===0},st[0]));
+    });
+  });
+}
+// routes: drawn from their at_frame by the main block; fade out with their span, hidden when no beat shows them
+(S.routes||[]).forEach((r,i)=>{const g=q('g[data-route="'+i+'"]');if(!g)return;
+  const sp=LY.els['route:'+i];
+  if(!sp){gsap.set(g,{opacity:0});return;}
+  sp.forEach(s=>{if(s[2]!==null)tl.fromTo(g,{opacity:1},{opacity:0,duration:s[3],ease:'power1.in',immediateRender:false},s[2]);});
+});
+// pins: head drop and fade per span; the label (with any leader) sits in a wrapper that carries its opacity
+S.pins.forEach((p,i)=>{
+  const el=q('[data-qa="anchor:pin:'+i+'"]');if(!el)return;
+  const drop=el.querySelector('.drop'), shadow=el.querySelector('.shadow'), lab=el.querySelector('.beside'), pb=el.querySelector('.pb');
+  [el,drop,shadow,lab].forEach(kill);
+  const hs=LY.els['head:'+i];
+  if(!hs){gsap.set(el,{visibility:'hidden'});return;}
+  gsap.set(el,{visibility:'visible'});
+  gsap.set([drop,shadow],{opacity:0});
+  hs.forEach((s,j)=>{
+    tl.fromTo(drop,{y:-150},{y:0,duration:s[1],ease:'bounce.out',immediateRender:j===0},s[0]);
+    tl.fromTo(drop,{opacity:0},{opacity:1,duration:0.12,ease:'none',immediateRender:j===0},s[0]);
+    tl.fromTo(shadow,{scale:0.3,opacity:0},{scale:1,opacity:1,duration:s[1],ease:MO.entrance,immediateRender:j===0},s[0]);
+    if(s[2]!==null){tl.fromTo([drop,shadow],{opacity:1},{opacity:0,duration:s[3],ease:'power1.in',immediateRender:false},s[2]);}
+  });
+  const lw=document.createElement('div');lw.style.cssText='position:absolute;left:0;top:0';pb.appendChild(lw);lw.appendChild(lab);
+  lab.style.right='auto';gsap.set(lab,{yPercent:0,x:0,opacity:1});
+  show(lw,LY.els['label:'+i],'label');
+  const tr=LY.labels[String(i)]||[], half=LY.move_fade_s/2;
+  const place=pos=>pos?{left:pos.x+'px',top:pos.y+'px',fontSize:pos.px+'px',visibility:'visible'}:{visibility:'hidden'};
+  tr.forEach((e,j)=>{
+    const pos=e[1];
+    if(j===0){gsap.set(lab,place(pos));tl.set(lab,place(pos),e[0]);}
+    else{
+      tl.fromTo(lab,{opacity:1},{opacity:0,duration:half,ease:'power1.in',immediateRender:false},Math.max(0,e[0]-half));
+      tl.set(lab,place(pos),e[0]);
+      tl.fromTo(lab,{opacity:0},{opacity:1,duration:half,ease:'power1.out',immediateRender:false},e[0]);
+    }
+    if(pos&&pos.leader){
+      const [x1,y1,x2,y2]=pos.leader, ln=document.createElement('div'), L=Math.hypot(x2-x1,y2-y1);
+      ln.style.cssText='position:absolute;left:'+x1+'px;top:'+(y1-LY.leader_px/2)+'px;width:'+L+'px;height:'+LY.leader_px+
+        'px;background:rgba(255,255,255,.85);transform-origin:0 50%;transform:rotate('+Math.atan2(y2-y1,x2-x1)+'rad);visibility:hidden';
+      lw.appendChild(ln);
+      if(window.__adapt){ln.setAttribute('data-line','leader:pin:'+i+':'+j);window.__adapt.line(lab,ln);}
+      tl.set(ln,{visibility:'visible'},e[0]);
+      if(j+1<tr.length)tl.set(ln,{visibility:'hidden'},tr[j+1][0]);
+    }
+  });
+});
+// area labels: region names inside their polygon, keeping their on-screen size while the camera zooms
+const cam=q('#cam');
+(LY.areas||[]).forEach(a=>{
+  const el=document.createElement('div');el.className='pin';el.style.left=a.anchor[0]+'px';el.style.top=a.anchor[1]+'px';
+  el.style.visibility='visible';
+  el.innerHTML='<div class="pb"><div class="lw" style="position:absolute;left:0;top:0"><div class="beside" data-qa="area:'+a.key+'"></div></div></div>';
+  const lab=el.querySelector('.beside'), lw=el.querySelector('.lw'), pb=el.querySelector('.pb');
+  lab.textContent=a.text;
+  lab.style.cssText+=";left:0;top:0;font-family:'EngTitle',EngInter,sans-serif;font-size:"+a.px+'px;letter-spacing:'+a.tracking+'em'+(a.water?';font-style:italic':'');
+  if(a.box===undefined?BOXED:a.box)window.__boxify(lab,TH.label_box_colour);
+  if(window.__adapt)window.__adapt.el(lab,'area:'+a.key,S.legibility.halo_width_em);
+  gsap.set(lab,{xPercent:-50,yPercent:-50,rotation:a.angle});
+  cam.appendChild(el);
+  if(a.leader){   // outside the polygon: a leader from the polygon edge to the label anchor, in map px
+    const [lx,ly]=a.leader, ax=a.anchor[0], ay=a.anchor[1], L=Math.hypot(ax-lx,ay-ly);
+    const ln=document.createElement('div');ln.setAttribute('data-qa','leader:area:'+a.key);
+    ln.style.cssText='position:absolute;left:'+lx+'px;top:'+ly+'px;width:'+L+'px;background:rgba(255,255,255,.85);'+
+      'transform-origin:0 50%;transform:rotate('+Math.atan2(ay-ly,ax-lx)+'rad);visibility:hidden';
+    if(window.__adapt){ln.setAttribute('data-line','leader:area:'+a.key);window.__adapt.line(lab,ln);}
+    cam.insertBefore(ln,el);
+    ZS.push(sc=>{const h=LY.leader_px/sc;ln.style.height=h+'px';ln.style.top=(ly-h/2)+'px';});
+    const sp=LY.els['area:'+a.key]||[];
+    gsap.set(ln,{visibility:'visible'});fades(ln,sp);
+  }
+  legs.forEach(g=>tl.fromTo(pb,{scale:1/g.from.s},{scale:1/g.L.to.s,duration:g.d,ease:g.inv,immediateRender:g.k===0},g.t0));
+  show(lw,LY.els['area:'+a.key],'label');
+});
+// Z1: the title and the data card at their grid positions
+const T=q('[data-qa="title"]');
+if(T){kill(T);
+  if(LY.title){gsap.set(T,{xPercent:0,scale:1,left:LY.title.x,top:LY.title.y,fontSize:LY.title.px+'px',visibility:'visible'});show(T,LY.els['title:0'],'title');}
+  else gsap.set(T,{visibility:'hidden'});
+}
+(S.figures||[]).forEach((F,i)=>{const el=q('[data-qa="figure:'+i+'"]');if(!el)return;kill(el);
+  const P=LY.figures[String(i)];
+  if(!P){gsap.set(el,{visibility:'hidden'});return;}
+  gsap.set(el,{xPercent:0,yPercent:0,scale:1,left:P.x,top:P.y,fontSize:P.px+'px',fontVariantNumeric:'lining-nums tabular-nums',visibility:'visible'});
+  show(el,LY.els['fig:'+i],'figure');
+});
+if(window.__adapt)window.__adapt.up();
+})();
+</script>
+<script>
+// print block (profile [print], video_engine/printstyle.py): type roles, map grade, regions as printed ink, date
+// headings, hand notes and the emboss of place names. Runs after the layout block; sets fonts, blend modes and the
+// grade, and adds the heading and note elements (positions and times from S.layout).
+(function(){
+const S=window.SCENE, P=S.print, LY=S.layout, LG=S.legibility;
+if(!P||!LY)return;
+const MO=window.__motion;
+const tl=window.__timelines.main, q=s=>document.querySelector(s), FPS=S.fps, C=S.camera, paper=P.surface==='paper';
+const NS='http://www.w3.org/2000/svg', A=window.__adapt;
+const rgba=(hex,a)=>'rgba('+[1,3,5].map(k=>parseInt(hex.slice(k,k+2),16)).join(',')+','+a+')';
+const FAM={inter:'EngInter,sans-serif',serif:"'EngSerif',serif",garamond:"'EngGaramond',serif",
+  garamond_italic:"'EngGaramondI',serif",cinzel:"'EngCinzel',serif",hand:"'EngHand',cursive"};
+const font=(el,role,w,trk,caps)=>{el.style.fontFamily=FAM[role];el.style.fontWeight=w;if(role==='garamond_italic')el.style.fontStyle='normal';
+  if(trk!==null&&trk!==undefined)el.style.letterSpacing=trk+'em';if(caps)el.style.textTransform='uppercase';};
+const legs=window.__legs(C,FPS);
+const fades=(el,spans)=>{gsap.set(el,{opacity:0});(spans||[]).forEach((s,j)=>{
+  tl.fromTo(el,{opacity:0},{opacity:1,duration:Math.max(s[1],1e-3),ease:MO.entrance,immediateRender:j===0},s[0]);
+  if(s[2]!==null)tl.fromTo(el,{opacity:1},{opacity:0,duration:Math.max(s[3],1e-3),ease:'power1.in',immediateRender:false},s[2]);});};
+const base=q('#base'), map=q('#map'), shade=q('#shade'), cam=q('#cam'), ui=q('#ui');
+const BLEND=[];   // [el, text el]: multiply on paper, normal while the knock-back vignette is up
+// grade (paper): static saturation and contrast, the paper texture and grain multiplied over the map, a light vignette
+if(paper){
+  tl.getTweensOf(map).forEach(tw=>{if('filter' in (tw.vars||{}))tw.kill();});
+  map.style.filter='saturate('+P.grade_saturate+') contrast('+P.grade_contrast+')';
+  if(P.paper_texture&&P.paper_alpha>0){const t=document.createElement('div');t.setAttribute('data-grade','paper');
+    t.style.cssText='position:absolute;left:0;top:0;width:'+S.map_size[0]+'px;height:'+S.map_size[1]+'px;background:url("assets/'+
+      P.paper_texture+'") repeat;background-size:512px 512px;mix-blend-mode:multiply;opacity:'+P.paper_alpha+';pointer-events:none';
+    map.after(t);}
+  if(P.grain&&P.grain_alpha>0){const g=document.createElement('div');g.setAttribute('data-grade','grain');
+    g.style.cssText='position:absolute;inset:0;background:url("assets/'+P.grain+'") repeat;mix-blend-mode:multiply;opacity:'+P.grain_alpha+';pointer-events:none';
+    (q('#tilt')||cam).after(g);}
+  shade.style.background='radial-gradient(ellipse at 50% 50%,'+rgba(P.ink,0)+' 55%,'+rgba(P.ink,P.vignette_alpha)+' 100%)';
+}
+const R=P.roles;
+// pin labels: print role (the leader follows the ink)
+S.pins.forEach((p,i)=>{const lab=q('[data-qa="pin:'+i+'"]');if(lab)font(lab,...R.label);});
+// place names and the scene title: inside their region, entry tracking tightening, emboss under the ink on paper
+const ghosts=[];
+(LY.areas||[]).forEach(a=>{const lab=q('[data-qa="area:'+a.key+'"]');if(!lab)return;
+  const k=a.title?'title':'area';font(lab,a.role||R[k][0],a.weight||R[k][1],a.tracking,true);
+  const lw=lab.parentElement, pb=lw.parentElement, el=pb.parentElement;
+  if(a.tracking_in!==undefined)(LY.els['area:'+a.key]||[]).forEach(s=>tl.fromTo(lab,{letterSpacing:a.tracking_in+'em'},
+    {letterSpacing:a.tracking+'em',duration:Math.max(s[1],1e-3),ease:MO.entrance,immediateRender:false},s[0]));
+  gsap.set(lab,{letterSpacing:(a.tracking_in!==undefined?a.tracking_in:a.tracking)+'em'});
+  if(paper){BLEND.push([pb,lab]);
+    if(P.emboss_alpha>0){const g=el.cloneNode(true);g.querySelectorAll('[data-qa],[data-ink],[data-line]').forEach(n=>{
+        n.removeAttribute('data-qa');n.removeAttribute('data-ink');n.removeAttribute('data-line');n.classList.remove('adapt');});
+      g.setAttribute('data-ink-ghost','emboss');el.before(g);
+      ghosts.push({src:[pb,lw,lab],dst:[g.querySelector('.pb'),g.querySelector('.lw'),g.querySelector('.beside')]});}}
+});
+// year and time: print roles, centred by the layout
+(S.figures||[]).forEach((F,i)=>{const el=q('[data-qa="figure:'+i+'"]'), Pf=LY.figures[String(i)];if(!el||!Pf)return;
+  const time=Pf.tracking!==undefined;
+  font(el,(time?R.time:R.year)[0],Pf.weight,time?Pf.tracking:0,time);
+  if(paper)BLEND.push([el,el]);else if(!time&&A)A.shadow(el,[4,12,0.35]);});
+// date headings: caps between two rules drawn from the centre outwards, a diamond at each inner end
+(LY.headings||[]).forEach(h=>{
+  const el=document.createElement('div');el.className='heading';el.setAttribute('data-qa','heading:'+h.key);el.textContent=h.text;
+  el.style.cssText='position:absolute;white-space:nowrap;line-height:1;left:'+h.x+'px;top:'+h.y+'px;font-size:'+h.px+'px';
+  font(el,...R.heading);ui.appendChild(el);
+  if(A){A.el(el,'heading:'+h.key,LG.halo_width_em);if(!paper)A.shadow(el,[2,6,P.heading_shadow_alpha]);}
+  const sp=LY.els['heading:'+h.key]||[], d=P.diamond_px, g=P.rule_gap;
+  fades(el,sp);if(paper)BLEND.push([el,el]);
+  h.rules.forEach(([x0,x1],j)=>{const ln=document.createElement('div'), inner=j===0?x1:x0;
+    ln.style.cssText='position:absolute;left:'+x0+'px;top:'+(h.rule_y-P.rule_px/2)+'px;width:'+(x1-x0)+'px;height:'+P.rule_px+
+      'px;transform-origin:'+(j===0?'100%':'0%')+' 50%';
+    const dm=document.createElement('div'), cx=j===0?x1+g+d/2:x0-g-d/2;
+    dm.style.cssText='position:absolute;left:'+(cx-d/2)+'px;top:'+(h.rule_y-d/2)+'px;width:'+d+'px;height:'+d+'px;transform:rotate(45deg)';
+    [ln,dm].forEach((e,m)=>{ui.appendChild(e);e.setAttribute('data-line','rule:'+h.key+':'+j+':'+m);if(A)A.line(el,e);
+      if(paper)BLEND.push([e,el]);fades(e,sp);});
+    sp.forEach(s=>tl.fromTo(ln,{scaleX:0},{scaleX:1,duration:P.rule_draw_s,ease:MO.entrance,immediateRender:false},s[0]));
+    gsap.set(ln,{scaleX:sp.length?0:1});
+  });
+});
+// hand notes: written on left to right, then the arrow draws to its target; fixed on-screen size under the camera
+const arrows=[];
+(LY.notes||[]).forEach(n=>{
+  const el=document.createElement('div');el.className='pin';el.style.left=n.anchor[0]+'px';el.style.top=n.anchor[1]+'px';el.style.visibility='visible';
+  el.innerHTML='<div class="pb"><div class="lw" style="position:absolute;left:0;top:0"><div class="beside" data-qa="note:'+n.key+'"></div></div></div>';
+  const lab=el.querySelector('.beside'), lw=el.querySelector('.lw'), pb=el.querySelector('.pb');
+  lab.textContent=n.text;lab.style.cssText+=';left:0;top:0;font-size:'+n.px+'px;text-shadow:none';font(lab,...R.note);
+  if(A)A.el(lab,'note:'+n.key,LG.halo_width_em);
+  gsap.set(lab,{xPercent:-50,yPercent:-50,rotation:n.angle});cam.appendChild(el);
+  legs.forEach(g=>tl.fromTo(pb,{scale:1/g.from.s},{scale:1/g.L.to.s,duration:g.d,ease:g.inv,immediateRender:g.k===0},g.t0));
+  const sp=LY.els['note:'+n.key]||[];fades(lw,sp);if(paper)BLEND.push([pb,lab]);
+  gsap.set(lab,{clipPath:'inset(-20% 100% -20% 0%)'});
+  sp.forEach(s=>tl.fromTo(lab,{clipPath:'inset(-20% 100% -20% 0%)'},{clipPath:'inset(-20% 0% -20% 0%)',duration:P.note_write_s,ease:'none',immediateRender:false},s[0]));
+  if(n.arrow){const [x1,y1,x2,y2]=n.arrow, sv=document.createElementNS(NS,'svg');
+    sv.setAttribute('width','1');sv.setAttribute('height','1');sv.style.cssText='position:absolute;left:0;top:0;overflow:visible';
+    const mx=(x1+x2)/2, my=(y1+y2)/2, L=Math.hypot(x2-x1,y2-y1), cx=mx-(y2-y1)*0.15, cy=my+(x2-x1)*0.15;
+    const ang=Math.atan2(y2-cy,x2-cx), hl=Math.min(22,0.3*L), w=0.45;
+    const path=document.createElementNS(NS,'path'), head=document.createElementNS(NS,'path');
+    path.setAttribute('d','M'+x1+' '+y1+' Q'+cx+' '+cy+' '+x2+' '+y2);
+    head.setAttribute('d','M'+(x2-hl*Math.cos(ang-w))+' '+(y2-hl*Math.sin(ang-w))+' L'+x2+' '+y2+' L'+(x2-hl*Math.cos(ang+w))+' '+(y2-hl*Math.sin(ang+w)));
+    [path,head].forEach(e=>{e.setAttribute('fill','none');e.setAttribute('stroke-width','3.5');e.setAttribute('stroke-linecap','round');
+      e.setAttribute('stroke-linejoin','round');sv.appendChild(e);});
+    lw.appendChild(sv);sv.setAttribute('data-line','arrow:note:'+n.key);arrows.push([sv,lab]);
+    const pl=path.getTotalLength(), hlen=head.getTotalLength();
+    path.setAttribute('stroke-dasharray',pl+' '+pl);head.setAttribute('stroke-dasharray',hlen+' '+hlen);
+    gsap.set(path,{attr:{'stroke-dashoffset':pl}});gsap.set(head,{attr:{'stroke-dashoffset':hlen}});
+    sp.forEach(s=>{const a=s[0]+0.6*P.note_write_s;
+      tl.fromTo(path,{attr:{'stroke-dashoffset':pl}},{attr:{'stroke-dashoffset':0},duration:0.3,ease:'power1.inOut',immediateRender:false},a);
+      tl.fromTo(head,{attr:{'stroke-dashoffset':hlen}},{attr:{'stroke-dashoffset':0},duration:0.12,ease:'none',immediateRender:false},a+0.3);});}
+});
+// per frame (after the ink driver): blend modes from the ink state, emboss ghosts copied from their source, note
+// arrows in the note's ink
+const sync=()=>{
+  BLEND.forEach(([e,t])=>{let va=0;try{va=+(JSON.parse(t.getAttribute('data-ink-state')||'{}').va||0);}catch(_){}
+    e.style.mixBlendMode=va>0?'normal':'multiply';});
+  ghosts.forEach(G=>{G.src.forEach((s,j)=>{G.dst[j].style.cssText=s.style.cssText;});
+    const [gp,gw,gl]=G.dst;gw.style.opacity=(+getComputedStyle(G.src[1]).opacity)*P.emboss_alpha;gw.style.top=P.emboss_dy+'px';
+    gl.style.color=P.emboss_colour;gl.style.textShadow='none';gl.style.setProperty('--vig','none');gl.style.setProperty('--halo-c','transparent');
+    gp.style.mixBlendMode='normal';});
+  arrows.forEach(([sv,lab])=>{const c=getComputedStyle(lab).color;sv.querySelectorAll('path').forEach(e=>e.setAttribute('stroke',c));
+    const m=c.match(/\d+/g);if(m)sv.setAttribute('data-line-ink',JSON.stringify(['#'+m.slice(0,3).map(v=>(+v).toString(16).padStart(2,'0')).join('')]));});
+};
+const D=S.n_frames/FPS, drv={t:0};
+tl.fromTo(drv,{t:0},{t:D,duration:D,ease:'none',immediateRender:true,onUpdate:sync},0);
+if(A)A.up();sync();document.fonts.ready.then(()=>{if(A)A.up();sync();});
+})();
+</script>
+</body>
+</html>

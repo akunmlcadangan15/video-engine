@@ -1,0 +1,202 @@
+{
+  "channel": "geoverum",
+  "version": 2,
+  "liked": [
+    {
+      "what": "continuous multi-stop camera path across one map or dynamic cuts that follow narrative beats",
+      "why": "preserves spatial orientation from macro continent scale down to 16x enclave/island close-ups while keeping pacing flexible",
+      "at": "2026-10-29T00:00:00+00:00"
+    },
+    {
+      "what": "year or hero percentage held big and clean before supporting pill badges appear",
+      "why": "one clear focal point per beat without competing text",
+      "at": "2026-10-29T00:00:00+00:00"
+    },
+    {
+      "what": "geographical paradox hook with an instant dividing line, visual pun, or magnifying-glass mystery in the first 1.5 s",
+      "why": "immediately hooks viewer curiosity with a visual contradiction (Market zigzag, Chili->Chile, Tibet flight void, Gibraltar bridge ?)",
+      "at": "2026-10-29T00:00:00+00:00"
+    },
+    {
+      "what": "true-scale polygon drag, polygon tiling, or everyday object scale comparison (Chile over London-Baghdad, 5x France in Tibet, Costco lot next to Market Island)",
+      "why": "turns abstract area and length numbers into an unforgettable visual comparison",
+      "at": "2026-10-29T00:00:00+00:00"
+    },
+    {
+      "what": "2D side-view cross-section diagram and 3D horizon altitude profile (900 m Gibraltar vs 75 m Channel Tunnel, Wallace trench, 33,000 ft plane over Himalayas, prairie roots)",
+      "why": "makes vertical depth, underwater geology, and flight altitude barriers immediately clear",
+      "at": "2026-10-29T00:00:00+00:00"
+    },
+    {
+      "what": "white-bordered cutout stickers (animals, tractors, ships, planes) and interactive tool props (magnifying glass, pencil redrawing border, crossed-out badges)",
+      "why": "adds tactile motion and humor while keeping the map uncluttered",
+      "at": "2026-10-29T00:00:00+00:00"
+    },
+    {
+      "what": "icon equation summary ([Depth] + [Currents] + [Earthquakes] = $) or 3D globe core-to-summit radius comparison (+21 km, +2 km)",
+      "why": "crystallizes multi-factor engineering or geophysical explanations into a single visual punchline",
+      "at": "2026-10-29T00:00:00+00:00"
+    },
+    {
+      "what": "caption Inter bold 84 px putih tanpa box/outline di y≈0,74 H (fixed_y 1417)",
+      "why": "A/B 2026-11-01: 84 paling bersih, tidak menutupi peta, tetap terbaca di layar HP (Arundaya); fixed_y ditetapkan pada 1417 px agar batas bawah kotak caption tepat berada di batas aman UI Shorts (max_bottom_y 1480 px)",
+      "at": "2026-11-01T11:12:55+07:00",
+      "check": [
+        {
+          "key": "caption_style.size",
+          "op": "==",
+          "value": 84
+        },
+        {
+          "key": "caption_style.fixed_y",
+          "op": "==",
+          "value": 1417
+        },
+        {
+          "key": "caption_style.forbid_box",
+          "op": "==",
+          "value": false
+        },
+        {
+          "key": "caption_style.outline",
+          "op": "==",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "what": "bendera di region dengan fit otomatis per region (cover; contain bila region sempit/tinggi seperti Myanmar)",
+      "why": "A/B 2026-11-01: cover pada region sempit memotong bendera jadi strip tak dikenali; satu pilihan global salah di salah satu kasus (Arundaya)",
+      "at": "2026-11-01T11:12:55+07:00",
+      "check": [
+        {
+          "key": "flags.fit",
+          "op": "==",
+          "value": "auto"
+        }
+      ]
+    },
+    {
+      "what": "visual Stage 4 (backdrop, halo, graticule, zona waktu, hatch, bubble, karakter bendera, cutaway, geoid, partikel) hanya bila memperjelas satu beat",
+      "why": "disetujui 2026-11-01: semuanya opsional dan off default, tidak pernah wajib dan tidak pernah sekaligus (Arundaya)",
+      "at": "2026-11-01T11:12:55+07:00"
+    },
+    {
+      "what": "segmen fleksibel mulai 3,0 s; bebas melakukan cut sesuai ritme narasi tanpa batas jumlah cut",
+      "why": "disetujui 2026-11-01: tidak ada batasan cut yang menghambat kreativitas atau memaksa penggabungan komposit (Arundaya); min_seg_s ditetapkan pada 3,0 detik berdasarkan analisis ritme video referensi untuk menjaga fleksibilitas pacing",
+      "at": "2026-11-01T11:12:55+07:00",
+      "check": [
+        {
+          "key": "draft.min_seg_s",
+          "op": "==",
+          "value": 3.0
+        },
+        {
+          "key": "gates.cuts",
+          "op": "exists",
+          "value": false
+        }
+      ]
+    },
+    {
+      "what": "loudness −14 LUFS, true peak ≤ −1,5 dBTP",
+      "why": "disetujui 2026-11-01: standar Shorts/YouTube, tanpa clipping (Arundaya)",
+      "at": "2026-11-01T11:12:55+07:00",
+      "check": [
+        {
+          "key": "audio.target_lufs",
+          "op": "==",
+          "value": -14.0
+        },
+        {
+          "key": "audio.true_peak",
+          "op": "<=",
+          "value": -1.5
+        }
+      ]
+    }
+  ],
+  "rejected": [
+    {
+      "what": "static frame or camera hold over 1.7 s",
+      "why": "violates P01/P02; the map or still must keep drifting",
+      "at": "2026-10-29T00:00:00+00:00",
+      "check": [
+        {
+          "key": "gates.camera.hold_warn_s",
+          "op": "<=",
+          "value": 1.7
+        }
+      ]
+    },
+    {
+      "what": "call to action or subscribe end card",
+      "why": "Geoverum ends on the final factual twist or keyword return",
+      "at": "2026-10-29T00:00:00+00:00",
+      "check": [
+        {
+          "key": "gates.cta",
+          "op": "exists",
+          "value": true
+        }
+      ]
+    },
+    {
+      "what": "unquantified geographic claims without a line, dimension bar, counter, pill badge, or scale overlay on screen",
+      "why": "every spoken distance, depth, altitude, or area comparison must have a matching visual anchor",
+      "at": "2026-10-29T00:00:00+00:00"
+    },
+    {
+      "what": "cluttered multi-line paragraphs or backing boxes on captions",
+      "why": "obscures the satellite map and violates Geoverum's clean lower-zone caption style",
+      "at": "2026-10-29T00:00:00+00:00"
+    },
+    {
+      "what": "35mm film-strip, parchment roll, page-turn, atau transisi kertas lain ke peta atlas sejarah",
+      "why": "Transisi page-turn dan lipatan kertas dinonaktifkan pada profil Geoverum (page_turn = false, map_morph = false secara default) agar perpindahan antar-peta tetap bersih menggunakan hard cut atau state dissolve singkat",
+      "at": "2026-11-02T00:00:00+07:00",
+      "check": [
+        {
+          "key": "transitions.page_turn",
+          "op": "==",
+          "value": false
+        }
+      ]
+    },
+    {
+      "what": "caption 92/104 px atau caption dengan box latar",
+      "why": "A/B 2026-11-01: terlalu berat dan menutupi peta (Arundaya memilih 84 tanpa box)",
+      "at": "2026-11-01T11:12:55+07:00",
+      "check": [
+        {
+          "key": "caption_style.ab_sizes",
+          "op": "==",
+          "value": [
+            84
+          ]
+        },
+        {
+          "key": "caption_style.forbid_box",
+          "op": "==",
+          "value": false
+        }
+      ]
+    },
+    {
+      "what": "banyak efek Stage 4 sekaligus dalam satu video",
+      "why": "disetujui 2026-11-01: efek menumpuk terasa gimmick dan mengaburkan peta (Arundaya)",
+      "at": "2026-11-01T11:12:55+07:00"
+    },
+    {
+      "what": "peta satelit pecah/blur saat zoom dalam atau tilt",
+      "why": "2026-11-01: Arundaya menilai render A/B bendera 'pecah'; raster harus ≥ 1 texel per px layar",
+      "at": "2026-11-01T11:12:55+07:00"
+    }
+  ],
+  "recent": {
+    "openers": [],
+    "transitions": []
+  },
+  "avoid_recent": 3,
+  "source": "brand/geoverum/brand-profile.md"
+}

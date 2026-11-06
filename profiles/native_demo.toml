@@ -1,0 +1,8 @@
+# Demo / test profile for the engine-native regression demos (~/video-engine-projects/engine-native-regression):
+# the default look, audio and gate rules, with the draft map_path and the draft map scene opt-ins switched on.
+# Not a channel profile and not Geoverum: Geoverum's Epidemic-only audio rule (A02) and style stay in geoverum.toml.
+description = "Native components demo (default look; draft map_path and scene opt-ins on)"
+
+[draft]
+map_path = true
+scene = ["globe", "props", "morph", "beats"]   # beats are offered only with a [layout] (none here)

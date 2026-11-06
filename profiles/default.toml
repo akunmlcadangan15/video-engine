@@ -1,0 +1,224 @@
+# Engine default profile. Every timeline without a `profile` field uses these values; a channel profile
+# (profiles/<name>.toml) overrides single keys on top of this file. Precedence: default < channel profile < project.
+description = "Engine defaults"
+
+# EXPERIMENTAL: used only when a region or pin specifies a flag.
+[flags]
+alpha = 0.85
+reveal_s = 0.45
+edge_px = 3
+glow_px = 6
+fit = "auto"           # per region: cover, contain where cropping would cut > auto_max_loss
+pin_height_pct = 4.5
+
+[type]              # canonical type scale (base sizes; theme/print/layout override per surface)
+title_px = 96
+title_px_paper = 88
+pin_label_px = 52
+
+[caption_style]
+# Python-side caption keys. Rust Style fields not listed use the compiler defaults
+# (rust/hypoverum_core_rs/src/ass.rs, Style::default).
+auto_place = true    # pre-flight moves captions that violate the clearance (R63 fix)
+clearance = 160      # px at 1920 height between a caption box and an element box; 0 = must not intersect
+
+[audio]
+target_lufs = -14.0  # loudnorm target and A01 target
+true_peak = -1.5     # dBTP; global safety limit, a profile may only lower it
+lra = 11.0           # loudnorm LRA parameter
+tolerance_lu = 0.2   # A01 tolerance; global safety limit, a profile may only lower it
+
+[draft]
+min_seg_s = 1.5      # segment length range given to the drafting model and the pause segmenter
+max_seg_s = 7.0
+rules = []           # extra numbered rules appended to the draft prompt
+
+[motion]
+# Named motion tokens. Easing curves are Emil Kowalski's (video translation); durations are video frames at 30 fps.
+ease_out = [0.23, 1.0, 0.32, 1.0]        # entrance/exit, responsive
+ease_in_out = [0.77, 0.0, 0.175, 1.0]    # objects moving on screen
+ease_drawer = [0.32, 0.72, 0.0, 1.0]     # sheet/drawer-like travel
+micro_frames = 4                         # 4 frames at 30 fps (~133 ms): press/feedback
+overlay_frames = 7                       # 7 frames (~233 ms): small overlay
+panel_frames = 12                        # 12 frames (400 ms): panel/card
+stagger_frames = 2                       # 2 frames (~67 ms) between grouped items
+entrance = "power2.out"                  # role mapping; GSAP names keep the engine look
+move = "power2.inOut"
+exit = "power2.in"                       # legacy exit look; set to an ease-out curve to adopt R03
+entrance_scale = 0.96                    # never start from scale(0)
+overlay_fade_s = 0.20                    # native drawn overlay fade
+
+[theme]
+# Renderer values: HyperFrames scene `theme` (in the HyperFrames segment cache key).
+camera_drift_per_s = 0.012   # camera_path: zoom growth per second after the last key and while waiting for a whip
+camera_start_speed = 0.75     # globe and camera_path: first-key speed as a share of the first leg's mean
+camera_end_speed = 1.0        # globe and camera_path: last-key speed as a share of the last leg's mean when the shot ends there
+whip_s = 0.5                 # camera_path move "whip": fast in-out move of this length ending on its key
+whip_blur_px = 14            # whip: peak directional motion blur (px) at mid-move
+region_fill_opacity = 0.35   # region highlight fill opacity
+region_edge = "white"        # region edge when the region sets none: "white" line or same-colour "glow"
+region_edge_px = 5           # region edge width on screen (px)
+region_glow_px = 18          # glow radius of a "glow" edge (px)
+region_glow_alpha = 1.0      # glow strength of a "glow" edge (1 = full entity colour)
+route_colour = "#ffffff"     # route line and arrowhead colour
+route_width_px = 7           # route line width on screen (px)
+route_dash_px = 22           # route dash length on screen (px)
+route_gap_px = 16            # route gap length on screen (px)
+route_arrow_px = 36          # route arrowhead length on screen (px)
+route_draw_s = 1.5           # route draw duration when the route sets none (s)
+region_style = "tint"        # region look when the region sets none: "tint" (translucent fill + edge) or "block"
+block_l_min = 0.55           # block face: entity colour with OKLCH L clamped to block_l_min..block_l_max and
+block_l_max = 0.74           #   chroma raised to at least block_chroma (entities.block_colour)
+block_chroma = 0.15
+block_fill_alpha = 0.9       # block face opacity
+block_side_dl = 0.18         # extruded side: face L minus this
+block_depth_px = 7           # extrusion depth on screen (px)
+block_shadow_px = 14         # drop shadow offset below the side, blur, alpha (px, px, 0-1)
+block_shadow_blur_px = 10
+block_shadow_alpha = 0.5
+block_bevel_px = 3           # bevel: lighter stroke inside the face edge (px), face mixed this far toward white
+block_bevel_tint = 0.4
+block_edge_colour = "#ffffff" # neon edge colour when the region sets none
+block_edge_px = 3            # neon edge width, glow radius, dark casing each side (px on screen)
+block_glow_px = 9
+block_casing_px = 1.25
+block_draw_s = 0.9           # edge draw-on duration when the region sets none (s; 0 = at once)
+block_change_s = 0.7         # recolour duration of a region owner change (s)
+border_px = 4                # border line width on screen (px; neon look of block edges)
+border_dash_px = 18          # dashed edges and borders: dash and gap on screen (px)
+border_gap_px = 12
+border_draw_s = 1.2          # border draw-on duration when the border sets none (s)
+title_font = "inter"         # big title and number font: "inter" or "title" (Archivo Black); years use Playfair Display
+title_px = 96                # big title size (px)
+title_glow_px = 28           # big title glow radius in the entity colour (px)
+title_tint = 0.0             # big title colour = entity colour mixed this far toward white (0-0.6)
+text_outline_px = 0          # outline of teardrop labels and titles (px); 0 = no outline and the plain dark shadow
+text_outline_colour = "#1a1410"
+text_outline_alpha = 0.7
+text_shadow_dy_px = 2        # drop shadow under outlined text: offset down, blur, alpha
+text_shadow_blur_px = 8
+text_shadow_alpha = 0.55
+figure_px = 150              # year / number size (px)
+counter_s = 1.5              # counter duration when the figure sets none (s)
+number_group = "."           # thousands separator
+number_decimal = ","         # decimal separator
+pin_style = "dot"            # "dot" (dot, pulse ring, boxed label above) or "teardrop" (drops in, label beside)
+pin_colour = "#ffd84a"       # pin colour (dot, ring, teardrop)
+label_font = "inter"         # teardrop label font: "inter" or "script" (Kaushan Script)
+pin_label_px = 52            # teardrop label size (px)
+label_style = "plain"        # "plain" or "box": pin labels (scenes without a layout), cards and region labels in
+                             # solid boxes, bold white caps, shadow, elastic pop-in
+label_box_colour = "#15181d" # box of pin labels and of cards without an entity (others: the entity's box colour)
+label_box_px = 44            # region label size (px)
+label_box_radius_px = 3      # box corner radius at 1080 px frame width
+label_box_lc = 60            # entity boxes darken until white text reaches APCA |Lc| >= this (R64 fails below)
+label_pop_s = 0.6            # elastic pop-in duration (s)
+# year_box_colour = "#f6efe0"  # label_style box: year figures on this box instead of the figure box (off by default)
+year_box_ink = "#ffffff"     # year text on year_box_colour
+# year_box_px = 88             # year size on year_box_colour (absent = figure_px)
+# year_box_texture = "grain-paper002.jpg"   # vendor/textures file multiplied over year_box_colour (needs the colour)
+# Entity colours: one colour per entity for the whole video (regions; titles use the colour of their entity).
+# Entities missing from [theme.entities] take the next unused palette colour in order of first appearance.
+palette = ["#ff4d4d", "#3d9bff", "#ffc533", "#3ddc84", "#b87cff", "#ff8a3d", "#2fd6d6", "#ff5fb0"]
+
+[theme.entities]
+
+# [gates.*] channel style gates are off in the default profile (see docs/GATES.md, Style gate configuration).
+
+[gates.anti_slop]
+# Anti-AI-slop rules (gates/anti_slop.py). Taste rules default to warn; raise a rule per profile with
+# [gates.anti_slop.levels] (AS01 = "fail") and, for the style-class ids, add it to [gates] require.
+level = "warn"
+panel = true                 # AS01 side-strip / glass panels
+copy = true                  # AS02 em-dash saturation, buzzwords, aphoristic cadence, "theater"
+motion = true                # AS03 ease-in entrance, scale near 0, bounce figures
+read_time = true             # AS04 minimum readable on-screen time
+source_tells = true          # AS05 gradient text, glass, side strips, stripes, glow, clip-path, kicker
+palette = true               # AS06 violet/cyan tell hues in literal composition colours
+em_dash_max = 8
+em_dash_per_500 = 1.0
+aphoristic_min = 3
+buzzwords = ["streamline", "empower", "supercharge", "world-class", "enterprise-grade", "next-generation", "cutting-edge", "seamless", "game-changing", "revolutionize"]
+chars_per_s = 20.0
+min_read_s = 0.8
+forbidden_hues = [[260, 310], [170, 197]]
+side_strip_px = 1.0
+clip_vertices = 6
+
+# [fx] optional per-scene visual components. Every scene field is off unless the timeline sets it; the values below
+# are the defaults a scene inherits. A scene without any of the new fields keeps the engine's previous look.
+[fx.grid]
+colour = "#2F6FD6"
+bg = "#0B2A5B"
+cell_pct = 4.0
+line_px = 2
+alpha = 0.5
+graticule_spacing_deg = 30
+graticule_colour = "#FFFFFF"
+graticule_alpha = 0.35
+
+[fx.stars]
+count = 400
+twinkle = 0.15
+parallax = 0.2
+# seed absent = derived from the project id and segment index (deterministic per segment)
+
+[fx.halo]
+colour = "#7EC8FF"
+width_pct = 3.0
+alpha = 0.6
+
+[fx.timezone]
+alpha = 0.25
+at_frame = 0
+colour = "#7EC8FF"
+
+[fx.hatch]
+angle = 45
+spacing_px = 10
+line_px = 2
+colour = "#FFFFFF"
+alpha = 0.6
+
+[fx.bubble]
+style = "light"
+font_px = 44
+pop_frames = 5
+max_width_pct = 0.62
+max_bottom_pct = 0.72
+gap_px = 28
+
+# P15: flag-icon characters. A scene without flag_characters stays unchanged.
+[fx.flag_character]
+wave_amplitude = 0.035
+wave_hz = 0.8
+slices = 14
+eye_pct = 17
+blink_period_s = 3.2
+blink_frames = 5
+shadow_px = 14
+
+# P16: cross-section diagram and photo insets.
+[fx.cutaway]
+reveal_s = 0.6
+label_px = 38
+line_px = 2
+height_ratio = 0.55
+inset_border_px = 5
+inset_gap_px = 28
+
+# P18: exaggerated Earth model on a globe scene.
+[fx.geoid]
+exaggeration = 0.08
+colour_ramp = ["#2B5BD7", "#3FB27F", "#F2D04B", "#D9483B"]
+rotate_deg_s = 12
+harmonics = 6
+fade_s = 0.5
+
+# P19: deterministic fireworks / fire accents.
+[fx.particles]
+duration_s = 2.0
+max_count = 180
+gravity = 0.22
+fireworks_colours = ["#FFD84A", "#FF7A3D", "#FF4D6D", "#7ED0FF", "#FFFFFF"]
+fire_colours = ["#FFE07A", "#FF9A3D", "#E8452B"]

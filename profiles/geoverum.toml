@@ -1,0 +1,242 @@
+# Geoverum channel profile. Spec: Style Lab brand profile (brand/geoverum/brand-profile.md).
+description = "Geoverum: map-led geography shorts"
+# Large tables and the entity colours live in profiles/geoverum/ (merged under this file; keys here win).
+include = ["geoverum/entities.toml", "geoverum/legibility.toml", "geoverum/print.toml", "geoverum/sound.toml", "geoverum/layout.toml"]
+
+# Flag settings inherit the engine defaults unless overridden.
+[flags]
+alpha = 0.85
+reveal_s = 0.45
+edge_px = 3
+glow_px = 6
+fit = "auto"           # per region: cover, contain where cropping would cut > auto_max_loss
+pin_height_pct = 4.5
+
+[type]              # canonical type scale: matches [theme] title_px/pin_label_px and [print] title_px
+title_px = 112
+title_px_paper = 88
+pin_label_px = 52
+
+[caption_style]
+# Approved 2026-11-01 (style-lab upgrade-v2 A/B): bold Inter 84 px, white, no outline, no box.
+# fixed_y 1417 (about 0.74 H): 1417 + 63 (0.75x84) = 1480 = max_bottom_y, so the caption box bottom stays at the Shorts UI limit (Z01 safe).
+font = "Inter"                # family Inter; bold=true makes libass pick vendor/fonts/Inter-Bold.otf
+bold = true
+size = 84                     # approved in the 2026-11-01 A/B (84 / 92 / 104); 92 and 104 were rejected as too heavy
+ab_sizes = [84]               # approved size; a timeline caption_style.size can still override it technically
+outline = 0                   # no outline; the soft shadow carries readability
+soft_shadow = true            # drop shadow 0 3 px, blur, black at .55 (layer 0, no backing box)
+shadow_dx = 0
+shadow_dy = 3
+shadow_blur = 4               # libass \blur (gaussian); about a CSS 8 px blur
+shadow_alpha = 115            # ASS alpha 0x73 = 55 % opaque
+active_word_highlight = true
+emphasis_scale = 1.15
+max_words = 3
+fixed_y = 1417                # caption centre, px at 1920 height (about 0.74 x 1920): 1417 + 63 (0.75x84) = 1480 = max_bottom_y (Z01 safe)
+max_bottom_y = 1480           # Z01: caption box bottom at or above the Shorts lower UI limit
+forbid_box = false            # advisory since 2026-11-04: captions may use a box (style choice, not blocked)
+auto_place = true             # a caption that would hit a pin, label or figure shifts (R63 fix) ...
+place_band = [0.58, 0.76]     # ... inside the approved lower band, centre 0.60-0.76 H (1152-1459 px)
+clearance = 0                 # captions must still not intersect any element box (R63)
+
+[audio]
+target_lufs = -14.0
+true_peak = -1.5
+lra = 11.0
+tolerance_lu = 0.2
+# prefer_source = "epidemic"   # diutamakan (preferred, bukan wajib): A02 warn bila sumber beda, tidak block (docs/SOUND.md)
+
+[draft]
+min_seg_s = 3.0               # flexible segment pacing; short cuts and montages allowed
+max_seg_s = 20.0
+map_path = true               # map segments may carry a multi-key camera path
+scene = ["globe", "props", "beats", "radar", "terrain3d", "cross_section", "historical", "flag_char", "data_viz", "blind_spot", "grid_split"]   # draft map scene opt-ins
+rules_file = "geoverum/creative.md"   # single source: profiles/geoverum/creative.md (do not duplicate rules here)
+
+[motion]                     # overlay motion token
+overlay_frames = 10          # 10 frames at 30 fps (~333 ms): smooth rise, not snappy
+overlay_frames_range = [8, 12]
+
+[theme]
+route_colour = "#FFD417" # kuning putus-putus (referensi: Pan-American, rute)
+camera_drift_per_s = 0.06     # scale growth / s of the drift between camera pulses: 0.06 ln/s at the start of a wait,
+                              # above [gates.camera] still_zoom_ln_s (moving), below it after 3.3 s
+camera_start_speed = 0.85      # globe and camera_path: first-key speed as a share of the first leg's mean
+camera_end_speed = 0.85         # globe and camera_path: last-key speed as a share of the last leg's mean when the shot ends there
+region_edge = "glow"          # same-colour edge; [legibility] sets fill alpha and a 3-4 px outline, no blur
+region_style = "tint"         # flat translucent fill + glow
+label_style = "plain"         # plain adaptive labels; opt into a dark box per pin / region / figure
+year_box_colour = "#f6efe0"   # years on a bright cream box with paper grain, dark serif digits, about label size
+year_box_ink = "#2a231d"
+year_box_px = 88
+year_box_texture = "grain-paper002.jpg"
+pin_style = "teardrop"        # red teardrop with a white dot, paper outline and shadow, bounce drop-in, label beside
+pin_colour = "#c4302a"
+label_font = "inter"          # map labels; [print] sets the printed roles per surface
+title_font = "inter"          # titles and numbers; [print] sets the printed roles per surface
+title_px = 112
+# region colours, muted OKLCH (L 0.40-0.82, C <= 0.12); entities missing from [theme.entities] take the free ones in
+# this order; teal and indigo never adjacent
+palette = ["#136868", "#5F4025", "#74364B", "#796394", "#75A58B", "#6A662B", "#B56A95", "#4B4D8B", "#C99D4E",
+           "#6B8B5A", "#437AA6", "#9C443B", "#A7693C", "#A19073", "#549CC0", "#70B8C6", "#AEC8DC"]
+
+[camera]                      # camera: continuous push-in/pull-back
+                              # frames break a layout rule (0.75, 0.5, 0.25, 0 of this size)
+max_zoom = 16                 # deepest camera zoom: country-scale close-ups from a whole-map source
+# flow camera paths (camera key move "flow") lean into their motion like a drone: fitted to the Amazon reference
+# (UW3mWOVzWvU, 2026-11-02): perspective grows with screen speed, the map banks with sideways travel
+bank_roll = 12                # deg of roll per frame width / s sideways
+bank_tilt = 9                 # deg of extra tilt per frame width / s of screen speed
+bank_max_roll = 20
+bank_max_tilt = 16
+bank_smooth_s = 0.8
+
+[transitions]                 # hard cut on a visual-type change, short state change on one map
+kind = "cut"                  # every boundary is a hard cut unless a rule or a segment transition_in says otherwise
+same_type = { map = "state" } # map -> map on the same map_asset: 0.2 s state dissolve, never a long crossfade
+state_s = 0.35                # state dissolve length
+fade_s = 0.5                  # crossfade only when requested explicitly (timeline transition_in = "crossfade")
+page_turn = false             # Arundaya rejects page-turn / paper transitions (Siam revision 2)
+map_morph = false             # morph off by default in Geoverum (P20; enable via profile_overrides when needed)
+# Reference-video options (bedah 9 referensi 02-10, 2026-11-05; lihat docs/REFERENCE-STYLE.md). Semua pilihan
+# kreator, bukan keharusan: nilai di bawah adalah daftar opsi yang boleh dipilih per segmen.
+
+[reference_style.transitions]           # kelompok F: kamera dan transisi (pilihan per segmen)
+extra_kinds = ["zoom_blur", "warp_blur", "zoom_whip", "flash", "wipe_circle"]  # transisi tambahan yang boleh dipakai
+continuous_shot = true        # satu shot kontinyu gaya fly-through (tanpa cut) boleh dipakai; kamera tetap bergerak terus
+tilt_latitude = true          # tilt kamera untuk menyamakan lintang dua tempat (referensi Gulf Stream)
+
+[reference_style.fill]                        # kelompok A: isian dan sorotan wilayah (pilihan per entitas/fase, bukan global)
+hatch = true                  # isian garis diagonal per fase (mis. fase konflik); polos untuk fase lain
+hatch_angle_deg = 45
+double_layer = true           # satu region boleh dua fill bertumpuk (mis. daratan + patch below-sea-level)
+policy_fill = true            # fill kategorikal berbasis kebijakan (mis. zona hijau/merah SIMPAN)
+spotlight_dim = true          # peredupan satu sisi + sorotan pada entitas (mis. Point Roberts)
+coast_glow = true             # garis pantai menyala (referensi renang garis lurus)
+heatmap = true                # choropleth kepadatan (krem -> oranye -> merah)
+
+[reference_style.label]                       # kelompok B: gaya label dan tipografi (pilihan per label)
+types = ["plain", "banner", "typing", "handwritten", "slanted_route"]
+banner_bg = "#1a1a1a"         # banner gelap + teks putih (referensi Korea)
+typing_chars_per_s = 20       # label diketik huruf-per-huruf (referensi Angle Inlet, Point Roberts, Stanstead)
+handwritten_arrow = true      # tulisan tangan + panah penunjuk (referensi Erik the Red)
+stamp = true                  # stempel kuning miring (referensi ICELAND / GREENLAND)
+title_cinematic = true        # judul raksasa sinematik di atas region (referensi Netherlands, Dutch, Gulf Stream)
+title_morph = true            # judul berubah huruf-per-huruf (referensi Deutsch -> Dutch)
+
+[reference_style.data_viz]                     # kelompok C: angka sebagai tokoh
+count_up = true               # count-up populasi / jarak / lebar (referensi 54; 1.191; 7.100 km; 5->50 km)
+thermometer = true            # termometer menghitung suhu (referensi -10C; 28C)
+stat_box = true               # kotak data persentase (referensi 4% / 40%)
+flame_numbers = true          # angka neon api (referensi $42.000.000; 3.700 ac; 250 years)
+
+[reference_style.overlay]                     # kelompok D: ikon, karakter, dan gelembung
+speech_bubble = true          # gelembung komik teks hitam di atas putih (referensi We're Danish!; ICELAND!)
+characters = true             # ikon kartun antropomorfik: mata, lengan, wajah Viking, Erik the Red
+ships = true                  # kapal layar berlayar + rute kurva + peti (referensi ekspansi kolonial, Viking)
+city_icons = true             # kincir berlabel kota, ikon industri, medali, lencana tengkorak, segitiga peringatan
+weather_icons = true          # matahari, salju, awan salju, salju dicoret (referensi Gulf Stream)
+snow_particles = true         # partikel salju overlay penuh layar (referensi Gulf Stream, Alaska)
+medal = true                  # medali emas pita merah (referensi Belanda)
+
+[reference_style.scene_variants]              # kelompok E: adegan non-peta sebagai latar penuh
+document = true               # dokumen arsip (referensi Homestead Act)
+ink_illustration = true       # ilustrasi tinta di kertas kusut (referensi wagon, rumah)
+parchment_map = true          # peta perkamen + potret lukisan (referensi Belanda, Holy Roman Empire)
+live_footage = true           # footage live: api, retakan, arang (referensi Centralia)
+framed_photo = true           # foto berbingkai krem (referensi Centralia)
+cross_section = true          # diagram penampang berlapis + sungai bawah tanah (referensi Amazon/Hamza)
+schematic_hud = true          # peta skematik garis + blok + lingkaran pemindai (referensi Centralia)
+telescope = true              # vignette teleskop bulat + laut/langit (referensi ICELAND!)
+
+[reference_style.overlap]                     # kelompok G: lapisan tumpuk (prinsip: tumpang tindih BOLEH, bukan pelanggaran)
+allowed = true                # elemen boleh bertumpuk mengikuti urutan visual yang direncanakan kreator
+rule = "readability"          # satu-satunya syarat: teks yang bertumpuk tetap terbaca (kontras cukup)
+forbid = []                   # tidak ada larangan tumpang tindih; daftar ini sengaja kosong
+
+[reference_style.style.unified]             # gaya kolaborasi: satu bahasa visual di semua segmen
+lower_third_card = false      # tanpa kartu lower-third; teks langsung di atas peta
+dmz_glow = true               # zona DMZ / perbatasan menyala
+border_pulse = true           # denyut pada garis batas
+great_circle = true           # rute mengikuti great-circle
+flag_fill = true              # isi wilayah dengan warna bendera
+year_big = true               # tahun besar sebagai judul era
+bubble_one_word = true        # gelembung bicara satu kata
+typing_chars_per_s = 20       # typing default: 20 karakter/detik (samakan dengan [reference_style.label])
+signal_colors_locked = true   # sinyal warna dikunci: 4 warna, jangan ditukar
+signal_colors = { distance = "#FFD417", usa = "#00B0FF", pin = "#C4302A", text = "#FFFFFF" } # kuning jarak, cyan USA, merah pin, putih teks
+
+[render]                      # best practical quality, under ~300 MB for a 90 s Short
+hf_quality = "high"           # HyperFrames: JPEG q100 screenshots + x264 slow
+hf_crf = 8
+segment_crf = 8               # intermediates: near-lossless, no fastdecode tune (keeps CABAC and deblocking)
+segment_preset = "medium"
+segment_tune = "none"
+final_crf = 16                # upload file: x264 medium, CRF 16 (composite ~50% faster than veryslow CRF 12), 10-bit High 10, capped at 40 Mb/s
+final_preset = "medium"
+final_tune = "none"
+final_maxrate_kbps = 40000
+final_bit_depth = 10          # no encoder banding in sky, sea and glow gradients; YouTube accepts 10-bit uploads
+map_jpeg_quality = 95         # map derivatives and deep tiles
+
+[gates]                       # style gates whose fails block a build; every other style gate only warns
+require = []                  # 2026-11-04: no style gate blocks; all style gates only warn
+advisory = []
+
+[gates.hook]
+vo_warn_s = 0.2
+vo_fail_s = 0.8
+caption_warn_s = 0.2
+caption_fail_s = 1.0
+graphic_warn_s = 1.5
+graphic_fail_s = 2.0
+open_on_moving_map = true
+
+[gates.camera]                # P01: planned camera motion
+hold_warn_s = 1.7
+hold_fail_s = 2.0
+moving_warn = 0.8
+still_zoom_ln_s = 0.05        # zoom speed below this is still; the 0.06 ln/s drift is moving
+still_pan_w_s = 0.02
+min_drift_per_s = 0.06        # P02: the drift between camera moves stays >= 0.06 ln/s (theme camera_drift_per_s)
+
+[gates.novelty]
+max_gap_s = 3.0
+
+[gates.silence]
+max_gap_s = 0.8
+threshold_db = -40.0
+
+[gates.keyword_return]
+hook_s = 3.0
+end_s = 5.0
+min_chars = 4
+
+[gates.ending_keyword]         # K02: the keyword is still readable on the final frame
+hook_s = 3.0
+end_s = 5.0
+min_chars = 4
+
+[gates.cta]                    # C02: no call to action and no end card
+phrases = ["terima kasih", "subscribe", "follow", "like", "share", "tonton", "kunjungi", "link di bio",
+           "sampai jumpa", "jangan lupa", "selesai"]
+
+[gates.geo]                    # G02: pins on land, labels inside their own region
+require_land = false
+
+[gates.duration]
+min_s = 45.0
+max_s = 100.0
+
+[gates.anti_slop]
+level = "warn"
+forbidden_hues = [[260, 310], [170, 197]]
+
+[watermark]
+text = "Geoverum"             # channel mark, top right inside the safe area (burned in by the final mux)
+font = "inter"
+px = 40
+colour = "#ffffff"
+opacity = 0.85
+shadow = true

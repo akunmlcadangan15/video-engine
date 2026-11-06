@@ -1,0 +1,18 @@
+# Entity colours of the Geoverum channel: one colour per entity for a whole video (from [theme] palette).
+# Loaded by geoverum.toml `include`.
+
+[theme.entities]
+Indonesia = "#B56A95"         # plum
+Sekutu = "#4B4D8B"            # indigo
+Belanda = "#C99D4E"           # ochre (never as text)
+Jepang = "#6B8B5A"            # moss
+"Caspian Sea" = "#437AA6"     # steel
+Russia = "#9C443B"            # brick
+Kazakhstan = "#A7693C"        # sienna
+Turkmenistan = "#C99D4E"      # ochre (never as text)
+Iran = "#6B8B5A"              # moss
+Azerbaijan = "#A19073"        # taupe
+"Black Sea" = "#549CC0"       # sky
+Mediterranean = "#70B8C6"     # lagoon
+Paratethys = "#AEC8DC"        # mist
+Atlantic = "#4B4D8B"          # indigo

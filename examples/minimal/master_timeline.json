@@ -1,0 +1,40 @@
+{
+  "project_id": "example_minimal",
+  "settings": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "project_number": "00",
+    "topic": "Contoh",
+    "date": "2026-01-01"
+  },
+  "credits_manifest": [
+    {
+      "asset_id": "map",
+      "path": "assets/map.jpg",
+      "source_url": "https://tile.openstreetmap.org/4/11/4.png",
+      "license": "Public Domain",
+      "watermark_free": true
+    }
+  ],
+  "audio_chain": {
+    "voiceover_path": "assets/narration.wav",
+    "auto_captions": false,
+    "language": "id"
+  },
+  "segments": [
+    {
+      "seg_index": 0,
+      "engine_type": "HYPERFRAMES_GSAP",
+      "start_frame": 0,
+      "end_frame": 90,
+      "gsap_scene_config": {
+        "map_asset": "assets/map.jpg",
+        "map_asset_id": "map",
+        "pins": [{"label": "Contoh", "x": 0.5, "y": 0.5}],
+        "camera_preset": "zoom_in",
+        "camera_intensity": 1.0
+      }
+    }
+  ]
+}

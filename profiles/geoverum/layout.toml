@@ -1,0 +1,65 @@
+# Layout of map scenes (gates L01 to L10). Loaded by geoverum.toml `include`.
+
+# beats layout of map scenes (video_engine/layout.py, gates L01-L10); positions, sizes, zones and timing only.
+# Lengths are px at 1080 x 1920.
+[layout.grid]
+x0 = 64                       # 6 columns of 104 px with 40 px gutters: left edges 64, 208, 352, 496, 640, 784
+columns = 6
+col_w = 104
+gutter = 40
+unit = 8
+
+[layout.zones]
+safe = [48, 288, 888, 1248]   # text safe area x0, y0, x1, y1
+z1 = [64, 304, 888, 440]      # top slot: title or data card, left-aligned
+z2 = [64, 488, 888, 1100]     # map focus: active region, pins, map labels, routes
+z2_pad = 48
+z3 = [64, 1100, 888, 1248]
+group_gap = 48            # between groups (area label to pins, routes, other text)
+
+[layout.sizes]
+title = 112
+year = 128
+time = 56
+pin_label = 52
+pin_label_min = 44
+area_label = 44
+area_tracking = 0.08
+hero_ratio = 1.5
+
+[layout.budget]
+texts = 3
+labelled_pins = 2
+routes = 1
+animating = 2
+
+[layout.timing]
+enter_s = 0.33                 # fly-through scale time ([layout.fly])
+exit_s = 0.33                   # fly-through exit time
+exit_max_s = 0.3
+stagger_s = 0.2
+settle_s = 0.8
+min_hold_s = 2.0
+chars_per_s = 20
+
+[layout.labels]
+offset = 16
+edge_clear = 24
+text_clear = 16
+route_clear = 24
+area_inset = 24
+leader_max = 120
+route_pin_gap = 24
+card_gap = 32
+dim_alpha = 0.10
+caption_ground = 0.10
+
+[layout.fly]                   # texts scale in through the frame and out past it
+title_in = 2.6
+figure_in = 2.2
+label_in = 3.0
+out = 2.6
+title_opacity_in_s = 0.15
+figure_opacity_in_s = 0.40
+ease_in = "power2.inOut"
+ease_out = "power2.out"         # cubic ease-in
