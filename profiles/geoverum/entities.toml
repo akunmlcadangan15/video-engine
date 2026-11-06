@@ -1,18 +1,21 @@
-# Entity colours of the Geoverum channel: one colour per entity for a whole video (from [theme] palette).
-# Loaded by geoverum.toml `include`.
+# Persistent Sovereign & Hydrographic Entity Color Assignments.
+# Locks specific recurring countries, alliances, and water bodies to fixed OKLCH-calibrated hex colors
+# from [theme] palette so each named entity maintains consistent visual identity throughout a video.
+# Entities not listed here are assigned unused colors sequentially from [theme] palette.
+# Included automatically by profiles/geoverum.toml and profiles/geoverum_landscape.toml.
 
 [theme.entities]
-Indonesia = "#B56A95"         # plum
-Sekutu = "#4B4D8B"            # indigo
-Belanda = "#C99D4E"           # ochre (never as text)
-Jepang = "#6B8B5A"            # moss
-"Caspian Sea" = "#437AA6"     # steel
-Russia = "#9C443B"            # brick
-Kazakhstan = "#A7693C"        # sienna
-Turkmenistan = "#C99D4E"      # ochre (never as text)
-Iran = "#6B8B5A"              # moss
-Azerbaijan = "#A19073"        # taupe
-"Black Sea" = "#549CC0"       # sky
-Mediterranean = "#70B8C6"     # lagoon
-Paratethys = "#AEC8DC"        # mist
-Atlantic = "#4B4D8B"          # indigo
+Indonesia = "#B56A95"         # Muted plum rose
+Sekutu = "#4B4D8B"            # Deep slate indigo
+Belanda = "#C99D4E"           # Warm golden ochre (used for polygon fills and borders; excluded from dark text ink on light paper via [legibility] never_text)
+Jepang = "#6B8B5A"            # Sage moss green
+"Caspian Sea" = "#437AA6"     # Maritime steel blue
+Russia = "#9C443B"            # Terracotta brick red
+Kazakhstan = "#A7693C"        # Warm burnt sienna
+Turkmenistan = "#C99D4E"      # Warm golden ochre (excluded from dark text ink on light paper)
+Iran = "#6B8B5A"              # Sage moss green
+Azerbaijan = "#A19073"        # Warm stone taupe
+"Black Sea" = "#549CC0"       # Deep cerulean sky blue
+Mediterranean = "#70B8C6"     # Coastal lagoon cyan
+Paratethys = "#AEC8DC"        # Pale glacial mist blue
+Atlantic = "#4B4D8B"          # Deep oceanic indigo

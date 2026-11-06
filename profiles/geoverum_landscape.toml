@@ -1,236 +1,350 @@
-# Geoverum landscape (16:9) channel profile: the Geoverum brand on a normal YouTube video, 1920x1080, 2560x1440 or
-# 3840x2160 (docs/PROFILES.md, Orientation). Starting point for the owner to approve: geometry and caption values are
-# the landscape proposals; rhythm gates and duration wait for the owner (long-form). Channel tables are repeated from
-# geoverum.toml (an included file cannot include others); keep the two in step.
+# Geoverum Landscape (16:9) Channel Profile Specification.
+# Defines the canonical visual, typographic, camera, audio, rendering, and quality-gate rules for horizontal
+# widescreen geography videos at 1920 x 1080, 2560 x 1440, or 3840 x 2160 resolution (docs/PROFILES.md, Orientation).
+# Synchronized with profiles/geoverum.toml across all shared tables; differs only in orientation-specific geometry and duration.
 description = "Geoverum landscape: map-led geography videos (16:9)"
-# Large tables and the entity colours live in profiles/geoverum/ (merged under this file; keys here win).
+# Sub-tables for entity colors, APCA legibility, printed surface grading, SFX ducking, and 16:9 zone overrides
+# are modularized under profiles/geoverum/ and profiles/landscape/ and merged prior to top-level keys here.
 include = ["geoverum/entities.toml", "geoverum/legibility.toml", "geoverum/print.toml", "geoverum/sound.toml", "geoverum/layout.toml", "landscape/format.toml", "geoverum/landscape/layout.toml", "geoverum/landscape/print.toml"]
 
-# Flag settings inherit the engine defaults unless overridden.
+# Flag overlay rendering parameters for country polygons and pin badges.
 [flags]
-alpha = 0.85
-reveal_s = 0.45
-edge_px = 3
-glow_px = 6
-fit = "auto"           # per region: cover, contain where cropping would cut > auto_max_loss
-pin_height_pct = 4.5
+alpha = 0.85                  # Opacity of the flag texture mapped inside a country polygon (preserves underlying terrain shading)
+reveal_s = 0.45               # Duration in seconds for the flag fill fade-in animation
+edge_px = 3                   # Inner border stroke width in pixels around a flagged region
+glow_px = 6                   # Outer glow radius in pixels around a flagged region
+fit = "auto"                  # Aspect-ratio fitting mode per polygon: uses "cover" for compact shapes and falls back to "contain" when cropping would discard more than auto_max_loss of the flag emblem
+pin_height_pct = 4.5          # Height of a pin flag badge expressed as a percentage of canvas height
 
-[type]              # canonical type scale: matches [theme] title_px/pin_label_px and [print] title_px
-title_px = 112
-title_px_paper = 88
-pin_label_px = 52
+# Canonical typographic scale across all rendering surfaces (matched against [theme] and [print]).
+[type]
+title_px = 112                # Primary display title height in pixels on dark satellite basemaps
+title_px_paper = 88           # Primary display title height in pixels on bright archival or parchment surfaces
+pin_label_px = 52             # Standard text height in pixels for map pin and place labels
 
+# Stage 2 burned-in subtitle specification (vertical geometry inherited from profiles/landscape/format.toml).
 [caption_style]
-# Look approved for Shorts (bold Inter, white, soft shadow, no outline, no box); geometry from landscape/format.toml.
-font = "Inter"
-bold = true
-outline = 0
-soft_shadow = true
-shadow_dx = 0
-shadow_dy = 3
-shadow_blur = 4
-shadow_alpha = 115
-active_word_highlight = true
-emphasis_scale = 1.15
-forbid_box = false
-auto_place = true
+font = "Inter"                # Font family resolved to vendor/fonts/Inter-Bold.otf when bold = true
+bold = true                   # Enforces bold weight for rapid legibility
+outline = 0                   # Disables hard stroke outlines around glyphs so letterforms remain clean
+soft_shadow = true            # Enables a soft Gaussian drop shadow beneath caption text instead of a hard outline or opaque box
+shadow_dx = 0                 # Horizontal shadow offset in pixels
+shadow_dy = 3                 # Vertical shadow offset in pixels
+shadow_blur = 4               # Gaussian blur radius applied by libass (\blur tag, approximately equivalent to an 8 px CSS blur)
+shadow_alpha = 115            # ASS alpha value (0x73 = 115/255, producing 55% shadow opacity)
+active_word_highlight = true  # Scales the currently spoken word using emphasis_scale synchronized to word-level timestamps
+emphasis_scale = 1.15         # Scale multiplier (115%) applied to the active spoken word
+forbid_box = false            # Permits optional caption backing boxes per segment when explicitly specified by the creator without triggering a style block
+auto_place = true             # Automatically shifts captions within the lower placement band if a static pin, label, or figure occupies the default line (gate R63)
 
+# Broadcast loudness normalization targets (enforced by gate A01 during final audio mastering).
 [audio]
-target_lufs = -14.0
-true_peak = -1.5
-lra = 11.0
-tolerance_lu = 0.2
-# prefer_source = "epidemic"   # diutamakan (preferred, bukan wajib): A02 warn bila sumber beda, tidak block (docs/SOUND.md)
+target_lufs = -14.0           # Integrated loudness target in LUFS for streaming platforms
+true_peak = -1.5              # Maximum permitted true peak level in dBTP to prevent inter-sample clipping during AAC/Opus transcoding
+lra = 11.0                    # Target loudness range in LU for voiceover and background score balance
+tolerance_lu = 0.2            # Allowed deviation in LU from target_lufs during two-pass loudnorm verification
+# prefer_source = "epidemic"  # Optional preferred music catalog identifier (gate A02 emits a non-blocking warning if omitted or mismatched)
 
+# AI storyboard and timeline drafting constraints (used by video_engine/draft.py and video_engine/draft_scene.py).
 [draft]
-min_seg_s = 3.0               # flexible segment pacing; short cuts and montages allowed
-max_seg_s = 20.0
-map_path = true               # map segments may carry a multi-key camera path
-scene = ["globe", "props", "beats", "radar", "terrain3d", "cross_section", "historical", "flag_char", "data_viz", "blind_spot", "grid_split"]   # draft map scene opt-ins
-rules_file = "geoverum/creative.md"   # single source: profiles/geoverum/creative.md (do not duplicate rules here)
+min_seg_s = 3.0               # Minimum segment duration in seconds; supports both rapid 3-6 s evidence cuts and extended 6-20 s continuous map flights
+max_seg_s = 20.0              # Maximum single-segment duration in seconds before requiring a narrative beat or scene transition
+map_path = true               # Enables multi-keyframe continuous camera trajectories (flow, glide, reveal, whip, settle) within a single map segment
+scene = ["globe", "props", "beats", "radar", "terrain3d", "cross_section", "historical", "flag_char", "data_viz", "blind_spot", "grid_split"]   # Scene capabilities unlocked for the AI draft generator
+rules_file = "geoverum/creative.md"   # External markdown file containing the canonical creative direction rules injected into the draft prompt
 
-[motion]                     # overlay motion token
-overlay_frames = 10          # 10 frames at 30 fps (~333 ms): smooth rise, not snappy
-overlay_frames_range = [8, 12]
+# Overlay entrance and exit animation timing tokens.
+[motion]
+overlay_frames = 10           # Default entrance transition duration in frames at 30 fps (~333 ms) for smooth ease-out placement
+overlay_frames_range = [8, 12] # Permitted frame-count range for overlay entrance animations
 
+# Visual theme parameters for map vector overlays, camera dynamics, typography, and color allocation.
 [theme]
-route_colour = "#FFD417" # kuning putus-putus (referensi: Pan-American, rute)
-camera_drift_per_s = 0.06     # scale growth / s of the drift between camera pulses: 0.06 ln/s at the start of a wait,
-                              # above [gates.camera] still_zoom_ln_s (moving), below it after 3.3 s
-camera_start_speed = 0.85      # globe and camera_path: first-key speed as a share of the first leg's mean
-camera_end_speed = 0.85         # globe and camera_path: last-key speed as a share of the last leg's mean when the shot ends there
-region_edge = "glow"          # same-colour edge; [legibility] sets fill alpha and a 3-4 px outline, no blur
-region_style = "tint"         # flat translucent fill + glow
-label_style = "plain"         # plain adaptive labels; opt into a dark box per pin / region / figure
-year_box_colour = "#f6efe0"   # years on a bright cream box with paper grain, dark serif digits, about label size
-year_box_ink = "#2a231d"
-year_box_px = 88
-year_box_texture = "grain-paper002.jpg"
-pin_style = "teardrop"        # red teardrop with a white dot, paper outline and shadow, bounce drop-in, label beside
-pin_colour = "#c4302a"
-label_font = "inter"          # map labels; [print] sets the printed roles per surface
-title_font = "inter"          # titles and numbers; [print] sets the printed roles per surface
-title_px = 112
-# region colours, muted OKLCH (L 0.40-0.82, C <= 0.12); entities missing from [theme.entities] take the free ones in
-# this order; teal and indigo never adjacent
+route_colour = "#FFD417"      # High-visibility signal yellow for primary routes, latitude parallels, and distance measurement lines
+route_width_px = 7            # Stroke width in pixels for animated route paths
+route_dash_px = 20            # Dash length in pixels for dashed route paths
+route_gap_px = 14             # Gap length in pixels between route dashes
+route_arrow_px = 36           # Arrowhead size in pixels at the leading tip of an animated route
+route_draw_s = 1.2            # Default duration in seconds for progressive route stroke drawing
+camera_drift_per_s = 0.06     # Continuous logarithmic zoom drift rate (0.06 ln(scale)/s) applied between camera keyframes so the frame remains above the 0.05 ln/s motion floor
+camera_start_speed = 0.85     # Initial velocity ratio at the first camera keyframe relative to the first leg's mean speed (prevents sluggish starts from a standstill)
+camera_end_speed = 0.85       # Terminal velocity ratio at the final camera keyframe relative to the last leg's mean speed (maintains momentum up to segment cuts)
+whip_s = 0.45                 # Duration in seconds for fast in-map whip pans between distant coordinates
+whip_blur_px = 16             # Directional motion-blur radius in pixels applied at the peak velocity of a whip pan
+region_fill_opacity = 0.45    # Polygon interior fill opacity (45%) on dark satellite basemaps, ensuring saturated territorial color while preserving underlying terrain detail
+region_edge = "glow"          # Renders country borders with a luminous outer glow matching the polygon color on dark satellite surfaces
+region_edge_px = 4            # Solid border core width in pixels around highlighted polygons
+region_glow_px = 18           # Outer neon glow radius in pixels around highlighted polygons on dark satellite basemaps
+region_glow_alpha = 0.95      # Opacity of the outer polygon border glow
+region_style = "tint"         # Renders regions as flat translucent color overlays with glowing edges rather than 3D extruded blocks
+label_style = "plain"         # Default map label style; individual pins, regions, or figures can opt into a dark banner pill via box = true
+label_box_colour = "#18181c"  # Dark charcoal background color (#18181c) for banner-style text pills and callout tags
+label_box_px = 46             # Font size in pixels for text rendered inside a dark banner pill
+label_box_radius_px = 4       # Corner radius in pixels for dark banner pills
+label_pop_s = 0.45            # Pop-in animation duration in seconds for map labels
+year_box_colour = "#f6efe0"   # Warm cream background color for historical year badges on archival scenes
+year_box_ink = "#2a231d"      # Dark espresso ink color for digits inside a historical year badge
+year_box_px = 88              # Font size in pixels for boxed historical year badges
+year_box_texture = "grain-paper002.jpg" # Subtle paper grain texture overlaid on boxed historical year badges
+pin_style = "teardrop"        # Map marker geometry: red teardrop pin with an inner white dot, drop shadow, and bounce entrance animation
+pin_colour = "#c4302a"        # Crimson red fill color for map pins
+label_font = "inter"          # Default typeface family for map labels on dark satellite imagery ([print] overrides this on archival paper surfaces)
+title_font = "inter"          # Default typeface family for display titles and numeric counters on dark satellite imagery
+title_px = 112                # Display title font size in pixels
+title_glow_px = 28            # Soft ambient glow radius in pixels behind display titles and hero figures
+text_outline_px = 2           # Subtle dark stroke width in pixels around map labels for separation over high-frequency satellite terrain
+text_outline_colour = "#101418" # Deep slate stroke color for map text outlines
+text_outline_alpha = 0.80     # Opacity of the map text outline stroke
+text_shadow_dy_px = 3         # Vertical drop-shadow offset in pixels for map labels and titles
+text_shadow_blur_px = 8       # Gaussian blur radius in pixels for map text drop shadows
+text_shadow_alpha = 0.65      # Opacity of map text drop shadows
+figure_px = 156               # Default font size in pixels for standalone hero numbers and animated counters
+counter_s = 1.2               # Default duration in seconds for numeric count-up animations
+# Fallback OKLCH-balanced categorical palette (lightness L 0.40-0.82, chroma C <= 0.12) assigned sequentially
+# to map entities that do not have a fixed entry in [theme.entities]. Adjacent colors maximize hue separation.
 palette = ["#136868", "#5F4025", "#74364B", "#796394", "#75A58B", "#6A662B", "#B56A95", "#4B4D8B", "#C99D4E",
            "#6B8B5A", "#437AA6", "#9C443B", "#A7693C", "#A19073", "#549CC0", "#70B8C6", "#AEC8DC"]
 
-[camera]                      # camera: continuous push-in/pull-back
-                              # frames break a layout rule (0.75, 0.5, 0.25, 0 of this size)
-max_zoom = 16                 # deepest camera zoom: country-scale close-ups from a whole-map source
-# flow camera paths (camera key move "flow") lean into their motion like a drone: fitted to the Amazon reference
-# (UW3mWOVzWvU, 2026-11-02): perspective grows with screen speed, the map banks with sideways travel
-bank_roll = 12                # deg of roll per frame width / s sideways
-bank_tilt = 9                 # deg of extra tilt per frame width / s of screen speed
-bank_max_roll = 20
-bank_max_tilt = 16
-bank_smooth_s = 0.8
+# Camera rig kinematics, continuous micro-pulsing during holds, and 2.5D perspective banking.
+[camera]
+max_zoom = 16                 # Maximum permitted camera zoom multiplier (enables seamless transitions from continental macro views to 16x micro-enclave close-ups)
+pulse_zoom = 0.18             # Logarithmic zoom amplitude for rhythmic push-in pulses during narrative holds so the viewport never appears frozen
+pulse_s = 0.85                # Duration in seconds of each subtle push-in camera pulse
+pulse_gap_s = 0.45            # Interval in seconds between consecutive camera pulses during a hold window
+pulse_pan = 0.02              # Lateral drift fraction coupled to each camera pulse
+pulse_anchor = [0.5, 0.48]    # Normalized viewport anchor point (x, y) centered within the Z2 map focus zone
+pulse_direction = "in"        # Default direction of camera micro-pulses ("in" = progressive push-in)
+# Aerodynamic drone-style banking applied to "flow" camera path segments: horizontal lateral velocity induces
+# roll banking, while forward screen velocity increases perspective pitch tilt.
+bank_roll = 12                # Roll angle in degrees per frame-width/second of lateral camera velocity
+bank_tilt = 9                 # Additional pitch tilt angle in degrees per frame-width/second of total screen velocity
+bank_max_roll = 20            # Maximum clamp angle in degrees for camera roll banking
+bank_max_tilt = 16            # Maximum clamp angle in degrees for dynamic velocity-induced pitch tilt
+bank_smooth_s = 0.8           # Exponential smoothing time constant in seconds for roll and tilt transitions
 
-[transitions]                 # hard cut on a visual-type change, short state change on one map
-kind = "cut"                  # every boundary is a hard cut unless a rule or a segment transition_in says otherwise
-same_type = { map = "state" } # map -> map on the same map_asset: 0.2 s state dissolve, never a long crossfade
-state_s = 0.35                # state dissolve length
-fade_s = 0.5                  # crossfade only when requested explicitly (timeline transition_in = "crossfade")
-page_turn = false             # Arundaya rejects page-turn / paper transitions (Siam revision 2)
-map_morph = false             # morph off by default in Geoverum (P20; enable via profile_overrides when needed)
+# Inter-segment transition defaults and timing parameters.
+[transitions]
+kind = "cut"                  # Default transition between distinct visual types is an instantaneous hard cut
+same_type = { map = "state" } # Consecutive map segments sharing the same basemap asset use a 0.35 s state dissolve rather than a hard cut or long crossfade
+state_s = 0.35                # Duration in seconds of the same-basemap state dissolve
+fade_s = 0.5                  # Duration in seconds when an explicit "crossfade" transition is requested in the timeline
+whip_out_s = 0.12             # Acceleration phase duration in seconds at the end of the outgoing shot during a zoom_whip transition
+whip_blur_in_s = 0.12         # Peak directional blur duration in seconds bridging the cut in a zoom_whip transition
+whip_in_s = 0.35              # Deceleration settling phase duration in seconds at the start of the incoming shot in a zoom_whip transition
+whip_scale = 1.35             # Scale multiplier reached during a zoom_whip transition
+whip_blur = 0.14              # Normalized radial/directional blur strength during a zoom_whip transition
+page_turn = false             # Disables 3D curl/page-turn paper transitions globally to maintain a clean editorial cut/whip aesthetic
+map_morph = false             # Disables automatic satellite-to-schematic morphing by default (can be enabled per segment via profile_overrides)
 
-[reference_style.transitions]           # kelompok F: kamera dan transisi (pilihan per segmen)
-extra_kinds = ["zoom_blur", "warp_blur", "zoom_whip", "flash", "wipe_circle"]  # transisi tambahan yang boleh dipakai
-continuous_shot = true        # satu shot kontinyu gaya fly-through (tanpa cut) boleh dipakai; kamera tetap bergerak terus
-tilt_latitude = true          # tilt kamera untuk menyamakan lintang dua tempat (referensi Gulf Stream)
+# Stage 4 optional visual effects parameters (each effect is off by default and enabled per segment only when specified in gsap_scene_config).
+[fx.grid]
+colour = "#1E5AA8"            # Primary grid line color for deep-ocean background grids
+bg = "#081C38"                # Deep navy background fill behind floating map cards or globes
+cell_pct = 4.0                # Grid cell spacing expressed as a percentage of canvas width
+line_px = 2                   # Grid line stroke width in pixels
+alpha = 0.45                  # Opacity of the background grid lines
+graticule_spacing_deg = 20    # Latitude/longitude interval in degrees for spherical graticule overlays
+graticule_colour = "#7EC8FF"  # Light cyan stroke color for latitude/longitude graticule lines
+graticule_alpha = 0.30        # Opacity of spherical graticule lines
 
-[reference_style.fill]                        # kelompok A: isian dan sorotan wilayah (pilihan per entitas/fase, bukan global)
-hatch = true                  # isian garis diagonal per fase (mis. fase konflik); polos untuk fase lain
-hatch_angle_deg = 45
-double_layer = true           # satu region boleh dua fill bertumpuk (mis. daratan + patch below-sea-level)
-policy_fill = true            # fill kategorikal berbasis kebijakan (mis. zona hijau/merah SIMPAN)
-spotlight_dim = true          # peredupan satu sisi + sorotan pada entitas (mis. Point Roberts)
-coast_glow = true             # garis pantai menyala (referensi renang garis lurus)
-heatmap = true                # choropleth kepadatan (krem -> oranye -> merah)
+[fx.stars]
+count = 450                   # Number of background star particles rendered in 3D globe space scenes
+twinkle = 0.18                # Amplitude of periodic star brightness modulation
+parallax = 0.22               # Parallax displacement factor relative to camera pan/rotation
 
-[reference_style.label]                       # kelompok B: gaya label dan tipografi (pilihan per label)
-types = ["plain", "banner", "typing", "handwritten", "slanted_route"]
-banner_bg = "#1a1a1a"         # banner gelap + teks putih (referensi Korea)
-typing_chars_per_s = 20       # label diketik huruf-per-huruf (referensi Angle Inlet, Point Roberts, Stanstead)
-handwritten_arrow = true      # tulisan tangan + panah penunjuk (referensi Erik the Red)
-stamp = true                  # stempel kuning miring (referensi ICELAND / GREENLAND)
-title_cinematic = true        # judul raksasa sinematik di atas region (referensi Netherlands, Dutch, Gulf Stream)
-title_morph = true            # judul berubah huruf-per-huruf (referensi Deutsch -> Dutch)
+[fx.halo]
+colour = "#7EC8FF"            # Atmospheric rim-glow color around the 3D globe or highlighted horizon
+width_pct = 3.2               # Halo thickness expressed as a percentage of globe radius
+alpha = 0.65                  # Opacity of the atmospheric halo
 
-[reference_style.data_viz]                     # kelompok C: angka sebagai tokoh
-count_up = true               # count-up populasi / jarak / lebar (referensi 54; 1.191; 7.100 km; 5->50 km)
-thermometer = true            # termometer menghitung suhu (referensi -10C; 28C)
-stat_box = true               # kotak data persentase (referensi 4% / 40%)
-flame_numbers = true          # angka neon api (referensi $42.000.000; 3.700 ac; 250 years)
+[fx.hatch]
+angle = 45                    # Diagonal stripe orientation in degrees for hatched polygon fills (disputed zones, underwater areas, phase overlays)
+spacing_px = 12               # Center-to-center distance in pixels between parallel hatch stripes
+line_px = 3                   # Stroke thickness in pixels of each diagonal hatch stripe
+colour = "#FFFFFF"            # Default stripe color when not overridden by the region's entity color
+alpha = 0.65                  # Opacity of diagonal hatch stripes over the base polygon fill
 
-[reference_style.overlay]                     # kelompok D: ikon, karakter, dan gelembung
-speech_bubble = true          # gelembung komik teks hitam di atas putih (referensi We're Danish!; ICELAND!)
-characters = true             # ikon kartun antropomorfik: mata, lengan, wajah Viking, Erik the Red
-ships = true                  # kapal layar berlayar + rute kurva + peti (referensi ekspansi kolonial, Viking)
-city_icons = true             # kincir berlabel kota, ikon industri, medali, lencana tengkorak, segitiga peringatan
-weather_icons = true          # matahari, salju, awan salju, salju dicoret (referensi Gulf Stream)
-snow_particles = true         # partikel salju overlay penuh layar (referensi Gulf Stream, Alaska)
-medal = true                  # medali emas pita merah (referensi Belanda)
+[fx.bubble]
+style = "light"               # High-contrast white speech bubble with dark ink and comic pointer tail
+font_px = 46                  # Font size in pixels for speech bubble dialogue text
+pop_frames = 5                # Elastic pop-in duration in frames at 30 fps (~167 ms)
+max_width_pct = 0.60          # Maximum bubble width as a fraction of canvas width
+max_bottom_pct = 0.70         # Lowest permitted vertical position as a fraction of canvas height (keeps bubbles above the caption zone)
+gap_px = 24                   # Minimum pixel clearance between speech bubbles and adjacent pins or badges
 
-[reference_style.scene_variants]              # kelompok E: adegan non-peta sebagai latar penuh
-document = true               # dokumen arsip (referensi Homestead Act)
-ink_illustration = true       # ilustrasi tinta di kertas kusut (referensi wagon, rumah)
-parchment_map = true          # peta perkamen + potret lukisan (referensi Belanda, Holy Roman Empire)
-live_footage = true           # footage live: api, retakan, arang (referensi Centralia)
-framed_photo = true           # foto berbingkai krem (referensi Centralia)
-cross_section = true          # diagram penampang berlapis + sungai bawah tanah (referensi Amazon/Hamza)
-schematic_hud = true          # peta skematik garis + blok + lingkaran pemindai (referensi Centralia)
-telescope = true              # vignette teleskop bulat + laut/langit (referensi ICELAND!)
+[fx.flag_character]
+wave_amplitude = 0.035        # Horizontal cloth-wave displacement amplitude as a fraction of badge width
+wave_hz = 0.9                 # Oscillation frequency in Hz for the waving flag animation
+slices = 16                   # Number of vertical mesh slices used to deform the waving flag
+eye_pct = 18                  # Expressive eye height as a percentage of the flag character body
+blink_period_s = 2.8          # Average interval in seconds between eye blinks
+blink_frames = 4              # Duration of a single blink in frames at 30 fps
+shadow_px = 16                # Drop-shadow blur radius in pixels beneath the flag character
 
-[reference_style.overlap]                     # kelompok G: lapisan tumpuk (prinsip: tumpang tindih BOLEH, bukan pelanggaran)
-allowed = true                # elemen boleh bertumpuk mengikuti urutan visual yang direncanakan kreator
-rule = "readability"          # satu-satunya syarat: teks yang bertumpuk tetap terbaca (kontras cukup)
-forbid = []                   # tidak ada larangan tumpang tindih; daftar ini sengaja kosong
+[fx.cutaway]
+reveal_s = 0.5                # Slide-in/scale reveal duration in seconds for 2D/3D geological cross-section or inset panels
+label_px = 42                 # Font size in pixels for depth, altitude, and stratum annotations inside a cutaway diagram
+line_px = 3                   # Callout leader line thickness in pixels
+height_ratio = 0.58           # Fraction of the vertical canvas allocated to a split cutaway diagram
+inset_border_px = 6           # White/cream frame border thickness in pixels around picture-in-picture photo or footage insets
+inset_gap_px = 24             # Margin in pixels between an inset frame and the safe-area boundary
 
-[reference_style.style.unified]             # gaya kolaborasi: satu bahasa visual di semua segmen
-lower_third_card = false      # tanpa kartu lower-third; teks langsung di atas peta
-dmz_glow = true               # zona DMZ / perbatasan menyala
-border_pulse = true           # denyut pada garis batas
-great_circle = true           # rute mengikuti great-circle
-flag_fill = true              # isi wilayah dengan warna bendera
-year_big = true               # tahun besar sebagai judul era
-bubble_one_word = true        # gelembung bicara satu kata
-typing_chars_per_s = 20       # typing default: 20 karakter/detik (samakan dengan [reference_style.label])
-signal_colors_locked = true   # sinyal warna dikunci: 4 warna, jangan ditukar
-signal_colors = { distance = "#FFD417", usa = "#00B0FF", pin = "#C4302A", text = "#FFFFFF" } # kuning jarak, cyan USA, merah pin, putih teks
+[fx.particles]
+duration_s = 2.5              # Default particle emitter burst duration in seconds
+max_count = 220               # Maximum concurrent particles (snowflakes, embers, or ash) on screen
+gravity = 0.18                # Downward acceleration factor per frame
+fire_colours = ["#FFF176", "#FF9800", "#FF3D00"] # Color ramp from bright yellow core to deep orange-red ember
 
-[render]                      # upload master; 1440p / 4K: raise final_maxrate_kbps (45000 / 100000) in the project
-hf_quality = "high"           # HyperFrames: JPEG q100 screenshots + x264 slow
-hf_crf = 8
-segment_crf = 8               # intermediates: near-lossless, no fastdecode tune (keeps CABAC and deblocking)
-segment_preset = "medium"
-segment_tune = "none"
-final_crf = 16                # upload file: x264 medium, CRF 16 (composite ~50% faster than veryslow CRF 12), 10-bit High 10, capped at 40 Mb/s
-final_preset = "medium"
-final_tune = "none"
-final_maxrate_kbps = 40000
-final_bit_depth = 10          # no encoder banding in sky, sea and glow gradients; YouTube accepts 10-bit uploads
-map_jpeg_quality = 95         # map derivatives and deep tiles
+# Catalog of modular visual, typographic, data-visualization, and scene-composition capabilities exposed to
+# the AI storyboard director and timeline compiler (documented in detail in docs/REFERENCE-STYLE.md).
+# All capabilities below are per-segment creator options rather than mandatory global constraints.
 
-[gates]                       # style gates whose fails block a build; every other style gate only warns
-require = []                  # 2026-11-04: no style gate blocks; all style gates only warn
-advisory = []
+[reference_style.transitions] # Group F: Camera continuity and transition vocabulary (selectable per segment boundary)
+extra_kinds = ["zoom_blur", "warp_blur", "zoom_whip", "flash", "wipe_circle"] # Extended transition types permitted alongside hard cuts and state dissolves
+continuous_shot = true        # Enables unbroken multi-stop fly-through camera choreography across a single basemap without intermediate cuts
+tilt_latitude = true          # Permits camera roll/tilt rotation to align distant regions sharing the same latitude along a horizontal comparison axis
 
-[gates.hook]
-vo_warn_s = 0.2
-vo_fail_s = 0.8
-caption_warn_s = 0.2
-caption_fail_s = 1.0
-graphic_warn_s = 1.5
-graphic_fail_s = 2.0
-open_on_moving_map = true
+[reference_style.fill]        # Group A: Territorial polygon fill and boundary highlight modes (selectable per entity or narrative phase)
+hatch = true                  # Diagonal 45-degree hatched stripe fill for contested territories, sub-sea-level zones, or secondary administrative layers
+hatch_angle_deg = 45          # Default diagonal stripe angle in degrees
+double_layer = true           # Allows stacking a secondary hatched or localized sub-region polygon over an existing base country fill
+policy_fill = true            # Allows coloring polygons by binary legal/policy status (e.g., green permitted vs. red prohibited) instead of sovereign identity
+spotlight_dim = true          # Allows dimming surrounding map regions while illuminating a target micro-enclave or peninsula with a high-contrast halo
+coast_glow = true             # Enables luminous cyan shoreline or river-basin tracing along coastal and hydrological geometries
+heatmap = true                # Enables multi-stop choropleth density gradients (cream -> orange -> crimson) across sub-national divisions
+territory_sweep = true        # Enables animated frontline advancement and territorial control sweeps across sequential historical phases
+dmz_fire_border = true        # Enables high-intensity glowing or pulsing boundary lines along fortified borders and parallel lines
 
-[gates.camera]                # P01: planned camera motion
-hold_warn_s = 1.7
-hold_fail_s = 2.0
-moving_warn = 0.8
-still_zoom_ln_s = 0.05        # zoom speed below this is still; the 0.06 ln/s drift is moving
-still_pan_w_s = 0.02
-min_drift_per_s = 0.06        # P02: the drift between camera moves stays >= 0.06 ln/s (theme camera_drift_per_s)
+[reference_style.label]       # Group B: Map label and display typography treatments (selectable per text element)
+types = ["plain", "banner", "typing", "handwritten", "slanted_route"] # Permitted visual treatments for map text elements
+banner_bg = "#18181c"         # Opaque dark charcoal pill background (#18181c) paired with bold white text for high-salience territory and status tags
+typing_chars_per_s = 20       # Character reveal speed (20 chars/s) for typewriter-style place name and coordinate callouts
+handwritten_arrow = true      # Enables handwritten script annotations paired with curved hand-drawn pointer arrows
+stamp = true                  # Enables angled rectangular stamp overlays for emphatic naming or classification beats
+title_cinematic = true        # Enables oversized fly-in display titles with ambient glow positioned over the active map region
+title_morph = true            # Enables character-by-character etymological or historical spelling transformations on display titles
+equation_slash = true         # Enables comparative text equations where an equals sign (=) is dynamically struck through into a not-equal sign (!=)
 
-[gates.novelty]
-max_gap_s = 3.0
+[reference_style.data_viz]    # Group C: Quantitative actors and on-map measurement graphics
+count_up = true               # Enables animated numeric counters that interpolate from zero or between comparative values
+thermometer = true            # Enables vertical thermometer gauges with animated mercury fill and synchronized temperature readouts
+stat_box = true               # Enables compact rounded data pills displaying comparative population, area, or percentage ratios
+flame_numbers = true          # Enables high-chroma neon/fire-styled numeric callouts for financial cost, acreage, or duration metrics
+timeline_ruler = true         # Enables horizontal chronological span bars (e.g., start year to end year) anchored across the map
+measure_bar = true            # Enables double-arrow geodesic dimension bars displaying dual-unit measurements (kilometers and miles)
 
-[gates.silence]
-max_gap_s = 0.8
-threshold_db = -40.0
+[reference_style.overlay]     # Group D: Symbolic cutout props, anthropomorphic badges, and environmental overlays
+speech_bubble = true          # Enables comic-style speech bubbles anchored to territories, ships, or characters for short punchy dialogue
+characters = true             # Enables expressive cartoon/anthropomorphic emblems (eyes, muscular arms, historical portraits) on territories
+ships = true                  # Enables animated vessels, vehicles, and cargo icons traveling along curved maritime or overland routes
+city_icons = true             # Enables white-bordered cutout stickers (windmills, hazard triangles, skull badges, industrial icons) at pin coordinates
+weather_icons = true          # Enables meteorological symbols (sun, snowflakes, rain clouds, crossed-out snow) for climate comparisons
+snow_particles = true         # Enables full-screen environmental particle overlays (falling snow, rising embers, or smoke)
+medal = true                  # Enables rank/achievement medal badges anchored to leading statistical regions
+flag_badges_moving = true     # Enables circular flag tokens that translate dynamically across the map to track troop movements or migrations
 
-[gates.keyword_return]
-hook_s = 3.0
-end_s = 5.0
-min_chars = 4
+[reference_style.scene_variants] # Group E: Full-frame non-satellite evidence and historical scene types
+document = true               # Enables full-frame archival legislation, treaty, or newspaper document scenes with highlighted clauses
+ink_illustration = true       # Enables period ink illustrations on textured paper backgrounds for historical narrative beats
+parchment_map = true          # Enables historical cartographic atlas scenes with vintage paper grading, graticule grids, and portrait insets
+live_footage = true           # Enables full-frame or framed real-world documentary video clips for physical ground-truth evidence
+framed_photo = true           # Enables white/cream-bordered historical or geographic photographs tilted over the background canvas
+cross_section = true          # Enables 2D side-view geological/hydrological cutaways and 3D horizon altitude profiles
+schematic_hud = true          # Enables high-contrast vector street-grid schematics with animated building/population counters and postal codes
+telescope = true              # Enables circular spyglass/telescope vignette framing for discovery and maritime sighting beats
 
-[gates.ending_keyword]         # K02: the keyword is still readable on the final frame
-hook_s = 3.0
-end_s = 5.0
-min_chars = 4
+[reference_style.overlap]     # Group G: Visual layering and element overlap policy
+allowed = true                # Permits intentional visual stacking (e.g., captions over banners, hero numbers over regions, cutout icons over borders)
+rule = "readability"          # Enforces foreground-to-background luminance contrast as the sole criterion governing overlapping elements
+forbid = []                   # Intentionally empty: no pair of visual element classes is prohibited from overlapping when contrast remains legible
 
-[gates.cta]                    # C02: no call to action and no end card
+[reference_style.style.unified] # Unified visual language constants shared across all Geoverum productions
+lower_third_card = false      # Disables generic broadcast lower-third title cards so all text and data pills integrate directly into the map space
+dmz_glow = true               # Enables high-contrast outer glow along highlighted borders, parallels, and river channels
+border_pulse = true           # Enables rhythmic opacity/width pulsing on active target rings and contested boundaries
+great_circle = true           # Renders long-distance trajectories as true spherical great-circle arcs verifiable on a 3D globe
+flag_fill = true              # Permits filling sovereign polygons directly with their national flag texture during hook or comparison beats
+year_big = true               # Displays historical epoch years as large bold typographic anchors before secondary annotations appear
+bubble_one_word = true        # Favors ultra-concise 1-4 word exclamations inside comic speech bubbles
+typing_chars_per_s = 20       # Synchronizes typewriter label speed across unified style presets (20 characters/second)
+signal_colors_locked = true   # Locks semantic signal colors to fixed hex values for instant cross-video recognition
+signal_colors = { distance = "#FFD417", usa = "#00B0FF", pin = "#C4302A", text = "#FFFFFF", conflict_red = "#D81E1E", alliance_blue = "#1868E8", empire_orange = "#F57C00", safe_green = "#28A828", empire_purple = "#6828E8" }
+
+# Encoding and rasterization quality settings for intermediate segments and final delivery masters.
+# For 1440p or 4K projects, increase final_maxrate_kbps (to 45000 or 100000) in project-level overrides.
+[render]
+hf_quality = "high"           # Instructs HyperFrames to capture lossless/q100 frames and encode with high-precision x264 parameters
+hf_crf = 8                    # Constant Rate Factor (CRF 8, near-lossless) for raw HyperFrames browser captures
+segment_crf = 8               # Constant Rate Factor (CRF 8) for per-segment intermediate MP4 files prior to final compositing
+segment_preset = "medium"     # x264 encoding preset for intermediate segments (retains CABAC and in-loop deblocking)
+segment_tune = "none"         # Disables fastdecode/zerolatency tuning so full compression efficiency is preserved
+final_crf = 16                # Constant Rate Factor (CRF 16) for the final composited delivery master
+final_preset = "medium"       # x264 preset for the final delivery master (balances high visual fidelity with practical render throughput)
+final_tune = "none"           # Standard psychovisual tuning for the final delivery master
+final_maxrate_kbps = 40000    # VBV maximum bitrate cap (40 Mbps) to prevent bitrate spikes on complex particle or grain frames
+final_bit_depth = 10          # Encodes the final master in 10-bit H.264 High 10 (yuv420p10le) to eliminate banding in dark ocean, sky, and neon glow gradients
+map_jpeg_quality = 95         # JPEG compression quality for generated basemap derivatives and deep-zoom tiles
+
+# Automated quality-gate policy (12 core integrity gates in MANDATORY_GATE_IDS always block; style gates below emit warnings).
+[gates]
+require = []                  # Empty list: all non-mandatory style gates operate in advisory warning mode so intentional creative choices are never blocked
+advisory = []                 # Optional list of flexible technical gates downgraded to warnings
+
+[gates.hook]                  # H01: Opening hook timing thresholds in the first seconds of the video
+vo_warn_s = 0.2               # Emits a warning if voiceover onset occurs later than 0.20 s
+vo_fail_s = 0.8               # Threshold (0.80 s) above which delayed voiceover onset is flagged
+caption_warn_s = 0.2          # Emits a warning if the first caption appears later than 0.20 s
+caption_fail_s = 1.0          # Threshold (1.00 s) above which delayed first caption appearance is flagged
+graphic_warn_s = 1.5          # Emits a warning if the primary visual hook graphic (region, pin, route, title) appears after 1.50 s
+graphic_fail_s = 2.0          # Threshold (2.00 s) above which delayed visual hook graphic appearance is flagged
+open_on_moving_map = true     # Requires the opening shot to begin with active camera motion from frame 0 rather than a static hold
+
+[gates.camera]                # P01 & P02: Camera motion continuity and minimum drift verification
+hold_warn_s = 1.7             # Emits a warning if the camera remains below the motion threshold for more than 1.70 s
+hold_fail_s = 2.0             # Threshold (2.00 s) above which a static camera hold is flagged
+moving_warn = 0.8             # Minimum fraction of frames (80%) across the video that must exhibit active camera movement
+still_zoom_ln_s = 0.05        # Logarithmic zoom speed floor (0.05 ln/s) below which a frame is classified as stationary in the absence of pan
+still_pan_w_s = 0.02          # Screen-width pan speed floor (0.02 W/s) below which a frame is classified as stationary in the absence of zoom
+min_drift_per_s = 0.06        # Minimum required inter-keyframe camera drift rate (0.06 ln/s, matching [theme] camera_drift_per_s)
+
+[gates.novelty]               # N01: Visual beat frequency verification
+max_gap_s = 3.0               # Maximum interval (3.0 s) allowed without a new visual event (camera pulse, label, pin, route, figure, or cut)
+
+[gates.silence]               # S01: Dead-air audio verification
+max_gap_s = 0.8               # Maximum continuous duration (0.80 s) where integrated audio falls below threshold_db
+threshold_db = -40.0          # Amplitude floor in dBFS used to detect silent gaps in the voiceover and mix
+
+[gates.keyword_return]        # K01: Narrative loop closure between opening hook and ending payoff
+hook_s = 3.0                  # Duration of the opening window (first 3.0 s) scanned for primary topic keywords
+end_s = 5.0                   # Duration of the closing window (final 5.0 s) scanned for thematic keyword recurrence
+min_chars = 4                 # Minimum token length in characters considered a substantive keyword
+
+[gates.ending_keyword]        # K02: Final-frame visual keyword persistence
+hook_s = 3.0                  # Opening window duration in seconds
+end_s = 5.0                   # Closing window duration in seconds
+min_chars = 4                 # Minimum character length for keyword matching
+
+[gates.cta]                   # C02: Prohibition of generic promotional sign-offs and subscribe end-cards
 phrases = ["terima kasih", "subscribe", "follow", "like", "share", "tonton", "kunjungi", "link di bio",
            "sampai jumpa", "jangan lupa", "selesai"]
 
-[gates.geo]                    # G02: pins on land, labels inside their own region
-require_land = false
+[gates.geo]                   # G02: Geographic coordinate placement validation
+require_land = false          # Permits pins and labels to be anchored on oceans, straits, and maritime routes as well as land polygons
 
-[gates.duration]              # long-form: owner to set (Shorts: 45..100 s)
-min_s = 60.0
-max_s = 3600.0
+[gates.duration]              # D01: Permitted total runtime window in seconds for widescreen landscape videos
+min_s = 60.0                  # Minimum total video duration in seconds for 16:9 format
+max_s = 3600.0                # Maximum total video duration in seconds for 16:9 format
 
-[gates.anti_slop]
-level = "warn"
-forbidden_hues = [[260, 310], [170, 197]]
+[gates.anti_slop]             # AS01: Detection of generic AI-generated color palettes and side-strip padding artifacts
+level = "warn"                # Emits advisory warnings without blocking the build
+forbidden_hues = [[260, 310], [170, 197]] # Flags uncalibrated neon purple/magenta (260-310 deg) and synthetic cyan-teal (170-197 deg) background washes
 
+# Persistent channel watermark burned into the safe area during the final composite mux.
 [watermark]
-text = "Geoverum"             # channel mark, bottom right inside the safe area in landscape (burned in by the final mux)
-font = "inter"
-px = 28
-corner = "bottom_right"
-colour = "#ffffff"
-opacity = 0.85
-shadow = true
+text = "Geoverum"             # Channel identifier text rendered in the lower-right safe area on landscape builds
+font = "inter"                # Typeface family for the channel watermark
+px = 28                       # Font size in pixels at 1920 x 1080 reference resolution
+corner = "bottom_right"       # Safe-area corner placement for 16:9 landscape layout
+colour = "#ffffff"            # Pure white glyph fill color
+opacity = 0.85                # Opacity (85%) so the watermark remains unobtrusive over dark satellite terrain
+shadow = true                 # Enables a subtle drop shadow for legibility over bright cloud or snow regions

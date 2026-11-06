@@ -23,31 +23,68 @@ def build_profile_patch(style: dict, breakdown: dict | None = None) -> dict:
     shot_med = float(timing.get("shot_median_s") or 0.0)
     if breakdown and not shot_med:
         shot_med = float((breakdown.get("pacing") or {}).get("median_shot_s") or 0.0)
-    if shot_med > 0:
+    min_seg = float(timing.get("min_seg_s") or (max(1.0, shot_med * 0.5) if shot_med > 0 else 0.0))
+    max_seg = float(timing.get("max_seg_s") or (max(6.0, shot_med * 3.0) if shot_med > 0 else 0.0))
+    if min_seg > 0 and max_seg > 0:
         patch["draft"] = {
-            "min_seg_s": round(max(1.0, shot_med * 0.5), 2),
-            "max_seg_s": round(max(6.0, shot_med * 3.0), 2),
+            "min_seg_s": round(min_seg, 2),
+            "max_seg_s": round(max_seg, 2),
             "map_path": True,
         }
 
     cap = style.get("caption") or {}
     cs: dict = {}
+    if cap.get("font"):
+        cs["font"] = str(cap["font"])
+    if cap.get("bold") is not None:
+        cs["bold"] = bool(cap["bold"])
+    if cap.get("size") is not None:
+        cs["size"] = int(cap["size"])
     if cap.get("outline_px") is not None:
         cs["outline"] = int(cap["outline_px"])
+    if cap.get("soft_shadow") is not None:
+        cs["soft_shadow"] = bool(cap["soft_shadow"])
+    if cap.get("max_words") is not None:
+        cs["max_words"] = int(cap["max_words"])
+    if cap.get("active_word_highlight") is not None:
+        cs["active_word_highlight"] = bool(cap["active_word_highlight"])
     pos = (cap.get("position") or "").strip().lower()
     if pos == "bottom":
-        cs["fixed_y"] = 1417
-        cs["max_bottom_y"] = 1480
+        cs["fixed_y"] = int(cap.get("fixed_y") or 1417)
+        cs["max_bottom_y"] = int(cap.get("max_bottom_y") or 1480)
     elif pos == "center":
-        cs["fixed_y"] = 960
+        cs["fixed_y"] = int(cap.get("fixed_y") or 960)
     if cs:
         patch["caption_style"] = cs
 
     aud = style.get("audio") or {}
-    audio_cfg: dict = {"target_lufs": -14.0, "true_peak": -1.5}
+    audio_cfg: dict = {
+        "target_lufs": float(aud.get("target_lufs", -14.0)),
+        "true_peak": float(aud.get("true_peak", -1.5)),
+    }
     if aud.get("music_source") == "library":
         audio_cfg["prefer_source"] = "epidemic"
     patch["audio"] = audio_cfg
+
+    th = style.get("theme") or {}
+    cam = style.get("camera") or {}
+    theme_cfg: dict = {}
+    for k in ("route_colour", "pin_colour", "label_box_colour", "region_fill_opacity", "region_edge",
+              "region_edge_px", "region_glow_px"):
+        if k in th:
+            theme_cfg[k] = th[k]
+    if "drift_per_s" in cam:
+        theme_cfg["camera_drift_per_s"] = float(cam["drift_per_s"])
+    if theme_cfg:
+        patch["theme"] = theme_cfg
+
+    cam_cfg: dict = {}
+    for k in ("max_zoom", "pulse_zoom", "pulse_s", "pulse_gap_s", "bank_roll", "bank_tilt"):
+        if k in cam:
+            cam_cfg[k] = cam[k]
+    if cam_cfg:
+        patch["camera"] = cam_cfg
+
     return patch
 
 
@@ -55,7 +92,7 @@ def format_toml_patch(patch: dict) -> str:
     lines: list[str] = []
     if "description" in patch:
         lines.append(f"description = {json.dumps(patch['description'])}")
-    for section in ("caption_style", "audio", "draft"):
+    for section in ("caption_style", "audio", "draft", "theme", "camera"):
         if section not in patch:
             continue
         lines.append(f"\n[{section}]")
