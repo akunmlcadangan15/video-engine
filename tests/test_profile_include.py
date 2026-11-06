@@ -106,6 +106,54 @@ def test_good_repository_geoverum_flatten_keeps_creative_rules():
     assert tomllib.loads(flat)["draft"]["rules"] == profiles.load("geoverum").draft.rules
 
 
+def test_good_geoverum_overrides_keep_resolved_rules_and_do_not_leak():
+    """A rules_file profile accepts legal overrides. Resolved rules stay, and one call does not change another."""
+    base = profiles.load("geoverum")
+    rules = list(base.draft.rules)
+    indo = base.data.theme.entities["Indonesia"]
+    assert base.draft.rules_file == "geoverum/creative.md" and any("≠" in r for r in rules)
+    a = profiles.load("geoverum", {"theme": {"entities": {"Indonesia": "#010203"}}})
+    b = profiles.load("geoverum", {"theme": {"entities": {"Sekutu": "#445566"}}})
+    assert a.data.theme.entities["Indonesia"] == "#010203"
+    assert a.data.theme.entities["Sekutu"] == base.data.theme.entities["Sekutu"]
+    assert b.data.theme.entities["Sekutu"] == "#445566" and b.data.theme.entities["Indonesia"] == indo
+    assert a.draft.rules == rules and b.draft.rules == rules
+    assert a.draft.rules_file == b.draft.rules_file == "geoverum/creative.md"
+    assert base.draft.rules == rules and base.data.theme.entities["Indonesia"] == indo
+    assert profiles.load("geoverum").blake3 == base.blake3
+
+
+def test_good_overrides_keep_unicode_and_backslash_rules(pdir):
+    rules = [
+        "equals sign struck through into ≠",
+        r"C:\users\geo \u2260 \1 \g<name>",
+        'say "hello" then \\',
+    ]
+    pdir("ov/creative.md", "".join(f"- {rule}\n" for rule in rules))
+    pdir("ov.toml", '[draft]\nmin_seg_s = 1.5\nmax_seg_s = 4.0\nrules_file = "ov/creative.md"\n')
+    base = profiles.load("ov")
+    over = profiles.load("ov", {"theme": {"entities": {"Indonesia": "#010203"}}})
+    assert over.draft.rules == rules == base.draft.rules
+    assert over.draft.rules_file == "ov/creative.md"
+    assert over.data.theme.entities["Indonesia"] == "#010203"
+    assert base.data.theme.entities.get("Indonesia") != "#010203"
+
+
+def test_bad_overrides_reject_unknown_tables_and_illegal_colours():
+    with pytest.raises(EngineError, match="cannot be overridden"):
+        profiles.load("geoverum", {"draft": {"rules": ["nope"]}})
+    with pytest.raises(EngineError, match="theme colour"):
+        profiles.load("geoverum", {"theme": {"entities": {"Indonesia": "red"}}})
+
+
+def test_bad_profile_file_with_rules_and_rules_file_is_rejected(pdir):
+    pdir("both/creative.md", "- from the file\n")
+    pdir("both.toml", '[draft]\nmin_seg_s = 1.5\nmax_seg_s = 4.0\nrules = ["inline"]\n'
+                      'rules_file = "both/creative.md"\n')
+    with pytest.raises(EngineError, match="mutually exclusive"):
+        profiles.load("both")
+
+
 def test_good_repository_geoverum_loads_from_its_include_files():
     repo = config.PROFILES_DIR
     text = profiles.path_of("geoverum").read_text()

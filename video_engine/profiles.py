@@ -1331,10 +1331,20 @@ def _override(base: Profile, over: dict) -> Profile:
     if (hit := _OVERRIDDEN.get(key)) is not None:
         return hit
     raw = _drop_nulls(json.loads(base.data.model_dump_json(by_alias=True)), over)
+    # load() resolves rules_file into draft.rules and keeps the path. That pair is one source,
+    # already rejected at parse when a profile file itself contains both. Revalidation here only
+    # checks the overridden tables, so the path is set aside and restored on the new profile.
+    draft = raw.get("draft")
+    rules_file = None
+    if isinstance(draft, dict) and draft.get("rules") and draft.get("rules_file"):
+        rules_file = draft["rules_file"]
+        raw = {**raw, "draft": {**draft, "rules_file": None}}
     try:
         data = ProfileData.model_validate(raw)
     except ValidationError as e:
         raise EngineError(f"profile '{base.name}' with profile_overrides: {e}") from e
+    if rules_file is not None:
+        data.draft.rules_file = rules_file
     prof = Profile(base.name, data, blake3_json({"profile": base.blake3, "overrides": over}))
     _OVERRIDDEN[key] = prof
     return prof
