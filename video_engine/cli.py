@@ -588,8 +588,35 @@ def cmd_clean(a) -> int:
             removed.append(str(d))
     kept = []
     if a.cache:
-        from . import cache
-        kept = cache.clear()["skipped_leased"]
+        from . import cache, cache_prune
+        if a.project:
+            root = Path(config.CACHE_DIR)
+            with cache._mu:
+                saved_depth = cache._session.depth
+                cache._session.depth = 0
+                try:
+                    refs, probs = cache_prune.referenced([Path(pr).resolve() for pr in a.project], root)
+                finally:
+                    cache._session.depth = saved_depth
+            if refs and not probs:
+                with cache.locked(root, exclusive=True):
+                    held, _ = cache.leased(root)
+                    for k in cache_prune.PRUNE_KINDS:
+                        d = root / k
+                        if not d.is_dir():
+                            continue
+                        for f in sorted(p for p in d.iterdir() if p.is_file() and not p.name.endswith(".tmp")):
+                            if not cache_prune.is_referenced(f, refs):
+                                continue
+                            rel = str(f.relative_to(root))
+                            if rel in held:
+                                kept.append(rel)
+                            else:
+                                f.unlink(missing_ok=True)
+            else:
+                kept = cache.clear()["skipped_leased"]
+        else:
+            kept = cache.clear()["skipped_leased"]
     print(("removed " + ", ".join(removed) if removed else "removed nothing")
           + (f" and the cache entries in {config.CACHE_DIR}" if a.cache else "")
           + "".join(f"\nkept (leased by a running build): {x}" for x in kept))

@@ -42,16 +42,21 @@ def referenced(projects: list[Path], root: Path | None = None) -> tuple[set[str]
                     sk, mk = hyperframes.keys(s, tl, p)
                     names |= {sk + ".mp4", mk + ".jpg"}
                     names.add(DOM_REF + sk)
-                    scene = hyperframes.scene_data(s, tl, p)
-                    names |= {Path(e["img"]).name for e in scene.get("deep", [])}
-                    if (sc := s.gsap_scene_config) and sc.map_asset and (en := maps.effective_cache_name(p / sc.map_asset)):
-                        names.add(en)
-                    if m := scene.get("morph"):
-                        names |= {maps.map_key(p / m["asset"], maps._need_w(scene), maps._q(scene)) + ".jpg",
-                                  *(Path(e["img"]).name for e in m["deep"])}
-                    if "globe" in scene:
-                        names |= globe.cache_names(s, tl, p, scene["globe"])
-                    names |= props.model_cache_names(s, p, tl.settings.fps)
+                    panels = (hyperframes.split_panels(s, tl)
+                              if s.gsap_scene_config and s.gsap_scene_config.split is not None else [(s, tl)])
+                    for ps, pt in panels:
+                        psk, pmk = hyperframes.keys(ps, pt, p)
+                        names |= {psk + ".mp4", pmk + ".jpg", DOM_REF + psk}
+                        scene = hyperframes.scene_data(ps, pt, p)
+                        names |= {Path(e["img"]).name for e in scene.get("deep", [])}
+                        if (sc := ps.gsap_scene_config) and sc.map_asset and (en := maps.effective_cache_name(p / sc.map_asset)):
+                            names.add(en)
+                        if m := scene.get("morph"):
+                            names |= {maps.map_key(p / m["asset"], maps._need_w(scene), maps._q(scene)) + ".jpg",
+                                      *(Path(e["img"]).name for e in m["deep"])}
+                        if "globe" in scene:
+                            names |= globe.cache_names(ps, pt, p, scene["globe"])
+                        names |= props.model_cache_names(ps, p, pt.settings.fps)
                 rendered = root / "segments" / (sk + ".mp4")
                 if rendered.is_file() and (gk := grade.key(s, tl, p, rendered)):
                     names.add(gk + ".mp4")

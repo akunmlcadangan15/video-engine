@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+from pathlib import Path
 from dataclasses import dataclass, field
 
 from . import base
@@ -67,6 +68,26 @@ def _b64(b: bytes) -> str:
     return base64.b64encode(b).decode()
 
 
+def _audio_payload(path: Path) -> tuple[bytes, str]:
+    """Return (audio_bytes, format_label) supported by OpenAI-compatible input_audio ('wav' or 'mp3').
+    Non-WAV/MP3 containers (.m4a, .ogg, .flac, .aac) are transcoded via FFmpeg to 16 kHz mono WAV."""
+    ext = path.suffix.lower()
+    if ext == ".wav":
+        return path.read_bytes(), "wav"
+    if ext == ".mp3":
+        return path.read_bytes(), "mp3"
+    import subprocess
+    from .. import config
+    r = subprocess.run(
+        [config.FFMPEG, "-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", "-"],
+        capture_output=True,
+    )
+    if r.returncode != 0 or not r.stdout:
+        tail = (r.stderr or b"").decode(errors="replace").strip()[-300:]
+        raise EngineError(f"audio transcode failed for '{path}': {tail or f'exit {r.returncode}'}")
+    return r.stdout, "wav"
+
+
 class OpenAICompatProvider:
     def __init__(self, entry: Entry, post=None):
         self.entry = entry
@@ -89,8 +110,8 @@ class OpenAICompatProvider:
             elif isinstance(p, Image):
                 out.append({"type": "image_url", "image_url": {"url": f"data:{p.mime};base64,{_b64(p.data)}"}})
             elif isinstance(p, Media) and p.kind == "audio":
-                fmt = "wav" if p.path.suffix.lower() == ".wav" else "mp3"
-                out.append({"type": "input_audio", "input_audio": {"data": _b64(p.path.read_bytes()), "format": fmt}})
+                raw, fmt = _audio_payload(p.path)
+                out.append({"type": "input_audio", "input_audio": {"data": _b64(raw), "format": fmt}})
             elif isinstance(p, Media):
                 out.append({"type": "video_url", "video_url": {"url": f"data:{p.mime};base64,{_b64(p.path.read_bytes())}"}})
         return out

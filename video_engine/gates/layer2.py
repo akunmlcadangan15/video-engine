@@ -700,12 +700,29 @@ def r63_dom(tl: Timeline, project_dir: Path, workdir: Path, snaps: dict) -> tupl
     def one(s: Segment) -> list[Finding]:
         if s.gsap_scene_config.split is not None:   # split screen: each panel probed at its own size
             fs = []
+            div = s.gsap_scene_config.split.divider_px
             for k, (ps, pt) in enumerate(hyperframes.split_panels(s, tl)):
-                fs += panel(ps, pt, f"seg{s.seg_index:03d}_{'tb'[k]}", " (bottom panel)" if k else " (top panel)")
+                y_off = float(pt.settings.height + div) if k else 0.0
+                fs += panel(ps, pt, f"seg{s.seg_index:03d}_{'tb'[k]}", " (bottom panel)" if k else " (top panel)", y_off)
             return fs
-        return panel(s, tl, f"seg{s.seg_index:03d}", "")
+        return panel(s, tl, f"seg{s.seg_index:03d}", "", 0.0)
 
-    def panel(s: Segment, tl: Timeline, name: str, where: str) -> list[Finding]:
+    def _merge_panel_dom(dst: dict, src: dict, y_off: float) -> None:
+        """Merge bottom-panel DOM rects (shifted by y_off into full-frame coordinates) into the segment's DOM record."""
+        def shift_rects(rects: list[dict]) -> list[dict]:
+            return [{**r, "id": f"bottom:{r['id']}", "y": r["y"] + y_off} for r in rects]
+        for key in ("times", "all_times"):
+            by_t = {round(item["t"], 4): item for item in dst.get(key, [])}
+            for item in src.get(key, []):
+                tk = round(item["t"], 4)
+                if tk in by_t:
+                    by_t[tk]["rects"] = list(by_t[tk]["rects"]) + shift_rects(item["rects"])
+                    by_t[tk]["paints"] = list(by_t[tk].get("paints", [])) + list(item.get("paints", []))
+                else:
+                    dst.setdefault(key, []).append({**item, "rects": shift_rects(item["rects"])})
+        dst["build_s"] = round(dst.get("build_s", 0.0) + src.get("build_s", 0.0), 3)
+
+    def panel(s: Segment, tl: Timeline, name: str, where: str, y_off: float = 0.0) -> list[Finding]:
         W, H = tl.settings.width, tl.settings.height
         try:
             t0 = time.perf_counter()
@@ -733,7 +750,10 @@ def r63_dom(tl: Timeline, project_dir: Path, workdir: Path, snaps: dict) -> tupl
                                  "times": [i for i in res["times"] if i.get("clip") or i.get("line_clip")]}
             res["times"] = [i for i in res["times"] if any(abs(i["t"] - t) < 1e-3 for t in times)]   # probe t: 4 dp
         mark_flying(res, scene)
-        dom.setdefault(s.seg_index, res)
+        if s.seg_index not in dom:
+            dom[s.seg_index] = res
+        elif y_off > 0:
+            _merge_panel_dom(dom[s.seg_index], res, y_off)
         fs = []
         ov_ok = bool((profiles.of(tl).reference_style or {}).get("overlap", {}).get("allowed"))
         for item in res["times"]:

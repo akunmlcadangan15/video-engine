@@ -123,6 +123,22 @@ def test_good_turntable_frames_turn_and_compose_a_sheet(tmp_path):
     assert list(Image.open(sh).crop((64, 0, 128, 64)).get_flattened_data()) == list(Image.open(fs[1]).get_flattened_data())
 
 
+def test_bad_model_uri_that_escapes_its_directory_is_rejected(tmp_path):
+    """A glTF buffer or OBJ mtllib outside the model directory is rejected; a sibling file is not."""
+    src = _gltf(tmp_path / "m" / "box.gltf")
+    g = json.loads(src.read_text())
+    g["buffers"][0]["uri"] = "../outside.bin"
+    src.write_text(json.dumps(g))
+    with pytest.raises(EngineError, match="escapes model directory"):
+        models.refs(src)
+    ok = _gltf(tmp_path / "m" / "ok.gltf")
+    assert any(p.name == "ok.bin" for p in models.refs(ok))
+    obj = _obj(tmp_path / "n" / "box.obj")
+    obj.write_text(obj.read_text().replace("mtllib box.mtl", "mtllib ../x.mtl"))
+    with pytest.raises(EngineError, match="escapes model directory"):
+        models.refs(obj)
+
+
 def test_bad_missing_or_empty_model_raises(tmp_path):
     with pytest.raises(EngineError, match="not found"):
         models.render(tmp_path / "nope.glb")

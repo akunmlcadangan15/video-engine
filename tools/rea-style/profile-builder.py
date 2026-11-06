@@ -68,8 +68,12 @@ def build_profile_patch(style: dict, breakdown: dict | None = None) -> dict:
         "target_lufs": float(aud.get("target_lufs", -14.0)),
         "true_peak": float(aud.get("true_peak", -1.5)),
     }
-    if aud.get("music_source") == "library":
-        audio_cfg["prefer_source"] = "epidemic"
+    if aud.get("lra") is not None:
+        audio_cfg["lra"] = float(aud["lra"])
+    if aud.get("tolerance_lu") is not None:
+        audio_cfg["tolerance_lu"] = float(aud["tolerance_lu"])
+    if aud.get("music_source") in ("library", "epidemic") or aud.get("require_source") == "epidemic":
+        audio_cfg["require_source"] = "epidemic"
     patch["audio"] = audio_cfg
 
     th = style.get("theme") or {}

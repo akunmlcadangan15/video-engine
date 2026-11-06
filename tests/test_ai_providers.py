@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import json
 import subprocess
+import wave
 
 import pytest
 
-from video_engine import ai, draft
+from video_engine import ai, config, draft
 from video_engine.ai import agent, base, gemini, openai_compat, tasks
 from video_engine.ai.base import AwaitingAgent, Image, Media, Text
 from video_engine.ai.gemini import GeminiProvider
@@ -397,6 +398,28 @@ def test_good_openai_audio_capability_sends_input_audio(key, tmp_path):
     p = openai_compat.OpenAICompatProvider(entry(capabilities=["image", "audio"]), FakePost({}))
     c = p.content([Media(wav, "audio", "audio/wav", "n", transcript="t")])
     assert c == [{"type": "input_audio", "input_audio": {"data": "UklGRmRhdGE=", "format": "wav"}}]
+
+
+def test_good_openai_other_audio_containers_are_transcoded_to_wav(key, tmp_path):
+    """WAV and MP3 are sent as-is. Any other container is transcoded to 16 kHz mono WAV; a non-audio file fails."""
+    wav = tmp_path / "a.wav"
+    with wave.open(str(wav), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(8000)
+        handle.writeframes(b"\x00\x00" * 400)
+    flac = tmp_path / "a.flac"
+    enc = subprocess.run([config.FFMPEG, "-y", "-v", "error", "-i", str(wav), str(flac)], capture_output=True)
+    assert enc.returncode == 0, enc.stderr
+    raw, fmt = openai_compat._audio_payload(flac)
+    assert fmt == "wav" and raw.startswith(b"RIFF")
+    mp3 = tmp_path / "a.mp3"
+    mp3.write_bytes(b"ID3not-really")
+    assert openai_compat._audio_payload(mp3) == (b"ID3not-really", "mp3")
+    bad = tmp_path / "nope.ogg"
+    bad.write_bytes(b"not audio")
+    with pytest.raises(EngineError, match="audio transcode failed"):
+        openai_compat._audio_payload(bad)
 
 
 def test_good_openai_draft_end_to_end(proj, key):

@@ -68,7 +68,7 @@ const pins=[...document.querySelectorAll('#cam .pin')], geo=[...document.querySe
   lls=[...document.querySelectorAll('[data-ll]')];
 const scr=(lat,lng)=>{const X=V(lat,lng), q=X.clone().project(cam);
   return {front:X.dot(X.clone().sub(cam.position))<0&&q.z<1,x:(q.x+1)/2*W,y:(1-q.y)/2*H};};
-const draw=t=>{const v=view(t*FPS), P=V(v.lat,v.lng), east=new THREE.Vector3(0,1,0).cross(P).normalize(),
+const draw=t=>{const v=view(t*FPS), P=V(v.lat,v.lng), rawE=new THREE.Vector3(0,1,0).cross(P), east=(rawE.lengthSq()>1e-12?rawE:new THREE.Vector3(1,0,0)).normalize(),
     north=P.clone().cross(east), a=v.tilt*Math.PI/180;
   cam.position.copy(P.clone().add(P.clone().multiplyScalar(Math.cos(a)).add(north.clone().multiplyScalar(-Math.sin(a))).multiplyScalar(v.alt)));
   cam.up.copy(north);cam.lookAt(P);cam.near=Math.max(1e-5,v.alt*0.02);cam.updateProjectionMatrix();cam.updateMatrixWorld();

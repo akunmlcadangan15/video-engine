@@ -5,5 +5,5 @@ RUN python3.12 -m venv /opt/venv
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
 WORKDIR /src
 COPY . /src
-RUN /opt/venv/bin/pip install --upgrade pip maturin && /opt/venv/bin/pip install -e ".[test]" faster-whisper google-genai && /opt/venv/bin/python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist && /opt/venv/bin/pip install --force-reinstall dist/hypoverum_core_rs-*.whl
+RUN /opt/venv/bin/pip install --upgrade pip maturin && /opt/venv/bin/pip install -e ".[test]" google-genai && /opt/venv/bin/python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist && /opt/venv/bin/pip install --force-reinstall dist/hypoverum_core_rs-*.whl
 RUN /opt/venv/bin/python -m video_engine.cli doctor --install

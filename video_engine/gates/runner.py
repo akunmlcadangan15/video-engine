@@ -83,7 +83,10 @@ def _run(tl: Timeline, project_dir: Path, words, workdir: Path, dom: bool, snaps
     with rep.timed("layout"):
         rep.extend(layout_gates.run(tl, project_dir, events, workdir if dom else None, dom_res if dom else None))
     with rep.timed("style"):
-        built = ([workdir / "hf" / f"seg{s.seg_index:03d}" for s in tl.segments if s.engine_type == HYPERFRAMES]
+        built = ([d for s in tl.segments if s.engine_type == HYPERFRAMES
+                  for d in ((workdir / "hf" / f"seg{s.seg_index:03d}_t", workdir / "hf" / f"seg{s.seg_index:03d}_b")
+                            if s.gsap_scene_config and s.gsap_scene_config.split is not None
+                            else (workdir / "hf" / f"seg{s.seg_index:03d}",))]
                  if dom else None)
         rep.extend(style.run_style(tl, project_dir, words, built))
     if snapshots:

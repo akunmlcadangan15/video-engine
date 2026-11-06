@@ -4,6 +4,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3.12 pyth
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
 WORKDIR /src
 COPY . /src
-RUN pip install --upgrade pip maturin && pip install -e ".[test]" faster-whisper google-genai && python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist && pip install --force-reinstall dist/hypoverum_core_rs-*.whl
+RUN pip install --upgrade pip maturin && pip install -e ".[test]" google-genai && python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist && pip install --force-reinstall dist/hypoverum_core_rs-*.whl
 RUN python -m video_engine.cli doctor --install 2>&1 | tail -20
 CMD ["python","-m","pytest","-q","tests/test_manifest_build.py","tests/test_hf_profile.py","tests/test_cache_lease.py"]

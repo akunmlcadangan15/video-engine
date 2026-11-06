@@ -49,9 +49,17 @@ def missing(src: Path) -> list[str]:
     return sorted(str(p) for p in refs(src) if not p.is_file())
 
 
+def _safe_ref(base: Path, candidate: Path, src: Path, raw_ref: str) -> Path:
+    """Ensure a model's external buffer, material, or texture URI stays inside the model's directory."""
+    if not candidate.resolve().is_relative_to(base):
+        raise EngineError(f"model '{src}': referenced path '{raw_ref}' escapes model directory")
+    return candidate
+
+
 def refs(src: Path) -> set[Path]:
-    """The model file and every local file it references."""
+    """The model file and every local file it references (validated to stay within src.parent)."""
     src = Path(src)
+    base = src.resolve().parent
     out = {src}
     ext = src.suffix.lower()
     if ext == ".gltf":
@@ -62,16 +70,16 @@ def refs(src: Path) -> set[Path]:
         for item in g.get("buffers", []) + g.get("images", []):
             u = item.get("uri")
             if u and not u.startswith("data:"):
-                out.add(src.parent / unquote(u))
+                out.add(_safe_ref(base, src.parent / unquote(u), src, u))
     elif ext == ".obj":
         libs = re.findall(r"^\s*mtllib\s+(.+?)\s*$", src.read_text(errors="replace"), re.M) or [src.stem + ".mtl"]
         for lib in libs:
-            m = src.parent / lib
+            m = _safe_ref(base, src.parent / lib, src, lib)
             if m.is_file():
                 out.add(m)
                 for t in re.findall(r"^\s*(?:map_\w+|bump|disp|norm)\s+(?:-\S+\s+\S+\s+)*(.+?)\s*$",
                                     m.read_text(errors="replace"), re.M):
-                    out.add(m.parent / t)
+                    out.add(_safe_ref(base, m.parent / t, src, t))
     return out
 
 

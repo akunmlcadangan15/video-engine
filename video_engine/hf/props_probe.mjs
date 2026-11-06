@@ -15,6 +15,7 @@ try {
   const page = await browser.newPage();
   await page.setViewport({ width: +W, height: +H, deviceScaleFactor: 1 });
   await page.goto(url, { waitUntil: 'load', timeout: 30000 });
+  await page.evaluate(() => document.fonts.ready);
   await page.waitForFunction(() => !!(window.__timelines && window.__timelines.main), { timeout: 8000, polling: 50 });
   const res = [];
   for (const t of ts.split(',').map(Number)) {

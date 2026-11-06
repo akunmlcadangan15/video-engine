@@ -19,7 +19,7 @@ engine = "video_engine.cli:main"
 include = ["video_engine*"]
 
 [tool.setuptools.package-data]
-video_engine = ["template/*", "hf/*.mjs", "director/*.toml", "director/*.md", "director/NOTICE"]
+video_engine = ["template/*", "hf/*.mjs", "hf/*.js", "hf/*.html", "director/*.toml", "director/*.md", "director/NOTICE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
