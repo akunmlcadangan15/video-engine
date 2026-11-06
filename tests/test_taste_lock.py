@@ -26,7 +26,7 @@ def test_good_geoverum_profile_matches_the_taste_lock():
     p = profiles.load("geoverum")
     cs = p.caption_style
     assert (cs["size"], cs["fixed_y"], cs["outline"]) == (84, 1417, 0)
-    assert "box_bg" not in cs and cs["forbid_box"] is False   # no box by default; a box is allowed (2026-11-04)
+    assert "box_bg" not in cs and cs["forbid_box"] is False   # no box by default; an explicit box is allowed
     assert abs(cs["fixed_y"] / 1920 - 0.74) < 0.005
     assert p.data.flags.fit == "auto"
     d = p.data
@@ -36,7 +36,7 @@ def test_good_geoverum_profile_matches_the_taste_lock():
 
 
 def test_good_taste_and_profile_agree_on_transitions_peak_and_caption_sizes():
-    """The taste seed and geoverum.toml state the same facts (they disagreed before 2026-11-02)."""
+    """The taste seed and geoverum.toml state the same facts across transitions, peak loudness, and caption sizes."""
     t = _seed()
     liked = " | ".join(e["what"] for e in t["liked"])
     rejected = " | ".join(e["what"] for e in t["rejected"])

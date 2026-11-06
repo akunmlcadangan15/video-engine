@@ -175,7 +175,7 @@ def test_bad_watermark_flag_fails_R14(proj):
     plan["credits"][0]["watermark_free"] = False
     r = run(proj, client({"m38": [plan]}), max_repairs=0)
     pre = r.report["rounds"][0]["preflight"]
-    # R14 is lint: the false watermark flag is reported, and it does not block the draft unless required.
+    # R14 is lint in gate_registry: the false watermark flag is still reported, and it does not block.
     assert "[WARN] R14" in pre and "watermark_free is false" in pre and r.ok
 
 

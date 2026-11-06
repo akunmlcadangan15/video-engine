@@ -37,7 +37,7 @@ animating = 2                 # Maximum elements simultaneously executing entran
 [layout.timing]
 enter_s = 0.33                # Duration in seconds for scale-in entrance animations ([layout.fly])
 exit_s = 0.33                 # Duration in seconds for scale-out exit animations
-exit_max_s = 0.33             # Maximum permitted exit duration; equal to exit_s so the profile's own exit is legal (L10)
+exit_max_s = 0.33             # L10 ceiling; must be at least exit_s so the profile's own exit is legal
 stagger_s = 0.2               # Stagger delay in seconds between sequential elements entering in the same beat
 settle_s = 0.8                # Settling window in seconds after camera arrival before secondary labels pop in
 min_hold_s = 2.0              # Minimum duration in seconds a text element remains readable on screen before exiting

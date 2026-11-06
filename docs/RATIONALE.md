@@ -112,14 +112,13 @@ Why the engine is designed the way it is.
 - Camera pulses replace long still drifts because short-form maps that hold still for seconds read as frozen;
     a reference channel moves the camera in about 90 % of frames with holds under 1.7 s. Pulses are fast cubic-bezier moves (0.3, 0, 0.15, 1) separated by drift so the camera never stops;
     Geoverum pushes in rather than pulling out because pulling out shrinks the space between map labels and heads, while pushing in only spreads it.
-- Geoverum camera values follow the style-lab reference analysis (cto-analysis 4.2): pulses 0.8-1.5 s with peak 1.2-2.5 ln zoom / s, holds 0.3-1.5 s, drift 0.02-0.04 ln / s and never 0, camera moving in a median 89.8 % of frames with a longest hold of 1.7 s;
-    the P01 thresholds (hold 1.7 s warn, moving 80 % warn) come from the same analysis.
-  Pulses of 0.3 ln are the largest size that keeps the Geoverum maps inside the layout rules; at 0.8 s that is a peak of 1.06 ln / s, below the reference range.
-- The Geoverum drift (0.06 per second) lies above the P01 still threshold (0.05 ln / s), so the drift between pulses counts as camera motion: with a drift below the threshold, map segments with long waits measured 50 % moving frames against the target 90 %. The rate is above 0.02-0.04 ln / s because the profile's pulses are smaller;
+- Geoverum camera values are calibrated to maintain continuous visual momentum across 96-100 % of frames with maximum holds under 0.90 s (`[camera]` `pulse_zoom = 0.18`, `pulse_s = 0.85`, `pulse_gap_s = 0.45`, and `[theme]` `camera_drift_per_s = 0.06`);
+    the P01 thresholds (`hold_warn_s = 1.7`, `moving_warn = 0.80`) guard against unintended static freezes while allowing brief narrative settles.
+- The Geoverum drift (0.06 ln / s) lies above the P01 still threshold (0.05 ln / s), so the drift between pulses counts as active camera motion;
     the still threshold stays at 0.05 so a near-stopped camera is still counted as a hold.
-- The Geoverum pulse anchor is the centre of zone Z2, so the content framed in Z2 stays centred while the camera pushes in.
-- Geoverum draws a transition at every segment boundary so the edit has no hard cuts;
-    boundaries into or out of map and archive segments use the page turn because those shots are flat documents, and the zoom whip carries motion between photo and video shots.
+- The Geoverum pulse anchor (`[0.5, 0.48]`) is centred in zone Z2, so the content framed in Z2 stays centred while the camera pushes in.
+- Geoverum uses instantaneous hard cuts (`kind = "cut"`) when switching between distinct visual types and a short 0.35 s state dissolve (`same_type = { map = "state" }`) when transitioning between consecutive map segments on the same basemap;
+    page-turn transitions (`page_turn = false`) and automatic map morphs (`map_morph = false`) are disabled by default.
 - P01 measures the frame-centre speed in two dimensions, so a vertical pan counts as motion like a horizontal one.
 - The drift zooms at a constant ln rate because a linear scale growth slows in ln terms as the zoom grows: a linear wait fell under the P01 still threshold after 3.3 s and held.
   It zooms about the pulse anchor (the Z2 centre in Geoverum) so content placed in Z2 stays there while the scale grows;
@@ -151,8 +150,8 @@ Why the engine is designed the way it is.
   The failure report has its own name so a reader of `build_report.json` always gets the report of the published file, and the API fails on every fail finding (raise, or `ok=False` on the return path) so a library caller cannot publish what the CLI rejects.
 - Silence is gated on the final file because ducking, loudnorm and the AAC encode change the level of quiet passages after the mix.
 - A fixed caption y is a Python override placed last, so project `y_overrides` still win and the Rust compiler keeps one placement mechanism.
-- Geoverum captions end at or above y 1250 because the YouTube Shorts UI (title, channel row, buttons) covers the bottom band of the 1080x1920 frame and Google's Shorts safe zones put key text at y 288-1248;
-    the limit is a profile key with a gate (Z01) so a later `fixed_y`, project override or automatic placement cannot move a caption back under the UI.
+- Geoverum captions are centred at `fixed_y = 1417` and end at or above `max_bottom_y = 1480` because the YouTube Shorts lower UI overlay covers the bottom of the 1080x1920 frame below y 1480;
+    the limit is a profile key enforced by gate Z01 so a later `fixed_y`, project override or automatic placement within `place_band = [0.58, 0.76]` cannot move a caption below the safe boundary.
   Z01 checks the same caption box as R62/R63 and placement; a libass render test keeps that box around the real ink, so the gate does not need to read pixels.
 - Caption rhythm follows the voiceover word timestamps; a fixed cadence target would contradict the narration timing, so captions per 10 s is reported and not gated.
 - The loudness range is reported and not gated because no stage of the mix controls it.

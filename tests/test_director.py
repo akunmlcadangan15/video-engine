@@ -160,7 +160,7 @@ def test_good_geoverum_seed_from_brand_profile(monkeypatch):
     monkeypatch.setenv("VIDEO_ENGINE_TASTE_DIR", str(config.PROFILES_DIR / "taste"))
     t = director.load_taste("geoverum")
     blob = json.dumps(t)
-    # Brand preferences live on liked/rejected entries. Creative rules are the profile's, not a taste rule list.
+    # Preferences live on liked/rejected. The shipped store has no parallel rules list and no hard-cut quota.
     assert "already-moving satellite map" in blob
     assert any("call to action" in x["what"] for x in t["rejected"])
     assert "hard cuts per 10 s" not in blob

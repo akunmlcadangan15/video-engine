@@ -88,7 +88,7 @@ def _beats(d):
 
 
 def _beat_spans(seg):
-    """Half-open frame spans of the segment's beats: each beat runs until the next beat, or the segment end."""
+    """Half-open frame spans of the segment's beats: each beat runs until the next, or the segment end."""
     beats = seg.gsap_scene_config.beats
     n = seg.n_frames
     return [(b.at_frame, beats[i + 1].at_frame if i + 1 < len(beats) else n) for i, b in enumerate(beats)]

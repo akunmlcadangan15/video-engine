@@ -155,7 +155,7 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   caption only inside `place_band` 0.58-0.76 H.
 - Caption soft shadow offset: `shadow_dx`, `shadow_dy` (px; absent = `shadow`, 1.5 x `shadow`). Geoverum captions:
   white Inter Bold 84 (the approved caption size for this channel: larger sizes were measured and found to
-  crowd the safe area, so 84 is the largest size that fits), at most 2 words, no outline, soft shadow 0 3 px, `shadow_blur` 4 (libass
+  crowd the safe area, so 84 is the largest size that fits), at most 3 words (`max_words = 3`, pure white `primary = "FFFFFF"` and `highlight_colour = "FFFFFF"`), no outline, soft shadow 0 3 px, `shadow_blur` 4 (libass
   Gaussian, about a CSS 8 px blur), black at 55 % (`shadow_alpha` 115), no backing box.
 - No captions (no voiceover): every caption gate passes or skips on the empty list.
 - Segment field `visual_type` (map / photo / video / diagram / archive / illustration; inferred when absent).
@@ -222,7 +222,7 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   levels) and shot changes (fail levels).
   `same_type` `{visual type: kind}` takes precedence when both sides of a boundary share that type.
   `page_turn = false` rejects any page_turn in the profile; `map_morph = false` makes a map `morph` a T02 fail
-  (`geoverum`: every boundary a 0.4 s crossfade, no page turns, no paper morphs).
+  (`geoverum`: hard cuts across visual types, 0.35 s `state` dissolve on same-map boundaries, 0.5 s explicit crossfades, no page turns, no paper morphs).
 - Render quality (`[render]`, every key optional; absent = engine defaults: HyperFrames `standard` + CRF 14,
   x264 crf 16 veryfast for intermediates, crf 18 medium for the final composite, map JPEG q90): `hf_quality`
   (draft | standard | high), `hf_crf`, `segment_crf` / `segment_preset` / `segment_tune`, `final_crf` /

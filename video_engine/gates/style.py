@@ -216,10 +216,10 @@ def camera_path_metrics(tl: Timeline, mf: list[tuple[float, float] | None]) -> l
     """Per segment with a planned camera: screen speed v(f) = centre speed + |zoom speed| x half the frame diagonal
     (frame widths / s: how fast the frame corners travel), over the segment's frames except its last (whose next
     window is not planned) and transition frames. Returns {seg, length_fw (path length, frame widths), peak_fw_s,
-    max_step (largest one-frame speed change relative to the faster of the two frames). A frame counts only when
-    it is moving by the same rule as P01: |zoom speed| >= CameraGate.still_zoom_ln_s or centre speed >=
-    still_pan_w_s. The cosine glide's tails sit under the zoom-still threshold; scoring them with the pan floor
-    (0.02) made a smooth ease look like a 28 % step.
+    max_step (largest one-frame speed change relative to the faster of the two frames). A frame counts only
+    when P01 would call it moving: |zoom speed| >= CameraGate.still_zoom_ln_s or centre speed >= still_pan_w_s.
+    The cosine glide's tails are below the zoom-still threshold; scoring them with the pan floor (0.02) reported
+    a smooth ease as a large relative step.
     step_frame (absolute frame of that change)}."""
     from ..profiles import CameraGate
     still_zoom, still_pan = CameraGate().still_zoom_ln_s, CameraGate().still_pan_w_s
@@ -239,7 +239,7 @@ def camera_path_metrics(tl: Timeline, mf: list[tuple[float, float] | None]) -> l
                 continue
             if not (ma[0] >= still_zoom or ma[1] >= still_pan) or not (mb[0] >= still_zoom or mb[1] >= still_pan):
                 continue
-            if abs(b - a) / max(a, b) > step:
+            if max(a, b) > 0 and abs(b - a) / max(a, b) > step:
                 step, at = abs(b - a) / max(a, b), f + 1
         out.append({"seg": s.seg_index, "length_fw": sum(vv) / fps, "peak_fw_s": max(vv), "max_step": step,
                     "step_frame": at})

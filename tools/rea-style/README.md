@@ -1,15 +1,11 @@
-# rea-style — bukan profil, tapi cara membuat / memperbaiki profil
+# Utilitas Kompilasi Profil (`tools/rea-style`)
 
-Konsepnya: rea-style adalah alat/style-sheet dari hasil bedahan rea-video.
-Dia TIDAK menjadi profil ke-4 di profiles/. Tugasnya memperbaiki atau membuat profil channel.
+Direktori ini menyimpan skema style-sheet antara (`template.toml`) dan utilitas `profile-builder.py` untuk mengonversi hasil agregasi metrik video menjadi konfigurasi profil channel di `profiles/`.
 
-Cara pakai:
-1. Bedah referensi (lihat docs/REA-VIDEO.md) -> breakdown.json, report.html
-2. Distilasi breakdown -> template di folder ini (style-sheet, bukan profil)
-3. Terapkan style-sheet itu ke profil yang ada / buat profil baru di profiles/
-   - contoh: profiles/geoverum.toml + subfolder geoverum/
-   - atau buat profiles/<channel-baru>.toml
-
-File di folder ini:
-- template.toml : format style-sheet dari rea-video (isi dari agregasi breakdown)
-- profile-builder.py : bantu generate profil dari style-sheet + breakdown (dry-run dulu)
+## Alur Kerja
+1. Perbarui nilai parameter di `tools/rea-style/template.toml` (lihat [docs/REA-VIDEO.md](../../docs/REA-VIDEO.md)).
+2. Tinjau blok konfigurasi TOML yang dihasilkan tanpa mengubah berkas target:
+   ```bash
+   python tools/rea-style/profile-builder.py --style tools/rea-style/template.toml --out profiles/geoverum.toml --dry-run
+   ```
+3. Salin atau tulis blok konfigurasi yang dihasilkan ke profil target di `profiles/<channel>.toml`.

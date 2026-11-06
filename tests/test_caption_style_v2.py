@@ -18,7 +18,7 @@ def test_good_geoverum_inter_bold_no_outline_no_box_fixed_y(project):
     assert st["font"] == "Inter" and st["bold"] is True
     assert st["size"] == 84 and st["outline"] == 0 and st["soft_shadow"] is True
     assert "box_bg" not in st and st["fixed_y"] == 1417 and st["max_bottom_y"] == 1480   # no box by default
-    assert st["forbid_box"] is False                     # 2026-11-04: a box is a style choice, not blocked
+    assert st["forbid_box"] is False                     # a caption box is an optional per-segment style choice, not blocked
     txt, ev = captions.compile_ass([type("W", (), {"word": w, "start_frame": a, "end_frame": b, "highlight": False})()
                                     for w, a, b in WORDS], tl)
     f = _style_line(txt)
@@ -26,14 +26,15 @@ def test_good_geoverum_inter_bold_no_outline_no_box_fixed_y(project):
     assert f[3].upper() == "&H00FFFFFF"                                  # white fill
     assert f[15] == "1" and float(f[16]) == 0.0                        # BorderStyle 1 (no box), outline 0
     assert all(e[6] == 1417.0 for e in ev)
-    assert all(len(e[2].split()) <= 2 for e in ev)
+    assert all(len(e[2].split()) <= 3 for e in ev)
+    assert st['primary'] == 'FFFFFF' and st['highlight_colour'] == 'FFFFFF'
     assert all("BorderStyle" not in l for l in txt.splitlines() if l.startswith("Dialogue"))
     assert "\\1c&H" in txt                                           # active_word_highlight=true: per-word highlight
     assert all("\\blur4" in l and "\\3a&H73&" in l for l in txt.splitlines() if l.startswith("Dialogue: 0,"))
 
 
 def test_good_ab_sizes_reach_the_ass_compiler_but_stay_python_only(project):
-    # The profile lists only the approved size (92 and 104 were rejected in the 2026-11-01 A/B); a timeline override
+    # The profile lists 84 px in ab_sizes; an explicit timeline override
     # of the size is still valid and reaches the .ass compiler.
     for size in (84, 92, 104):
         _, tl = project(layout(("map", 30, None), cs={"size": size}))

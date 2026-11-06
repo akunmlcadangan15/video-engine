@@ -28,12 +28,11 @@ def test_good_geoverum_cuts_type_changes_and_states_one_map(project):
     _, tl = project(tl_layout(("map", 10, None), ("photo", 10, None), ("map", 10, None), ("map", 10, None),
                               ("archive", 10, None), profile="geoverum"))
     T = profiles.of(tl).transitions
-    assert (T.kind, T.same_type, T.page_turn, T.map_morph) == ("cut", {"map": "state"}, False, False)
-    assert T.fade_s == 0.5 and T.state_s == 0.35
+    assert (T.kind, T.same_type, T.fade_s, T.state_s, T.page_turn, T.map_morph) == \
+           ("cut", {"map": "state"}, 0.5, 0.35, False, False)
     ws = transitions.windows(tl)
     assert [w.kind for w in ws] == ["state"]                       # only the same-map boundary is not a cut
-    n, b = max(1, round(T.state_s * tl.settings.fps)), 900
-    assert [(w.f0, w.f1) for w in ws] == [(b - n // 2, b - n // 2 + n)]
+    assert [(w.f0, w.f1) for w in ws] == [(895, 905)]
 
 
 def test_good_fade_frames_dissolve_monotonically_from_out_to_in():
@@ -141,3 +140,25 @@ def test_bad_map_morph_off_fails_t02(project):
 def test_bad_render_values_rejected(kw):
     with pytest.raises(ValidationError):
         profiles.RenderProfile(**kw)
+
+
+def test_good_map_to_map_with_different_assets_is_a_hard_cut(project):
+    def _pair(d, same=True):
+        tl_layout(("map", 10, None), ("map", 10, None), profile="geoverum")(d)
+        if not same:
+            d["segments"][1]["gsap_scene_config"]["map_asset"] = "assets/map2.jpg"
+    _, tl = project(_pair)
+    assert transitions.kind_at(tl, 1) == "state" and transitions.windows(tl)[0].kind == "state"
+    _, tl2 = project(lambda d: _pair(d, same=False))
+    assert transitions.kind_at(tl2, 1) == "cut" and transitions.windows(tl2) == []
+
+
+def test_bad_explicit_state_needs_the_same_base_map(project):
+    from video_engine.util import EngineError
+    def _bad_state(d):
+        tl_layout(("map", 10, None), ("map", 10, None), profile="geoverum")(d)
+        d["segments"][1]["gsap_scene_config"]["map_asset"] = "assets/map2.jpg"
+        d["segments"][1]["transition_in"] = "state"
+    _, tl = project(_bad_state)
+    with pytest.raises(EngineError, match="state"):
+        transitions.kind_at(tl, 1)

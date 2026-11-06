@@ -93,7 +93,7 @@ def test_good_flatten_inlines_rules_file_text_with_unicode_and_backslashes(pdir)
     ]
     pdir("chan/creative.md", "".join(f"- {rule}\n" for rule in rules))
     pdir("chan/extra.toml", '[watermark]\ntext = "Chan"\n')
-    pdir("chan.toml", 'include = ["chan/extra.toml"]\n[draft]\nrules_file = "chan/creative.md"\n')
+    pdir("chan.toml", 'include = ["chan/extra.toml"]\n[draft]\nmin_seg_s = 1.5\nmax_seg_s = 4.0\nrules_file = "chan/creative.md"\n')
     flat = profiles.flatten("chan")
     assert tomllib.loads(flat)["draft"]["rules"] == rules
     pdir("flat.toml", flat)

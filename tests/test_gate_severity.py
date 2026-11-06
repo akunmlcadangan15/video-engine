@@ -104,7 +104,7 @@ def test_bad_never_advisory_gate_rejected_in_profile(tmp_path, monkeypatch):
 
 def test_good_geoverum_requires_no_style_gate_and_lowers_advisory_gates(project):
     p = profiles.load("geoverum")
-    assert p.gates.require == []                         # 2026-11-04: no style gate blocks on Geoverum
+    assert p.gates.require == []                         # no style gate blocks by default on Geoverum
     assert p.gates.advisory == []   # Advisory list is empty because lint gates automatically warn unless required.
     assert all(g in reg.LINT_GATE_IDS for g in ("R64", "E01", "R56", "T01", "R44", "L01", "L06", "R62", "R63", "Z01", "O01", "M02", "B01"))
     assert not set(p.gates.advisory) & set(reg.NEVER_ADVISORY)
@@ -173,8 +173,8 @@ def test_good_beat_hold_read_turns_off_pulses_on_its_wait(project, monkeypatch):
     layout.apply_segment(seg, tl, d)
     last = seg.gsap_scene_config.camera_path[-1]
     assert last.pulse in (0, 0.0, [0.0]) or (isinstance(last.pulse, list) and not any(last.pulse))
-    # beats_doc: segment 2 starts at 120, the read beat is at frame 300, and the segment ends at 560.
-    assert severity.hold_ranges(tl) == [(120 + 300, 560)]
+    last = seg.gsap_scene_config.beats[-1]
+    assert severity.hold_ranges(tl) == [(seg.start_frame + last.at_frame, seg.end_frame)]
 
 
 def test_bad_beat_without_hold_keeps_its_pulses(project, monkeypatch):

@@ -46,7 +46,7 @@ html,body{width:__W__px;height:__H__px;overflow:hidden;background:#0b1118}
 .line-measure polygon[data-line],.line-measure [data-shape][data-line]{stroke-opacity:0!important}
 .line-measure [data-line-casing]{visibility:hidden!important}
 .card .t{font-size:64px;line-height:1.05;white-space:nowrap}
-.card .s{font-family:EngInterS;font-size:36px;line-height:1.2;color:#ffd84a;margin-top:10px}
+.card .s{font-family:EngInterS;font-size:36px;line-height:1.2;color:#ffffff;margin-top:10px}
 .card img{display:block;width:100%;max-height:360px;object-fit:cover;border-radius:12px;margin-bottom:18px}
 .box{white-space:nowrap;color:#fff;font-family:EngInter,sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.02em;line-height:1;padding:.2em .45em .24em;text-shadow:none;box-shadow:0 6px 14px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.35)}
 .rl{position:absolute;width:0;height:0;visibility:hidden}
@@ -632,7 +632,7 @@ const figText=(F,v)=>{
     el.style.cssText+=';background:rgba(12,16,22,0.84);border-radius:12px;padding:18px 28px;color:#fff;box-shadow:0 8px 22px rgba(0,0,0,0.45)';
     const t=document.createElement('div');t.style.cssText='font-family:EngInter,sans-serif;font-weight:700;font-size:'+(O.kind==='label'?42:52)+'px;line-height:1.12';
     t.textContent=O.text||'';el.appendChild(t);
-    if(O.subtitle){const s=document.createElement('div');s.style.cssText='font-family:EngInterS,sans-serif;font-weight:600;font-size:32px;color:#ffd84a;margin-top:6px';s.textContent=O.subtitle;el.appendChild(s);}
+    if(O.subtitle){const s=document.createElement('div');s.style.cssText='font-family:EngInterS,sans-serif;font-weight:600;font-size:32px;color:#ffffff;margin-top:6px';s.textContent=O.subtitle;el.appendChild(s);}
   }
   ui.appendChild(el);
   const t0=f2t(O.start_frame||0), t1=f2t(O.end_frame||S.n_frames), fd=Math.min(0.2,(t1-t0)/3);

@@ -1,32 +1,41 @@
-# video-engine — konteks untuk agent
+# Panduan Arsitektur & Operasional Agent (`video-engine`)
 
-Panduan operasional teknis untuk pengembangan dan eksekusi `video-engine`. Setiap perubahan pada kode sumber, skema timeline, maupun profil channel harus mengikuti struktur lima lapisan dan lolos verifikasi pre-flight serta dokumentasi.
+Dokumen ini merupakan panduan operasional teknis bagi *engineer* maupun *AI agent* yang mengembangkan, mengaudit, atau menjalankan `video-engine`. Setiap perubahan pada kode sumber, skema timeline, maupun profil channel wajib mengikuti arsitektur lima lapisan ([docs/STRUCTURE.md](docs/STRUCTURE.md)) serta lulus verifikasi *pre-flight* dan dokumentasi.
 
-Tujuan: engine video vertikal hybrid. Input: folder proyek berisi `master_timeline.json`. Output: `<project>/out/final.mp4` (H.264 1080x1920, AAC 48 kHz) + `out/build_report.json`; build gagal hanya menulis `out/build_report.failed.json`.
+## 1. Tujuan & Spesifikasi Output
+- **Input**: Direktori proyek yang memuat `master_timeline.json`, `credits.txt`, dan folder `assets/`.
+- **Jalur Render Hybrid**:
+  - `NATIVE_RUST_FFMPEG`: Pemotongan, *pan/zoom* Ken Burns sub-piksel (ekstensi Rust `hypoverum_core_rs`), *overlay* PNG terukur, dan *color grading* LUT 3D.
+  - `HYPERFRAMES_GSAP`: Adegan *motion-graphics* berbasis HTML/SVG/GSAP/Three.js di dalam *headless Chrome* terisolasi (peta satelit/perkamen, globe 3D, poligon wilayah, rute animasi, *beats layout*, *cutaway* 2D/3D, termometer, aliran parametrik, dan partikel).
+- **Output**: `<project>/out/final.mp4` (H.264 8-bit atau 10-bit High 10, resolusi portrait 9:16 `1080×1920` atau landscape 16:9 hingga `3840×2160`, audio AAC 48 kHz ternormalisasi `-14.0 LUFS` / `-1.5 dBTP`) beserta `<project>/out/build_report.json`. Jika terdapat kegagalan pada *kernel gate*, *build* tidak menerbitkan `final.mp4` dan hanya menulis `out/build_report.failed.json`.
 
-## Struktur
-- `video_engine/` — paket Python (CLI `engine`, timeline, gates, renderer, audio, draft, cache); `video_engine/ai/` provider AI. Semua gate terdaftar di `video_engine/gate_registry.py` (`engine gates`).
-- `rust/hypoverum_core_rs/` — ekstensi Rust (PyO3): kamera, caption `.ass`, pauses, QA metrics.
-- `tests/` — pytest (kasus GOOD/BAD per gate). `examples/minimal` — proyek contoh offline.
-- `docs/` — mulai dari `docs/README.md` (indeks). Referensi: `CLI.md`, `ENVIRONMENT.md`, `TIMELINE.md`, `PROFILES.md`, `GATES.md`, `BUILD.md`, `DELIVERY.md`, `AI.md`; juga `SPEC.md`, `RUST.md`, `SOUND.md`, `RATIONALE.md`, `GLOSSARY.md`. `profiles/` — profil channel (`default.toml`, `geoverum.toml` + `geoverum/` lewat `include`, `taste/`).
-- `vendor/` — toolchain terkunci (Node, HyperFrames, Chrome); `.cache` — symlink ke `/workspace/cache/engine` (cache BLAKE3, besar; `VIDEO_ENGINE_CACHE` di `engine.env`).
-- `README.md` — ringkasan dan mulai cepat. Referensi lengkap (CLI, env var, gate, profil) ada di `docs/`; baca bagian yang perlu saja (`rg -n`), jangan seluruhnya. `CONTRIBUTING.md` — cara bekerja; `CHANGELOG.md` — perubahan.
+## 2. Peta Direktori Repositori
+- `video_engine/` — Paket utama Python: CLI (`cli.py`), kontrak data (`timeline.py`), loader profil (`profiles.py`), kompilator adegan (`hyperframes.py`, `native.py`, `layout.py`, `legibility.py`, `printstyle.py`, `transitions.py`), audio & SFX (`audio.py`, `mixer.py`, `sfx.py`, `sound/`), serta penyusun draf AI (`draft.py`, `draft_scene.py`, `recipes.py`, `director/`, `ai/`).
+- `video_engine/gates/` — Sistem *pre-flight* & *post-render* gate (terdaftar terpusat di `video_engine/gate_registry.py`).
+- `rust/hypoverum_core_rs/` — Ekstensi native Rust (PyO3): interpolasi kamera, kompilator subtitle `.ass`, deteksi jeda suara, dan perhitungan metrik piksel cepat (`BLAKE3`, `frame_stats`).
+- `profiles/` — Konfigurasi profil berbasis TOML:
+  - `default.toml`: Nilai dasar mesin.
+  - `geoverum.toml` & `geoverum_landscape.toml`: Profil channel Geoverum (portrait 9:16 & landscape 16:9) yang berbagi aturan inti melalui `profiles/geoverum/core.toml` serta sub-tabel modular (`entities.toml`, `legibility.toml`, `print.toml`, `sound.toml`, `layout.toml`, `creative.md`).
+  - `taste/geoverum.json`: Basis data preferensi desain (*liked* / *rejected*) dengan pemeriksaan otomatis (`engine taste geoverum --lint`).
+- `tools/rea-style/` — Skema antara (`template.toml`) dan utilitas `profile-builder.py` untuk mengonversi metrik analisis video menjadi blok konfigurasi profil.
+- `scripts/` — Skrip pemeriksaan dokumentasi (`check_docs.py`) dan pembungkus eksekusi aman (`engine-build`, `engine-batch`, `engine-draft`).
+- `docs/` — Dokumentasi teknis terindeks di [docs/README.md](docs/README.md).
+- `tests/` — Rangkaian pengujian otomatis `pytest` (kasus `GOOD` dan `BAD` untuk setiap gate dan fitur).
+- `vendor/` — Aset font terlisensi, tekstur kertas/grain, GSAP, dan penanda versi toolchain (`VERSIONS.json`).
 
-## Perintah kunci
-- Env: `source /workspace/engine-venv/bin/activate`; Rust: `source ~/.cargo/env`, build dengan `CC=/usr/bin/gcc`.
-- `engine validate P` · `engine preflight P` · `engine-build P` / `engine-batch ...` (wrapper wajib: lock global `/workspace/.render.lock`, tolak jika disk < 8G, env `engine.env`, nice; jangan panggil `engine build` langsung).
-- `engine preview P --seg N --time S` · `engine sheet P` · `engine doctor`.
-- `engine gates [--profile NAME]` (daftar gate dan efeknya) · `engine gates --stats P...` (hitung temuan dari laporan build) · build percobaan: `engine-build P --mode draft` (hasil di `out/draft/`, tidak bisa dikirim).
-- `engine assets --query WORDS` · `engine draft P --provider agent --resume`.
-- Tes cepat: `pytest -q tests/test_<area>.py` (jangan full suite kecuali perlu; berat). Dokumen: `python scripts/check_docs.py`.
-- Exit code: 0 sukses, 1 gate/engine error, 2 usage error, 3 menunggu respons agent.
+## 3. Perintah Kunci
+- **Validasi & Pre-flight**: `engine validate <PROJECT>` · `engine preflight <PROJECT>`
+- **Build Produksi & Draft**: `scripts/engine-build <PROJECT>` · `engine build <PROJECT> --mode draft [--quality proxy]` · `engine build <PROJECT> --repin`
+- **Inspeksi Gate & Selera**: `engine gates [--profile geoverum]` · `engine taste geoverum --lint`
+- **Pratinjau & Aset**: `engine preview <PROJECT> --seg N --time S` · `engine sheet <PROJECT>` · `engine doctor`
+- **Penyusunan Draf AI**: `engine draft <PROJECT> [--provider gemini|agent] [--review]`
+- **Verifikasi Kode & Dokumen**:
+  - `python scripts/check_docs.py`
+  - `ruff check --select E9,F63,F7,F82,F401,F841 video_engine tests scripts`
+  - `pytest -q tests/test_<area>.py`
+- **Kode Keluar (Exit Codes)**: `0` berhasil, `1` gate/engine gagal, `2` kesalahan argumen CLI, `3` menunggu berkas respons agent (`response.json`).
 
-## Aturan
-- Tidak ada worktree (folder `/workspace/video-engine-worktrees/` sudah tidak ada); salinan di `/workspace/exports/` hanya arsip, bukan kode aktif. Jangan buat worktree/branch tanpa izin.
-- Cek render berjalan: `flock -n /workspace/.render.lock true && echo bebas || echo sibuk`; jangan pakai `pgrep -f` (cocok dengan cmdline agent sendiri).
-- Jangan hapus/prune cache (`engine clean`, `engine cache --prune`) tanpa izin; backup (hardlink) di `/workspace/cache/engine-backup/`.
-- Disk ~80% penuh (cek `df -h /`): render uji ke `/workspace/_scratch/`, jangan duplikasi aset/cache.
-- Jangan cetak `GEMINI_API_KEY` atau key provider lain.
-- Log build panjang: baca dengan `tail -n 50` / `rg -n 'FAIL|ERROR'`, jangan dump.
-
-Aturan efisiensi token: /workspace/ai-helpers/EFFICIENCY.md (wajib).
+## 4. Prinsip Pengembangan Wajib
+- **Satu Sumber Kebenaran**: Jangan menduplikasi aturan kreatif di luar `profiles/<channel>/creative.md` atau menduplikasi tabel bersama di luar `profiles/geoverum/core.toml`.
+- **Integritas Kunci Cache**: Setiap perubahan perilaku pada kode Python atau Rust (`ALGO_VERSION`) harus tercermin pada kunci cache segmen terkait. Memecah file profil dengan `include` tidak boleh mengubah nilai `profiles.load(name).blake3`.
+- **Keamanan Kredensial**: Jangan pernah mencetak atau menyimpan nilai `GEMINI_API_KEY`, `XAI_API_KEY`, atau kunci API lainnya ke dalam log maupun laporan *build*.

@@ -62,7 +62,7 @@ def test_bad_AS01_geoverum_side_strip_warns(project):
 
 
 def test_good_AS01_is_not_required_on_geoverum(project):
-    """Geoverum requires only S01 (approved 2026-11-01): an AS01 side strip stays a warning through severity."""
+    """On Geoverum, an AS01 side strip remains an advisory warning through severity."""
     from video_engine.gates import severity
     _d, tl = project(lambda doc: (doc.update(profile="geoverum"),
                                   overlay(doc, {"id": "lt", "kind": "lower_third", "box": [100, 1400, 800, 170],

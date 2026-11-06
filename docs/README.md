@@ -28,7 +28,6 @@ Indeks seluruh dokumentasi. Cari pertanyaan Anda di tabel pertama, lalu buka dok
 | Melihat apa yang berubah | [CHANGELOG.md](../CHANGELOG.md) |
 | Mengolah hasil bedah video menjadi profil | [REA-VIDEO.md](REA-VIDEO.md) |
 | Memahami spesifikasi arsitektur visual, kamera, dan opsi gaya `[reference_style.*]` (hatch, count-up, bubble, ...) | [REFERENCE-STYLE.md](REFERENCE-STYLE.md) |
-| Menjelajahi kategori gaya | [style-categories/](style-categories/) |
 
 ## Bahasa dan pembaca
 

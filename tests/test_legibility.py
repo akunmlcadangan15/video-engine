@@ -117,6 +117,7 @@ def test_good_oklch_round_trip():
 
 
 # GOOD / BAD: polarity choice ------------------------------------------------------------------------------------------
+# Geoverum legibility.toml light_p50_max (0.38): dark text only at or above that background Y.
 _THR = profiles.load("geoverum").legibility.light_p50_max
 
 

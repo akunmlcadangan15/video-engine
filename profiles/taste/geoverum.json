@@ -75,13 +75,23 @@
     },
     {
       "what": "caption Inter bold 84 px putih tanpa box/outline di y≈0,74 H (fixed_y 1417)",
-      "why": "Ukuran 84 px menghasilkan keterbacaan optimal di layar ponsel dalam satu baris pendek (maksimal 3 kata) tanpa menutupi area fokus peta di zona tengah, sedangkan fixed_y = 1417 px menempatkan batas bawah teks tepat pada batas aman antarmuka vertikal (max_bottom_y = 1480 px).",
+      "why": "Ukuran 84 px berwarna putih bersih (primary = 'FFFFFF', highlight_colour = 'FFFFFF' untuk menimpa warna kuning bawaan compiler Rust #FFD84A) menghasilkan keterbacaan optimal di layar ponsel dalam satu baris pendek (maksimal 3 kata) tanpa menutupi area fokus peta di zona tengah, sedangkan fixed_y = 1417 px menempatkan batas bawah teks tepat pada batas aman antarmuka vertikal (max_bottom_y = 1480 px).",
       "at": "2026-10-29T00:00:00+00:00",
       "check": [
         {
           "key": "caption_style.size",
           "op": "==",
           "value": 84
+        },
+        {
+          "key": "caption_style.primary",
+          "op": "==",
+          "value": "FFFFFF"
+        },
+        {
+          "key": "caption_style.highlight_colour",
+          "op": "==",
+          "value": "FFFFFF"
         },
         {
           "key": "caption_style.fixed_y",

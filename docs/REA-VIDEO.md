@@ -1,24 +1,20 @@
-# rea-video → rea-style → profil
+# Alur Konversi Style-Sheet (`tools/rea-style`) ke Profil Channel
 
 ## Konsep
-rea-style BUKAN profil. rea-style adalah style-sheet dari hasil bedahan rea-video
-yang dipakai untuk MEMBUAT atau MEMPERBAIKI profil di profiles/.
+Direktori `tools/rea-style/` berisi skema antara (*intermediate style-sheet*) dan skrip kompilasi untuk menghasilkan atau memperbarui blok konfigurasi profil di dalam `profiles/`.
 
 Struktur:
-- skills/rea-video/          : skill bedah video (analisis, bukan profil)
-- tools/rea-style/           : style-sheet + builder (bukan profil)
-  - template.toml            : format style-sheet dari breakdown
-  - profile-builder.py       : bantu generate profil dari style-sheet
-- profiles/                  : hanya profil engine (default, geoverum, native_demo)
-  - rea-style TIDAK ada di sini
+- `tools/rea-style/template.toml` : Skema kanonis parameter visual, tipografi, kamera, dan audio.
+- `tools/rea-style/profile-builder.py` : Utilitas konversi dari `template.toml` (dan `breakdown.json` opsional) menjadi blok TOML profil channel.
+- `profiles/` : Berisi profil resmi engine (`default.toml`, `geoverum.toml`, `geoverum_landscape.toml`, dan sub-tabel modular di `profiles/geoverum/`).
 
-## Alur
-1. Bedah: rea-video decompose -> breakdown.json
-2. Distilasi: breakdown -> tools/rea-style/template.toml (diisi manual/agent)
-3. Terapkan: template -> profiles/<channel>.toml (buat baru atau perbaiki yang ada)
-4. Build seperti biasa: engine validate -> preflight -> scripts/engine-build
-5. Audit (opsional): bedah lagi out/final.mp4 dengan rea-video
-
-## Batch banyak video
-  bash scripts/rea-video-batch.sh referensi/ _analysis/
-Agregasi breakdown.json -> isi template.toml -> terapkan ke profil.
+## Alur Penggunaan
+1. Isi atau perbarui nilai agregasi metrik visual di `tools/rea-style/template.toml`.
+2. Jalankan pratinjau patch konfigurasi:
+   ```bash
+   python tools/rea-style/profile-builder.py --style tools/rea-style/template.toml --out profiles/geoverum.toml --dry-run
+   ```
+3. Terapkan nilai yang dihasilkan ke `profiles/<channel>.toml` (atau `profiles/geoverum/core.toml`), lalu jalankan pemeriksaan keselarasan:
+   ```bash
+   engine taste geoverum --lint
+   ```

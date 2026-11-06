@@ -452,7 +452,7 @@ def drift_legs(view, f0: int, f1: int, drift: float, pulse: dict | None, W: int,
 def leg_ease(L: dict, s_from: float):
     """Ease of a camera leg (progress 0..1 -> tween fraction of x, y and s; hf template window.__legs is the same
     math). A leg with `v` [a, b]: the cubic with slopes a and b at 0 and 1 (glide_speeds). Glide is
-    (1 - cos(pi t)) / 2 (zero slope at both ends), whip power3.inOut, a pulse leg's cubic-bezier `bez`.
+    (1 - cos(pi t)) / 2 (zero slope at both ends, same as layout.EASES), whip power3.inOut, a pulse leg's cubic-bezier `bez`.
     drift: constant ln-rate zoom (rho^t - 1) / (rho - 1), rho = to.s / from.s (linear when rho = 1). A leg with `lr`
     (pulse legs: the base drift's ln change) moves its ln zoom at a
     constant rate r plus the B share of the rest, (exp(r t + (ln rho - r) B(t)) - 1) / (rho - 1), with

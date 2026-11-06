@@ -52,7 +52,7 @@ def test_good_no_regions_scene_unchanged(project):
 
 
 def test_good_beats_region_uses_the_profile_region_style(project):
-    """A beats scene uses the profile region style. Geoverum ships tint; an explicit block still extrudes."""
+    """A beats scene uses core.toml region_style. Geoverum ships tint; an explicit block still extrudes."""
     from test_layout import beats_doc
 
     def mut(d):

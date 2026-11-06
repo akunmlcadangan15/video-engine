@@ -17,8 +17,9 @@ def test_channel_direction_distinguishes_identity_defaults_and_alternatives():
     assert any(r.startswith("Identity:") for r in rules)
     assert any(r.startswith("Default, not a mandate:") for r in rules)
     assert any(r.startswith("Alternatives:") for r in rules)
-    assert any("creative_autofix" in r and "disabled unless explicitly requested" in r for r in rules)
-    assert not any(r.startswith("Open on a moving map") for r in rules)
+    assert any(r.startswith("Intent:") for r in rules)
+    assert any("already-moving dark satellite basemap" in r for r in rules)
+    assert any("96–100% of frames" in r for r in rules)
 
 
 def test_storyboard_and_taste_treat_preferences_as_preferences(proj):

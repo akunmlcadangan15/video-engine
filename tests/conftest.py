@@ -200,7 +200,7 @@ def project(tmp_path, assets):
     return make
 
 
-# Geoverum's gate policy before 2026-11-04 (the channel then relaxed it: no required style gate, boxes allowed).
+# Strict gate fixture used to test blocking behaviour when a channel requires S01 and forbids caption boxes.
 STRICT_GEOVERUM = {"require": '["S01"]', "forbid_box": "true",
                    "advisory": '["R64", "E01", "R56", "T01", "R44", "AS04", "F03", "L02", "L03", "L04", "L05", "L07", '
                                '"L08", "L09", "L10"]'}

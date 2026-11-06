@@ -315,7 +315,7 @@ def test_good_geoverum_caption_style_fixed_y_two_words(project):
     style_line = next(l for l in txt.splitlines() if l.startswith("Style:")).split(",")
     assert style_line[1:3] == ["Inter", "84"] and style_line[7] == "-1"               # font, size, bold on
     assert style_line[15] == "1" and style_line[16] == "0"                            # no box, no outline
-    assert all(e[6] == 1417.0 for e in ev) and all(len(e[2].split()) <= 2 for e in ev)
+    assert all(e[6] == 1417.0 for e in ev) and all(len(e[2].split()) <= 3 for e in ev)
     assert "\\1c" in txt                                                            # active_word_highlight=true: per-word highlight
 
 
@@ -434,7 +434,7 @@ def test_bad_project_y_override_below_max_bottom_y_fails_z01(project):
 
 
 def test_bad_z01_preflight_warns_on_geoverum_at_1500(project, W):
-    """Z01 still fails at 1500 px, but it is advisory on Geoverum since 2026-11-04: the build gets a warning."""
+    """Z01 fails at 1500 px and is reported as a lint warning on Geoverum."""
     d, tl = project(layout(("photo", 30, None), ("photo", 30, None), cs={"fixed_y": 1500}))
     rep = run_preflight(tl, d, GEO_WORDS, dom=False, snapshots=False)
     z = [f for f in rep.findings if f.gate == "Z01"]

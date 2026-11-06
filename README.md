@@ -1,17 +1,17 @@
 # video-engine
 
-Mesin video hybrid milik Hypoverum. Inputnya satu folder proyek berisi `master_timeline.json`. Hasilnya `out/final.mp4` (H.264 1080×1920 atau landscape 16:9 hingga 3840×2160; AAC 48 kHz) dan `out/build_report.json`. Jika ada gate gagal, build tidak menerbitkan apa pun dan hanya menulis `out/build_report.failed.json`.
+Mesin produksi video hybrid untuk pembuatan video dokumenter geografi dan *motion-graphics* berbasis data. Menerima input satu folder proyek berisi `master_timeline.json` dan menghasilkan `out/final.mp4` (H.264 8-bit atau 10-bit High 10; portrait 9:16 `1080×1920` maupun landscape 16:9 hingga `3840×2160`; audio AAC 48 kHz) beserta laporan terstruktur `out/build_report.json`. Jika terdapat kegagalan pada *kernel gate*, *build* tidak menerbitkan video dan hanya menulis `out/build_report.failed.json`.
 
-Mesin ini memiliki dua jalur render:
+Mesin ini menggabungkan dua jalur render deterministik:
 
-- **Native** (ffmpeg + Rust): potong, pan/zoom, gabung footage dan foto.
-- **HyperFrames** (HTML, GSAP, dan Three.js di Chrome tanpa layar): segmen motion-graphics peta, globe, props, beats, region, rute, kartu, grafik, dan judul.
+- **Native (`NATIVE_RUST_FFMPEG`)**: Pemotongan segmen, gerakan kamera Ken Burns sub-piksel (diinterpolasi di Rust), *overlay* kartu/label terukur, dan *color grading* LUT 3D melalui FFmpeg.
+- **HyperFrames (`HYPERFRAMES_GSAP`)**: Adegan *motion-graphics* berbasis HTML, SVG, GSAP, dan Three.js yang dirender per frame secara deterministik di dalam *headless Chrome* (peta satelit gelap maupun peta arsip kertas, bola dunia 3D, poligon wilayah dengan *neon glow* atau arsiran *hatch*, rute animasi, *beats layout*, diagram penampang *cutaway*, termometer, dan partikel).
 
-Caption tidak digambar oleh keduanya. Rust membuat file `.ass` dari voiceover, lalu ffmpeg membakarnya di akhir. Sebelum render, **gate** memeriksa timeline dan aset (kredit, lisensi, margin, kamera, dll.), karena render gagal jauh lebih mahal daripada pemeriksaan.
+Caption tidak digambar di dalam HTML, melainkan dikompilasi oleh ekstensi Rust menjadi berkas `.ass` dari *word timestamps* narasi, lalu di-*burn-in* oleh FFmpeg pada tahap komposit akhir setelah lolos pemeriksaan penempatan otomatis (gate `R63` dan `Z01`).
 
 ## Mulai cepat
 
-Syarat: Linux x64 atau macOS Apple Silicon, Python 3.10+, toolchain Rust, `ffmpeg` di `PATH`, dan ~700 MB untuk toolchain HyperFrames. Mesin memerlukan ffmpeg 7+ dengan filter `subtitles`, `loudnorm`, `sidechaincompress` serta encoder `libx264` dan `aac` (dicek oleh `engine doctor`).
+Syarat sistem: Linux x64 atau macOS Apple Silicon, Python 3.10+, toolchain Rust (`cargo`), `ffmpeg` (versi 7+ dengan filter `subtitles`, `loudnorm`, `sidechaincompress`, serta encoder `libx264` dan `aac`), dan ruang disk ~700 MB untuk toolchain HyperFrames.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
@@ -21,7 +21,7 @@ source ~/.cargo/env
 engine doctor --install
 ```
 
-Coba proyek contoh tanpa jaringan:
+Menjalankan proyek contoh secara *offline*:
 
 ```bash
 cp -r examples/minimal /tmp/minimal && cd /tmp/minimal
@@ -34,7 +34,7 @@ engine sheet .
 
 ### macOS Apple Silicon
 
-Platform setara Linux x64: gate dan spesifikasi output sama, hanya file tidak bit-identik. Python harus arm64 asli (bukan Rosetta). Detail lengkap di [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#platforms).
+Didukung setara dengan Linux x64 (spesifikasi output dan gate identik; lihat [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#platforms)):
 
 ```bash
 xcode-select --install
@@ -48,7 +48,7 @@ engine doctor --install
 
 ### Wrapper build
 
-Di mesin render Hypoverum jangan panggil `engine build` langsung. Gunakan `scripts/engine-build` — ia memeriksa `engine.env`, ruang disk (min 8 GB), dan kunci render global. Lihat [AGENTS.md](AGENTS.md) dan [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#build-wrappers).
+Untuk eksekusi produksi yang terproteksi, gunakan `scripts/engine-build` atau `scripts/engine-batch` yang secara otomatis memuat `engine.env`, memeriksa sisa ruang disk (minimal 8 GB), dan mengunci *render lock* global. Lihat [AGENTS.md](AGENTS.md) dan [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#build-wrappers).
 
 ## Alur kerja
 
@@ -58,68 +58,71 @@ bahan (aset, voiceover) ──► draft AI ──► master_timeline.json ──
                                                                                        final.mp4    build_report.json
 ```
 
-1. **Bahan:** `assets/`, `credits.txt`, voiceover, opsional skrip.
-2. **Draft (opsional):** `engine draft` membuat timeline dari AI (3 konsep, 1 dipilih) dan tidak menimpa `master_timeline.json`.
-3. **Preflight:** `engine validate`, `engine words`, `engine preflight` — semua gate tanpa render.
-4. **Build:** segmen render paralel dan di-cache, lalu komposit (sambung, transisi, caption, watermark), audio (mix, ducking, loudnorm), dan mux.
-5. **Gate akhir:** frame, QA piksel, loudness, jeda hening, sumber audio. Hanya diterbitkan bila semuanya lolos.
-6. **Delivery:** `engine deliver --export` menyiapkan paket siap unggah. Mesin tidak mengunggah apa pun.
-
-Detail tiap tahap: [docs/BUILD.md](docs/BUILD.md).
+1. **Bahan**: Siapkan `assets/`, `credits.txt`, rekaman *voiceover*, dan naskah opsional.
+2. **Draft AI (opsional)**: `engine draft` menyusun 3 konsep *storyboard*, memilih konsep terbaik, dan merakit `master_timeline.draft.json`.
+3. **Preflight**: `engine validate`, `engine words`, dan `engine preflight` memverifikasi seluruh gate sebelum merender video.
+4. **Build**: Segmen dirender secara paralel dan disimpan di cache berbasis konten (`BLAKE3`), dilanjutkan dengan komposit transisi, *burn-in* caption, *watermark*, *mixing* musik/SFX dengan *ducking*, dan normalisasi `loudnorm`.
+5. **Gate Akhir**: Memeriksa jumlah frame, distribusi piksel (`R38`), *loudness* (`A01`), dan jeda hening (`S01`).
+6. **Delivery**: `engine deliver --export` menyiapkan paket distribusi akhir. Detail tahap build: [docs/BUILD.md](docs/BUILD.md).
 
 ## Perintah utama
 
 | Perintah | Fungsi |
 |---|---|
-| `engine validate P` | Cek skema `master_timeline.json`. |
-| `engine preflight P` | Semua gate tanpa render. |
-| `engine build P` | Build penuh ke `P/out/`. `--mode draft` untuk uji; `--repin` untuk caption basi. |
-| `engine gates` | Daftar gate dan statusnya per profil. |
-| `engine preview P --seg N --time S` | Satu PNG dari satu segmen. |
-| `engine sheet P` | Contact sheet dari `out/final.mp4`. |
-| `engine words P` | Transkripsi voiceover dan pin kata ke timeline. |
-| `engine draft P` | AI membuat draft timeline. |
-| `engine deliver P --export DIR` | Paket siap unggah. |
-| `engine taste CHANNEL` | Selera channel (like/reject). |
-| `engine doctor` | Cek toolchain di `vendor/`. |
-| `engine toolchain [use SPEC]` | Lihat/ganti versi HyperFrames. |
-| `engine draft-preview P` | Preview awal via render segmen normal. |
+| `engine validate P` | Memeriksa skema `master_timeline.json`. |
+| `engine preflight P` | Menjalankan seluruh gate pra-render (statis, matematika, dan probe DOM). |
+| `engine build P` | Membangun video penuh ke `P/out/`. Gunakan `--mode draft` untuk pratinjau cepat atau `--repin` untuk memperbarui pin caption. |
+| `engine gates` | Menampilkan daftar gate dan efeknya per profil (`KERNEL` vs `LINT`). |
+| `engine preview P --seg N --time S` | Merender satu frame PNG dari segmen tertentu untuk inspeksi cepat. |
+| `engine sheet P` | Membuat *contact sheet* dari `out/final.mp4`. |
+| `engine words P` | Mentranskripsi *voiceover* dan menyematkan *word timestamps* ke timeline. |
+| `engine draft P` | Menghasilkan draf timeline menggunakan AI *director*. |
+| `engine deliver P --export DIR` | Menyiapkan paket siap unggah. |
+| `engine taste CHANNEL [--lint]` | Menampilkan atau memverifikasi keselarasan catatan selera channel terhadap profil TOML. |
+| `engine doctor [--install]` | Memeriksa atau memasang toolchain Node, HyperFrames, dan Chrome di `vendor/`. |
+| `engine toolchain [use SPEC]` | Melihat atau mengganti versi HyperFrames yang aktif. |
+| `engine draft-preview P` | Merender 5 segmen pertama secara cepat tanpa komposit akhir. |
 
-Semua perintah dan opsinya: [docs/CLI.md](docs/CLI.md). Kode keluar: 0 sukses, 1 gate/engine gagal, 2 salah pakai, 3 menunggu jawaban agent.
-
-## Profil channel
-
-Gaya dan aturan per channel ada di `profiles/`: `default.toml` (dasar mesin) dan satu file per channel (mis. `geoverum.toml` + `profiles/geoverum/`). Prioritas: default < profil channel < nilai proyek. Catatan selera ada di `profiles/taste/`. Penjelasan: [docs/PROFILES.md](docs/PROFILES.md).
-
-Gate integritas (decode, frame, sumber, audio) selalu wajib; gate gaya/lint hanya peringatan kecuali profil mewajibkan. Detail: [docs/GATES.md](docs/GATES.md) dan [docs/TIMELINE.md](docs/TIMELINE.md).
+Referensi lengkap seluruh perintah dan opsi: [docs/CLI.md](docs/CLI.md).
 
 ## Struktur repo
 
 | Jalur | Isi |
 |---|---|
-| `video_engine/` | Paket Python (CLI, timeline, gate, renderer, audio). |
-| `video_engine/ai/` | Provider AI (Gemini, agent, OpenAI-compatible). |
-| `video_engine/gates/` | Modul gate; daftar lengkap di `video_engine/gate_registry.py`. |
-| `rust/hypoverum_core_rs/` | Ekstensi Rust: kamera, caption `.ass`, jeda, QA. |
-| `profiles/` | Profil channel dan catatan selera. |
-| `docs/` | Dokumentasi. Mulai dari [docs/README.md](docs/README.md). |
-| `tests/` | Pytest (kasus GOOD/BAD per gate). |
-| `examples/` | Contoh offline. |
-| `vendor/` | Toolchain terkunci (Node, HyperFrames, Chrome). |
+| `video_engine/` | Paket utama Python (CLI, skema timeline, renderer native & HyperFrames, layout, legibility, audio, cache). |
+| `video_engine/ai/` & `director/` | Lapisan provider AI (Gemini, Agent, OpenAI-compatible) serta kompilator pola *storyboard*. |
+| `video_engine/gates/` | Modul gate 3-lapis; definisi terpusat di `video_engine/gate_registry.py`. |
+| `rust/hypoverum_core_rs/` | Ekstensi Rust (PyO3): interpolasi kamera, kompilator `.ass`, deteksi jeda suara, dan statistik piksel. |
+| `profiles/` | Profil channel (`default.toml`, `geoverum.toml`, `geoverum_landscape.toml`, sub-tabel `geoverum/`, dan `taste/`). |
+| `tools/rea-style/` | Template style-sheet (`template.toml`) dan utilitas `profile-builder.py`. |
+| `scripts/` | Skrip pemeriksaan dokumentasi (`check_docs.py`) dan *wrapper* eksekusi (`engine-build`, `engine-batch`, `engine-draft`). |
+| `docs/` | Dokumentasi teknis lengkap. Mulai dari [docs/README.md](docs/README.md). |
+| `tests/` | Rangkaian pengujian `pytest` untuk seluruh modul dan gate. |
+| `examples/` | Proyek contoh mandiri (`minimal` 9:16 dan `landscape` 16:9). |
+| `vendor/` | Aset font, tekstur kertas/grain, GSAP, dan konfigurasi versi toolchain. |
 
 ## Dokumentasi
 
 | Dokumen | Isi |
 |---|---|
-| [docs/README.md](docs/README.md) | Indeks dokumentasi. |
-| [docs/CLI.md](docs/CLI.md) | Semua perintah `engine`. |
-| [docs/GATES.md](docs/GATES.md) | Semua gate. |
-| [docs/PROFILES.md](docs/PROFILES.md) | Format profil. |
-| [docs/TIMELINE.md](docs/TIMELINE.md) | Aturan timeline dan caption. |
-| [docs/BUILD.md](docs/BUILD.md) | Build, manifest, cache. |
-| [docs/SPEC.md](docs/SPEC.md) | Spesifikasi lengkap. |
-| [docs/RATIONALE.md](docs/RATIONALE.md) | Alasan desain. |
-| [docs/RUST.md](docs/RUST.md) | Crate Rust. |
-| [docs/SOUND.md](docs/SOUND.md) | Sumber suara. |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Cara bekerja di repo. |
-| [CHANGELOG.md](CHANGELOG.md) | Perubahan penting. |
+| [docs/README.md](docs/README.md) | Indeks lengkap seluruh dokumentasi. |
+| [docs/SPEC.md](docs/SPEC.md) | Spesifikasi teknis menyeluruh. |
+| [docs/STRUCTURE.md](docs/STRUCTURE.md) | Pemisahan lima lapisan arsitektur dan satu sumber kebenaran per lapisan. |
+| [docs/REFERENCE-STYLE.md](docs/REFERENCE-STYLE.md) | Spesifikasi arsitektur visual, kamera, dan katalog opsi `[reference_style.*]` Geoverum. |
+| [docs/PROFILES.md](docs/PROFILES.md) | Panduan konfigurasi profil channel, orientasi 9:16 vs 16:9, dan mekanisme `include`. |
+| [docs/GATES.md](docs/GATES.md) | Katalog lengkap seluruh gate (`KERNEL` vs `LINT`) dan cara mengonfigurasinya. |
+| [docs/TIMELINE.md](docs/TIMELINE.md) | Kontrak data `master_timeline.json`, skema adegan, dan aturan caption. |
+| [docs/CLI.md](docs/CLI.md) | Referensi seluruh sub-perintah `engine`. |
+| [docs/BUILD.md](docs/BUILD.md) | Tahapan build, manifest terkunci, cache `BLAKE3`, dan manajemen sumber daya. |
+| [docs/AI.md](docs/AI.md) | Konfigurasi provider AI (`ai_providers.toml`), *director*, dan alur *agent handoff*. |
+| [docs/SOUND.md](docs/SOUND.md) | Pencarian musik/SFX, *ducking*, dan integrasi lisensi. |
+| [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) | Variabel lingkungan `VIDEO_ENGINE_*` dan dukungan lintas platform. |
+| [docs/DELIVERY.md](docs/DELIVERY.md) | Konvensi penamaan dan pemaketan hasil akhir. |
+| [docs/TESTING.md](docs/TESTING.md) | Cara menjalankan pengujian, *golden frames*, dan konvensi tes. |
+| [docs/RUST.md](docs/RUST.md) | Panduan pengembangan ekstensi Rust `hypoverum_core_rs`. |
+| [docs/RATIONALE.md](docs/RATIONALE.md) | Alasan rekayasa di balik setiap keputusan desain. |
+| [docs/LIMITS.md](docs/LIMITS.md) | Batasan sistem saat ini. |
+| [docs/GLOSSARY.md](docs/GLOSSARY.md) | Glosarium istilah teknis. |
+| [docs/REA-VIDEO.md](docs/REA-VIDEO.md) | Alur kompilasi `tools/rea-style/` ke profil channel. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Panduan kontribusi dan pemeriksaan pra-commit. |
+| [CHANGELOG.md](CHANGELOG.md) | Riwayat perubahan fitur dan perbaikan. |

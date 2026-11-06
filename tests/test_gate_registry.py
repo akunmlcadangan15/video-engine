@@ -54,7 +54,7 @@ def test_bad_a_registered_gate_that_no_code_emits_is_stale():
 def test_good_geoverum_effects_match_the_profile():
     p = profiles.load("geoverum")
     eff = {g.id: gate_tools.effect(g, p) for g in reg.GATES}
-    assert all(eff[g.id] != "blocks" for g in reg.GATES if g.kind == "style")   # no style gate blocks (2026-11-04)
+    assert all(eff[g.id] != "blocks" for g in reg.GATES if g.kind == "style")   # no style gate blocks by default on Geoverum
     assert eff["S01"] == "warns"
     assert eff["H01"] == "warns" and eff["P01"] == "warns" and eff["C02"] == "warns"
     assert eff["C01"] == eff["V01"] == eff["D02"] == "off"     # tables absent in geoverum.toml

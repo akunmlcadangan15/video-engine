@@ -38,6 +38,12 @@ def build_profile_patch(style: dict, breakdown: dict | None = None) -> dict:
         cs["font"] = str(cap["font"])
     if cap.get("bold") is not None:
         cs["bold"] = bool(cap["bold"])
+    if cap.get("primary_color"):
+        cs["primary"] = str(cap["primary_color"]).lstrip("#").upper()
+    if cap.get("highlight_colour"):
+        cs["highlight_colour"] = str(cap["highlight_colour"]).lstrip("#").upper()
+    if cap.get("emphasis_colour"):
+        cs["emphasis_colour"] = str(cap["emphasis_colour"]).lstrip("#").upper()
     if cap.get("size") is not None:
         cs["size"] = int(cap["size"])
     if cap.get("outline_px") is not None:

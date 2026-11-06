@@ -24,18 +24,10 @@ The Rust crate has its own: `cd rust/hypoverum_core_rs && cargo test --release -
 ## Creative policy and proxy regression checks
 
 ```bash
-pytest -q tests/test_gate_intent.py tests/test_gate_severity.py tests/test_proxy_quality.py tests/test_creative_workflow.py tests/test_creative_shadow.py
+pytest -q tests/test_gate_intent.py tests/test_gate_severity.py tests/test_proxy_quality.py tests/test_creative_workflow.py
 ```
 
 These cover local intent (including reason validation and segment isolation), hard black/decode checks, unknown vs static vs expected motion, insufficient evidence, required negative-space policy, default-off/explicit camera fixes, draft source preservation, proxy release/output rejection, resolved settings and visual cache separation. `test_build_publish.py` retains independent frame-count/decode/publication failure coverage.
-
-For an existing rendered project, run a read-only shadow comparison:
-
-```bash
-python scripts/compare_creative_policy.py P P/out/final.mp4 --out /tmp/creative-shadow.json
-```
-
-This reconstructs only legacy R38/R56px pixel-blocking decisions using the same threshold findings and compares blocked segments with the current policy. It does not execute the old full engine, benchmark speed, or prove creative quality. Current integrity/expected-motion failures return exit 1; a normal static hold can return 0 while still exposing what the legacy heuristics would have blocked. It does not modify project/timeline/video; `--out` writes only the requested audit file. Compare proxy and delivery using the same timeline and an isolated cache; do not extrapolate one synthetic scene to production.
 
 ## Toolchain-dependent tests
 

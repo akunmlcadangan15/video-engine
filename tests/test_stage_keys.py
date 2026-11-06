@@ -1,4 +1,4 @@
-"""Stage cache keys cover every input of their product (audit 2026-10-25 item 13): engine sources, ffmpeg, x264
+"""Stage cache keys cover every input of their product: engine sources, ffmpeg, x264
 threads, Pillow, captions (.ass) and fonts, both neighbouring segments of a transition. BAD = an input changed and the
 old product must not be reused (the key must change); GOOD = an unrelated change keeps every visual key."""
 import shutil
