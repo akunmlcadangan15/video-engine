@@ -1,40 +1,43 @@
-# SFX cues from render events and the music ducking. Loaded by geoverum.toml `include`.
+# Render-Event Sound Effects (SFX) Mapping & Voiceover Music Ducking Specification.
+# Defines automatic audio cue triggers bound to visual timeline events (pins, figures, labels, regions,
+# routes, camera whips, counters, and titles) and dynamic background music attenuation under narration.
+# Included automatically by profiles/geoverum.toml and profiles/geoverum_landscape.toml.
 
-[sound]                       # SFX cues from render events + music ducked under the voiceover
-duck_db = -12.0               # music under speech (word timestamps of the voiceover)
-duck_attack_s = 0.25
-duck_release_s = 0.6
-duck_merge_s = 0.7            # word gaps up to 0.7 s stay ducked
-fade_in_s = 0.3
-fade_out_s = 1.0
+[sound]                       # Master music ducking envelope synchronized to voiceover word timestamps
+duck_db = -12.0               # Attenuation in dB applied to the background music bed while the narrator is speaking
+duck_attack_s = 0.25          # Gain reduction attack time in seconds prior to voiceover word onset
+duck_release_s = 0.6          # Gain recovery release time in seconds after a spoken phrase concludes
+duck_merge_s = 0.7            # Bridges inter-word pauses up to 0.70 s so background music does not pump between adjacent words
+fade_in_s = 0.3               # Master music fade-in duration in seconds at the start of the video
+fade_out_s = 1.0              # Master music fade-out duration in seconds at the end of the video
 
-[sound.events]                # render event -> SFX kind (clicks and beeps allowed for this channel)
-pin = "pop"
-figure = "pop"
-label = "tick"
-region = "tick"
-route = "whoosh"
-whip = "whoosh"
-counter_tick = "counter_tick"
-title = "impact"
+[sound.events]                # Binds visual render events emitted by the scene compiler to acoustic SFX categories
+pin = "pop"                   # Teardrop map pin drop-in triggers a soft percussive pop
+figure = "pop"                # Hero stat pill or figure appearance triggers a soft percussive pop
+label = "tick"                # Map text label or banner pill appearance triggers a crisp mechanical tick
+region = "tick"               # Country polygon fill or hatch activation triggers a subtle tactile tick
+route = "whoosh"              # Progressive route line drawing triggers an aerodynamic whoosh
+whip = "whoosh"               # Fast camera whip pan triggers a peak-aligned directional whoosh
+counter_tick = "counter_tick" # Animated numeric count-up triggers rapid sequential counter ticks
+title = "impact"              # Cinematic display title fly-in triggers a low-frequency cinematic impact
 
 [sound.kinds.pop]
-gain_db = -12.0
-max_s = 0.6
+gain_db = -12.0               # Playback level in dBFS relative to full scale for pop cues
+max_s = 0.6                   # Maximum duration cap in seconds for pop SFX samples
 
 [sound.kinds.tick]
-gain_db = -16.0
-max_s = 0.4
+gain_db = -16.0               # Playback level in dBFS for subtle label/region tick cues
+max_s = 0.4                   # Maximum duration cap in seconds for tick SFX samples
 
 [sound.kinds.whoosh]
-gain_db = -12.0
-align = "peak"                # whoosh peak on the middle of the move
-max_s = 1.5
+gain_db = -12.0               # Playback level in dBFS for route and camera whip whoosh cues
+align = "peak"                # Aligns the acoustic energy peak of the whoosh sample with the temporal midpoint of the camera/route motion
+max_s = 1.5                   # Maximum duration cap in seconds for whoosh SFX samples
 
 [sound.kinds.counter_tick]
-gain_db = -20.0
-max_s = 0.08
+gain_db = -20.0               # Low-level playback gain in dBFS so rapid counter ticks support numbers without masking speech
+max_s = 0.08                  # Short sample truncation window in seconds for high-frequency counter ticks
 
 [sound.kinds.impact]
-gain_db = -10.0
-max_s = 2.0
+gain_db = -10.0               # Playback level in dBFS for primary title impact cues
+max_s = 2.0                   # Maximum duration cap in seconds including low-frequency decay tail

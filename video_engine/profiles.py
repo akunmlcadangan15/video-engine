@@ -1392,8 +1392,12 @@ def _inline_rules_file(name: str, flat: str) -> str:
     if not rel:
         return flat
     rules = _creative_rules(name, rel)
+    # json.dumps writes TOML basic-string escapes (\uXXXX, \\, \n, \"). re.sub treats a
+    # replacement string as a template, so those backslashes are not copied literally
+    # (\u from a character such as ≠ is an error; \n, \1 and \g<...> would change the text).
+    # A callable replacement inserts the line unchanged, and tomllib then decodes the escapes.
     inline = "rules = [" + ", ".join(_json.dumps(r) for r in rules) + "]"
-    flat, n = re.subn(r'(?m)^rules_file\s*=.*$', inline, flat, count=1)
+    flat, n = re.subn(r'(?m)^rules_file\s*=.*$', lambda _match: inline, flat, count=1)
     if n != 1:
         raise EngineError(f"profile '{name}': cannot inline [draft] rules_file")
     return flat

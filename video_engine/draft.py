@@ -288,8 +288,8 @@ def schema(inp: Inputs) -> dict:
     seg["properties"]["map_recipe"] = RECIPE_SCHEMA
     if prof.draft.map_path:
         seg["properties"]["map_path"] = {"type": "array", "items": {
-            "type": "object", "properties": {"at_s": n, "x": n, "y": n, "zoom": n, "roll": n,
-                                             "move": {"type": "string", "enum": ["glide", "whip", "reveal"]}},
+            "type": "object", "properties": {"at_s": n, "x": n, "y": n, "zoom": n, "roll": n, "tilt": n,
+                                             "move": {"type": "string", "enum": ["glide", "whip", "reveal", "flow", "settle"]}},
             "required": ["at_s", "x", "y"]}}
     cred = {"type": "object", "properties": {"asset": {"type": "string", "enum": ids}, "credit_line": i,
                                              "watermark_free": b}, "required": ["asset", "credit_line", "watermark_free"]}
@@ -469,7 +469,8 @@ def _camera_path(keys: list[dict], n: int, fps: int, max_zoom: float = 4.0) -> l
             continue
         out.append({"at_frame": f, "focus": [min(1.0, max(0.0, float(k["x"]))), min(1.0, max(0.0, float(k["y"])))],
                     "zoom": min(max_zoom, max(1.0, float(k.get("zoom") or 1.0))),
-                    **({"move": k["move"]} if k.get("move") in ("whip", "reveal") and out else {}),
+                    **({"move": k["move"]} if k.get("move") in ("whip", "reveal", "flow", "settle") and out else {}),
+                    **({"tilt": min(45.0, max(0.0, float(k["tilt"])))} if k.get("tilt") else {}),
                     **({"roll": min(ROLL_MAX, max(-ROLL_MAX, float(k["roll"])))} if k.get("roll") else {})})
     if len(out) < 2:
         raise ValueError(f"map_path needs at least 2 keys at distinct times inside the segment, got {keys!r}")

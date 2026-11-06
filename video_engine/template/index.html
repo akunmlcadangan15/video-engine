@@ -237,7 +237,7 @@ function neon(par,tag,at,col,cas,w,dashed,t0,ds,id,geo,o){
 if(S.regions&&S.regions.length){
   // legibility profiles: translucent fill, full-colour outline, no glow
   const svg=mapSvg(), P=S.print, paper=P&&P.surface==='paper',
-    T=LG?Object.assign({},S.theme,{region_fill_opacity:LG.entity_fill_alpha,region_edge_px:LG.entity_outline_px,region_glow_px:0}):S.theme;
+    T=LG?Object.assign({},S.theme,{region_fill_opacity:paper?LG.entity_fill_alpha:Math.max(S.theme.region_fill_opacity,LG.entity_fill_alpha),region_edge_px:paper?LG.entity_outline_px:Math.max(S.theme.region_edge_px,LG.entity_outline_px),region_glow_px:paper?0:S.theme.region_glow_px}):S.theme;
   const geo=(r,i)=>r.ll?{'data-geo':i}:{}, chg=(r,el,from,to,t)=>tl.fromTo(el,from,{...to,duration:TH.block_change_s,ease:MO.move,immediateRender:false},t);
   // P5 flag fit, computed here: Chrome lays an <image>-referenced SVG out as `meet` and ignores `slice`,
   // so cover/contain are explicit rects (preserveAspectRatio none) clipped by the region polygon.
