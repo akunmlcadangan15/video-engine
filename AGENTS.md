@@ -30,3 +30,17 @@ Tujuan: engine video vertikal hybrid. Input: folder proyek berisi `master_timeli
 - Log build panjang: baca dengan `tail -n 50` / `rg -n 'FAIL|ERROR'`, jangan dump.
 
 Aturan efisiensi token: /workspace/ai-helpers/EFFICIENCY.md (wajib).
+
+## Cloud Agent
+
+Checkout ini bukan mesin render Hypoverum. Aturan `/workspace` di atas (venv, `engine-build`, kunci render, disk 80%) berlaku di mesin itu, bukan di VM Cloud Agent.
+
+Environment Cloud Agent memasang, lewat skrip install yang idempoten:
+
+- FFmpeg 9 di `/usr/local/bin`. Paket Ubuntu 24.04 adalah 6.1, dan `engine doctor` menolak ffmpeg di bawah 7.
+- Rust stable (`rustup`). Toolchain image 1.83 tidak bisa membangun crate ini: dependensi memakai Cargo edition 2024. Build dengan `CC=/usr/bin/gcc`.
+- `.venv` (`pip install -e ".[test]" maturin ruff`) dan `maturin develop --release`.
+- `python3` di `/usr/local/bin` adalah wrapper ke venv itu. `examples/minimal/prepare.sh` memanggil `python3` dan butuh Pillow.
+- Toolchain vendor (`engine doctor --install`): Node, HyperFrames, dan Chrome di `vendor/` (gitignore).
+
+Cek: `engine doctor`. Contoh ujung-ke-ujung: salin `examples/minimal`, `./prepare.sh`, lalu `engine validate`, `engine preflight`, `engine build`, `engine sheet`. Tes cepat: `pytest -q tests/test_<area>.py`. `GEMINI_API_KEY` hanya untuk draf AI; jangan dicetak.
