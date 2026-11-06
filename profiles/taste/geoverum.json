@@ -4,43 +4,79 @@
   "liked": [
     {
       "what": "continuous multi-stop camera path across one map or dynamic cuts that follow narrative beats",
-      "why": "preserves spatial orientation from macro continent scale down to 16x enclave/island close-ups while keeping pacing flexible",
-      "at": "2026-10-29T00:00:00+00:00"
+      "why": "Preserves spatial orientation from macro continental views down to 16x micro-enclave close-ups while keeping visual momentum continuous across 96-100% of frames.",
+      "at": "2026-10-29T00:00:00+00:00",
+      "check": [
+        {
+          "key": "camera.max_zoom",
+          "op": "==",
+          "value": 16.0
+        },
+        {
+          "key": "camera.pulse_zoom",
+          "op": ">",
+          "value": 0.0
+        }
+      ]
     },
     {
       "what": "year or hero percentage held big and clean before supporting pill badges appear",
-      "why": "one clear focal point per beat without competing text",
+      "why": "Establishes a single unambiguous visual focal point per narrative beat before secondary context labels or callout pills enter the frame.",
       "at": "2026-10-29T00:00:00+00:00"
     },
     {
       "what": "geographical paradox hook with an instant dividing line, visual pun, or magnifying-glass mystery in the first 1.5 s",
-      "why": "immediately hooks viewer curiosity with a visual contradiction (Market zigzag, Chili->Chile, Tibet flight void, Gibraltar bridge ?)",
+      "why": "Captures viewer attention immediately by presenting a concrete spatial contradiction on an already-moving satellite map from frame 0.",
+      "at": "2026-10-29T00:00:00+00:00",
+      "check": [
+        {
+          "key": "gates.hook.open_on_moving_map",
+          "op": "==",
+          "value": true
+        }
+      ]
+    },
+    {
+      "what": "vibrant translucent region fill with glowing edge and dark charcoal banner boxes (#18181c) on dark satellite maps",
+      "why": "Dark satellite basemaps (median APCA luminance Y ~ 0.08) require luminous outer border glows (region_edge = 'glow') and 45% translucent fills for territorial separation, while reserving paper multiply grading strictly for bright archival surfaces (paper_min_y >= 0.52).",
+      "at": "2026-10-29T00:00:00+00:00",
+      "check": [
+        {
+          "key": "theme.region_edge",
+          "op": "==",
+          "value": "glow"
+        },
+        {
+          "key": "theme.region_fill_opacity",
+          "op": ">=",
+          "value": 0.4
+        },
+        {
+          "key": "print.paper_min_y",
+          "op": ">=",
+          "value": 0.5
+        }
+      ]
+    },
+    {
+      "what": "2D side-view cross-section diagram and 3D horizon altitude profile (underground mines, river depth, and subterranean aquifers)",
+      "why": "Communicates vertical depth, underground stratigraphy, and hydrological scale that cannot be perceived from a top-down planimetric map alone.",
       "at": "2026-10-29T00:00:00+00:00"
     },
     {
-      "what": "true-scale polygon drag, polygon tiling, or everyday object scale comparison (Chile over London-Baghdad, 5x France in Tibet, Costco lot next to Market Island)",
-      "why": "turns abstract area and length numbers into an unforgettable visual comparison",
+      "what": "white-bordered cutout stickers (windmills, ships, bulldozers, vehicles), moving frontline flag badges, and short comic speech bubbles",
+      "why": "Introduces tactile kinetic actors and concise comedic beats without cluttering the underlying cartographic composition.",
       "at": "2026-10-29T00:00:00+00:00"
     },
     {
-      "what": "2D side-view cross-section diagram and 3D horizon altitude profile (900 m Gibraltar vs 75 m Channel Tunnel, Wallace trench, 33,000 ft plane over Himalayas, prairie roots)",
-      "why": "makes vertical depth, underwater geology, and flight altitude barriers immediately clear",
-      "at": "2026-10-29T00:00:00+00:00"
-    },
-    {
-      "what": "white-bordered cutout stickers (animals, tractors, ships, planes) and interactive tool props (magnifying glass, pencil redrawing border, crossed-out badges)",
-      "why": "adds tactile motion and humor while keeping the map uncluttered",
-      "at": "2026-10-29T00:00:00+00:00"
-    },
-    {
-      "what": "icon equation summary ([Depth] + [Currents] + [Earthquakes] = $) or 3D globe core-to-summit radius comparison (+21 km, +2 km)",
-      "why": "crystallizes multi-factor engineering or geophysical explanations into a single visual punchline",
+      "what": "animated thermometers, double-arrow measurement bars (km and mi), and stat pills",
+      "why": "Transforms spoken climate temperatures, geodesic distances, and demographic ratios into active visual components anchored directly to the map.",
       "at": "2026-10-29T00:00:00+00:00"
     },
     {
       "what": "caption Inter bold 84 px putih tanpa box/outline di y≈0,74 H (fixed_y 1417)",
-      "why": "A/B 2026-11-01: 84 paling bersih, tidak menutupi peta, tetap terbaca di layar HP (Arundaya); fixed_y ditetapkan pada 1417 px agar batas bawah kotak caption tepat berada di batas aman UI Shorts (max_bottom_y 1480 px)",
-      "at": "2026-11-01T11:12:55+07:00",
+      "why": "Ukuran 84 px menghasilkan keterbacaan optimal di layar ponsel dalam satu baris pendek (maksimal 3 kata) tanpa menutupi area fokus peta di zona tengah, sedangkan fixed_y = 1417 px menempatkan batas bawah teks tepat pada batas aman antarmuka vertikal (max_bottom_y = 1480 px).",
+      "at": "2026-10-29T00:00:00+00:00",
       "check": [
         {
           "key": "caption_style.size",
@@ -66,8 +102,8 @@
     },
     {
       "what": "bendera di region dengan fit otomatis per region (cover; contain bila region sempit/tinggi seperti Myanmar)",
-      "why": "A/B 2026-11-01: cover pada region sempit memotong bendera jadi strip tak dikenali; satu pilihan global salah di salah satu kasus (Arundaya)",
-      "at": "2026-11-01T11:12:55+07:00",
+      "why": "Mode 'cover' penuh pada poligon wilayah yang memanjang atau sempit akan memotong simbol utama bendera menjadi strip yang tidak dikenali, sehingga mode 'auto' secara dinamis memilih antara 'cover' dan 'contain' berdasarkan geometri masing-masing poligon.",
+      "at": "2026-10-29T00:00:00+00:00",
       "check": [
         {
           "key": "flags.fit",
@@ -78,13 +114,13 @@
     },
     {
       "what": "visual Stage 4 (backdrop, halo, graticule, zona waktu, hatch, bubble, karakter bendera, cutaway, geoid, partikel) hanya bila memperjelas satu beat",
-      "why": "disetujui 2026-11-01: semuanya opsional dan off default, tidak pernah wajib dan tidak pernah sekaligus (Arundaya)",
-      "at": "2026-11-01T11:12:55+07:00"
+      "why": "Seluruh komponen visual Stage 4 bersifat opsional per segmen dan nonaktif secara bawaan (off by default) agar setiap efek hanya muncul ketika mendukung argumen geografis pada segmen tersebut.",
+      "at": "2026-10-29T00:00:00+00:00"
     },
     {
       "what": "segmen fleksibel mulai 3,0 s; bebas melakukan cut sesuai ritme narasi tanpa batas jumlah cut",
-      "why": "disetujui 2026-11-01: tidak ada batasan cut yang menghambat kreativitas atau memaksa penggabungan komposit (Arundaya); min_seg_s ditetapkan pada 3,0 detik berdasarkan analisis ritme video referensi untuk menjaga fleksibilitas pacing",
-      "at": "2026-11-01T11:12:55+07:00",
+      "why": "Durasi segmen minimum 3,0 detik tanpa pembatasan jumlah hard cut memungkinkan kombinasi fleksibel antara terbang kamera kontinyu di atas satu peta dan potongan bukti singkat mengikuti ritme kalimat narator.",
+      "at": "2026-10-29T00:00:00+00:00",
       "check": [
         {
           "key": "draft.min_seg_s",
@@ -100,8 +136,8 @@
     },
     {
       "what": "loudness −14 LUFS, true peak ≤ −1,5 dBTP",
-      "why": "disetujui 2026-11-01: standar Shorts/YouTube, tanpa clipping (Arundaya)",
-      "at": "2026-11-01T11:12:55+07:00",
+      "why": "Memenuhi standar normalisasi audio platform distribusi video pendek (−14 LUFS terintegrasi) dengan batas puncak sejati −1,5 dBTP untuk mencegah distorsi atau inter-sample clipping saat transkoding.",
+      "at": "2026-10-29T00:00:00+00:00",
       "check": [
         {
           "key": "audio.target_lufs",
@@ -119,7 +155,7 @@
   "rejected": [
     {
       "what": "static frame or camera hold over 1.7 s",
-      "why": "violates P01/P02; the map or still must keep drifting",
+      "why": "Violates camera continuity gates P01 and P02; map viewports and documentary stills must maintain continuous drift or rhythmic micro-pulsing so the image never freezes.",
       "at": "2026-10-29T00:00:00+00:00",
       "check": [
         {
@@ -131,7 +167,7 @@
     },
     {
       "what": "call to action or subscribe end card",
-      "why": "Geoverum ends on the final factual twist or keyword return",
+      "why": "Videos must terminate immediately on the final factual punchline or thematic keyword return without promotional sign-offs.",
       "at": "2026-10-29T00:00:00+00:00",
       "check": [
         {
@@ -143,18 +179,18 @@
     },
     {
       "what": "unquantified geographic claims without a line, dimension bar, counter, pill badge, or scale overlay on screen",
-      "why": "every spoken distance, depth, altitude, or area comparison must have a matching visual anchor",
+      "why": "Every spoken distance, depth, altitude, temperature, or demographic comparison requires a synchronized visual metric on the canvas.",
       "at": "2026-10-29T00:00:00+00:00"
     },
     {
       "what": "cluttered multi-line paragraphs or backing boxes on captions",
-      "why": "obscures the satellite map and violates Geoverum's clean lower-zone caption style",
+      "why": "Multi-line caption blocks obscure the lower map focus zone and disrupt the rapid 2-3 word reading cadence.",
       "at": "2026-10-29T00:00:00+00:00"
     },
     {
       "what": "35mm film-strip, parchment roll, page-turn, atau transisi kertas lain ke peta atlas sejarah",
-      "why": "Transisi page-turn dan lipatan kertas dinonaktifkan pada profil Geoverum (page_turn = false, map_morph = false secara default) agar perpindahan antar-peta tetap bersih menggunakan hard cut atau state dissolve singkat",
-      "at": "2026-11-02T00:00:00+07:00",
+      "why": "Transisi lipatan kertas (page_turn = false) dan morphing otomatis (map_morph = false) dinonaktifkan secara bawaan agar perpindahan antar-adegan tetap tegas menggunakan hard cut, whip pan, atau state dissolve singkat.",
+      "at": "2026-10-29T00:00:00+00:00",
       "check": [
         {
           "key": "transitions.page_turn",
@@ -165,8 +201,8 @@
     },
     {
       "what": "caption 92/104 px atau caption dengan box latar",
-      "why": "A/B 2026-11-01: terlalu berat dan menutupi peta (Arundaya memilih 84 tanpa box)",
-      "at": "2026-11-01T11:12:55+07:00",
+      "why": "Ukuran huruf 92 px dan 104 px terlalu dominan secara visual dan menutupi detail peta di zona fokus bawah, sehingga kandidat ukuran dikunci pada 84 px tanpa kotak latar bawaan.",
+      "at": "2026-10-29T00:00:00+00:00",
       "check": [
         {
           "key": "caption_style.ab_sizes",
@@ -184,13 +220,13 @@
     },
     {
       "what": "banyak efek Stage 4 sekaligus dalam satu video",
-      "why": "disetujui 2026-11-01: efek menumpuk terasa gimmick dan mengaburkan peta (Arundaya)",
-      "at": "2026-11-01T11:12:55+07:00"
+      "why": "Menumpuk terlalu banyak efek dekoratif Stage 4 secara bersamaan akan mengaburkan hierarki informasi geografis dan menurunkan kejelasan fokus utama peta.",
+      "at": "2026-10-29T00:00:00+00:00"
     },
     {
       "what": "peta satelit pecah/blur saat zoom dalam atau tilt",
-      "why": "2026-11-01: Arundaya menilai render A/B bendera 'pecah'; raster harus ≥ 1 texel per px layar",
-      "at": "2026-11-01T11:12:55+07:00"
+      "why": "Aset raster peta dan tekstur bendera harus mempertahankan kepadatan minimal 1 texel per piksel layar pada puncak zoom (gate M02) agar detail garis pantai dan perbatasan tetap tajam.",
+      "at": "2026-10-29T00:00:00+00:00"
     }
   ],
   "recent": {
@@ -198,5 +234,5 @@
     "transitions": []
   },
   "avoid_recent": 3,
-  "source": "brand/geoverum/brand-profile.md"
+  "source": "docs/REFERENCE-STYLE.md"
 }

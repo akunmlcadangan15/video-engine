@@ -28,11 +28,12 @@ def test_good_geoverum_cuts_type_changes_and_states_one_map(project):
     _, tl = project(tl_layout(("map", 10, None), ("photo", 10, None), ("map", 10, None), ("map", 10, None),
                               ("archive", 10, None), profile="geoverum"))
     T = profiles.of(tl).transitions
-    assert (T.kind, T.same_type, T.fade_s, T.state_s, T.page_turn, T.map_morph) == \
-           ("cut", {"map": "state"}, 0.4, 0.2, False, False)
+    assert (T.kind, T.same_type, T.page_turn, T.map_morph) == ("cut", {"map": "state"}, False, False)
+    assert T.fade_s == 0.5 and T.state_s == 0.35
     ws = transitions.windows(tl)
     assert [w.kind for w in ws] == ["state"]                       # only the same-map boundary is not a cut
-    assert [(w.f0, w.f1) for w in ws] == [(897, 903)]
+    n, b = max(1, round(T.state_s * tl.settings.fps)), 900
+    assert [(w.f0, w.f1) for w in ws] == [(b - n // 2, b - n // 2 + n)]
 
 
 def test_good_fade_frames_dissolve_monotonically_from_out_to_in():

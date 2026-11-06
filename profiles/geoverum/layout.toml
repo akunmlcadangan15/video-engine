@@ -1,65 +1,66 @@
-# Layout of map scenes (gates L01 to L10). Loaded by geoverum.toml `include`.
+# Map Scene Spatial Layout, Safe Zones, Element Budgets, & Fly-Through Timing Specification (Gates L01-L10).
+# Defines the 6-column portrait grid, vertical placement zones (Z1-Z3), typographic size hierarchy,
+# concurrent element budgets, and GSAP fly-in/fly-out easing curves at a 1080 x 1920 reference canvas.
+# Included automatically by profiles/geoverum.toml and overridden in geometry by profiles/geoverum/landscape/layout.toml.
 
-# beats layout of map scenes (video_engine/layout.py, gates L01-L10); positions, sizes, zones and timing only.
-# Lengths are px at 1080 x 1920.
 [layout.grid]
-x0 = 64                       # 6 columns of 104 px with 40 px gutters: left edges 64, 208, 352, 496, 640, 784
-columns = 6
-col_w = 104
-gutter = 40
-unit = 8
+x0 = 64                       # Horizontal left margin in pixels; 6 columns of 104 px with 40 px gutters span x = 64 to x = 888
+columns = 6                   # Number of vertical layout columns across the safe area
+col_w = 104                   # Width of each layout column in pixels
+gutter = 40                   # Horizontal gutter width in pixels between adjacent columns
+unit = 8                      # Base spatial quantization grid unit in pixels
 
 [layout.zones]
-safe = [48, 288, 888, 1248]   # text safe area x0, y0, x1, y1
-z1 = [64, 304, 888, 440]      # top slot: title or data card, left-aligned
-z2 = [64, 488, 888, 1100]     # map focus: active region, pins, map labels, routes
-z2_pad = 48
-z3 = [64, 1100, 888, 1248]
-group_gap = 48            # between groups (area label to pins, routes, other text)
+safe = [48, 288, 888, 1248]   # Overall map typography and overlay safe bounding box [x0, y0, x1, y1] in pixels
+z1 = [64, 304, 888, 440]      # Upper zone [x0, y0, x1, y1]: reserved for primary display titles, section headings, or top stat cards
+z2 = [64, 488, 888, 1100]     # Central map focus zone [x0, y0, x1, y1]: primary active polygon, pins, map labels, and animated routes
+z2_pad = 48                   # Internal padding in pixels inside the Z2 map focus zone
+z3 = [64, 1100, 888, 1248]    # Lower secondary zone [x0, y0, x1, y1] above the burned-in caption band
+group_gap = 48                # Minimum vertical/horizontal separation in pixels between distinct visual groups
 
 [layout.sizes]
-title = 112
-year = 128
-time = 56
-pin_label = 52
-pin_label_min = 44
-area_label = 44
-area_tracking = 0.08
-hero_ratio = 1.5
+title = 112                   # Display title height in pixels (matches [type] title_px)
+year = 128                    # Standalone chronological year height in pixels inside layout beats
+time = 56                     # Secondary time/date subtitle height in pixels
+pin_label = 52                # Standard pin label height in pixels (matches [type] pin_label_px)
+pin_label_min = 44            # Minimum pin label height in pixels after collision auto-scaling
+area_label = 44               # Regional or hydrographic area label height in pixels
+area_tracking = 0.08          # Letter-spacing in em units for area labels
+hero_ratio = 1.5              # Minimum size ratio between the primary hero figure/title and secondary labels in the same beat
 
 [layout.budget]
-texts = 3
-labelled_pins = 2
-routes = 1
-animating = 2
+texts = 3                     # Maximum concurrent text groups permitted in a single layout beat (gate L01)
+labelled_pins = 2             # Maximum concurrent labeled pins permitted in a single layout beat
+routes = 1                    # Maximum concurrent actively drawing routes per beat
+animating = 2                 # Maximum elements simultaneously executing entrance/exit animations
 
 [layout.timing]
-enter_s = 0.33                 # fly-through scale time ([layout.fly])
-exit_s = 0.33                   # fly-through exit time
-exit_max_s = 0.3
-stagger_s = 0.2
-settle_s = 0.8
-min_hold_s = 2.0
-chars_per_s = 20
+enter_s = 0.33                # Duration in seconds for scale-in entrance animations ([layout.fly])
+exit_s = 0.33                 # Duration in seconds for scale-out exit animations
+exit_max_s = 0.33             # Maximum permitted exit duration; equal to exit_s so the profile's own exit is legal (L10)
+stagger_s = 0.2               # Stagger delay in seconds between sequential elements entering in the same beat
+settle_s = 0.8                # Settling window in seconds after camera arrival before secondary labels pop in
+min_hold_s = 2.0              # Minimum duration in seconds a text element remains readable on screen before exiting
+chars_per_s = 20              # Character reveal rate per second for typewriter-style labels
 
 [layout.labels]
-offset = 16
-edge_clear = 24
-text_clear = 16
-route_clear = 24
-area_inset = 24
-leader_max = 120
-route_pin_gap = 24
-card_gap = 32
-dim_alpha = 0.10
-caption_ground = 0.10
+offset = 16                   # Default pixel offset between a pin anchor and its adjacent text label
+edge_clear = 24               # Minimum clearance in pixels from the safe-area border
+text_clear = 16               # Minimum clearance in pixels between two non-overlapping text bounding boxes
+route_clear = 24              # Minimum clearance in pixels between a text label and an active route stroke
+area_inset = 24               # Minimum inward margin in pixels when centering an area label inside a country polygon
+leader_max = 120              # Maximum length in pixels for a pointer leader line connecting a displaced label to its pin
+route_pin_gap = 24            # Pixel clearance between route endpoints and pin markers
+card_gap = 32                 # Pixel clearance between floating data cards or stat pills
+dim_alpha = 0.10              # Background darkening alpha applied behind high-density callout groups
+caption_ground = 0.10         # Subtle lower-band gradient grounding opacity behind burned-in captions
 
-[layout.fly]                   # texts scale in through the frame and out past it
-title_in = 2.6
-figure_in = 2.2
-label_in = 3.0
-out = 2.6
-title_opacity_in_s = 0.15
-figure_opacity_in_s = 0.40
-ease_in = "power2.inOut"
-ease_out = "power2.out"         # cubic ease-in
+[layout.fly]                  # 3D-style perspective scale-through entrance and exit parameters for map text
+title_in = 2.6                # Initial scale multiplier from which display titles fly inward toward 1.0x
+figure_in = 2.2               # Initial scale multiplier from which hero numbers fly inward toward 1.0x
+label_in = 3.0                # Initial scale multiplier from which map labels fly inward toward 1.0x
+out = 2.6                     # Terminal scale multiplier toward which exiting text scales outward
+title_opacity_in_s = 0.15     # Opacity fade-in duration in seconds at the start of a title fly-in
+figure_opacity_in_s = 0.40    # Opacity fade-in duration in seconds at the start of a hero number fly-in
+ease_in = "power2.inOut"      # GSAP easing function for fly-in scale animations
+ease_out = "power2.out"       # GSAP easing function for fly-out scale animations

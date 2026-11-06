@@ -173,7 +173,8 @@ def test_good_beat_hold_read_turns_off_pulses_on_its_wait(project, monkeypatch):
     layout.apply_segment(seg, tl, d)
     last = seg.gsap_scene_config.camera_path[-1]
     assert last.pulse in (0, 0.0, [0.0]) or (isinstance(last.pulse, list) and not any(last.pulse))
-    assert severity.hold_ranges(tl) == [(120 + 200, 420)]
+    # beats_doc: segment 2 starts at 120, the read beat is at frame 300, and the segment ends at 560.
+    assert severity.hold_ranges(tl) == [(120 + 300, 560)]
 
 
 def test_bad_beat_without_hold_keeps_its_pulses(project, monkeypatch):

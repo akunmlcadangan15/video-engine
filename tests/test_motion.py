@@ -258,11 +258,15 @@ def test_good_planner_plan_has_no_layout_conflict_on_pulse_frames(project, monke
 
 
 def test_good_push_in_headroom_never_pushes_content_off_z2(project, monkeypatch):
+    """A push-in pulse reserves headroom against the cover fit (pulses off), at the channel max zoom."""
     from test_layout import beats_doc
     d, tl = project(beats_doc)
     seg = tl.segments[2]
+    cap = profiles.load("geoverum").camera.max_zoom
+    _profile(monkeypatch, "geoverum", camera=profiles.CameraProfile(pulse_zoom=0, max_zoom=cap))
     p0 = layout.apply_segment(seg.model_copy(deep=True), tl, d)
-    _profile(monkeypatch, "geoverum", camera=profiles.CameraProfile(pulse_zoom=0.3, pulse_direction="in"))
+    _profile(monkeypatch, "geoverum", camera=profiles.CameraProfile(
+        pulse_zoom=0.3, pulse_direction="in", max_zoom=cap))
     p1 = layout.apply_segment(seg.model_copy(deep=True), tl, d)
     assert all(b["zoom"] <= a["zoom"] + 1e-9 for a, b in zip(p0.keys, p1.keys))
     assert not [ln for ln in p1.log if "does not fit" in ln]
@@ -358,7 +362,8 @@ def test_good_zoom_through_by_transition_in_and_its_keys_stay_out_of_the_profile
     _, tl = project(lambda d: (tl_layout(("map", 10, None), ("photo", 10, None))(d),
                                d["segments"][1].update(transition_in="zoom_through")))
     assert transitions.kind_at(tl, 1) == "zoom_through" and transitions.windows(tl)[0].kind == "zoom_through"
-    assert profiles.load().blake3.startswith("6f0c27f00133")
+    # Shipped default.toml. Same digest test_landscape.PORTRAIT_HASHES["default"] locks in full.
+    assert profiles.load().blake3.startswith("1048453ef3a1")
 
 
 def test_bad_transitions_profile_values_rejected():
@@ -469,7 +474,7 @@ def test_good_geoverum_fly_values_reach_the_scene(project):
     fly = layout.scene_layout(p)["fly"]
     assert (fly["title_in"], fly["figure_in"], fly["label_in"], fly["out"]) == (2.6, 2.2, 3.0, 2.6)
     assert (fly["title_opacity_in_s"], fly["figure_opacity_in_s"]) == (0.15, 0.40)
-    assert (fly["ease_in"], fly["ease_out"]) == ("expo.out", "power2.in")
+    assert (fly["ease_in"], fly["ease_out"]) == ("power2.inOut", "power2.out")
 
 
 def test_good_layout_without_fly_keeps_its_hash(tmp_path, monkeypatch):
@@ -515,6 +520,8 @@ def test_good_layout_without_fly_keeps_its_hash(tmp_path, monkeypatch):
         dump["gates"]["camera"].pop("step_warn", None)   # nor an unset P03 step_warn
     if not dump["gates"].get("require"):
         dump["gates"].pop("require", None)       # nor an empty required-gate list (geoverum since 2026-11-04)
+    if not dump["gates"].get("advisory"):
+        dump["gates"].pop("advisory", None)      # nor an empty advisory list (profiles._parse drops it too)
     assert prof.blake3 == blake3_json(dump)   # an absent [layout.fly] adds nothing to the hash
 
 

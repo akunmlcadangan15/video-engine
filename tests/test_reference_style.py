@@ -10,14 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from video_engine.gate_registry import MANDATORY_GATE_IDS
+from video_engine.gate_registry import KERNEL_GATE_IDS, LINT_GATE_IDS, MANDATORY_GATE_IDS
 from video_engine import profiles as _profiles
 
 ROOT = Path(__file__).resolve().parent.parent
-MANDATORY = {
-    "T02", "R07", "R14", "A01", "A02", "W01",
-    "R38", "R56px", "M01", "M03", "G01", "L22",
-}
+# Kernel integrity set. Licence/pixel gates R07, R14, A02 and R56px are lint unless a channel requires them.
+KERNEL = {"T02", "M01", "W01", "L22", "R38", "A01", "G01", "M03"}
+DEMOTED = {"R07", "R14", "A02", "R56px"}
 
 
 @pytest.fixture(scope="module")
@@ -26,7 +25,9 @@ def profile():
 
 
 def test_mandatory_gate_set_unchanged(profile):
-    assert set(MANDATORY_GATE_IDS) == MANDATORY
+    assert set(MANDATORY_GATE_IDS) == set(KERNEL_GATE_IDS) == KERNEL
+    assert DEMOTED <= set(LINT_GATE_IDS) and not (DEMOTED & set(KERNEL))
+    assert not profile.gates.require
 
 
 def test_overlap_is_allowed_never_forbidden(profile):

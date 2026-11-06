@@ -184,7 +184,8 @@ def test_good_planar_scenes_and_profile_hashes_do_not_change(project):
     assert "cam3d" not in scene and hyperframes.SCENE3D_JS not in hyperframes.script_files(scene)
     assert "camera3d" not in tl.segments[2].gsap_scene_config.model_dump()
     assert "camera_mode" not in tl.segments[2].gsap_scene_config.model_dump()
-    assert profiles.load("geoverum").blake3 == "17fe5ea02236c995601240228af802d002d554a8338267543a97b4a048dcaa21"
+    # Same shipped geoverum digest as test_landscape.PORTRAIT_HASHES["geoverum"].
+    assert profiles.load("geoverum").blake3 == "44f19530e7d6fbdb638fccd4ffa4df7277f43b0e007e882dd20cbdcbabd281d3"
 
 
 # --------------------------------------------------------------------------- browser twin (three.js, when present)

@@ -87,6 +87,13 @@ def _beats(d):
     d["segments"][2]["gsap_scene_config"]["beats"][1]["grade"] = RED
 
 
+def _beat_spans(seg):
+    """Half-open frame spans of the segment's beats: each beat runs until the next beat, or the segment end."""
+    beats = seg.gsap_scene_config.beats
+    n = seg.n_frames
+    return [(b.at_frame, beats[i + 1].at_frame if i + 1 < len(beats) else n) for i, b in enumerate(beats)]
+
+
 def test_good_no_grade_means_no_ranges_and_the_file_is_untouched(project, tmp_path):
     p, tl = project()
     src = engine_clip(tmp_path / "s.mp4", 60, size=(160, 288))
@@ -101,14 +108,16 @@ def test_good_beat_grade_over_segment_grade_over_profile_grade(project, monkeypa
         d["segments"][0]["grade"] = {"gain": 0.9}
         d["segments"][1]["grade"] = {}                      # explicit identity: no profile grade either
     p, tl = project(mut)
+    spans = _beat_spans(tl.segments[2])
     r = grade.ranges(tl.segments[2], tl, p)
-    assert [(a, e) for a, e, *_ in r] == [(110, 200)] and r[0][2] == G(**RED) and r[0][3] == p
+    assert [(a, e) for a, e, *_ in r] == [spans[1]] and r[0][2] == G(**RED) and r[0][3] == p
     assert [(a, e, g.gain) for a, e, g, _ in grade.ranges(tl.segments[0], tl, p)] == [(0, 60, 0.9)]
     real = profiles.of
     pg = G(saturation=0.8)
     monkeypatch.setattr(profiles, "of", lambda t: profiles.Profile("x", real(t).data.model_copy(update={"grade": pg}), "x"))
     seg2 = [(a, e, g) for a, e, g, _ in grade.ranges(tl.segments[2], tl, p)]
-    assert seg2 == [(0, 110, pg), (110, 200, G(**RED)), (200, 300, pg)]
+    assert seg2 == [(spans[0][0], spans[0][1], pg), (spans[1][0], spans[1][1], G(**RED)),
+                    (spans[2][0], spans[2][1], pg)]
     assert grade.ranges(tl.segments[1], tl, p) == [] and grade.ranges(tl.segments[0], tl, p)[0][2].gain == 0.9
 
 
@@ -118,7 +127,8 @@ def test_good_equal_adjacent_beat_grades_merge(project):
         for b in d["segments"][2]["gsap_scene_config"]["beats"][1:]:
             b["grade"] = RED
     p, tl = project(mut)
-    assert [(a, e) for a, e, *_ in grade.ranges(tl.segments[2], tl, p)] == [(110, 300)]
+    spans = _beat_spans(tl.segments[2])
+    assert [(a, e) for a, e, *_ in grade.ranges(tl.segments[2], tl, p)] == [(spans[1][0], spans[-1][1])]
 
 
 def test_good_profile_grade_keeps_profiles_without_it_unhashed():
@@ -147,11 +157,13 @@ def test_good_graded_segment_pixels_frame_range_cache_and_join(project, tmp_path
 def test_good_beat_grade_touches_only_its_frames(project, tmp_path):
     p, tl = project(_beats)
     seg = tl.segments[2]
+    a0, a1 = _beat_spans(seg)[1]
     src = engine_clip(tmp_path / "s.mp4", seg.n_frames, size=(160, 288), src="color=c=0x808080")
     a, b = _frames(src), _frames(grade.apply(seg, tl, p, src, tmp_path / "wd")[0])
     diff = np.abs(b - a).max(axis=(1, 2, 3))
-    assert diff[:110].max() <= 2 and diff[200:].max() <= 2 and diff[110:200].min() > 20
-    assert b[150, 0, 0, 0] > b[150, 0, 0, 2]                                  # the red tint
+    mid = (a0 + a1) // 2
+    assert diff[:a0].max() <= 2 and diff[a1:].max() <= 2 and diff[a0:a1].min() > 20
+    assert b[mid, 0, 0, 0] > b[mid, 0, 0, 2]                                  # the red tint
 
 
 def test_good_grade_intermediate_is_lossless(project, tmp_path):

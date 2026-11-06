@@ -17,7 +17,7 @@ def test_channel_direction_distinguishes_identity_defaults_and_alternatives():
     assert any(r.startswith("Identity:") for r in rules)
     assert any(r.startswith("Default, not a mandate:") for r in rules)
     assert any(r.startswith("Alternatives:") for r in rules)
-    assert any("deliberate static shots, negative space" in r for r in rules)
+    assert any("creative_autofix" in r and "disabled unless explicitly requested" in r for r in rules)
     assert not any(r.startswith("Open on a moving map") for r in rules)
 
 

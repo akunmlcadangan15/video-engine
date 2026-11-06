@@ -14,7 +14,8 @@ from video_engine.util import EngineError
 # Pinned profile hashes: landscape support must not move a portrait profile's hash (segment caches stay valid).
 PORTRAIT_HASHES = {
     "default": "1048453ef3a189d0b65c981fe187575821cf5520bc26298dd48282ff72e61181",
-    "geoverum": "57bfd40dd2f451682b2e177ef3105f9413f571264fbee59c2b683c051f8a7c07",
+    # blake3 of the shipped geoverum profile (creative.md + included channel tables).
+    "geoverum": "44f19530e7d6fbdb638fccd4ffa4df7277f43b0e007e882dd20cbdcbabd281d3",
 }
 
 

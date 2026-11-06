@@ -216,20 +216,30 @@ def camera_path_metrics(tl: Timeline, mf: list[tuple[float, float] | None]) -> l
     """Per segment with a planned camera: screen speed v(f) = centre speed + |zoom speed| x half the frame diagonal
     (frame widths / s: how fast the frame corners travel), over the segment's frames except its last (whose next
     window is not planned) and transition frames. Returns {seg, length_fw (path length, frame widths), peak_fw_s,
-    max_step (largest one-frame speed change relative to the faster of the two frames, frames above 0.02 fw/s),
+    max_step (largest one-frame speed change relative to the faster of the two frames). A frame counts only when
+    it is moving by the same rule as P01: |zoom speed| >= CameraGate.still_zoom_ln_s or centre speed >=
+    still_pan_w_s. The cosine glide's tails sit under the zoom-still threshold; scoring them with the pan floor
+    (0.02) made a smooth ease look like a 28 % step.
     step_frame (absolute frame of that change)}."""
+    from ..profiles import CameraGate
+    still_zoom, still_pan = CameraGate().still_zoom_ln_s, CameraGate().still_pan_w_s
     W, H, fps = tl.settings.width, tl.settings.height, tl.settings.fps
     zk = math.hypot(W, H) / 2 / W
     out = []
     for s in tl.segments:
         fr = range(s.start_frame, s.end_frame - 1)
-        v = [None if (m := mf[f]) is None or math.isinf(m[0]) else m[1] + m[0] * zk for f in fr]
+        raw = [None if (m := mf[f]) is None or math.isinf(m[0]) else m for f in fr]
+        v = [None if m is None else m[1] + m[0] * zk for m in raw]
         vv = [x for x in v if x is not None]
         if not vv:
             continue
         step, at = 0.0, None
-        for f, a, b in zip(fr, v, v[1:]):
-            if a is not None and b is not None and max(a, b) > 0.02 and abs(b - a) / max(a, b) > step:
+        for f, a, b, ma, mb in zip(fr, v, v[1:], raw, raw[1:]):
+            if a is None or b is None or ma is None or mb is None:
+                continue
+            if not (ma[0] >= still_zoom or ma[1] >= still_pan) or not (mb[0] >= still_zoom or mb[1] >= still_pan):
+                continue
+            if abs(b - a) / max(a, b) > step:
                 step, at = abs(b - a) / max(a, b), f + 1
         out.append({"seg": s.seg_index, "length_fw": sum(vv) / fps, "peak_fw_s": max(vv), "max_step": step,
                     "step_frame": at})

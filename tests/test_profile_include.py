@@ -1,5 +1,7 @@
 """Profile `include`: a channel profile can pull in other .toml files of the profiles directory. Merge order:
 default < included files (in list order) < the channel file. Labelled GOOD and BAD cases."""
+import tomllib
+
 import pytest
 
 from video_engine import config, profiles
@@ -80,6 +82,28 @@ def test_good_flatten_inlines_the_included_files_and_parses_to_the_same_profile(
     assert "include" not in flat.split("[", 1)[0] and "[theme.entities]" in flat and "[audio]" in flat
     pdir("flat.toml", flat)
     assert profiles.load("flat").blake3 == profiles.load("chan").blake3
+
+
+def test_good_flatten_inlines_rules_file_text_with_unicode_and_backslashes(pdir):
+    """Flattened rules_file text parses back to the same rules, including unicode and backslashes."""
+    rules = [
+        "equals sign struck through into ≠",
+        r"C:\users\geo \u2260 \1 \g<name>",
+        'say "hello" then \\',
+    ]
+    pdir("chan/creative.md", "".join(f"- {rule}\n" for rule in rules))
+    pdir("chan/extra.toml", '[watermark]\ntext = "Chan"\n')
+    pdir("chan.toml", 'include = ["chan/extra.toml"]\n[draft]\nrules_file = "chan/creative.md"\n')
+    flat = profiles.flatten("chan")
+    assert tomllib.loads(flat)["draft"]["rules"] == rules
+    pdir("flat.toml", flat)
+    assert profiles.load("flat").draft.rules == rules
+    assert profiles.load("chan").draft.rules == rules
+
+
+def test_good_repository_geoverum_flatten_keeps_creative_rules():
+    flat = profiles.flatten("geoverum")
+    assert tomllib.loads(flat)["draft"]["rules"] == profiles.load("geoverum").draft.rules
 
 
 def test_good_repository_geoverum_loads_from_its_include_files():

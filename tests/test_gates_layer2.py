@@ -197,5 +197,7 @@ def test_R63_dom_demo_end_to_end(project, W, auto_place):
         assert rep.ok and any(f.level == "fix" and f.seg == 1 for f in r63)
         assert rep.caption_y_overrides and rep.caption_y_overrides[0][0] == 120
     else:
-        assert not rep.ok and any("Pusat Kota" in f.message for f in r63 if f.level == "fail")
+        hit = [f for f in r63 if "Pusat Kota" in f.message]
+        assert hit and hit[0].level == "warn" and "lint gate not required" in (hit[0].waived or "")
+        assert rep.ok
     assert rep.timings["total"] < 5.0

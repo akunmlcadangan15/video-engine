@@ -117,10 +117,17 @@ def test_good_oklch_round_trip():
 
 
 # GOOD / BAD: polarity choice ------------------------------------------------------------------------------------------
-@pytest.mark.parametrize("bg, pol", [(PAPER, "dark"), (_grey(0.30), "dark"), (_grey(0.19), "dark"),
-                                     (_grey(0.17), "light"), (DARK_MAP, "light")],
-                         ids=["GOOD-paper-dark", "GOOD-mid-dark-default", "GOOD-just-above-0.18-dark",
-                              "GOOD-just-below-0.18-light", "GOOD-dark-map-light"])
+_THR = profiles.load("geoverum").legibility.light_p50_max
+
+
+@pytest.mark.parametrize("bg, pol", [
+    (PAPER, "dark"),
+    (_grey(min(0.90, _THR + 0.20)), "dark"),
+    (_grey(_THR + 0.02), "dark"),
+    (_grey(max(0.0, _THR - 0.02)), "light"),
+    (DARK_MAP, "light"),
+], ids=["GOOD-paper-dark", "GOOD-well-above-threshold-dark", "GOOD-just-above-threshold-dark",
+        "GOOD-just-below-threshold-light", "GOOD-dark-map-light"])
 def test_good_polarity_rule(bg, pol):
     assert L.polarity([_sample(bg)], LG) == pol
 
@@ -191,8 +198,9 @@ def test_good_entity_text_ink_capped_and_ochre_never_text():
 
 # GOOD / BAD: polarity stability (hysteresis) --------------------------------------------------------------------------
 def _flicker(n=24, fps=30):
-    """Background oscillating each frame around the polarity threshold (Y 0.16 / 0.20)."""
-    return [_sample(_grey(0.16 if k % 2 else 0.20), t=1.0 + k / fps) for k in range(n)]
+    """Background oscillating each frame around the profile polarity threshold."""
+    thr = LG["light_p50_max"]
+    return [_sample(_grey(thr - 0.02 if k % 2 else thr + 0.02), t=1.0 + k / fps) for k in range(n)]
 
 
 def test_bad_naive_per_frame_polarity_flickers():

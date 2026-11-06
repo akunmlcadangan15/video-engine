@@ -174,7 +174,9 @@ def test_bad_watermark_flag_fails_R14(proj):
     plan = good_plan()
     plan["credits"][0]["watermark_free"] = False
     r = run(proj, client({"m38": [plan]}), max_repairs=0)
-    assert not r.ok and any("R14" in e for e in r.report["rounds"][0]["errors"])
+    pre = r.report["rounds"][0]["preflight"]
+    # R14 is lint: the false watermark flag is reported, and it does not block the draft unless required.
+    assert "[WARN] R14" in pre and "watermark_free is false" in pre and r.ok
 
 
 def test_good_normalise_records_changes():

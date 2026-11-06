@@ -96,7 +96,7 @@ window.__inv=function(a,z,E){const e=window.__ease(E);if(Math.abs(z-a)<1e-9)retu
 // ln-rate zoom (rho^t-1)/(rho-1), pulse = base drift `lr` plus the cubic-bezier share; hyperframes.leg_ease is the
 // same math); `inv` as above
 window.__legs=function(C,FPS){
-  const glide=t=>{t=Math.min(Math.max(t,0),1);return 0.35*t+0.65*(1-Math.cos(Math.PI*t))/2;};
+  const glide=t=>{t=Math.min(Math.max(t,0),1);return (1-Math.cos(Math.PI*t))/2;};
   const quart=t=>t<0.5?8*t*t*t*t:1-Math.pow(-2*t+2,4)/2;   // GSAP power3.inOut
   const EASE={glide:glide,whip:quart,lin:t=>t};   // lin: the one-frame legs of a flow path
   const legEase=(L,s0)=>{if(L.v){const a=L.v[0],b=L.v[1];return t=>((a+b-2)*t+3-2*a-b)*t*t+a*t;}
@@ -237,7 +237,7 @@ function neon(par,tag,at,col,cas,w,dashed,t0,ds,id,geo,o){
 if(S.regions&&S.regions.length){
   // legibility profiles: translucent fill, full-colour outline, no glow
   const svg=mapSvg(), P=S.print, paper=P&&P.surface==='paper',
-    T=LG?Object.assign({},S.theme,{region_fill_opacity:LG.entity_fill_alpha,region_edge_px:LG.entity_outline_px,region_glow_px:0}):S.theme;
+    T=LG?Object.assign({},S.theme,{region_fill_opacity:paper?LG.entity_fill_alpha:Math.max(S.theme.region_fill_opacity,LG.entity_fill_alpha),region_edge_px:paper?LG.entity_outline_px:Math.max(S.theme.region_edge_px,LG.entity_outline_px),region_glow_px:paper?0:S.theme.region_glow_px}):S.theme;
   const geo=(r,i)=>r.ll?{'data-geo':i}:{}, chg=(r,el,from,to,t)=>tl.fromTo(el,from,{...to,duration:TH.block_change_s,ease:MO.move,immediateRender:false},t);
   // P5 flag fit, computed here: Chrome lays an <image>-referenced SVG out as `meet` and ignores `slice`,
   // so cover/contain are explicit rects (preserveAspectRatio none) clipped by the region polygon.

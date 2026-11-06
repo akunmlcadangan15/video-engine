@@ -17,7 +17,7 @@ mapL.className=scrL.className='props';
 mapL.id='props-map';scrL.id='props-screen';
 document.getElementById('cam').after(mapL);          // over the map, under the shade and the ui
 document.getElementById('ui').before(scrL);          // over the shade, under the ui texts
-const EASE={glide:t=>0.35*t+0.65*(1-Math.cos(Math.PI*t))/2, drift:t=>t,
+const EASE={glide:t=>{t=Math.min(Math.max(t,0),1);return (1-Math.cos(Math.PI*t))/2;}, drift:t=>t,
   whip:t=>t<0.5?8*t*t*t*t:1-Math.pow(-2*t+2,4)/2};
 const cl=v=>Math.min(1,Math.max(0,v));
 // camera {x,y,s} at time t (s): the leg tween value of that frame

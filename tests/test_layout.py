@@ -242,7 +242,8 @@ def test_good_default_profile_has_no_layout_and_keeps_its_hash():
     assert dump["gates"].pop("advisory") == []  # nor does an empty advisory list
     dump["theme"].pop("reveal_ease")             # the default reveal ease adds nothing (theme.reveal_ease)
     assert p.blake3 == blake3_json(dump)
-    assert p.blake3.startswith("6f0c27f00133")
+    # Shipped default.toml. Same digest test_landscape.PORTRAIT_HASHES["default"] locks in full.
+    assert p.blake3.startswith("1048453ef3a1")
     assert profiles.load("geoverum").layout is not None
 
 
@@ -250,7 +251,7 @@ def test_good_default_profile_has_no_layout_and_keeps_its_hash():
 def beats_doc(doc):
     doc["profile"] = "geoverum"
     s = doc["segments"][2]
-    s["end_frame"] = 420
+    s["end_frame"] = 560
     s["gsap_scene_config"] = {
         "map_asset": "assets/map.jpg", "map_asset_id": "map", "title": "SEKUTU",
         "pins": [{"label": "Titik A", "x": 0.45, "y": 0.40}, {"label": "Titik B", "x": 0.45, "y": 0.58}],
@@ -259,9 +260,9 @@ def beats_doc(doc):
         "routes": [{"points": [[0.4, 0.3], [0.45, 0.40]], "to_pin": 0}],
         "figures": [{"kind": "year", "value": 1945}],
         "beats": [{"at_frame": 0, "region": 0, "pins": [0], "routes": [0], "title": True},
-                  {"at_frame": 110, "region": 0, "markers": [0], "card": [0],
+                  {"at_frame": 160, "region": 0, "markers": [0], "card": [0],
                    "area_labels": [{"text": "Sekutu", "region": 0}], "camera": False},
-                  {"at_frame": 200, "region": 1, "pins": [1]}]}
+                  {"at_frame": 300, "region": 1, "pins": [1]}]}
 
 
 def no_print(monkeypatch):

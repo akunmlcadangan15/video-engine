@@ -159,12 +159,12 @@ def test_good_geoverum_seed_from_brand_profile(monkeypatch):
     from video_engine import config
     monkeypatch.setenv("VIDEO_ENGINE_TASTE_DIR", str(config.PROFILES_DIR / "taste"))
     t = director.load_taste("geoverum")
-    joined = " ".join(t["rules"])
-    # The seed has no hard-cut limit any more (decided 2026-11-01: free cuts); the silence limit stands in for it.
-    for want in ("satellite map already moving", "no silence gap over 0.65 s", "Epidemic Sound", "No call to action",
-                 "watermark top right"):
-        assert want in joined, want
-    assert "hard cuts per 10 s" not in joined
+    blob = json.dumps(t)
+    # Brand preferences live on liked/rejected entries. Creative rules are the profile's, not a taste rule list.
+    assert "already-moving satellite map" in blob
+    assert any("call to action" in x["what"] for x in t["rejected"])
+    assert "hard cuts per 10 s" not in blob
+    assert t.get("rules", []) == []
     assert t["liked"] and t["rejected"] and t["recent"] == {"openers": [], "transitions": []}
 
 

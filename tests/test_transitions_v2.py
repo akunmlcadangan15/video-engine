@@ -18,10 +18,11 @@ def _map_pair(d, same=True):
 def test_good_geoverum_cuts_type_changes_and_states_the_same_map(project):
     _, tl = project(layout(("map", 10, None), ("photo", 10, None), ("map", 10, None), ("map", 10, None)))
     T = profiles.of(tl).transitions
-    assert T.kind == "cut" and T.same_type == {"map": "state"} and T.state_s == 0.2
+    assert T.kind == "cut" and T.same_type == {"map": "state"} and T.state_s == 0.35
     assert [transitions.kind_at(tl, i) for i in (1, 2, 3)] == ["cut", "cut", "state"]
     ws = transitions.windows(tl)
-    assert [(w.kind, w.boundary, w.f0, w.f1) for w in ws] == [("state", 900, 897, 903)]
+    n, b = max(1, round(T.state_s * tl.settings.fps)), 900
+    assert [(w.kind, w.boundary, w.f0, w.f1) for w in ws] == [("state", b, b - n // 2, b - n // 2 + n)]
 
 
 def test_good_map_to_map_with_different_assets_is_a_hard_cut(project):
@@ -37,7 +38,9 @@ def test_good_explicit_transition_in_overrides_the_profile(project):
         d["segments"][1]["transition_in"] = "crossfade"
     _, tl = project(cross)
     assert transitions.kind_at(tl, 1) == "crossfade"
-    assert [(w.kind, w.f0, w.f1) for w in transitions.windows(tl)] == [("crossfade", 294, 306)]
+    T = profiles.of(tl).transitions
+    n, b = max(1, round(T.fade_s * tl.settings.fps)), tl.segments[1].start_frame
+    assert [(w.kind, w.f0, w.f1) for w in transitions.windows(tl)] == [("crossfade", b - n // 2, b - n // 2 + n)]
 
     def cut(d):
         _map_pair(d)

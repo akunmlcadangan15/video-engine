@@ -1,4 +1,4 @@
-"""Stage 2 pacing: Geoverum draft segment length (0.8 s minimum, no cut limits) and optional C01 CutGate behaviour."""
+"""Stage 2 pacing: Geoverum draft segment length (3.0 s minimum, no cut limits) and optional C01 CutGate behaviour."""
 from test_style_gates import layout
 
 from video_engine import profiles
@@ -10,7 +10,7 @@ CUTS = profiles.CutGate(warn_per_10s=0.41, fail_per_10s=1.65, first_warn_s=12.0,
 def test_good_geoverum_pacing_values_are_profile_driven(project):
     _, tl = project(layout(("map", 6, None), ("photo", 18, None)))
     p = profiles.of(tl)
-    assert p.draft.min_seg_s == 0.8
+    assert p.draft.min_seg_s == 3.0
     assert p.gates.cuts is None and p.gates.visual_type is None
 
 

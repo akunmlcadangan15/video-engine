@@ -8,8 +8,9 @@ saw; assets are draft asset ids. Anything the renderer cannot execute (unknown k
 profile does not expose, a field on a non-map segment) raises ValueError naming `segment N: <key>[i].<field>`, so
 the repair prompt points at it; nothing is dropped or turned into a plain pin or card.
 
-Always on: regions (with flags), routes, borders, figures (counters), flag characters, pin flags. Opt-in per profile
-`[draft] scene = [...]`: "globe", "props", "morph", "beats" (beats also need a profile [layout])."""
+Always on: regions (with flags and optional hatch), routes, borders, figures (counters), flag characters, pin flags,
+flows, thermometers, map_texts, bubbles. Opt-in per profile `[draft] scene = [...]`: "globe", "props", "morph",
+"beats" (beats also need a profile [layout]), "cross_section", "historical", "terrain3d", "blind_spot", "data_viz"."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,11 +18,12 @@ from typing import Callable
 
 from pydantic import ValidationError
 
-from .timeline import (Backdrop, Beat, Border, Cutaway, Flag, FlagCharacter, Figure, Flow, Geoid, Globe, GsapScene,
-                       Inset, MapMorph, Particle, Prop, Region, Route, Thermometer, sec_to_frame)
+from .timeline import (Backdrop, Beat, Border, Bubble, Cutaway, Flag, FlagCharacter, Figure, Flow, Geoid, Globe,
+                       GsapScene, Hatch, Inset, MapMorph, MapText, Particle, Prop, Region, Route, Thermometer,
+                       sec_to_frame)
 from .util import EngineError
 
-GATED = ("globe", "props", "morph", "beats")
+GATED = ("globe", "props", "morph", "beats", "cross_section", "historical", "terrain3d", "blind_spot", "data_viz")
 PROP_ASSET_EXT = (".png", ".webp")
 
 s, n, i, b = {"type": "string"}, {"type": "number"}, {"type": "integer"}, {"type": "boolean"}
@@ -115,6 +117,13 @@ def _region(c, path, r):
     d = _copy(r, ("entity", "polygon", "rings", "edge", "style", "edge_colour", "dashed", "draw_s", "label", "label_at", "box"))
     if "flag" in r:
         d["flag"] = _flag(f"{path}.flag", r["flag"])
+    if "hatch" in r and r["hatch"] is not None:
+        h = r["hatch"]
+        if isinstance(h, bool):
+            d["hatch"] = {} if h else None
+        else:
+            _keys(f"{path}.hatch", h, ("angle", "spacing_px", "line_px", "colour", "alpha"))
+            d["hatch"] = _model(Hatch, _copy(h, ("angle", "spacing_px", "line_px", "colour", "alpha")), f"{path}.hatch")
     if "at_s" in r:
         d["at_frame"] = _frame(c, f"{path}.at_s", r["at_s"])
     if "label_at_s" in r:
@@ -139,8 +148,8 @@ def _route(c, path, r):
 
 
 def _border(c, path, r):
-    _keys(path, r, ("points", "at_s", "draw_s", "colour", "dashed", "closed"))
-    d = _copy(r, ("points", "draw_s", "colour", "dashed", "closed"))
+    _keys(path, r, ("points", "at_s", "draw_s", "colour", "dashed", "closed", "width_px", "glow_px", "grow", "casing"))
+    d = _copy(r, ("points", "draw_s", "colour", "dashed", "closed", "width_px", "glow_px", "grow", "casing"))
     if "at_s" in r:
         d["at_frame"] = _frame(c, f"{path}.at_s", r["at_s"])
     return _model(Border, d, path)
@@ -149,7 +158,7 @@ def _border(c, path, r):
 def _figure(c, path, r):
     _keys(path, r, FIGURE_KEYS)
     d = _copy(r, ("kind", "value", "decimals", "prefix", "suffix", "motion", "count_from", "count_s", "position",
-                  "entity", "box"))
+                  "entity", "box", "px", "anchor"))
     if "at_s" in r:
         d["at_frame"] = _frame(c, f"{path}.at_s", r["at_s"])
     return _model(Figure, d, path)
@@ -185,6 +194,26 @@ def _thermo(c, path, r):
     if "out_s" in r:
         d["out_frame"] = _frame(c, f"{path}.out_s", r["out_s"], end=True)
     return _model(Thermometer, d, path)
+
+
+def _map_text(c, path, r):
+    _keys(path, r, ("text", "points", "at_s", "out_s", "reveal_s", "px", "colour", "depth_px"))
+    d = _copy(r, ("text", "points", "reveal_s", "px", "colour", "depth_px"))
+    if "at_s" in r:
+        d["at_frame"] = _frame(c, f"{path}.at_s", r["at_s"])
+    if "out_s" in r:
+        d["out_frame"] = _frame(c, f"{path}.out_s", r["out_s"], end=True)
+    return _model(MapText, d, path)
+
+
+def _bubble(c, path, r):
+    _keys(path, r, ("text", "anchor", "side", "at_s", "out_s", "style"))
+    d = _copy(r, ("text", "anchor", "side", "style"))
+    if "at_s" in r:
+        d["at_frame"] = _frame(c, f"{path}.at_s", r["at_s"])
+    if "out_s" in r:
+        d["out_frame"] = _frame(c, f"{path}.out_s", r["out_s"], end=True)
+    return _model(Bubble, d, path)
 
 
 def _beat(c, path, r):
@@ -239,8 +268,6 @@ def _morph(c, path, m):
     return _model(MapMorph, d, path)
 
 
-
-
 def _cutaway(c, path, r):
     _keys(path, r, ("layers", "xy", "width_pct", "at_s", "reveal_s"))
     d = _copy(r, ("layers", "xy", "width_pct", "reveal_s"))
@@ -280,11 +307,12 @@ def _particle(c, path, r):
         d["at_frame"] = _frame(c, f"{path}.at_s", r["at_s"])
     return _model(Particle, d, path)
 
+
 # ------------------------------------------------------------------------------------------------------------ table
-REGION_KEYS = ("entity", "polygon", "rings", "flag", "at_s", "edge", "style", "edge_colour", "dashed", "draw_s", "label",
-               "label_at", "label_at_s", "box", "changes")
+REGION_KEYS = ("entity", "polygon", "rings", "flag", "hatch", "at_s", "edge", "style", "edge_colour", "dashed", "draw_s",
+               "label", "label_at", "label_at_s", "box", "changes")
 FIGURE_KEYS = ("kind", "value", "decimals", "prefix", "suffix", "motion", "count_from", "count_s", "at_s", "position",
-               "entity", "box")
+               "entity", "box", "px", "anchor")
 PROP_KEYS = ("asset", "anchor", "x", "y", "lat", "lng", "width_px", "width_map", "rotation", "opacity", "at_s", "out_s",
              "depth", "z", "path", "path_s", "heading")
 FLAG = s   # ISO 3166-1 alpha-2, lower or upper case
@@ -301,18 +329,22 @@ class Spec:
 
 FIELDS: dict[str, Spec] = {
     "map_regions": Spec("regions", _arr(_obj({
-        "entity": s, "polygon": PTS, "rings": _arr(PTS), "flag": FLAG, "at_s": n, "edge": {"type": "string", "enum": ["white", "glow"]},
+        "entity": s, "polygon": PTS, "rings": _arr(PTS), "flag": FLAG,
+        "hatch": _obj({"angle": n, "spacing_px": n, "line_px": n, "colour": s, "alpha": n}, []),
+        "at_s": n, "edge": {"type": "string", "enum": ["white", "glow"]},
         "style": {"type": "string", "enum": ["tint", "block"]}, "edge_colour": s, "dashed": b, "draw_s": n,
         "label": s, "label_at": PT, "label_at_s": n, "box": b,
         "changes": _arr(_obj({"at_s": n, "entity": s, "flag": FLAG}, ["at_s", "entity"]))}, ["entity", "polygon"])),
         _region),
     "map_routes": Spec("routes", _arr(_obj({"points": PTS, "at_s": n, "draw_s": n, "to_pin": i}, ["points"])), _route),
     "map_borders": Spec("borders", _arr(_obj({"points": PTS, "at_s": n, "draw_s": n, "colour": s, "dashed": b,
-                                              "closed": b}, ["points"])), _border),
+                                              "closed": b, "width_px": n, "glow_px": n, "grow": n, "casing": b},
+                                             ["points"])), _border),
     "map_figures": Spec("figures", _arr(_obj({
         "kind": {"type": "string", "enum": ["year", "number"]}, "value": n, "decimals": i, "prefix": s, "suffix": s,
         "motion": {"type": "string", "enum": ["bounce", "counter"]}, "count_from": n, "count_s": n, "at_s": n,
-        "position": PT, "entity": s, "box": b}, ["kind", "value"])), _figure),
+        "position": PT, "entity": s, "box": b, "px": n, "anchor": {"type": "string", "enum": ["screen", "map"]}},
+        ["kind", "value"])), _figure),
     "map_flag_characters": Spec("flag_characters", _arr(_obj({
         "flag": FLAG, "xy": PT, "height_pct": n, "eyes": s, "at_s": n, "out_s": n, "wave": b}, ["flag", "xy"])),
         _flag_character),
@@ -321,6 +353,13 @@ FIELDS: dict[str, Spec] = {
     "map_thermometers": Spec("thermometers", _arr(_obj({
         "value": n, "min": n, "max": n, "unit": s, "decimals": i, "label": s, "note": s, "at_s": n, "out_s": n,
         "position": PT, "height_pct": n}, ["value"])), _thermo),
+    "map_texts": Spec("map_texts", _arr(_obj({
+        "text": s, "points": PTS, "at_s": n, "out_s": n, "reveal_s": n, "px": n, "colour": s, "depth_px": n},
+        ["text", "points"])), _map_text),
+    "map_bubbles": Spec("bubbles", _arr(_obj({
+        "text": s, "anchor": _obj({"pin": i, "region": i, "xy": PT, "overlay": i}, []),
+        "side": {"type": "string", "enum": ["auto", "left", "right", "top"]},
+        "at_s": n, "out_s": n, "style": {"type": "string", "enum": ["light", "dark"]}}, ["text", "anchor"])), _bubble),
     "map_beats": Spec("beats", _arr(_obj({
         "at_s": n, "region": i, "pins": INTS, "markers": INTS, "routes": INTS, "title": b, "card": INTS, "camera": b,
         "heading": s, "hold": {"type": "string", "enum": ["read"]}, "goal": s}, ["at_s"])), _beat, gate="beats"),
@@ -403,14 +442,17 @@ PROMPT = """
    image you saw; give each element only when the narration needs it, timed to the words that name it):
    map_pins[].flag = ISO alpha-2 code (flag in the pin); map_regions = country/area highlight {entity, polygon (>= 3
    points tracing its outline; rings = further islands and holes, one flag over all), flag (ISO code: the flag
-   fills the polygon), at_s, edge white|glow, style tint|block,
-   label, changes (later owner)}; map_routes = self-drawing arrow {points start -> end, at_s, draw_s}; map_borders =
-   self-drawing line {points, dashed for sea borders}; map_figures = big number or year {kind, value, motion counter
-   (counts up) | bounce, prefix, suffix (unit), at_s, count_s, position [x, y] of the frame}; map_flag_characters =
-   flag with eyes {flag, xy of the frame, eyes blink|look_left|look_right|look_at:<pin index>}; map_flows = moving
-   streams (wind, current) {paths: [[[x, y], ...]] start -> end, colour, label (legend), at_s}; map_thermometers =
-   {value, min, max, unit, label, note ("ilustratif" unless it is a sourced reading), at_s, position [x, y] of the
-   frame}."""
+   fills the polygon), hatch (optional diagonal lines {angle, spacing_px, line_px, colour, alpha} for disputed/underwater/conflict zones),
+   at_s, edge white|glow, style tint|block, label, box (true = dark banner pill), changes (later owner)};
+   map_routes = self-drawing arrow {points start -> end, at_s, draw_s}; map_borders = self-drawing glowing line/river/parallel
+   {points, colour, width_px, glow_px, grow (0..1.5 for rivers), casing, dashed for sea borders};
+   map_figures = big number or year {kind, value, motion counter (counts up) | bounce, prefix, suffix (unit), at_s,
+   count_s, position [x, y] of the frame, box (true = stat pill), anchor screen|map};
+   map_flag_characters = flag with eyes {flag, xy of the frame, eyes blink|look_left|look_right|look_at:<pin index>};
+   map_flows = moving streams (wind, current) {paths: [[[x, y], ...]] start -> end, colour, label (legend), at_s};
+   map_thermometers = {value, min, max, unit, label, note ("ilustratif" unless it is a sourced reading), at_s,
+   position [x, y] of the frame}; map_texts = 3D extruded name along a map curve {text, points, at_s, px, colour, depth_px};
+   map_bubbles = short comic speech bubble {text, anchor {pin|region|xy}, side, at_s, out_s, style light|dark}."""
 PROMPT_GATED = {
     "beats": "map_beats = what is on screen per beat {at_s (first 0), region, pins, markers, routes (indices), title, "
              "card ([year figure] or [year, time]), camera, goal}; the layout derives camera and positions (no map_path)",
@@ -419,6 +461,11 @@ PROMPT_GATED = {
     "globe": "map_globe = 3D globe on a 2:1 world texture {keys [{at_s, lat, lng, altitude 0.005-12}]}; pins need "
              "lat/lng; no routes, borders, props, morph or beats on a globe",
     "morph": "map_morph = second map texture crossfaded over the map {asset (same aspect), at_s, back_at_s, sepia}",
+    "cross_section": "map_cutaway = stacked 2D/3D cross-section diagram {layers [{label, colour, thickness}], xy, width_pct, at_s, reveal_s}",
+    "historical": "map_insets = framed photo inset with leader line to a pin or map xy {asset, anchor {pin|xy}, size_pct, at_s, out_s}",
+    "terrain3d": "map_geoid = exaggerated 3D Earth displacement on a globe scene {exaggeration, colour_ramp, rotate_deg_s, at_s}",
+    "blind_spot": "map_backdrop = dark ocean grid/graticule or starfield behind the map/globe {grid {colour, bg, cell_pct, graticule}, stars {count, twinkle}}",
+    "data_viz": "map_particles = deterministic fire/ember or fireworks accents {kind fire|fireworks, xy, at_s, duration_s, scale, colours}",
 }
 
 
