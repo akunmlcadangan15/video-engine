@@ -19,7 +19,12 @@ def test_channel_direction_distinguishes_identity_defaults_and_alternatives():
     assert any(r.startswith("Alternatives:") for r in rules)
     assert any(r.startswith("Intent:") for r in rules)
     assert any("already-moving dark satellite basemap" in r for r in rules)
-    assert any("96–100% of frames" in r for r in rules)
+    # the motion numbers quoted in creative.md are the profile's P01 / N01 values (one source, tests keep them equal)
+    gates = profiles.load("geoverum").data.gates
+    camera = next(r for r in rules if r.startswith("Default, not a mandate: favor a continuous"))
+    assert "median 77% of frames" in camera
+    assert f"`moving_warn = {gates.camera.moving_warn}`" in camera and f"`hold_warn_s = {gates.camera.hold_warn_s}`" in camera
+    assert f"`max_gap_s = {gates.novelty.max_gap_s}`" in camera
 
 
 def test_storyboard_and_taste_treat_preferences_as_preferences(proj):
