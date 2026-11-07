@@ -56,7 +56,7 @@ def test_bad_required_style_fail_still_blocks(project, strict_geoverum):
 def test_bad_project_cannot_waive_a_channel_required_rule(project, strict_geoverum):
     _, tl = project(two_maps(gates={"waive": ["S01", "R14"]}))
     fs = severity.apply([Finding("S01", "fail", "silence gap"), Finding("R14", "fail", "licence not in allowlist")], tl)
-    assert [f.level for f in fs if f.gate in ("S01", "R14")] == ["fail", "info"]  # S01 required tetap fail, R14 kini lint -> waived info
+    assert [f.level for f in fs if f.gate in ("S01", "R14")] == ["fail", "info"]  # required S01 stays fail; non-required lint R14 waives to info
     assert not any(f.gate == "GW01" for f in fs)  # Unapplicable waivers are ignored without emitting a separate meta-gate finding
 
 
@@ -89,7 +89,7 @@ def test_good_project_waive_and_require_on_a_channel_without_requirements(projec
 
 
 def test_bad_unknown_required_gate_in_profile_and_project(project, tmp_path, monkeypatch):
-    chan(tmp_path, monkeypatch, '[gates]\nrequire = ["R14"]\n')
+    chan(tmp_path, monkeypatch, '[gates]\nrequire = ["T02"]\n')
     with pytest.raises(EngineError, match="unknown style gate"):
         profiles.load("chan")
     with pytest.raises(EngineError, match="unknown style gate"):
@@ -97,9 +97,17 @@ def test_bad_unknown_required_gate_in_profile_and_project(project, tmp_path, mon
 
 
 def test_bad_never_advisory_gate_rejected_in_profile(tmp_path, monkeypatch):
-    chan(tmp_path, monkeypatch, '[gates]\nadvisory = ["T02"]\n')
-    with pytest.raises(EngineError, match="gates.advisory"):
-        profiles.load("chan")
+    assert profiles.NEVER_ADVISORY == reg.NEVER_ADVISORY
+    for gid in ("T02", "R07", "R14", "A02", "R56px"):
+        chan(tmp_path, monkeypatch, f'[gates]\nadvisory = ["{gid}"]\n')
+        with pytest.raises(EngineError, match="gates.advisory"):
+            profiles.load("chan")
+
+
+def test_good_warn_only_lint_gates_block_when_required(project):
+    _, tl = project(two_maps(gates={"require": ["A02", "N01", "K01", "D01", "P03", "U01"]}))
+    fs = severity.apply([Finding(g, "warn", "x") for g in ("A02", "N01", "K01", "D01", "P03", "U01")], tl)
+    assert {f.level for f in fs} == {"fail"}
 
 
 def test_good_geoverum_requires_no_style_gate_and_lowers_advisory_gates(project):

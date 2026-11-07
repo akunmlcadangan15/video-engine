@@ -38,7 +38,7 @@ Windows (`W4`) are `(x, y, w, h)` floats in source pixels: finite, `w > 0`, `h >
 No function raises `PanicException`; the errors listed are the only ones.
 
 ```
-ALGO_VERSION: str                                  # "2"; part of every render cache key (see [Cache-key rules](#cache-key-rules))
+ALGO_VERSION: str                                  # "3"; part of every render cache key (see [Cache-key rules](#cache-key-rules))
 version() -> str                                   # CARGO_PKG_VERSION
 set_threads(n: int) -> int                         # size the global rayon pool once; returns size in effect
     # ValueError: n outside 1..=256. First call wins; if the pool already started, its size stays.
@@ -107,7 +107,7 @@ cd /workspace/video-engine/rust/hypoverum_core_rs
 |---|---|
 | Type check | `cargo check -j 4` |
 | Format | `cargo fmt --check` (fix: `cargo fmt`) |
-| Lint | `cargo clippy -j 4 --all-targets -- -D warnings` (audit: add `-W clippy::pedantic`; remaining pedantic items are doc/style only, no casts) |
+| Lint | `cargo clippy -j 4 --all-targets -- -D warnings` (with `-W clippy::pedantic` for strict lint checks) |
 | Rust tests | `TMPDIR=/dev/shm/video_engine/tmp cargo test -j 4 --no-default-features` (Linux; on macOS use any writable `TMPDIR`; tests write temp files under `TMPDIR`; `proxy_and_pcm_roundtrip` needs ffmpeg on PATH and skips without it) |
 | Install into venv | `source /workspace/engine-venv/bin/activate && maturin develop --release` |
 | Python tests | `cd /workspace/video-engine && /workspace/engine-venv/bin/python -m pytest -q` |
@@ -199,7 +199,7 @@ Facts:
     every control character (`char::is_control`: CR, LF, tab, NUL, ESC, U+0085, ...) -> space.
   Result: one Dialogue line per layer per caption, no user-controlled override codes.
 - Style rules (`Style::validate`, ValueError otherwise): `size > 0`, `emphasis_scale > 0`, `outline >= 0`, `shadow_blur >= 0`, `shadow` finite, `shadow_dx` / `shadow_dy` finite when set, `0 <= margin_x < width/2`, `max_words >= 1`, `max_chars >= 1`, `gap_break_frames >= 0`, `hold_frames >= 0`, `font` non-empty without `,` or control characters, slot in `lower|mid|upper`, colours `RRGGBB`.
-- Burning (`audio.final_mux` via `audio.subtitle_filter`): ffmpeg runs with `cwd` = the .ass folder;
+- Burning (`audio.composite` via `audio.subtitle_filter`): ffmpeg runs with `cwd` = the .ass folder;
     the filter is the fixed `subtitles=filename=captions.ass:fontsdir=fonts` (`fonts` = symlink to `config.FONTS_DIR`).
   No path is escaped into the filter graph; every other path given to that ffmpeg call is absolute.
 - Output is UTF-8; Python writes it with `encoding="utf-8"`.

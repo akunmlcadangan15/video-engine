@@ -1,4 +1,4 @@
-"""Rust core hardening (docs/RUST.md audit): every bad input is a Python exception (never PanicException),
+"""Rust core hardening (docs/RUST.md): every bad input is a Python exception (never PanicException),
 .ass text cannot inject events or override codes, ALGO_VERSION is part of every render cache key."""
 import math
 import os

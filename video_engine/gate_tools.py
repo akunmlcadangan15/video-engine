@@ -106,8 +106,10 @@ def render_detail(rs: list[dict]) -> str:
     """One block per gate: all fields."""
     blocks = []
     for r in rs:
+        tag = ("  (mandatory: cannot be lowered)" if r["id"] in reg.KERNEL_GATE_IDS
+               else "  (never advisory)" if r["never_advisory"] else "")
         lines = [f"{r['id']}  {r['title']}",
-                 f"  class:   {r['class']}  tier: {r['tier']}" + ("  (mandatory: cannot be lowered)" if r["never_advisory"] else ""),
+                 f"  class:   {r['class']}  tier: {r['tier']}{tag}",
                  f"  layer:   {r['layer']} ({reg.LAYERS[r['layer']]})", f"  rule:    {r['summary']}"]
         if r["switch"]:
             lines.append(f"  switch:  {r['switch']}")
@@ -120,7 +122,8 @@ def render_detail(rs: list[dict]) -> str:
 def render_markdown() -> str:
     """The generated gate index of docs/GATES.md: one table per layer, in pre-flight order."""
     out = [MD_BEGIN, ""]
-    out += ["Tiers: `mandatory` = frozen core, always blocks (never advisory); `profile` = channel style gate, "
+    out += ["Tiers (historical registry classification; runtime blocking uses `KERNEL_GATE_IDS` vs `LINT_GATE_IDS` above): "
+            "`mandatory` = never-advisory flag (`NEVER_ADVISORY`); `profile` = channel style gate, "
             "blocks only when the profile requires it; `flexible` = technical gate a profile may lower to warn "
             "via `[gates] advisory`. See `video_engine/gate_conformance.py` for the gate <-> profile check.", ""]
     for layer, label in reg.LAYERS.items():

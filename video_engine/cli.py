@@ -380,25 +380,25 @@ def cmd_gates(a) -> int:
     for r in rows:
         r["tier"] = _gate_level(r["id"])
         r["level"] = r["tier"]
-    print(f"LEVELS: KERNEL (error, {len(reg.KERNEL_GATE_IDS)}) vs LINT (warn kecuali required, {len(reg.LINT_GATE_IDS)})")
-    print(f"  KERNEL: {', '.join(reg.KERNEL_GATE_IDS)}")
-    print(f"  LINT: {', '.join(reg.LINT_GATE_IDS)}")
-    if prof is not None and not a.id:
-        from . import gate_conformance
-        issues = gate_conformance.check_profile(prof)
-        req = sorted(set(prof.gates.require or []))
-        print(f"profile {prof.name!r}: KERNEL vs LINT")
-        print(f"  KERNEL (error) ({len(reg.KERNEL_GATE_IDS)}): {', '.join(reg.KERNEL_GATE_IDS)}")
-        print(f"  LINT required by this profile ({len(req)}): {', '.join(req) or 'none'}")
-        print(f"  LINT (warn kecuali required) ({len(reg.LINT_GATE_IDS)}): {', '.join(reg.LINT_GATE_IDS)}")
-        for i in issues:
-            print(f"  {i.level.upper():5} {i.gate}: {i.message}")
-        for w in (getattr(prof, "gate_warnings", ()) or ()):
-            print(f"  WARN  {w}")
-        print()
     if a.format == "json":
         print(json.dumps(rows, indent=2))
     else:
+        print(f"LEVELS: KERNEL (error, {len(reg.KERNEL_GATE_IDS)}) vs LINT (warn unless required, {len(reg.LINT_GATE_IDS)})")
+        print(f"  KERNEL: {', '.join(reg.KERNEL_GATE_IDS)}")
+        print(f"  LINT: {', '.join(reg.LINT_GATE_IDS)}")
+        if prof is not None and not a.id:
+            from . import gate_conformance
+            issues = gate_conformance.check_profile(prof)
+            req = sorted(set(prof.gates.require or []))
+            print(f"profile {prof.name!r}: KERNEL vs LINT")
+            print(f"  KERNEL (error) ({len(reg.KERNEL_GATE_IDS)}): {', '.join(reg.KERNEL_GATE_IDS)}")
+            print(f"  LINT required by this profile ({len(req)}): {', '.join(req) or 'none'}")
+            print(f"  LINT (warn unless required) ({len(reg.LINT_GATE_IDS)}): {', '.join(reg.LINT_GATE_IDS)}")
+            for i in issues:
+                print(f"  {i.level.upper():5} {i.gate}: {i.message}")
+            for w in (getattr(prof, "gate_warnings", ()) or ()):
+                print(f"  WARN  {w}")
+            print()
         print(gate_tools.render_detail(rows) if a.id else gate_tools.render_table(rows))
     return 0 if rows else 1
 
@@ -744,7 +744,7 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--lint", action="store_true",
                    help="compare the checks of the taste entries with the channel profile; exit 1 on a mismatch")
     x.add_argument("--profile", help="with --lint: profile to check against (default: the channel name)")
-    x = add("gates", cmd_gates, "List the gates (id, class, layer, rule); level KERNEL (error) vs LINT (warn kecuali required); with --profile, what each does in that "
+    x = add("gates", cmd_gates, "List the gates (id, class, layer, rule); level KERNEL (error) vs LINT (warn unless required); with --profile, what each does in that "
                                 "channel profile (off / warns / blocks); with --stats, how often each gate failed, warned "
                                 "or was waived in build reports. Read-only.")
     x.add_argument("id", nargs="*", help="gate id(s) to describe (default: all)")

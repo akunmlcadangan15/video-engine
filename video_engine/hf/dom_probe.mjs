@@ -1,5 +1,5 @@
 // dom_probe.mjs <url> <out_dir|-> <t1,t2,...> <width> <height> [bg|bgonly]
-// ENGINE_WEBGL=1 (globe scenes) enables SwiftShader WebGL.
+// ENGINE_WEBGL=1 (globe and 3D camera scenes) enables SwiftShader WebGL.
 // Seeks window.__timelines.main to each time, prints JSON {timing, times:[{t, rects:[{id,text,x,y,w,h,opacity,color,stroke_px,stroke,paint_order,ink_state}], paints, png, bg, mask}]}.
 // bg (needs out_dir; bgonly = without snap_i.png): two more screenshots per time, clipped to the visible [data-ink] text elements + 64 px
 // (clip {x,y,w,h}; none when no such element is visible): bg_i.png with those elements hidden (root class

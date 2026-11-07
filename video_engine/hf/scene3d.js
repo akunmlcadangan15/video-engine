@@ -32,7 +32,7 @@ const draw=t=>{const v=state(t*FPS);
     el.style.display=d.z<0&&q.z<1?'':'none';
     el.style.left=((q.x+1)/2*W)+'px';el.style.top=((1-q.y)/2*H)+'px';});
   canvas.style.filter=map.style.filter;
-  if(window.__fxPlace)window.__fxPlace();};
+  if(window.__fxPlace)window.__fxPlace();if(window.__fx2)window.__fx2.update(t);};
 const D=S.n_frames/FPS, drv={t:0};
 tl.fromTo(drv,{t:0},{t:D,duration:D,ease:'none',immediateRender:true,onUpdate:()=>draw(drv.t)},0);
 draw(0);

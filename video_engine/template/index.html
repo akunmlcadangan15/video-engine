@@ -188,7 +188,7 @@ if(whips.length){
     tl.set(base,{filter:'none'},e);});
 }
 // counter-scaling on every frame: `zs` callbacks get the camera scale of the frame (the legs' math; 1 on the globe)
-const ZS=[], camS=t=>{let s=C.start.s;for(const g of legs){if(t<g.t0)break;s=t>=g.t0+g.d?g.L.to.s:g.from.s+(g.L.to.s-g.from.s)*g.ease((t-g.t0)/g.d);}return s;};
+const ZS=window.__zs=[], camS=t=>{let s=C.start.s;for(const g of legs){if(t<g.t0)break;s=t>=g.t0+g.d?g.L.to.s:g.from.s+(g.L.to.s-g.from.s)*g.ease((t-g.t0)/g.d);}return s;};
 const zsRun=()=>{const s=S.globe?1:camS(tl.time());ZS.forEach(f=>f(s));};
 // camera roll (camera key `roll`, deg): #cam (inside #tilt when tilted) sits in #roll, turned about the frame centre
 // to the legs' roll and scaled by the angle's cover factor, so the map still fills every corner; the roll of a frame
@@ -719,7 +719,7 @@ if(LG){const drv={t:0}, D=f2t(S.n_frames), up=()=>ADAPT.forEach(a=>applyInk(a,dr
   window.__adapt={el:adapt,line:(lab,ln)=>{const a=ADAPT.find(a=>a.el===lab);if(a)a.lines.push(ln);},up:up,
     shadow:(el,sh)=>{const a=ADAPT.find(a=>a.el===el);if(a)a.shadow=sh;}};
   tl.fromTo(drv,{t:0},{t:D,duration:D,ease:'none',immediateRender:true,onUpdate:up},0);up();document.fonts.ready.then(up);}
-if(ZS.length){const D=f2t(S.n_frames);tl.fromTo({t:0},{t:0},{t:D,duration:D,ease:'none',immediateRender:true,onUpdate:zsRun},0);zsRun();}
+let zsArmed=false;window.__zsArm=()=>{if(!ZS.length)return;if(!zsArmed){zsArmed=true;const D=f2t(S.n_frames);tl.fromTo({t:0},{t:0},{t:D,duration:D,ease:'none',immediateRender:true,onUpdate:zsRun},0);}zsRun();};window.__zsArm();
 tl.set({},{},f2t(S.n_frames));
 })();
 </script>
@@ -731,7 +731,7 @@ tl.set({},{},f2t(S.n_frames));
 (function(){
 const S=window.SCENE, LY=S.layout;
 if(!LY)return;
-const MO=window.__motion;
+const MO=window.__motion, ZS=window.__zs||[];
 const TH=S.theme, BOXED=TH.label_style==='box'&&!(S.print&&S.layout);
 const tl=window.__timelines.main, NS='http://www.w3.org/2000/svg', C=S.camera, FPS=S.fps;
 const q=s=>document.querySelector(s);
@@ -862,6 +862,7 @@ if(T){kill(T);
   gsap.set(el,{xPercent:0,yPercent:0,scale:1,left:P.x,top:P.y,fontSize:P.px+'px',fontVariantNumeric:'lining-nums tabular-nums',visibility:'visible'});
   show(el,LY.els['fig:'+i],'figure');
 });
+if(window.__zsArm)window.__zsArm();
 if(window.__adapt)window.__adapt.up();
 })();
 </script>

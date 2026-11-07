@@ -283,3 +283,25 @@ def metrics(states: list[State], W: int, H: int, fps: int) -> dict:
     acc = [abs(v1 - v0) * fps for v0, v1 in zip(speeds, speeds[1:])]
     return {"motion_px": total, "peak_speed": max(speeds, default=0.0), "peak_accel": max(acc, default=0.0),
             "peak_ang_speed": max(ang, default=0.0)}
+
+
+def motion(states: list[State], W: int, H: int, fps: int) -> list[tuple[float, float]]:
+    """P01 speeds per frame: (|ln scale| / s, 2D screen travel in frame widths / s)."""
+    if not states:
+        return []
+    ext = [*states, states[-1]]
+    out: list[tuple[float, float]] = []
+    for a, b in zip(ext, ext[1:]):
+        moves = []
+        for x, y in PROBE:
+            p = ray_to_map(a, x * W, y * H, W, H)
+            if p is None:
+                continue
+            q = project(b, p, W, H)
+            if q[0] is not None:
+                moves.append(math.hypot(q[0] - x * W, q[1] - y * H))
+        m = sum(moves) / len(moves) if moves else 0.0
+        za = max(1e-9, a.position[2] * math.tan(math.radians(a.fov) / 2))
+        zb = max(1e-9, b.position[2] * math.tan(math.radians(b.fov) / 2))
+        out.append((abs(math.log(za / zb)) * fps, m * fps / W))
+    return out

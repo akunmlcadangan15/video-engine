@@ -16,7 +16,7 @@ Linux x64 and macOS Apple Silicon (arm64) are equal platforms. The platform key 
 Parity policy:
 
 - The same gates apply on both platforms, with the same profile; there is no platform-specific relaxation.
-- CI memeriksa kesetaraan ini: job `macos-fast` menjalankan subset fast di `macos-latest` setiap push/pull request, dan job `macos-nightly` menjalankan suite penuh dengan toolchain vendor setiap jadwal.
+- CI verifies this parity: the `macos-fast` job runs the fast subset on `macos-latest` on every push and pull request, and the `macos-nightly` job runs the full suite with the vendored toolchain on schedule.
 - Either platform builds and delivers: `final.mp4` and `engine deliver` are valid from Linux and from macOS.
 - The output has the same spec (H.264 1080x1920, AAC 48 kHz, same loudness and QA limits) but is not bit-identical: ffmpeg, x264 and Chrome builds differ, so frames and bytes differ slightly and `final_sha256` differs between platforms.
 - The cache is separated by toolchain identity (ffmpeg version, vendor pins, platform): an entry written on one platform is never served on the other, so a shared `VIDEO_ENGINE_CACHE` folder does not mix outputs.

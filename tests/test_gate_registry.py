@@ -33,8 +33,8 @@ def test_good_derived_id_lists_match_the_lists_before_the_registry():
     assert set(reg.STYLE_GATE_IDS) == OLD_STYLE | {"P03", "R38space"} and len(reg.STYLE_GATE_IDS) == 19
     assert len(reg.TECHNICAL_GATE_IDS) == 41 and "U01" in reg.TECHNICAL_GATE_IDS and "AS04" in reg.TECHNICAL_GATE_IDS
     assert set(reg.KERNEL_GATE_IDS) == KERNEL_GATES
-    assert set(reg.MANDATORY_GATE_IDS) == KERNEL_GATES  # alias kernel (bukan mandatory 12)
-    assert KERNEL_GATES <= set(reg.NEVER_ADVISORY)  # kernel adalah subset dari flag historis 12
+    assert set(reg.MANDATORY_GATE_IDS) == KERNEL_GATES  # alias for the 8 kernel integrity gates
+    assert KERNEL_GATES <= set(reg.NEVER_ADVISORY)  # kernel gates are a subset of the 12 never-advisory gates
     assert reg.KNOWN_GATE_IDS == reg.STYLE_GATE_IDS + reg.TECHNICAL_GATE_IDS
     assert set(reg.ANTI_SLOP_IDS) == {f"AS0{i}" for i in range(1, 7)}
     assert not {"AIQA", "GW01"} & set(reg.KNOWN_GATE_IDS)      # not waivable / advisory-capable
@@ -60,9 +60,9 @@ def test_good_geoverum_effects_match_the_profile():
     assert eff["C01"] == eff["V01"] == eff["D02"] == "off"     # tables absent in geoverum.toml
     assert eff["R64"] == "warns" and eff["L02"] == "warns"     # advisory in geoverum.toml
     assert eff["L06"] == eff["R63"] == eff["Z01"] == "warns"   # layout/placement advisory in geoverum.toml
-    assert eff["T02"] == eff["A01"] == "blocks"   # kernel tetap blokir
-    assert eff["R07"] == eff["R14"] == "warns"   # Classified as lint gates (warn unless required)
-    assert eff["A02"] == "off"   # Epidemic diutamakan, bukan wajib (require_source=None)
+    assert eff["T02"] == eff["A01"] == "blocks"   # kernel gates always block
+    assert eff["R07"] == eff["R14"] == "warns"   # classified as lint gates (warn unless required)
+    assert eff["A02"] == "off"   # off when require_source is unset
     assert eff["AS01"] == "warns"                       # anti-slop stays warn
     assert eff["AIQA"] == "on request" and "GW01" not in reg.BY_ID and "GW01" not in eff  # No meta-gate finding is emitted for waivers
 
@@ -149,9 +149,15 @@ def test_good_cli_gates_lists_describes_and_reports_stats(tmp_path, capsys):
     assert cli.main(["gates", "r63", "--profile", "geoverum"]) == 0
     out = capsys.readouterr().out
     assert "Element margins and collisions" in out and "profile: warns" in out
+    assert cli.main(["gates", "R07", "--profile", "geoverum"]) == 0
+    out = capsys.readouterr().out
+    assert "tier: LINT  (never advisory)" in out and "profile: warns" in out
+    assert cli.main(["gates", "T02", "--profile", "geoverum"]) == 0
+    out = capsys.readouterr().out
+    assert "tier: KERNEL  (mandatory: cannot be lowered)" in out and "profile: blocks" in out
     assert cli.main(["gates", "--format", "json", "--layer", "props"]) == 0
     out = capsys.readouterr().out
-    out = out[out.index("["):]  # CLI kini mencetak header LEVELS KERNEL/LINT sebelum JSON; ambil sub JSON saja
+    out = out[out.index("["):]
     assert [r["id"] for r in json.loads(out)] == ["F01", "F02", "F03", "F04"]
     _report(tmp_path / "p" / "out" / "build_report.json", True, warns=["N01"])
     assert cli.main(["gates", "--stats", str(tmp_path)]) == 0

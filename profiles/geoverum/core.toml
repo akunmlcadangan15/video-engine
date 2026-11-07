@@ -23,7 +23,7 @@ target_lufs = -14.0           # Integrated loudness target in LUFS for streaming
 true_peak = -1.5              # Maximum permitted true peak level in dBTP to prevent inter-sample clipping during AAC/Opus transcoding
 lra = 11.0                    # Target loudness range in LU for voiceover and background score balance
 tolerance_lu = 0.2            # Allowed deviation in LU from target_lufs during two-pass loudnorm verification
-# prefer_source = "epidemic"  # Optional preferred music catalog identifier (gate A02 emits a non-blocking warning if omitted or mismatched)
+# require_source = "epidemic" # Optional required music catalog identifier (gate A02 emits a warning unless required when set)
 
 # AI storyboard and timeline drafting constraints (used by video_engine/draft.py and video_engine/draft_scene.py).
 [draft]
@@ -306,6 +306,6 @@ phrases = ["terima kasih", "subscribe", "follow", "like", "share", "tonton", "ku
 [gates.geo]                   # G02: Geographic coordinate placement validation
 require_land = false          # Permits pins and labels to be anchored on oceans, straits, and maritime routes as well as land polygons
 
-[gates.anti_slop]             # AS01: Detection of generic AI-generated color palettes and side-strip padding artifacts
+[gates.anti_slop]             # AS01-AS06: Anti-AI-slop rules (side-strip panels, copy/motion tics, read time, source tells, and forbidden hue ranges)
 level = "warn"                # Emits advisory warnings without blocking the build
 forbidden_hues = [[260, 310], [170, 197]] # Flags uncalibrated neon purple/magenta (260-310 deg) and synthetic cyan-teal (170-197 deg) background washes

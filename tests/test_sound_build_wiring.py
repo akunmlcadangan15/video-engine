@@ -78,7 +78,7 @@ def test_good_build_exits_3_with_a_sound_request_when_sounds_are_missing(project
     p, tl = project(geo())
     assert cli.main(["build", str(p)]) == cli.EXIT_AWAITING
     req = json.loads((request.bundle_dir(p) / "request.json").read_text())
-    assert [i["slot"] for i in req["items"]] == [f"music-{cache.brief_key(BRIEF)}"]  # tanpa require_source SFX pakai local tone
+    assert [i["slot"] for i in req["items"]] == [f"music-{cache.brief_key(BRIEF)}"]  # without require_source, SFX uses local tone
     out = capsys.readouterr().out
     assert "out/sound_request/response.json" in out and f"resume: engine build {p} --resume" in out
     assert not (p / "out" / "final.mp4").exists()
@@ -152,13 +152,13 @@ def test_bad_build_resume_without_a_response_is_an_error(project, no_preflight, 
 
 
 def test_good_local_test_music_does_not_block_a_geoverum_build(project, no_preflight, tmp_path):
-    """Geoverum tidak mewajibkan sumber audio (require_source None): musik local-test dari bgm_path tidak
-    memblokir build — A02 skip (tidak ada finding), bukan BuildFailed."""
+    """Geoverum requires no audio source by default (require_source is None): local-test music from bgm_path does not
+    block the build — A02 skips without emitting a failure."""
     p, tl = project(geo(brief=False))                  # music from bgm_path: provenance local-test
     cache_epidemic_sfx(tl, tmp_path)
     r = build.build(p)
     assert r.ok and r.final is not None and (p / "out" / "final.mp4").is_file()
     rep = json.loads((p / "out" / "build_report.json").read_text())
     assert rep["ok"] is True and rep["final"] is not None
-    assert not any(q.startswith("[FAIL]") and "A02" in q for q in rep["qa"])      # A02 tidak fail
+    assert not any(q.startswith("[FAIL]") and "A02" in q for q in rep["qa"])      # A02 does not fail
     assert any(q.startswith("[PASS] A01") for q in rep["qa"])

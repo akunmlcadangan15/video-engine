@@ -33,7 +33,7 @@ Why the engine is designed the way it is.
 - Caption placement is computed from measured element boxes (DOM probe) instead of fixed slots because map pins and cards move with the scene.
 - Words are pinned in the timeline because speech-to-text output can vary between requests;
     a cold build with an empty cache must render the same captions as the build that was reviewed.
-- HyperFrames uses the draft capture profile (JPEG q80 screenshots, x264 `ultrafast` at CRF 14) because screenshot transfer and encoding dominate map-segment time, and the intermediate is re-encoded once more by the mux, so the profile does not change visible label or map detail.
+- HyperFrames uses the default capture profile (JPEG q82 screenshots, x264 `ultrafast` at CRF 14; overridden by profile `[render]`) because screenshot transfer and encoding dominate map-segment time, and the intermediate is re-encoded once more by the mux, so the profile does not change visible label or map detail.
   The profile is part of the segment cache key.
 - Loudness is enforced on the final file because concat, caption burn and AAC encoding change the measured integrated loudness after the mix stage.
 - AI work goes through a provider interface so that prompts, schemas, gates and the repair loop are identical for every model;
@@ -158,13 +158,13 @@ Why the engine is designed the way it is.
 - Responses are checked by a small built-in validator for the schema subset the engine emits, which avoids a schema-library dependency.
 - SFX cues are derived from the same element frames the renderers use (pin drop, region fade, route draw, whip, card, title, figure, counter step), so a sound cannot drift from the motion it marks;
     a whoosh is aligned by its loudest sample because its onset is a quiet build-up.
-- Music ducking is a keyframed gain built from the voiceover word timestamps rather than a sidechain compressor, so the duck depth and ramps are exact and the mix is reproducible;
+- Under profile `[sound]`, music ducking is a keyframed gain built from the voiceover word timestamps rather than a sidechain compressor, so the duck depth and ramps are exact and the mix is reproducible;
     cues are summed before loudnorm so the delivered loudness still meets the profile target.
 - Sound files come through one adapter in the mixer so the sound package can replace the local test audio without touching the mixer;
     local test audio is marked in its provenance so it cannot pass as licensed sound.
 - Sounds come from a cache that an agent fills through a request/response file handoff, so the engine stays offline and holds no keys and connector credentials stay with the agent.
   Files are content-addressed with a per-file provenance sidecar, and the engine writes the credit lines from id, title and artist, so an agent cannot produce a mismatched credit.
-  A profile's `require_source` is enforced by a delivery gate (A02) rather than by the resolver, so builds and tests without sourced audio still mix with local tones and only a publishing profile fails.
+  A profile's `require_source` is checked by a delivery gate (A02) rather than by the resolver, so builds and tests without sourced audio still mix with local tones and A02 warns by default unless required.
 - Map scenes are laid out from beats rather than hand positions because untidy frames came from independent choices (centred stacks, labels across region edges, numbers on seams, several highlighted regions at once);
     one planner that knows every box per frame can keep one hero, one active region and a fixed reading order.
 - Positions use a 6-column grid with an 8 px unit and the Shorts safe area (x 48-888, y 288-1248), so titles and data cards line up on one left edge and nothing sits under the YouTube UI;

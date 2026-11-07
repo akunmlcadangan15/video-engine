@@ -55,7 +55,6 @@ def test_bad_plan_no_final(project, tmp_path):
         deliver.plan(tl, p, tmp_path / "missing.mp4")
 
 
-# Audit 2026-10-25 item 11: a file of exactly the part limit gave one ".part0" while JOIN.txt named another file.
 # Rule: size <= limit -> one file under the final name, no parts; size > limit -> ".part1".."partN", each <= limit,
 # and JOIN.txt names exactly those parts in order.
 def test_good_plan_exactly_at_limit_is_one_unsplit_file(project, tmp_path):

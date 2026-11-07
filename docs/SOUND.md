@@ -22,8 +22,7 @@ no network calls and holds no keys; an agent fills the cache through a file hand
 Music without `audio_chain.music_brief` comes from `audio_chain.bgm_path`. A brief with no cached file is an
 `EngineError` in the mixer; `ensure_sounds` runs first.
 
-`profiles/geoverum.toml` sets `require_source = "epidemic"`. A geoverum project needs `audio_chain.music_brief`; music
-from `bgm_path` fails A02.
+`profiles/geoverum/core.toml` leaves `require_source` unset by default (Epidemic Sound is preferred when resolving `audio_chain.music_brief`, while `bgm_path` and cached local files remain allowed unless `require_source = "epidemic"` is enabled in `[audio]`).
 
 ## Cache
 
@@ -120,5 +119,5 @@ Epidemic Sound files are credited in `credits.txt` under the header `Audio (Epid
 - Every music and SFX file in the mix (or `bgm_path` when there is no mix) has the required source: `pass`.
 - Any other source (`local-test`, `project-file`): `fail`, listing each file.
 
-In the build: `audio_source.build_findings(tl, mix)` with the delivery gates A01 and S01 on the staged file; no finding
-without `require_source`; a fail fails the build (exit 1, nothing published, report in `out/build_report.failed.json`).
+In the build: `audio_source.build_findings(tl, mix)` runs with the delivery gates A01 and S01 on the staged file; no finding
+is emitted without `require_source`. Because A02 is in `LINT_GATE_IDS`, a mismatch warns by default and blocks the build (exit 1, nothing published, report in `out/build_report.failed.json`) when `A02` is listed in `gates.require`.

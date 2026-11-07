@@ -31,7 +31,7 @@ The format of a channel profile and the profiles that ship with the engine.
   Pulse values are part of the HyperFrames scene theme (`camera_pulse`) only when `pulse_zoom` > 0.
 - `[grade]`: Default full-frame grade of every segment and beat without its own (same keys as segment `grade`; `lut` relative to the profiles directory).
   Absent = no grade; absent leaves the profile hash unchanged.
-- `[transitions]`: Segment-boundary transitions drawn from the segment files and laid over them by the final mux: `kind` (`cut`, `crossfade`, `state`, `zoom_whip`, `zoom_through`, `page_turn`; default `cut`), `by_type` (visual type -> kind; the incoming segment's type wins, then the outgoing one's), `whip_out_s` (0.1), `whip_blur_in_s` (0.1, <= `whip_in_s`), `whip_in_s` (0.4), `whip_scale` (1.3), `whip_blur` (0.12), `page_s` (0.4), and for `zoom_through` `through_out_s` (0.4), `through_scale` (4.0), `through_blur` (0.25), `through_in_s` (0.5), `through_in_scale` (1.0), `through_blur_in_s` (0.3, <= `through_in_s`), `through_flash` (0, white flash strength 0-1). zoom_whip: the outgoing shot pushes in to `whip_scale` over `whip_out_s` with a radial blur rising to `whip_blur`, the incoming shot settles from `whip_scale` to 1 over `whip_in_s` with the blur fading over `whip_blur_in_s`. zoom_through: the outgoing shot accelerates (power2.in) into a push-in to `through_scale` with a radial blur rising to `through_blur` and the flash peaking on its last frame; the incoming shot settles from `through_in_scale` to 1 (power4.out) while blur and flash fade over `through_blur_in_s` (`through_in_scale` 1 leaves the landing to the incoming scene's camera, e.g. a `reveal` key). page_turn: the outgoing last frame folds away from the bottom-right corner over the incoming shot for `page_s`.
+- `[transitions]`: Segment-boundary transitions drawn from the segment files and laid over them by the final mux: `kind` (`cut`, `crossfade`, `state`, `zoom_whip`, `zoom_through`, `page_turn`; default `cut`), `same_type` (visual type -> kind when both neighbouring segments share that type, checked before `by_type`), `by_type` (visual type -> kind; the incoming segment's type wins, then the outgoing one's), `whip_out_s` (0.1), `whip_blur_in_s` (0.1, <= `whip_in_s`), `whip_in_s` (0.4), `whip_scale` (1.3), `whip_blur` (0.12), `page_s` (0.4), and for `zoom_through` `through_out_s` (0.4), `through_scale` (4.0), `through_blur` (0.25), `through_in_s` (0.5), `through_in_scale` (1.0), `through_blur_in_s` (0.3, <= `through_in_s`), `through_flash` (0, white flash strength 0-1). zoom_whip: the outgoing shot pushes in to `whip_scale` over `whip_out_s` with a radial blur rising to `whip_blur`, the incoming shot settles from `whip_scale` to 1 over `whip_in_s` with the blur fading over `whip_blur_in_s`. zoom_through: the outgoing shot accelerates (power2.in) into a push-in to `through_scale` with a radial blur rising to `through_blur` and the flash peaking on its last frame; the incoming shot settles from `through_in_scale` to 1 (power4.out) while blur and flash fade over `through_blur_in_s` (`through_in_scale` 1 leaves the landing to the incoming scene's camera, e.g. a `reveal` key). page_turn: the outgoing last frame folds away from the bottom-right corner over the incoming shot for `page_s`.
   No transition = the concat of the segments unchanged.
 - `[watermark]`: Optional channel mark burned into the final video by the composite pass, above the captions, in every segment: `text` (one line, 1-40 chars), `font` (`inter` = Inter Bold, `title` = Archivo Black), `px` (16-120, px at 1920 height, default 36), `colour` (`#rrggbb`, default white), `opacity` (0-1, default 0.85), `shadow` (soft dark shadow, default true).
   The text's right edge sits on the right edge and its top on the top edge of the safe area (60 px sides, 100 px top).
@@ -45,17 +45,17 @@ The format of a channel profile and the profiles that ship with the engine.
   `[sound.kinds.<kind>]` for every mapped kind: `gain_db` (-60 to 0), `align` (`onset`: the file starts on the event; `peak`: its loudest sample lands on the event, default `onset`), `max_s` (cue length cap, default 2.0).
   Kinds: `pop`, `tick`, `whoosh`, `click`, `beep`, `counter_tick`, `impact`, `riser`.
   Unknown events or kinds and events mapped to a kind without a table are errors.
-- `[gates]`: `require`: style gate ids (including R38space; see `engine gates`) whose findings block a build. R38space is an explicit opt-in strict composition check; when required it overrides local negative-space intent.
-  Every other style gate reports at most warn.
-  Technical gates block on fail unless listed in `advisory`.
-  `advisory`: technical gate ids this channel lowers from fail to warn (never T02, R07, R14, A01, A02, W01, R38, R56px, M01, M03, G01, L22).
+- `[gates]`: `require`: lint and style gate ids (`LINT_GATE_IDS`, including R38space; see `engine gates`) whose findings block a build. R38space is an explicit opt-in strict composition check; when required it overrides local negative-space intent.
+  Every other gate in `LINT_GATE_IDS` reports at most warn.
+  Technical gates outside `LINT_GATE_IDS` (`F01`, and `AS04` when raised to `fail`) block a release build on fail unless listed in `advisory`.
+  `advisory`: technical or lint gate ids this channel lowers from fail to warn (never T02, R07, R14, A01, A02, W01, R38, R56px, M01, M03, G01, L22 in `NEVER_ADVISORY`).
   AS04 is technical-class and a profile raises it with `[gates.anti_slop.levels] AS04 = "fail"`.
 - `[gates.<name>]`: Channel style gates (see [Style gate configuration](GATES.md#style-gate-configuration)). Absent table = gate off; the default profile has none.
 - `[gates.anti_slop]`: Anti-AI-slop rules `AS01`-`AS06` (see [Style gate configuration](GATES.md#style-gate-configuration)).
   `level` (default `warn`) and per-rule `[gates.anti_slop.levels]`;
     `panel`, `copy`, `motion`, `read_time`, `source_tells`, `palette` switch rules on, plus `em_dash_max`, `em_dash_per_500`, `aphoristic_min`, `buzzwords`, `chars_per_s`, `min_read_s`, `forbidden_hues`, `side_strip_px`, `clip_vertices`.
   Taste rules stay warn unless a profile raises them.
-  Geoverum has no `[gates.anti_slop]` table: AS01-AS06 stay warn, including technical-class AS04.
+  Geoverum sets `[gates.anti_slop] level = "warn"` in `profiles/geoverum/core.toml`: AS01-AS06 stay warn, including technical-class AS04.
 - `[resources]`: `workers` (0-64, 0 = auto): shared worker budget of a build (see [Resources](BUILD.md#resources)). `VIDEO_ENGINE_WORKERS` overrides it.
 
 - `[legibility]` (optional): adaptive map text for teardrop labels, title, years, counters and area labels (water names blue italic): polarity, sepia ink, background-tinted halo that keeps counters open, escalation, stability schedule, overlay muting, cased pins, routes, region outlines and leaders, and gate R64.
@@ -73,17 +73,17 @@ The format of a channel profile and the profiles that ship with the engine.
 - `geoverum`: map-led geography shorts.
   - Captions: white Inter Bold 84 px, no outline, optional backing box, soft shadow 0 3 px with blur 4 at 55 %, active-word emphasis and at most 3 words.
     `fixed_y` 1417, `max_bottom_y` 1480, `auto_place` inside `place_band` 0.58-0.76 H, `clearance` 0. The effective timeline/profile, not dated taste notes, determines placement.
-  - Audio: -14 LUFS and -1.5 dBTP (the default), music and SFX from Epidemic Sound only (A02), music ducked -12 dB under the voiceover with keyframed ramps.
+  - Audio: -14 LUFS and -1.5 dBTP (the default), optional `require_source` (unset by default so local or Epidemic Sound assets can be mixed; set `require_source = "epidemic"` to enforce A02), music ducked -12 dB under the voiceover with keyframed ramps.
     SFX cues: pin and figure `pop`, label and region `tick`, route and whip `whoosh` (peak on the move), `counter_tick` per counter step, title `impact`.
-  - Pacing: suggested draft segments of 3-20 s with free cuts; hard cuts, with a 0.35 s state dissolve between segments on one map; page turns disabled and map morphs enabled. Channel creative direction separates identity, defaults and alternatives; these are not universal shot quotas.
+  - Pacing: suggested draft segments of 3-20 s with free cuts; hard cuts, with a 0.35 s state dissolve between segments on one map; page turns and map morphs disabled (`page_turn = false`, `map_morph = false`). Channel creative direction separates identity, defaults and alternatives; these are not universal shot quotas.
   - Camera: zoom up to 16x; drift of 0.06 per second between moves (counts as P01 motion).
   - Render: HyperFrames quality `high` at CRF 8; intermediates CRF 8 `medium`; final CRF 16 `medium`, 10-bit (High 10), capped at 40 Mb/s; map JPEG quality 95.
   - Gates: every style gate is on except C01 (cut rate), V01 (visual type) and D02 (exact duration).
-    No style gate is required (`require = []`). Technical advisory gates are listed in `profiles/geoverum.toml`; `engine gates --profile geoverum` shows their effective behavior.
+    No style gate is required (`require = []`), and `advisory = []` because lint gates in `LINT_GATE_IDS` warn by default unless required; `engine gates --profile geoverum` shows their effective behavior.
     Anti-slop AS01-AS06 warn.
   - Look: muted OKLCH entity palette of 17 colours with six unpinned (teal, umber, wine, mauve, jade, olive), adaptive legibility (`[legibility]`, gate R64), printed typography (`[print]`), watermark "Geoverum" in Inter Bold 40 px, white at 85 % with a shadow.
   - Landscape variant: `geoverum_landscape` (see Orientation).
-  - Files: `profiles/geoverum.toml` holds the channel settings and `include`s `profiles/geoverum/entities.toml`, `legibility.toml`, `print.toml`, `sound.toml` and `layout.toml`.
+  - Files: `profiles/geoverum.toml` holds the portrait settings and `include`s `profiles/geoverum/core.toml`, `entities.toml`, `legibility.toml`, `print.toml`, `sound.toml` and `layout.toml`.
   - Taste notes: `profiles/taste/geoverum.json`; `engine taste geoverum --lint` exposes historical differences from the active profile without rewriting dated feedback. The director labels them historical preferences, not hard constraints.
 
 ## Orientation (portrait and landscape)
@@ -129,10 +129,10 @@ Landscape profiles:
 - `geoverum_landscape`: the Geoverum brand on 16:9. It includes the Geoverum tables plus `landscape/format.toml`,
   `geoverum/landscape/layout.toml` (12 columns of 104 px from x0 116; safe `[96,54,1824,1026]`, Z1 title band at the
   top left `[116,72,1100,200]`, Z2 map `[116,216,1804,880]`, title 88, year 112) and `geoverum/landscape/print.toml`
-  (year 960 / 380, heading baseline 150). Watermark 28 px bottom right; duration 60-3600 s. Its channel tables repeat
-  `geoverum.toml` (an included file cannot include others): keep both in step.
+  (year 960 / 380, heading baseline 150). Watermark 28 px bottom right; duration 60-3600 s. Both `geoverum.toml` and
+  `geoverum_landscape.toml` share their channel tables through `geoverum/core.toml` and the modular `geoverum/*.toml` includes, overriding only orientation-specific settings.
 - Values still open for the owner: rhythm gates and duration for long-form, the landscape grid and title placement,
-  the O01 minimum font per orientation, R38 thirds for landscape, the grid backdrop cell basis (`fx.grid.cell_pct` is
+  the O01 minimum font per orientation, the grid backdrop cell basis (`fx.grid.cell_pct` is
   a share of H in both orientations), source quality policy at 4K, delivery metadata and thumbnail rule,
   and whether portrait captions at 2160x3840 should also scale (today they do not).
 
@@ -188,8 +188,8 @@ include = ["geoverum/entities.toml", "geoverum/layout.toml"]
 
 
 - Global safety limits: a profile may set `audio.true_peak` and `audio.tolerance_lu` only at or below the default profile value; a looser value is an error.
-  Gates T02, R07, R14, A01, A02, W01, R38, R56px, M01, M03, G01 and L22 (`profiles.NEVER_ADVISORY`) and post-render QA are identical for every profile;
-    no `[gates] advisory` list can lower them.
+  Gates T02, R07, R14, A01, A02, W01, R38, R56px, M01, M03, G01 and L22 (`profiles.NEVER_ADVISORY`) and post-render QA cannot be listed in `[gates] advisory`
+    (the 8 kernel gates in `KERNEL_GATE_IDS` always block on fail, while R07, R14, R56px and A02 are in `LINT_GATE_IDS` and warn unless listed in `require`).
 - Unknown keys, wrong types, `clearance` < 0, `fixed_y` or `max_bottom_y` outside 0-1920 (portrait) or 0-1080 (landscape) or `lra` <= 0 are errors naming the profile.
 - Segment cache keys contain the profile values that reach the segment's renderer: the HyperFrames key contains the scene, which holds `theme`, `print`, `layout` and `legibility`, plus the map derivative key and the toolchain identity (docs/RUST.md, Cache-key rules);
     native segment keys contain no profile value (no profile key reaches the native renderer).

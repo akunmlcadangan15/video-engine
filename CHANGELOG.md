@@ -22,18 +22,18 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
   `ProfileData` menerima tabel `reference_style` (dict) dan `Profile.reference_style` menampilkannya.
   Pengujian: `tests/test_reference_style.py`.
 
-- **Tier gate eksplisit + cek kesesuaian gate↔profil** (`video_engine/gate_registry.py`,
-  `video_engine/gate_conformance.py`). Setiap gate kini punya satu dari tiga tier: `mandatory` adalah 12 gate inti
-  yang selalu memblokir dan tidak dapat diturunkan oleh profil, proyek, atau mode apa pun (daftarnya sama dengan
-  `NEVER_ADVISORY`); `profile` adalah gate gaya yang setiap channel bebas memilih memblokir (`[gates] require`) atau
-  hanya memberi peringatan; `flexible` adalah gate teknis yang profil boleh turunkan menjadi peringatan lewat
-  `[gates] advisory`. Cek kesesuaian berjalan setiap kali profil dimuat dan setiap kali timeline divalidasi, dan
-  memastikan pilihan profil benar-benar bekerja: gate yang dimasukkan ke `require` tetapi tabel konfigurasinya tidak
-  ada (misalnya `require = ["H01"]` tanpa `[gates.hook]`) ditolak sebagai error, karena gate yang diklaim wajib
-  harus benar-benar berjalan; entri `advisory` yang menunjuk gate tidak aktif dilaporkan sebagai peringatan; gate
-  mandatory yang muncul di `require`/`advisory` ditolak sebagai error. `engine gates --profile NAME` menampilkan
-  ringkasan per tier untuk profil tersebut, dan indeks gate di `docs/GATES.md` memuat kolom Tier. Profil yang ada
-  tidak berubah aturannya — misalnya Geoverum tetap `require = []`. Pengujian: `tests/test_gate_conformance.py`.
+- **Pemisahan tingkat keparahan gate (`KERNEL` vs `LINT`) + lapisan kompatibilitas `gate_conformance`** (`video_engine/gate_registry.py`,
+  `video_engine/gate_conformance.py`, `video_engine/gates/severity.py`). Penegakan gate saat *runtime* menggunakan
+  `KERNEL_GATE_IDS` (8 gate integritas inti: `T02`, `M01`, `W01`, `L22`, `R38`, `A01`, `G01`, `M03`, juga diekspor
+  sebagai alias `MANDATORY_GATE_IDS`) yang selalu memblokir *build* bila gagal, serta `LINT_GATE_IDS` (50 gate gaya,
+  tata letak `L01`–`L10`, margin, dan kolisi) yang secara bawaan memberi peringatan dan menerbitkan video (*publish
+  with warnings*) kecuali dicantumkan di `[gates] require` atau `gates.require`. Gate teknis di luar kedua daftar
+  tersebut (`F01`, serta `AS04` bila dinaikkan ke `fail`) memblokir *release build* kecuali diturunkan lewat
+  `[gates] advisory` atau `--mode draft`, sedangkan 12 gate di `NEVER_ADVISORY` ditolak bila dimasukkan ke
+  `[gates] advisory`. Properti `Gate.tier` (`mandatory` / `profile` / `flexible`) dan helper di
+  `video_engine/gate_conformance.py` dipertahankan sebagai lapisan kompatibilitas pelaporan untuk `engine gates`
+  dan indeks Markdown di `docs/GATES.md` tanpa menolak pemuatan profil ketika tabel opsional tidak ditulis.
+  Profil yang ada tidak berubah aturannya — misalnya Geoverum tetap `require = []`. Pengujian: `tests/test_gate_conformance.py`.
 
 - **Kamera 3D penuh (opt-in)** untuk scene peta HyperFrames: `gsap_scene_config.camera_mode = "3d"` (atau profil
   `[camera] mode`) dengan kunci `camera3d` (`eye`/`target` [u, v, h], `roll`, `fov`, `move`, `hold`). Sampler murni
@@ -115,7 +115,7 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
   kecepatan; default mati karena whip memang berubah cepat.
 - **`[render] final_bit_depth`** (8 | 10): file akhir 10-bit (yuv420p10le, x264 High 10) untuk mengurangi banding pada
   gradasi. File antara tetap 8-bit. Build menolak dengan pesan jelas bila libx264 di ffmpeg tidak mendukung 10-bit.
-- **Profil `geoverum`**: file akhir kini 10-bit, preset `veryslow`, CRF 12, batas 40 Mb/s (sebelumnya 8-bit
+- **Profil `geoverum`**: file akhir kini 10-bit, preset `medium`, CRF 16, batas 40 Mb/s (sebelumnya 8-bit
   `slower`, 25 Mb/s).
 - **Registry gate** (`video_engine/gate_registry.py`): satu definisi untuk setiap gate. Daftar id gate di
   `profiles.py` kini diturunkan darinya.

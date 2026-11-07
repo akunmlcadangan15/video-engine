@@ -330,7 +330,7 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             frames = count_frames(staged)
             if frames != tl.total_frames:
                 raise EngineError(f"final has {frames} frames, expected {tl.total_frames}")
-            findings, info = qa.pixel_gates(staged, tl, threads=budget.mux_threads)
+            findings, info = qa.pixel_gates(staged, tl, threads=budget.mux_threads, project_dir=project_dir)
             s01 = style.silence_findings(staged, tl)
             a02 = audio_source.build_findings(tl, mix)
             findings = severity.apply(findings + a01 + s01 + a02, tl, draft=draft)
@@ -408,9 +408,8 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
         shutil.rmtree(stage, ignore_errors=True)
         if not keep_workdir:
             shutil.rmtree(workdir, ignore_errors=True)
-        # Stale .batch.lock: bila PID yang tercatat sudah mati (build sebelumnya terbunuh),
-        # buang lockfile-nya agar tidak terbaca "terkunci". Lock hidup (PID lain) atau milik
-        # proses ini (dipegang ProjectLock di luar build) dibiarkan utuh.
+        # Clean up a stale .batch.lock if its recorded PID is dead; leave live locks or locks
+        # held by this process (via ProjectLock outside build) untouched.
         try:
             from .batch import _clean_stale_lock
             _clean_stale_lock(project_dir / "out" / ".batch.lock")

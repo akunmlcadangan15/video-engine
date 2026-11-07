@@ -20,10 +20,11 @@ BLACK_FRAC = 0.85             # black frame: > BLACK_FRAC of pixels with luma < 
 BLACK_MEAN = 12.0
 SOURCE_DARK_MEAN = 25.0       # a source asset with mean luma below this is itself dark (e.g. a night/dark map)
 THIRD_NAMES = ("top", "middle", "bottom")
+THIRD_NAMES_LANDSCAPE = ("left", "centre", "right")
 
 
 def r38_check(stats: tuple, seg: int | None, what: str, intent: SegmentIntent | None = None,
-              source_mean: float | None = None) -> list[Finding]:
+              source_mean: float | None = None, *, landscape: bool = False) -> list[Finding]:
     """Judges one frame's stats. `source_mean` (mean luma of the segment's source asset, checked before the
     build judges the snapshot) keeps a genuinely dark source — a night scene or a dark map — from reading as a
     black frame: that is a warn about dark content, never an R38 black-frame failure."""
@@ -48,8 +49,9 @@ def r38_check(stats: tuple, seg: int | None, what: str, intent: SegmentIntent | 
                 level, reason = "info", f"; dark source (source mean luma {source_mean:.0f})"
             else:
                 level, reason = "warn", ""
+            names = THIRD_NAMES_LANDSCAPE if landscape else THIRD_NAMES
             out.append(Finding("R38space", level,
-                               f"{what}: {THIRD_NAMES[k]} third empty (luma std {std[k]:.1f}, detail {det[k]:.2f}){reason}", seg))
+                               f"{what}: {names[k]} third empty (luma std {std[k]:.1f}, detail {det[k]:.2f}){reason}", seg))
     return out
 
 
@@ -111,12 +113,13 @@ def r38_snapshots(tl: Timeline, project_dir: Path, dom_snaps: dict[int, str], sa
         return [Finding("R38", "fail", f"snapshot failed: {e}")], {}
     keys = sorted(snaps)
     stats = core.frame_stats([snaps[k] for k in keys], ow, oh)
-    sources = _source_mean_lumas(tl, project_dir)   # luma sumber dicek sebelum build menilai snapshot
+    sources = _source_mean_lumas(tl, project_dir)   # check source luma before judging the rendered snapshot
     out = []
     paths = {}
     intents = {s.seg_index: s.intent for s in tl.segments}
+    is_landscape = W > H
     for k, st in zip(keys, stats):
-        out += r38_check(st, k, "snapshot", intents.get(k), source_mean=sources.get(k))
+        out += r38_check(st, k, "snapshot", intents.get(k), source_mean=sources.get(k), landscape=is_landscape)
         if save_dir:
             from PIL import Image
             save_dir.mkdir(parents=True, exist_ok=True)

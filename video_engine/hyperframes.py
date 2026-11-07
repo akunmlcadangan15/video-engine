@@ -24,7 +24,9 @@ from .timeline import HYPERFRAMES, Segment, Timeline
 from .util import EngineError, blake3_files, blake3_json, code_hash, run
 from .units import units
 
-CODE = (Path(__file__),)   # writes the build dir (html, scene.js); legibility.py is keyed in the scene (legibility.code_hash)
+CODE = (Path(__file__), Path(components.__file__), Path(fx.__file__), Path(globe.__file__),
+        Path(parallax.__file__), Path(props.__file__), Path(camera3d.__file__), Path(camera_full3d.__file__),
+        Path(entities.__file__), Path(printstyle.__file__), Path(projection.__file__))   # writes the build dir (html, scene.js); legibility.py is keyed in the scene (legibility.code_hash)
 HF_VERSION = "hf-2"   # hf-2: capture/encode profile HF_QUALITY + HF_CRF
 HF_FONTS = ("Inter-Bold.otf", "Inter-SemiBold.otf")   # copied into every HF build dir; hashed into the cache key
 # Theme fonts (vendor/fonts/README.md): role -> (CSS family, file, weight range). Copied and hashed only when the scene
@@ -1184,7 +1186,7 @@ SHOT_FIELDS = ("png", "bg", "mask", "line_bg", "line_mask")   # screenshot paths
 
 def probe_key(seg_dir: Path, times: list[float], width: int, height: int, snaps: bool, bg: str) -> str:
     """Cache key of a DOM probe: the content of every file of the built segment dir (paths relative to it: html,
-    scene.js, assets, scripts; a globe script also switches the probe browser to WebGL), the probe times as passed to
+    scene.js, assets, scripts; a globe or 3D camera script also switches the probe browser to WebGL), the probe times as passed to
     the probe (4 dp), the viewport, whether screenshots are taken and the bg mode, the toolchain identity (node,
     Chrome, npm tree, GSAP, template, dom_probe.mjs, ffmpeg) and the engine source that runs the probe (CODE)."""
     files = sorted(p for p in Path(seg_dir).rglob("*") if p.is_file())
@@ -1243,7 +1245,7 @@ def probe_dom(seg_dir: Path, times: list[float], width: int, height: int, snap_d
     env["ENGINE_PUPPETEER"] = str(config.PUPPETEER)
     env["ENGINE_CHROME"] = str(config.CHROME)
     if (seg_dir / globe.JS.name).exists() or (seg_dir / SCENE3D_JS.name).exists():
-        env["ENGINE_WEBGL"] = "1"     # globe scenes: SwiftShader WebGL in the probe browser
+        env["ENGINE_WEBGL"] = "1"     # globe and 3D camera scenes: SwiftShader WebGL in the probe browser
     if snap_dir:
         snap_dir.mkdir(parents=True, exist_ok=True)
     t_limit = timeout if timeout is not None else (120 + (2 * len(times) if bg else 0))
@@ -1272,11 +1274,14 @@ def build_timeline_dir(tl: Timeline, project_dir: Path, out_dir: Path) -> tuple[
     """Build a unified HyperFrames multi-clip timeline composition (`out_dir/index.html`) mounting every segment on the
     HyperFrames timeline via `class="clip"` and `data-start` / `data-duration` / `data-track-index` /
     `data-composition-src`. HyperFrames segments are mounted as sub-compositions (`segXXX/index.html`); native segments
-    are mounted as timed video/image clips with their planned camera window transforms."""
+    are mounted as timed video/image clips with their planned camera window metadata."""
+    from . import native
     S = tl.settings
     if out_dir.exists():
         shutil.rmtree(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    assets_dir = out_dir / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(config.GSAP_JS, assets_dir / "gsap.min.js")
     clips_html = []
     manifest_clips = []
     total_dur = tl.total_frames / S.fps
@@ -1295,26 +1300,34 @@ def build_timeline_dir(tl: Timeline, project_dir: Path, out_dir: Path) -> tuple[
                                    "duration_s": round(t_dur, 4), "src": f"{sub_name}/index.html"})
         else:
             src_path = (project_dir / seg.source).resolve()
-            assets_dir = out_dir / "assets"
-            assets_dir.mkdir(exist_ok=True)
             dst_name = f"nat_{seg.seg_index:03d}{src_path.suffix.lower()}"
+            cam_attrs = ""
+            cam_meta = {}
             if src_path.is_file():
                 shutil.copyfile(src_path, assets_dir / dst_name)
+                if seg.camera_move is not None:
+                    job = native.plan(seg, tl, project_dir)
+                    cam_attrs = (
+                        f' data-camera-start="{job.start_win[0]:.2f},{job.start_win[1]:.2f},{job.start_win[2]:.2f},{job.start_win[3]:.2f}"'
+                        f' data-camera-end="{job.end_win[0]:.2f},{job.end_win[1]:.2f},{job.end_win[2]:.2f},{job.end_win[3]:.2f}"'
+                    )
+                    cam_meta = {"start_win": [round(v, 2) for v in job.start_win],
+                                "end_win": [round(v, 2) for v in job.end_win]}
             tag = "img" if seg.is_still else "video"
             extra = "" if seg.is_still else f' data-source-in="{seg.source_in_frame / S.fps:.6f}" muted playsinline'
             clips_html.append(
                 f'  <div class="clip native-clip" id="{sub_name}" data-start="{t_start:.6f}" '
-                f'data-duration="{t_dur:.6f}" data-track-index="0">'
+                f'data-duration="{t_dur:.6f}" data-track-index="0"{cam_attrs}>'
                 f'<{tag} src="assets/{dst_name}" style="width:100%;height:100%;object-fit:cover"{extra}></{tag}></div>'
             )
             manifest_clips.append({"seg": seg.seg_index, "engine": seg.engine_type, "start_s": round(t_start, 4),
-                                   "duration_s": round(t_dur, 4), "src": f"assets/{dst_name}"})
+                                   "duration_s": round(t_dur, 4), "src": f"assets/{dst_name}", **cam_meta})
     host_html = f"""<!doctype html>
 <html lang="id">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width={S.width}, height={S.height}" />
-<script src="seg000/assets/gsap.min.js" onerror="this.remove()"></script>
+<script src="assets/gsap.min.js" onerror="this.remove()"></script>
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
 html,body{{width:{S.width}px;height:{S.height}px;overflow:hidden;background:#0b1118}}

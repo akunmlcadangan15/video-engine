@@ -16,9 +16,9 @@ Most gates run before any segment is rendered, because a failed render costs sev
 - Pre-flight target: < 5 s in total (stage times: `--timing-tsv`).
 - Three levels (`video_engine/gate_registry.py`):
   - **error** — a kernel gate failed. The build stops and `out/final.mp4` is not published (see [Publish with warnings](BUILD.md#publish-with-warnings)).
-  - **fix** — the finding was repaired automatically (camera intensity, caption slot). The fix is recorded in `build_report.json` (`fixes`) and the build continues.
+  - **fix** — the finding was repaired automatically (camera intensity, caption slot). The fix is recorded in `build_report.json` (`preflight_fixes`) and the build continues.
   - **lint** — a non-kernel gate failed. The finding is reported as a warning; the build publishes with warnings. A lint gate blocks only when it is explicitly listed in `[gates] require` (profile) or `gates.require` (project).
-- Per-finding statuses `pass`, `info`, `warn`, `skip` and `fail` are still recorded; `build_report.json` groups them as `errors` / `fixes` / `lints`, so the report is always complete (`{errors, fixes, lints}`).
+- Per-finding statuses `pass`, `info`, `warn`, `skip` and `fail` are still recorded; `build_report.json` groups them under `gates: {required, segment_intents, fails, warns, waived}` (plus `waivers` when active) alongside top-level `preflight_fixes`.
 - Layers, in the order the pre-flight runs them: 1 static checks of the timeline and project files, 2 calculations and the DOM probe of HyperFrames scenes, caption placement, layout and props, then 3 visual snapshots.
   Checks of the finished file (post-render QA, loudness, silence, audio source) come after the render.
 - Classes `technical` / `style` are kept in the registry for description, but blocking is now decided by kernel vs lint, not by class alone.
@@ -31,45 +31,45 @@ The frozen core that always blocks. No profile, project, mode or draft build can
 
 Any kernel fail stops `build`; a failed run keeps the last published `out/final.mp4` byte-identical.
 
-### Lint list (warn by default, 49 gates)
+### Lint list (warn by default, 50 gates)
 
 Lint gates never block, except when explicitly required. The list (`video_engine/gate_registry.py`, `LINT_GATE_IDS`):
 
 - style gates: `R38space`, `H01`, `C01`, `V01`, `N01`, `P01`, `P02`, `P03`, `K01`, `K02`, `C02`, `D01`, `D02`, `S01`, `AS01`, `AS02`, `AS03`, `AS05`, `AS06`
 - layout: `L01`, `L02`, `L03`, `L04`, `L05`, `L06`, `L07`, `L08`, `L09`, `L10`
-- margins / camera / collisions / misc: `R44`, `T01`, `E01`, `O01`, `U01`, `M02`, `M04`, `G02`, `R62`, `Z01`, `B01`, `R63`, `R56`, `R56px`, `R07`, `R14`, `A02`, `F02`, `F03`, `F04`
+- margins / camera / collisions / misc: `R44`, `R64`, `T01`, `E01`, `O01`, `U01`, `M02`, `M04`, `G02`, `R62`, `Z01`, `B01`, `R63`, `R56`, `R56px`, `R07`, `R14`, `A02`, `F02`, `F03`, `F04`
 
-Neither kernel nor lint: `R64`, `F01`, `AS04` (technical gates that keep their blocking behaviour until switched off by their profile key) and `AIQA` (only with `--ai-qa`).
+Neither kernel nor lint: `F01`, `AS04` (technical gates that keep their blocking behaviour unless lowered via `[gates] advisory` or switched off by their profile key) and `AIQA` (only with `--ai-qa`).
 
 ### Tiers and waiving (historical, now subsumed by kernel vs lint)
 
-The old per-tier comparison (`mandatory` / `profile` / `flexible`) and the 61 gate x tier/waive table are replaced by the model above. `engine gates` still shows the legacy tier column from the registry for reference; the effective policy is kernel vs lint: **KERNEL (error)** always blocks, **LINT** warns unless required.
+The old per-tier comparison (`mandatory` / `profile` / `flexible`) and the 61 gate x tier/waive table are replaced by the model above. `engine gates` shows `KERNEL`, `LINT` or `ERROR` (for `F01`, `AS04` and `AIQA`) in the runtime `TIER` column (while `engine gates --format md` preserves the historical registry tier column `mandatory` / `profile` / `flexible` for reference); the effective policy is kernel vs lint: **KERNEL (error)** always blocks, **LINT** warns unless required, and technical **ERROR** gates (`F01`, `AS04` when raised to `fail`) block a release build unless lowered via `[gates] advisory` or `--mode draft`.
 Explicit downgrades below only turn lint findings down to `info`; they cannot lower a kernel gate.
 
 Not every channel document is a gate: `profiles/geoverum/creative.md` (draft rules) and `profiles/taste/geoverum.json`
 (historical taste notes) do not block a build; they are not part of the gate registry.
-- `build_report.json` -> `gates`: `required`, `fails`, `warns`, `waived` (each row: `gate`, `class`, `level`, `message`, `seg`, `frames`, and the original level in `waived`), plus `errors`, `fixes`, `lints`, and `waivers` when the timeline lowers gates with a reason.
+- `build_report.json` -> `gates`: `required`, `segment_intents`, `fails`, `warns`, `waived` (each row: `gate`, `class`, `tier`, `level`, `message`, `seg`, `frames`, and the original level in `waived`), plus `waivers` when the timeline lowers gates with a reason (auto-repairs are recorded in top-level `preflight_fixes`).
   Geoverum has `[gates] require = []`: no lint gate is required by the channel; use `engine gates --profile geoverum` for the effective policy. A project may still add required gates.
 
 ## Lowering a gate
 
 | Way | Who | What it can lower | Where it is recorded |
 |---|---|---|---|
-| `[gates] advisory` | the channel profile | technical gates except the never-advisory list | `waived` rows: "style gate not required by the channel" |
+| `[gates] advisory` | the channel profile | technical gates outside `NEVER_ADVISORY` (e.g. `F01`, `AS04` when set to `fail`; gates in `LINT_GATE_IDS` already warn by default) | `waived` rows: "fail: lint gate not required by the channel (publish with warnings)" |
 | `gates.waive` | the project (timeline) | non-required style gates and advisory gates, to info | `waived` rows |
 | `hold: "read"` | the project (segment or beat) | P01 and N01 findings that start inside it, to info | `waived` rows |
 | `gates.waive_with_reason` | the project (timeline) | `L01`, `L06`, `O01`, to info, with a written reason | `waived` rows and `gates.waivers` |
 | `--mode draft` | the person running the build | technical gates that are not never-advisory, from fail to warn | `waived` rows: "lowered in a draft build" |
 
-A waive of a required gate, or a plain `gates.waive` of a technical gate, changes nothing and adds one warning (gate `GW01`) that says it was ignored.
+A waive of a required or kernel gate changes nothing and is silently ignored without emitting a separate meta-gate finding.
 Every lowered finding keeps its original level in `waived`.
 
 ### Draft builds
 
 `engine build P --mode draft` (and `engine preflight P --mode draft`) is for trying a timeline before it is clean.
 
-- A fail of any technical gate that a profile may make advisory becomes a warning.
-  Gates in the never-advisory list (`T02`, `R07`, `R14`, `A01`, `A02`, `W01`, `R38`, `R56px`, `M01`, `M03`, `G01`, `L22`) and any style gates explicitly required by the profile or project still block.
+- A fail of any non-kernel gate that is not explicitly required becomes a warning.
+  The 8 kernel gates (`T02`, `M01`, `W01`, `L22`, `R38`, `A01`, `G01`, `M03`) and any lint/style gates explicitly required by the profile or project still block (the historical 12-gate `NEVER_ADVISORY` list prevents lowering via `[gates] advisory`).
 - The build writes `out/draft/final.draft.mp4`, `out/draft/build_report.json` (marked `"mode": "draft"`) and `out/draft/build_manifest.json`.
   `out/final.mp4` and its report are never touched.
 - `engine deliver` refuses a draft.
@@ -91,7 +91,7 @@ The findings of that gate become info, the reason is stored in `build_report.jso
 
 `video_engine/gate_registry.py` describes every gate once: id, class, layer, name, rule, switch, and whether it is never-advisory or waivable.
 `profiles.STYLE_GATE_IDS`, `TECHNICAL_GATE_IDS`, `KNOWN_GATE_IDS` and `NEVER_ADVISORY` are derived from it.
-`KERNEL_GATE_IDS` (8) and `LINT_GATE_IDS` (49) define the 3-level severity classification: `engine gates` prints **KERNEL (error)** vs **LINT** per gate.
+`KERNEL_GATE_IDS` (8) and `LINT_GATE_IDS` (50) define the 3-level severity classification: `engine gates` prints **KERNEL (error)** vs **LINT** per gate.
 `engine gates` prints it; `engine gates --profile NAME` shows what each gate does under a profile; `engine gates --stats PATH ...` counts findings in build reports.
 The index below is generated by `engine gates --format md`; do not edit it by hand.
 
@@ -99,7 +99,7 @@ The index below is generated by `engine gates --format md`; do not edit it by ha
 
 <!-- BEGIN GENERATED: engine gates --format md -->
 
-Tiers: `mandatory` = frozen core, always blocks (never advisory); `profile` = channel style gate, blocks only when the profile requires it; `flexible` = technical gate a profile may lower to warn via `[gates] advisory`. See `video_engine/gate_conformance.py` for the gate <-> profile check.
+Tiers (historical registry classification; runtime blocking uses `KERNEL_GATE_IDS` vs `LINT_GATE_IDS` above): `mandatory` = never-advisory flag (`NEVER_ADVISORY`); `profile` = channel style gate, blocks only when the profile requires it; `flexible` = technical gate a profile may lower to warn via `[gates] advisory`. See `video_engine/gate_conformance.py` for the gate <-> profile check.
 
 ### Layer 1: static checks of the timeline and project files
 
@@ -291,8 +291,8 @@ The full rule of each gate, with its thresholds. Where this list and the index d
 - **H01, C01, C02, V01, N01, P01, K01, K02, D01, D02** (layer profile): Channel style gates, after layer 2 (see [Style gate configuration](#style-gate-configuration))
 - **AS01-AS06** (layer profile): Anti-AI-slop gates: decorative side-strip panels, copy tics, motion tics, minimum readable on-screen time, composition source tells in project sources and built HTML, and tell-hue literals (see [Style gate configuration](#style-gate-configuration)).
   AS01, AS02, AS03, AS05, AS06 are style-class and warn by default; AS04 is technical-class, warn by default.
-  Geoverum has no `[gates.anti_slop]` table, so all six stay at warn (AS01 is not raised to fail).
-- **G02** (layer profile): Geo/fact gate on map regions and geographic pins (see [Style gate configuration](#style-gate-configuration)); technical class, always blocks on fail
+  Geoverum sets `[gates.anti_slop] level = "warn"` in `profiles/geoverum/core.toml`, so all six stay at warn (AS01 is not raised to fail).
+- **G02** (layer math): Geo/fact gate on map regions and geographic pins (see [Style gate configuration](#style-gate-configuration)); technical class in `LINT_GATE_IDS` (warns unless required)
 - **R38** (layer 3): Snapshot per segment at 1/4 size and post-render samples: black frame (black fraction > 0.85 or mean < 12) fails. Decode failures remain hard errors. Creative intent never waives this integrity check.
 - **R38space** (visual advice): a third with std < 6 and detail < 1.5 warns; `intent.negative_space: true` with a reason makes that segment's finding informational. This heuristic does not prove the renderer is broken. Explicitly requiring `R38space` in the profile or project restores a blocking result, even when local negative-space intent is present; required policy takes precedence over the local waiver.
 - **AIQA** (layer 3): Optional (`--ai-qa`): snapshots to the AI provider's QA models;
@@ -303,7 +303,7 @@ The full rule of each gate, with its thresholds. Where this list and the index d
 - **QA** (layer post-render): Every 5th frame at 1/4 size: R38/R38space per sample; R56px mean luma difference below 0.5 per segment warns by default, is info for static/read intent, and fails for explicit moving intent even in draft mode. Too few samples to estimate motion are informational for static/read/unspecified shots; explicit moving intent fails with "cannot verify expected motion" instead of a false freeze claim. No decoded samples is an integrity failure. Exact frame counts and stream timing are independently verified by the build and remain hard errors regardless of intent.
 - **S01** (layer delivery): Profile silence gate on the final file (see [Style gate configuration](#style-gate-configuration))
 - **A02** (layer delivery): Profile `[audio] require_source` only: every music and SFX file of the final mix (without `[sound]`: `audio_chain.bgm_path`) has provenance `source` equal to `require_source` = pass;
-    any other source (`local-test`, `project-file`) = fail.
+    any other source (`local-test`, `project-file`) = warn by default (blocks when `A02` is in `gates.require`).
   No finding without the key.
   Gate code: `video_engine/gates/audio_source.py`.
 - **A01** (layer delivery): Final file at `target_lufs` +/- `tolerance_lu` and true peak <= `true_peak` (default profile: -14.0 LUFS +/- 0.2 LU, -1.5 dBTP).
@@ -321,7 +321,7 @@ Profile format and precedence: PROFILES.md.
 - **H01** (`[gates.hook]`)
   - Keys: `vo_warn_s`, `vo_fail_s`, `caption_warn_s`, `caption_fail_s`, `graphic_warn_s`, `graphic_fail_s`, `open_on_moving_map`
   - Rule: Narration start (end of a leading pause in the voiceover), first caption start and first pin / card / drawn overlay: later than the warn value = warn, later than the fail value = fail.
-    `open_on_moving_map`: segment 0 must be HyperFrames with a `camera_path` or a camera preset other than `static`, else fail.
+    `open_on_moving_map`: segment 0 must be HyperFrames with a `camera_path`, `globe`, `camera3d` or a camera preset other than `static`, else fail.
 - **C01** (`[gates.cuts]`)
   - Keys: `warn_per_10s`, `fail_per_10s`, `first_warn_s`, `first_fail_s`
   - Rule: Shot changes = segment boundaries;
@@ -333,11 +333,11 @@ Profile format and precedence: PROFILES.md.
     A transition window that leaves its two segments or overlaps the next window = fail.
 - **V01** (`[gates.visual_type]`)
   - Keys: none
-  - Rule: A shot change (hard cut, zoom whip or page turn, named in the message) between two segments of the same visual type = warn;
+  - Rule: A shot change (hard cut, crossfade, zoom whip, zoom through, page turn or state dissolve, named in the message) between two segments of the same visual type = warn;
       between two HyperFrames segments on the same map asset = fail.
 - **N01** (`[gates.novelty]`)
   - Keys: `max_gap_s`
-  - Rule: Gap between new on-screen events (segment start, pin, card, drawn overlay start, `camera_path` key) longer than `max_gap_s` = warn.
+  - Rule: Gap between new on-screen events (segment start, pin, region, region change, border, route, card, title, figure, drawn overlay start, `camera_path` key, `globe` key, `camera3d` key) longer than `max_gap_s` = warn.
 - **P01** (`[gates.camera]`)
   - Keys: `hold_warn_s`, `hold_fail_s`, `moving_warn`, `still_zoom_ln_s`, `still_pan_w_s`
   - Rule: Planned camera per frame (HyperFrames camera legs, native `camera_move` windows; native footage without a camera move is not counted; transition frames count as moving): a frame is still when its zoom speed is below `still_zoom_ln_s` (ln scale / s) and its frame-centre speed (2D) below `still_pan_w_s` (frame widths / s).

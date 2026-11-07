@@ -108,11 +108,12 @@ The specification of the engine: goal, architecture, components, gates, profiles
   per segment, getBoundingClientRect() to detect pin/card/text collisions and margins (R62/R63).
 - Layer 3 Visual snapshot QA (~3 s): 1 screenshot per segment (from those seeks or 1 frame via ffmpeg); R38 pixel
   distribution in Rust; optional (--ai-qa) snapshots to the AI provider's QA models to verify nothing overlaps.
-- 3-level severity (`KERNEL_GATE_IDS` / `LINT_GATE_IDS` in `gate_registry.py`): **error** = the 8 kernel gates (`T02`, `M01`, `W01`, `L22`, `R38`, `A01`, `G01`, `M03`), any kernel fail stops `build`;
--  **fix** = auto-repaired findings (camera intensity, caption slot); **lint** = the 49 non-kernel gates in `LINT_GATE_IDS` (style, layout `L01`-`L10` and misc smoothness gates), which warn and publish with warnings unless the channel profile `[gates] require` or the timeline `gates.require` lists them.
- Timeline `gates.waive` and `hold: "read"` (segment or beat; P01/N01 findings) lower lint findings to info.
- build_report.json `gates` always holds `{errors, fixes, lints}` (plus legacy `required`, `fails`, `warns`, `waived`). AS04 (readable on-screen time) is a technical-class
- anti-slop gate outside kernel/lint: its default level is warn and a profile raises it with `[gates.anti_slop.levels] AS04 = "fail"`.
+- 3-level severity (`KERNEL_GATE_IDS` / `LINT_GATE_IDS` in `gate_registry.py`):
+  - **error**: the 8 kernel gates (`T02`, `M01`, `W01`, `L22`, `R38`, `A01`, `G01`, `M03`); any kernel fail stops `build`.
+  - **fix**: auto-repaired findings (camera intensity, caption slot, layout adjustments), recorded in top-level `preflight_fixes`.
+  - **lint**: the 50 non-kernel gates in `LINT_GATE_IDS` (style, layout `L01`-`L10` and margin/camera/collision gates), which warn and publish with warnings unless listed in channel `[gates] require` or timeline `gates.require`.
+  Timeline `gates.waive` and `hold: "read"` (segment or beat; P01/N01 findings) lower non-required lint findings to `info`.
+  `build_report.json` `gates` always holds `{required, segment_intents, fails, warns, waived}` (plus `waivers` when active) alongside top-level `preflight_fixes`. `F01` (prop files) and `AS04` (readable on-screen time; default level `warn`, raised with `[gates.anti_slop.levels] AS04 = "fail"`) are technical-class gates outside `KERNEL_GATE_IDS` and `LINT_GATE_IDS`: they block a release build on `fail` unless lowered via `[gates] advisory` or `--mode draft`.
 No M-patches, no meta-gates. Every gate must be proven with labelled good + bad cases in tests.
 
 ### D. Infra, template, delivery
@@ -290,8 +291,8 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   --resume` validates and imports it, removes the bundle and continues. After the plan the build appends one credit
   line per Epidemic Sound file to `credits.txt` under `Audio (Epidemic Sound)`:
   `- <id> — <artist> — "<title>" — https://www.epidemicsound.com — Epidemic Sound licence`.
-- A02 (delivery, `[audio] require_source`): every music and SFX file of the final mix has the required provenance
-  source; otherwise fail. No finding without the key. `geoverum` requires `epidemic`.
+- A02 (delivery, `[audio] require_source`): when set, checks that every music and SFX file of the final mix has the
+  matching provenance `source` (warns by default unless `A02` is in `gates.require`). No finding when `require_source` is unset (`geoverum` leaves it unset by default).
 - Profile `[watermark]`: one-line text mark top right inside the safe area, drawn to a PNG and overlaid by the final
   mux (no segment re-render); B01 checks it against element boxes and captions before rendering.
 - Anti-AI-slop gates (`[gates.anti_slop]`, `video_engine/gates/anti_slop.py`): AS01 flags a drawn `lower_third` or
@@ -304,12 +305,11 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   ranges (violet 260-310, cyan 170-197) that the profile does not declare. Engine-generated template effects and
   markup (`MO.*` motion tokens, whip blur, built-in `lower_third` markup) are allowlisted, so only project content is
   flagged. Taste rules default to warn; `[gates.anti_slop.levels]` raises a rule, and for style-class ids
-  `[gates] require` keeps a raised fail blocking. Geoverum keeps every anti-slop rule at warn (AS01-AS06) and
-  requires only S01.
+  `[gates] require` keeps a raised fail blocking. Geoverum keeps every anti-slop rule at warn (`AS01`-`AS06`) and sets `[gates] require = []` (no lint gate blocks by default).
   Declared brand palettes are exemptions.
-- Global safety gates (identical for every profile; a profile may only tighten true peak and loudness tolerance, and
-  no `[gates] advisory` list can lower them): T02, R07, R14, A01, A02, W01, R38, R56px, M01, M03, G01, L22
-  (`profiles.NEVER_ADVISORY`) and post-render QA.
+- Global safety and never-advisory gates (identical for every profile; a profile may only tighten true peak and loudness tolerance, and
+  no `[gates] advisory` list can include them): T02, R07, R14, A01, A02, W01, R38, R56px, M01, M03, G01, L22
+  (`profiles.NEVER_ADVISORY`) and post-render QA. At runtime, the 8 kernel gates (`KERNEL_GATE_IDS`: T02, M01, W01, L22, R38, A01, G01, M03) always block on fail, while R07, R14, R56px and A02 are in `LINT_GATE_IDS` (warn by default unless listed in `require`).
 - build_report.json records the profile name and the BLAKE3 hash of the merged profile.
 - Locked build manifest out/build_manifest.json (before render): build_id, sha256 of timeline, inputs, fonts and sounds
   (portable paths), profile hash, toolchain pins, seeds, worker budget, stage cache keys. Sounds stay locked until
@@ -325,7 +325,7 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   snapshots, bg_screenshots, glyph_masks, r64_numpy, plus probes and cache_hits.
 - Publishing: the build muxes into a staging dir inside out/ and runs every gate on that file; only a build with no kernel fail and no stage error replaces out/final.mp4 and out/build_report.json (os.replace). Lint findings warn and publish with warnings.
   A failed build keeps both byte-identical, writes out/build_report.failed.json, and fails the API (BuildFailed, or ok=False with raise_on_fail=False) and the CLI (exit 1).
-  `build_report.json` always contains the full `{errors, fixes, lints}` gate grouping.
+  `build_report.json` always contains the full `{required, segment_intents, fails, warns, waived}` gate summary and top-level `preflight_fixes`.
 
 ### F. Adaptive legibility (profile `[legibility]`; `geoverum`)
 - Scope: teardrop pin labels, the title, years and counters, beats area labels (`video_engine/legibility.py`), and
@@ -455,7 +455,7 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   caption and watermark excluded). B01: every element box keeps `watermark_clear_px` from the watermark.
 - Fonts (`vendor/fonts`, OFL): EB Garamond, EB Garamond Italic, Cinzel, Kalam Bold, Playfair Display, Inter.
   Textures (`vendor/textures`, CC0): paper, grain. Each file has a row in the folder README.
-- Camera fit zoom is capped at the camera key limit (`timeline.ZOOM_MAX`, 4).
+- Camera fit zoom is capped at the profile camera limit (`[camera] max_zoom`: default 4, `geoverum` 16; schema ceiling `timeline.ZOOM_MAX` = 64).
 
 ### G. Beats layout (profile `[layout]`; `geoverum`)
 - Scope: HyperFrames map scenes with `gsap_scene_config.beats` (`video_engine/layout.py`). Positions, sizes,
@@ -508,17 +508,18 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 ## Data contract: master_timeline.json (example)
 {
   "project_id": "surabaya_doc_v2",
-  "settings": {"width":1080,"height":1920,"fps":30,"work_dir_shm":"/dev/shm/video_engine/surabaya_jobs",
-               "output_drive_name":"20261028_Surabaya_Final_v1.mp4"},
+  "profile": "geoverum",
+  "settings": {"width":1080,"height":1920,"fps":30,"work_dir_shm":"/dev/shm/video_engine/surabaya_jobs"},
   "credits_manifest": [
-    {"asset_id":"map_sby_01","source_url":"https://example.com/source1","license":"CC-BY-4.0"},
-    {"asset_id":"archive_photo_02","source_url":"https://example.com/source2","license":"Public Domain"}],
+    {"asset_id":"map_sby_01","source_url":"https://example.com/source1","license":"CC-BY-4.0","watermark_free":true},
+    {"asset_id":"archive_photo_02","source_url":"https://example.com/source2","license":"Public Domain","watermark_free":true}],
   "audio_chain": {"voiceover_path":"assets/vo_master.wav","bgm_path":"assets/bgm_ambient.mp3","target_lufs":-14.0,"auto_ducking":true},
   "segments": [
     {"seg_index":0,"engine_type":"NATIVE_RUST_FFMPEG","start_frame":0,"end_frame":240,"source_video":"assets/raw_intro.mp4",
      "source_in_frame":120,"camera_move":{"preset":"ken_burns_zoom_in","intensity":1.35,"focus_box":[200,300,800,700]},"overlays":[]},
     {"seg_index":1,"engine_type":"HYPERFRAMES_GSAP","start_frame":240,"end_frame":480,
-     "gsap_scene_config":{"template":"<engine template>","map_region":"Surabaya_Center",
+     "gsap_scene_config":{"map_asset":"assets/map_sby_01.jpg","map_asset_id":"map_sby_01",
+       "map_bounds":{"north":-7.15,"south":-7.35,"west":112.60,"east":112.85},
        "pins":[{"label":"Tunjungan","lat":-7.2575,"lng":112.7521}],"cards":[{"title":"Pusat Kota","asset_ref":"archive_photo_02"}],
        "camera_preset":"pan_northeast","camera_intensity":1.5}}],
   "captions": [

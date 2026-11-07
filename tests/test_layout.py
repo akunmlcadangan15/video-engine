@@ -400,7 +400,7 @@ def test_good_area_label_outside_a_small_region_keeps_its_leader(project, monkey
 def test_good_area_leader_is_drawn_by_the_template():
     """An area label placed outside its polygon gets a rendered leader, not only a gate-only segment."""
     html = (config.TEMPLATE_DIR / "index.html").read_text()
-    assert "if(a.leader){" in html and "'leader:area:'+a.key" in html and "cam.insertBefore(ln,el)" in html
+    assert "if(a.leader){" in html and "'leader:area:'+a.key" in html and "cam.insertBefore(ln,el)" in html and "ZS=window.__zs" in html and "window.__zsArm()" in html
 
 
 def test_good_print_block_no_longer_requires_legibility():

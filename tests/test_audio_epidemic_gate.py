@@ -1,5 +1,5 @@
-"""Stage 2 audio source gate: Epidemic Sound is the preferred source (A02 warn, tidak block); geoverum requires
-no source and appends credits for its Epidemic Sound files."""
+"""Stage 2 audio source gate: Epidemic Sound is the preferred source (A02 warns by default unless required); geoverum
+requires no source by default and appends credits for its Epidemic Sound files."""
 from pathlib import Path
 
 from test_style_gates import layout
@@ -39,7 +39,7 @@ def test_good_non_epidemic_music_or_sfx_only_warns_a02(project):
     assert [f.level for f in a02_audio_source(tl, _mix("local-test", "epidemic"), require="epidemic")] == ["warn"]
     assert [f.level for f in a02_audio_source(tl, _mix("epidemic", "local-test"), require="epidemic")] == ["warn"]
     fs = a02_audio_source(tl, _mix("local-test", "local-test"), require="epidemic")
-    assert fs[0].level == "warn" and "local-test" in fs[0].message   # preferred, bukan wajib: warn, tidak block
+    assert fs[0].level == "warn" and "local-test" in fs[0].message   # preferred by default: warns unless A02 is required
 
 
 def test_good_local_test_tones_exist_only_as_a_test_fallback(project):

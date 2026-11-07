@@ -235,8 +235,8 @@ def test_good_e2e_local_test_sounds_do_not_fail_A02(project):
     mix = mixer.plan(tl, p, [])                                       # nothing sourced: local tones and bgm_path
     assert mix is not None
     fs = a02_audio_source(tl, mix)
-    assert [f.level for f in fs] == ["skip"]                          # geoverum requires no audio source: tidak fail
-    fs = a02_audio_source(tl, mix, require="epidemic")                # preferred tapi bukan wajib: hanya warn
+    assert [f.level for f in fs] == ["skip"]                          # geoverum requires no audio source: skips
+    fs = a02_audio_source(tl, mix, require="epidemic")                # preferred by default: warns unless required
     assert fs[0].level == "warn" and "local-test" in fs[0].message and "sfx pop" in fs[0].message
 
 
@@ -278,7 +278,7 @@ def test_good_A02_skips_without_requirement_and_honours_the_parameter(project):
 def test_good_A02_warns_project_bgm_without_a_mix(project):
     p, tl = project(lambda d: d.update(audio_chain={"bgm_path": "assets/tone.wav"}))
     fs = a02_audio_source(tl, None, require="epidemic")
-    assert fs[0].level == "warn" and "project-file" in fs[0].message   # preferred, bukan wajib: warn, tidak block
+    assert fs[0].level == "warn" and "project-file" in fs[0].message   # preferred by default: warns unless required
 
 
 # ------------------------------------------------------------------------------------------ Epidemic helpers: good

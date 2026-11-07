@@ -104,7 +104,7 @@ def _dead_pid():
 
 
 def test_good_stale_lock_file_cleaned_automatically(tmp_path):
-    """Lockfile basi (pemiliknya mati) dibersihkan saat acquire, bukan dianggap terkunci."""
+    """A stale lockfile whose owner PID is dead is cleaned up on acquire instead of blocking."""
     p = _proj(tmp_path, "p")
     lock = p / "out" / ".batch.lock"
     lock.parent.mkdir()

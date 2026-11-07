@@ -1360,10 +1360,10 @@ class ProjectGates(Strict):
 
     @model_validator(mode="after")
     def _ids(self):
-        from .gate_registry import KNOWN_GATE_IDS, STYLE_GATE_IDS
-        bad = [g for g in self.require if g not in STYLE_GATE_IDS]
+        from .gate_registry import KNOWN_GATE_IDS, LINT_GATE_IDS
+        bad = [g for g in self.require if g not in LINT_GATE_IDS]
         if bad:
-            raise ValueError(f"gates.require: unknown style gate(s) {bad} (known: {', '.join(STYLE_GATE_IDS)})")
+            raise ValueError(f"gates.require: unknown style gate(s) {bad} (known: {', '.join(LINT_GATE_IDS)})")
         bad = [g for g in self.waive if g not in KNOWN_GATE_IDS]
         if bad:
             raise ValueError(f"gates.waive: unknown gate(s) {bad} (known: {', '.join(KNOWN_GATE_IDS)})")
@@ -1398,9 +1398,6 @@ class Timeline(Strict):
             profiles.check_orientation(prof, self.settings.width, self.settings.height)
         except EngineError as e:
             raise ValueError(str(e)) from e
-        # Fase 2: gate_conformance kini shim tipis (selalu lolos) - tidak ada lagi
-        # gate-conformance error fatal di validator timeline. Referensi dihapus
-        # tanpa break import (shim tetap ada untuk gate_tools).
         for s in self.segments[1:]:
             if s.transition_in == "page_turn" and not prof.transitions.page_turn:
                 raise ValueError(f"segment {s.seg_index}: transition_in 'page_turn' is not allowed by the profile "

@@ -5,18 +5,20 @@ from `GATES` below, so a gate is added in one place. `engine gates` and the gene
 same data; tests/test_gate_registry.py checks that every id a gate module emits is registered.
 
 Classes:
-  technical  blocks a build on fail unless the profile lists it under `[gates] advisory`
-  style      warns unless the profile (or the timeline) requires it
-Severity tiers (kernel vs lint; legacy tier exports are preserved for CLI/tooling compatibility):
-  kernel     the small frozen core (KERNEL_GATE_IDS): no profile, project or mode can lower its fail to
-             warn. Exported also as MANDATORY_GATE_IDS (alias, backward compat). This tier is
-             deliberately small and only grows by an explicit registry change.
-  lint       everything else (LINT_GATE_IDS: style gates, layout L*, taste/anti-slop,
-             margin/camera/collision): warns unless the profile or the project explicitly
-             requires it; auto-fix or publish-with-warnings by default.
-Old exports PROFILE_GATE_IDS / FLEXIBLE_GATE_IDS and Gate.tier
-(mandatory/profile/flexible) are retained so `engine gates` tooling and older
-importers do not break; severity (gates/severity.py) now uses kernel vs lint.
+  technical  technical check (integrity, geometry, media, or asset rules)
+  style      channel style / pacing check (warns unless the profile or timeline requires it)
+Severity levels (kernel vs lint vs technical default; legacy tier exports are preserved for CLI/tooling compatibility):
+  kernel     the 8-gate frozen integrity core (KERNEL_GATE_IDS, aliased as MANDATORY_GATE_IDS):
+             no profile, project, or draft mode can lower its fail to warn.
+  lint       the 50 non-blocking gates in LINT_GATE_IDS (style gates, layout L01-L10, taste/anti-slop,
+             margin/camera/collision, and provenance/motion lint): warns and publishes with warnings
+             by default unless explicitly listed in `[gates] require` or `gates.require`.
+  error      technical gates outside KERNEL_GATE_IDS and LINT_GATE_IDS (`F01`, `AS04`, plus `AIQA`
+             when `--ai-qa` is enabled): block a release build when they emit `fail` unless lowered
+             via `[gates] advisory` or `--mode draft`.
+Legacy exports PROFILE_GATE_IDS / FLEXIBLE_GATE_IDS, NEVER_ADVISORY (the 12 gates rejected in
+`[gates] advisory`), and Gate.tier (mandatory/profile/flexible) are retained so `engine gates --format md`
+and existing callers stay compatible; runtime severity (gates/severity.py) uses KERNEL_GATE_IDS vs LINT_GATE_IDS.
 Layers (the order the pre-flight runs them, then the checks of the finished file):
   static, math, dom, place, layout, props, visual, profile, post, delivery, meta
 This module imports nothing from the engine, so `profiles`, `timeline` and the CLI can all import it.
@@ -48,7 +50,7 @@ class Gate:
     layer: str
     kind: str                       # "technical" | "style"
     switch: str = ""                # profile / timeline key that turns it on or configures it ("" = always on)
-    never_advisory: bool = False    # no profile can lower its fail to warn
+    never_advisory: bool = False    # rejected in `[gates] advisory` (NEVER_ADVISORY; 8 kernel gates + R07, R14, R56px, A02)
     known: bool = True              # valid in `gates.waive` / `gates.advisory` / `gates.require`
     waivable: bool = False          # a project may lower it with `gates.waive_with_reason` (reason required)
 
@@ -301,8 +303,8 @@ WAIVABLE_WITH_REASON: tuple[str, ...] = tuple(g.id for g in GATES if g.waivable)
 # --- 3-level gate severity model (error / fix / lint) ---
 # KERNEL_GATE_IDS: non-negotiable integrity checks that always block on failure.
 KERNEL_GATE_IDS: tuple[str, ...] = tuple(g.id for g in GATES if g.id in ("T02", "M01", "W01", "L22", "R38", "A01", "G01", "M03"))
-# lint: tidak pernah blocking kecuali explicitly required oleh channel/proyek.
-# Mencakup style gates + layout (L*) + taste/anti-slop + margin/camera/collision yang seharusnya auto-fix atau warn.
+# LINT_GATE_IDS: non-blocking by default unless explicitly required by the channel profile or project timeline.
+# Covers style gates, layout (L*), taste/anti-slop, and margin/camera/collision checks that auto-fix or warn.
 LINT_GATE_IDS: tuple[str, ...] = tuple(
     dict.fromkeys(
         STYLE_GATE_IDS

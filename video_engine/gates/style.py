@@ -54,10 +54,10 @@ def element_events(s: Segment, fps: int) -> list[tuple[int, str]]:
 
 
 def camera_events(s: Segment) -> list[int]:
-    """Absolute frames of the camera_path keys (each starts a new leg or the final drift: a new view counts as
-    something new on screen)."""
+    """Absolute frames of the camera_path, globe, or camera3d keys (each starts a new leg or the final drift: a new
+    view counts as something new on screen)."""
     sc = s.gsap_scene_config if s.engine_type == HYPERFRAMES else None
-    keys = (sc.globe.keys if sc.globe else sc.camera_path) if sc else None
+    keys = (sc.globe.keys if sc.globe else (sc.camera3d if sc.camera3d else sc.camera_path)) if sc else None
     return [s.start_frame + k.at_frame for k in keys] if keys else []
 
 
@@ -95,9 +95,11 @@ def h01_hook(tl: Timeline, project_dir: Path, words: list[CaptionWord] | None, g
         out.append(Finding("H01", "skip", "no captions yet: first caption not checked"))
     s0 = tl.segments[0]
     if g.open_on_moving_map and (s0.engine_type != HYPERFRAMES or (not s0.gsap_scene_config.camera_path
+                                                                     and not s0.gsap_scene_config.globe
+                                                                     and not s0.gsap_scene_config.camera3d
                                                                      and s0.gsap_scene_config.camera_preset == "static")):
-        out.append(Finding("H01", "fail", "frame 0 must be a moving map (HyperFrames segment with a camera_path or a "
-                                          "camera preset other than static)", 0))
+        out.append(Finding("H01", "fail", "frame 0 must be a moving map (HyperFrames segment with a camera_path, "
+                                          "globe, camera3d, or a camera preset other than static)", 0))
     ev = [f for s in tl.segments for f, _ in element_events(s, fps)]
     if ev:
         grade("first graphic", min(ev) / fps, g.graphic_warn_s, g.graphic_fail_s)
@@ -153,6 +155,14 @@ def motion_frames(tl: Timeline, project_dir: Path) -> list[tuple[float, float] |
                 from .. import globe
                 G = hyperframes.scene_data(s, tl, project_dir)["globe"]
                 for f, m in enumerate(globe.motion(G, n, fps, W, H)):
+                    out[s.start_frame + f] = m
+                continue
+            if s.gsap_scene_config.camera3d:
+                from .. import camera_full3d, maps
+                iw, ih = maps.map_image_size(project_dir / s.gsap_scene_config.map_asset)
+                cover = max(W / iw, H / ih)
+                states = camera_full3d.frames(s.gsap_scene_config.camera3d, n, iw * cover, ih * cover)
+                for f, m in enumerate(camera_full3d.motion(states, W, H, fps)):
                     out[s.start_frame + f] = m
                 continue
             cam = layer2._hf_plan(s, tl, project_dir)

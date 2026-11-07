@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from . import config
-from .gate_registry import ANTI_SLOP_IDS, KERNEL_GATE_IDS, LINT_GATE_IDS, STYLE_GATE_IDS, TECHNICAL_GATE_IDS
+from .gate_registry import ANTI_SLOP_IDS, KERNEL_GATE_IDS, LINT_GATE_IDS, NEVER_ADVISORY, STYLE_GATE_IDS, TECHNICAL_GATE_IDS
 # (Gate id lists live in gate_registry, the single definition; other modules import them from there.)
 from .grade import Grade
 from .layout import LayoutProfile
@@ -39,7 +39,7 @@ class AudioProfile(_Strict):
     true_peak: float
     lra: float = Field(gt=0)
     tolerance_lu: float = Field(gt=0)
-    require_source: Literal["epidemic"] | None = None   # A02: preferred (diutamakan) source for music and SFX; warn bila beda, bukan wajib/block
+    require_source: Literal["epidemic"] | None = None   # A02: optional required source for music and SFX (warns by default unless A02 is in require)
 
 
 def _order(lo: float, hi: float, what: str) -> None:
@@ -196,9 +196,9 @@ class AntiSlopGate(_Strict):
 
 
 class StyleGates(_Strict):
-    """Channel style gates; an absent table = gate off. `require`: style gates whose fail findings block a build
-    (gates/severity.py); `advisory`: non-kernel technical or lint gates lowered to warn for this profile (
-    advisory menerima gate lint/style/technical non-kernel tanpa error, hanya gate kernel yang ditolak)."""
+    """Channel style and lint gates; an absent table = gate off. `require`: lint/style gates (`LINT_GATE_IDS`) whose
+    findings block a build (gates/severity.py); `advisory`: known technical or lint gates outside `NEVER_ADVISORY`
+    lowered from fail to warn for this profile (`NEVER_ADVISORY` and unknown IDs are rejected)."""
     require: list[str] = []
     advisory: list[str] = []
     hook: HookGate | None = None
@@ -217,12 +217,12 @@ class StyleGates(_Strict):
 
     @model_validator(mode="after")
     def _req(self):
-        bad = [g for g in self.require if g not in STYLE_GATE_IDS]
+        bad = [g for g in self.require if g not in LINT_GATE_IDS]
         if bad:
-            raise ValueError(f"gates.require: unknown style gate(s) {bad} (known: {', '.join(STYLE_GATE_IDS)})")
-        # Advisory accepts any known non-kernel technical or lint gate; kernel gates and unknown IDs are rejected.
+            raise ValueError(f"gates.require: unknown style gate(s) {bad} (known: {', '.join(LINT_GATE_IDS)})")
+        # Advisory accepts any known technical or lint gate outside NEVER_ADVISORY; never-advisory and unknown IDs are rejected.
         bad_adv = [g for g in self.advisory
-                   if g in KERNEL_GATE_IDS or (g not in TECHNICAL_GATE_IDS and g not in LINT_GATE_IDS)]
+                   if g in NEVER_ADVISORY or (g not in TECHNICAL_GATE_IDS and g not in LINT_GATE_IDS)]
         if bad_adv:
             raise ValueError(f"gates.advisory: gate(s) {bad_adv} cannot be advisory")
         return self

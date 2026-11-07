@@ -29,10 +29,12 @@ Istilah dan singkatan yang dipakai di kode dan dokumentasi. Istilah tetap dalam 
 |---|---|
 | **Gate** | Pemeriksaan otomatis yang bisa lolos, memperingatkan, atau menggagalkan build. Daftarnya di [GATES.md](GATES.md). |
 | **Pre-flight** | Gate yang berjalan sebelum render apa pun (lapis 1 sampai 3). |
-| **Technical gate** | Gate yang memblokir build bila gagal, kecuali profil menjadikannya advisory. |
-| **Style gate** | Gate selera channel. Hanya memperingatkan kecuali masuk `[gates] require`. |
-| **Required** | Style gate yang kegagalannya memblokir build. |
-| **Advisory** | Technical gate yang profil turunkan dari gagal menjadi peringatan. Sebagian gate tidak boleh advisory. |
+| **Kernel gate** (`KERNEL_GATE_IDS`) | 8 gate integritas inti (`T02`, `M01`, `W01`, `L22`, `R38`, `A01`, `G01`, `M03`) yang selalu memblokir build bila gagal dan tidak dapat diturunkan. |
+| **Lint gate** (`LINT_GATE_IDS`) | 50 gate non-kernel (mencakup style gate, tata letak `L01`–`L10`, anti-slop, serta margin/kamera/tabrakan) yang secara bawaan hanya memperingatkan (`warn`) kecuali dimasukkan ke `gates.require`. |
+| **Technical gate** | Kelas gate pemeriksaan teknis (`TECHNICAL_GATE_IDS`); terdiri atas 8 kernel gate, 31 technical lint gate, serta `F01`/`AS04`. |
+| **Style gate** | Kelas gate selera channel (`STYLE_GATE_IDS`, bagian dari `LINT_GATE_IDS`). Hanya memperingatkan kecuali masuk `gates.require`. |
+| **Required** | Gate di dalam `LINT_GATE_IDS` yang didaftarkan di `[gates] require` atau `gates.require` sehingga kegagalannya memblokir build. |
+| **Advisory** | Daftar `[gates] advisory` di profil untuk menurunkan gate teknis di luar `NEVER_ADVISORY` menjadi peringatan. |
 | **Waive** | Menurunkan temuan gate menjadi informasi lewat timeline (`gates.waive`, atau `gates.waive_with_reason` dengan alasan tertulis). |
 | **Finding** | Satu hasil gate dengan level `pass`, `fix`, `info`, `warn`, `skip`, atau `fail`. |
 | **DOM probe** | Pengukuran kotak elemen HyperFrames di Chrome pada beberapa waktu, dipakai gate R63, E01, dan R64. |
@@ -62,7 +64,7 @@ Istilah dan singkatan yang dipakai di kode dan dokumentasi. Istilah tetap dalam 
 | **Loudnorm** | Filter ffmpeg yang menormalkan kenyaringan dalam dua lintasan. |
 | **Ducking** | Menurunkan musik saat voiceover berbicara. |
 | **SFX** | Efek suara yang dipicu kejadian render (pin, rute, judul, dan seterusnya). |
-| **Epidemic Sound** | Satu-satunya sumber musik dan SFX yang diizinkan profil Geoverum (gate A02). |
+| **Epidemic Sound** | Sumber musik dan SFX yang diutamakan pada profil Geoverum (kredit dilampirkan otomatis; gate A02 hanya memperingatkan bila `[audio] require_source` disetel). |
 
 ## Visual
 

@@ -111,6 +111,37 @@ def format_toml_patch(patch: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def merge_toml_text(existing_text: str, patch: dict) -> str:
+    """Merge patched sections into an existing profile TOML without erasing `include` or unrelated tables."""
+    import re
+    out = existing_text
+    if "description" in patch:
+        desc_line = f"description = {json.dumps(patch['description'])}"
+        if re.search(r"(?m)^description\s*=", out):
+            out = re.sub(r"(?m)^description\s*=.*$", lambda _m: desc_line, out, count=1)
+        else:
+            out = desc_line + "\n" + out
+    for section in ("caption_style", "audio", "draft", "theme", "camera"):
+        if section not in patch:
+            continue
+        sec_body = "\n".join(f"{k} = {json.dumps(v)}" for k, v in patch[section].items())
+        pattern = re.compile(rf"(?ms)(^\[{re.escape(section)}\]\s*\n)(.*?)(?=^\[|\Z)")
+        if pattern.search(out):
+            def _update_sec(m):
+                header, body = m.group(1), m.group(2)
+                for k, v in patch[section].items():
+                    kv_line = f"{k} = {json.dumps(v)}"
+                    if re.search(rf"(?m)^{re.escape(k)}\s*=", body):
+                        body = re.sub(rf"(?m)^{re.escape(k)}\s*=.*$", lambda _m: kv_line, body, count=1)
+                    else:
+                        body = body.rstrip("\n") + "\n" + kv_line + "\n"
+                return header + body
+            out = pattern.sub(_update_sec, out, count=1)
+        else:
+            out = out.rstrip("\n") + f"\n\n[{section}]\n{sec_body}\n"
+    return out.rstrip("\n") + "\n"
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Bangun/perbarui profil channel dari style-sheet rea-style.")
     p.add_argument("--style", required=True, help="style-sheet rea-style (template.toml)")
@@ -142,6 +173,8 @@ def main() -> int:
 
     out_path = pathlib.Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    if out_path.is_file():
+        rendered = merge_toml_text(out_path.read_text(encoding="utf-8"), patch)
     out_path.write_text(rendered, encoding="utf-8")
     print(f"wrote {out_path}")
     return 0

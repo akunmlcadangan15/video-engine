@@ -58,7 +58,7 @@ def test_good_waive_with_reason_lowers_a_waivable_technical_gate_and_keeps_the_r
 def test_good_waive_with_reason_also_lowers_a_warning_and_ignores_other_gates(project, strict_geoverum):
     _, tl = project(two_maps(**waiver("O01", "L06")))
     fs = severity.apply([Finding("O01", "warn", "w"), Finding("L06", "fail", "f"), Finding("L01", "fail", "kept")], tl)
-    assert [(f.gate, f.level) for f in fs] == [("O01", "info"), ("L06", "info"), ("L01", "warn")]  # L01 kini lint -> warn
+    assert [(f.gate, f.level) for f in fs] == [("O01", "info"), ("L06", "info"), ("L01", "warn")]  # L01 is a lint gate -> warn
 
 
 def test_good_no_waivers_keep_the_report_shape(project):
@@ -88,7 +88,7 @@ def test_bad_waive_with_reason_rejects_duplicates_and_unknown_keys(project):
 def test_good_plain_waive_of_a_waivable_gate_is_ignored_with_a_hint(project, strict_geoverum):
     _, tl = project(two_maps(gates={"waive": ["L01"]}))
     fs = severity.apply([Finding("L01", "fail", "overlap")], tl)
-    assert [f.level for f in fs if f.gate == "L01"] == ["info"]  # L01 kini lint -> waive jadi info
+    assert [f.level for f in fs if f.gate == "L01"] == ["info"]  # L01 is a lint gate -> waived to info
     assert not any(f.gate == "GW01" for f in fs)  # Unapplicable waivers are ignored without emitting a separate meta-gate finding
 
 
@@ -213,7 +213,7 @@ def test_good_cli_preflight_r62_lint_reports_as_warning_in_both_modes(project, m
     real = runner.layer2.r62_caption_margins
     monkeypatch.setattr(runner.layer2, "r62_caption_margins",
                         lambda tl, words: (real(tl, words)[0] + [Finding("R62", "fail", "injected")], real(tl, words)[1]))
-    # R62 kini LINT: fail turun ke warn di release juga (exit 0), bukan hanya draft
+    # R62 is a lint gate: fail lowers to warn in both release and draft modes unless required
     assert cli.main(["preflight", str(p), "--no-dom"]) == 0
     assert "[WARN] R62" in capsys.readouterr().out
     assert cli.main(["preflight", str(p), "--no-dom", "--mode", "draft"]) == 0

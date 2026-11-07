@@ -106,6 +106,21 @@ def check_gate_index(errors: list[str], update: bool) -> None:
             errors.append("docs/GATES.md: the gate index is stale; run `python scripts/check_docs.py --update`")
 
 
+def check_contracts(errors: list[str]) -> None:
+    """Verify that technical documentation contracts stay aligned with runtime schemas and gate counts."""
+    spec = ROOT / "docs" / "SPEC.md"
+    if not spec.is_file():
+        return
+    st = spec.read_text(encoding="utf-8")
+    for stale in ("{errors, fixes, lints}", "output_drive_name", "requires only S01", "`geoverum` requires `epidemic`"):
+        if stale in st:
+            errors.append(f"docs/SPEC.md: contains stale contract text {stale!r}")
+    for doc_name in ("BUILD.md", "GATES.md", "LIMITS.md"):
+        dp = ROOT / "docs" / doc_name
+        if dp.is_file() and "top-level `fixes`" in dp.read_text(encoding="utf-8"):
+            errors.append(f"docs/{doc_name}: names top-level `fixes` instead of `preflight_fixes`")
+
+
 def check_code_refs(errors: list[str]) -> None:
     for folder in ("video_engine", "profiles", "tests", "rust", "scripts"):
         for f in sorted((ROOT / folder).rglob("*")):
@@ -127,6 +142,7 @@ def main() -> int:
     check_links(errors)
     check_index(errors)
     check_gate_index(errors, a.update)
+    check_contracts(errors)
     check_code_refs(errors)
     for e in errors:
         print(f"error: {e}", file=sys.stderr)

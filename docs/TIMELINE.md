@@ -12,8 +12,8 @@ The rules of `master_timeline.json` and of captions.
   Absent = `default`.
   An unknown name fails schema validation and lists the known profiles.
 - `gates` (optional):
-  - `require`: style gate ids added to the channel's required set; a project can add, never remove.
-  - `waive`: style gate ids whose findings become info; a waive of a required or technical gate is ignored with a GW01 warn.
+  - `require`: lint/style gate ids (`LINT_GATE_IDS`) added to the channel's required set; a project can add, never remove.
+  - `waive`: non-required lint/style gate ids whose findings become info; a waive of a required or kernel gate is ignored.
   - `waive_with_reason`: a list of `{"gate": "L01", "reason": "..."}` for the technical gates the registry marks waivable (`L01`, `L06`, `O01`).
     The finding becomes info, and the reason (at least 10 characters) is kept in `build_report.json` under `gates.waivers` and in the waived row.
     Every other gate is rejected when the timeline loads; a gate may be listed once.
@@ -53,7 +53,7 @@ The rules of `master_timeline.json` and of captions.
     Optional key field `tilt` (deg, 0-60, default 0): perspective tilt of the map plane at that view, reached with the key's move and ease;
       the map, regions, routes, pins and map props turn together about the frame centre under `perspective(frame height) rotateX(tilt)` (top recedes), screen texts and screen props stay flat.
     Beats scenes do not tilt.
-    Optional key field `roll` (deg, -25 to 25, default 0, clockwise): 2D roll of the map about the frame centre, reached with the key's move and ease;
+    Optional key field `roll` (deg, -45 to 45, default 0, clockwise): 2D roll of the map about the frame centre, reached with the key's move and ease;
       the map layer is scaled by the angle's cover factor max(cos a + H/W sin a, cos a + W/H sin a) so it fills every corner; screen texts stay level and map-anchored labels turn with the map.
   - Pins follow `theme.pin_style`.
     `dot`: a dot in `theme.pin_colour` with a pulse ring and a boxed label above.
@@ -96,7 +96,7 @@ The rules of `master_timeline.json` and of captions.
     The segment key holds every layer image's bytes.
   - `globe` (optional): Blue Marble globe instead of the flat map `{keys [{at_frame (first 0, increasing), lat (-85 to 85), lng, altitude (camera height over the surface in globe radii, 0.005-12), tilt (0-60 deg, view tipped from straight down toward local north), hold (optional, 0-90 frames still on the key)}], detail_tiles (project-relative dir of the NASA 8-tile set *.A1.jpg ... *.D2.jpg, 90 deg each)}`.
     `map_asset` is a whole-world 2:1 equirectangular image.
-    A globe scene takes no camera_path, beats, regions, routes, props, layers or map_bounds;
+    A globe scene takes no camera_path, beats, routes, props, layers, map_bounds, borders, morph or flows (single-ring regions are supported);
       pins take lat/lng. three.js (vendor/npm) draws a unit sphere with the map downscaled to 8192 x 4096 (cache kind `maps`) at a 30 deg vertical field of view;
       the position travels along the great circle of each key-to-key leg (shortest path on the sphere; a leg that would pass
       beyond 85 deg latitude interpolates latitude and longitude instead), timed by a C1 monotone cubic in arc length that
@@ -116,7 +116,7 @@ The rules of `master_timeline.json` and of captions.
     `[theme.entities]` maps entity -> `#rrggbb`;
       every other entity takes the next unused `theme.palette` colour in order of first appearance (segment order; in a segment regions, title, figures).
     E01 checks the painted colours.
-- `camera_move`: `preset` (`ken_burns_zoom_in`, `ken_burns_zoom_out`, `pan_left`, `pan_right`, `pan_up`, `pan_down`, `static`), `intensity`, `auto_intensity` (default true), `focus_box` `[x0, y0, x1, y1]` in source pixels.
+- `camera_move`: `preset` (`ken_burns_zoom_in`, `ken_burns_zoom_out`, `pan_left`, `pan_right`, `pan_up`, `pan_down`, `static`), `intensity`, `auto_intensity` (default false), `focus_box` `[ymin, xmin, ymax, xmax]` normalized on a `0..1000` grid.
 - `grade` (optional, any segment; also per beat, from the beat to the next): full-frame colour grade `{lift, gamma, gain (one value or [r, g, b]; -0.5-0.5, 0.2-5, 0-4; defaults 0, 1, 1), saturation (0-3, default 1, Rec. 709 luma), tint {color #rrggbb, amount 0-1} (hue and chroma toward the colour at the same luminance, clipped), lut (project-relative 3D .cube, applied after the values above), strength (0-1, default 1: mix over the ungraded picture)}`, applied in that order.
   Per frame: the beat's grade, else the segment's, else profile `[grade]`; `{}` = no grade.
   The grade is baked into one 33-point 3D LUT and applied by ffmpeg `lut3d` (tetrahedral, BT.709 both ways) to the rendered segment file, per frame range, before transitions and captions (captions are not graded).
@@ -126,7 +126,7 @@ The rules of `master_timeline.json` and of captions.
   Absent = HyperFrames `map`, native still `photo`, native video `video`.
   Read by gate V01 and profile `[transitions]` `by_type`; not part of any cache key.
 - `overlays` (native segments): `{id, box: [x, y, w, h] output px, kind, text, subtitle, start_frame, end_frame}`.
-  - `kind`: `reserve` (default; not drawn, reserves space for caption placement), `label` (centred single title on a dark plate), `text_card` (title + optional subtitle, accent bar), `lower_third` (name + role, accent bar).
+  - `kind`: `reserve` (default; not drawn, reserves space for caption placement), `label` (centred single title on a dark plate), `text_card` (title + optional subtitle, accent bar), `lower_third` (name + role, accent bar), `heading` (section heading with rule).
   - Drawn kinds need `text`.
     `start_frame` / `end_frame` are relative to the segment start (half-open; defaults: whole segment).
     Fade in/out 0.2 s (shortened to a third of a short range).
@@ -161,5 +161,5 @@ The rules of `master_timeline.json` and of captions.
     it contains the rendered ink (glyphs, descenders, soft shadow) and is the box R62, R63, Z01 and automatic placement use.
 - Caption timing always comes from the voiceover word timestamps (pinned words); no profile sets a caption rhythm.
   `build_report.json` -> `captions` reports `events`, `per_10s` and `mean_s` (information only, no gate).
-- Automatic placement (R63): per segment, the caption centre moves in 10 px steps to the nearest y inside the safe area (bottom capped at `max_bottom_y` when set) that keeps `clearance` from every HyperFrames DOM element (pins, labels, cards) and every declared native overlay, and does not intersect the projected camera `focus_box`.
+- Automatic placement (R63): per segment, the caption centre moves in 10 px steps to the nearest y inside the safe area (bottom capped at `max_bottom_y` when set) that keeps `clearance` from every HyperFrames DOM element (pins, labels, cards) and every declared native overlay.
   No free y = fail.

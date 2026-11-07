@@ -33,7 +33,7 @@ const camAt=t=>{let x=CAM.start.x,y=CAM.start.y,s=CAM.start.s;
     else{const p=g.ease((t-g.t0)/g.d);x=g.from.x+(g.L.to.x-g.from.x)*p;y=g.from.y+(g.L.to.y-g.from.y)*p;s=g.from.s+(g.L.to.s-g.from.s)*p;}}
   return {x,y,s};};
 const pinAt=(i,f)=>{const p=(S.pins||[])[i];if(!p)return null;
-  if(S.globe){const el=document.querySelector('[data-qa="anchor:pin:'+i+'"]');
+  if(S.globe||S.cam3d){const el=document.querySelector('[data-qa="anchor:pin:'+i+'"]');
     if(!el||el.style.display==='none')return null;const r=el.getBoundingClientRect();return {x:r.left,y:r.top};}
   if(!CAM||!CAM.start)return {x:p.px,y:p.py};
   const c=camAt(f/FPS);return {x:c.x+c.s*p.px,y:c.y+c.s*p.py};};

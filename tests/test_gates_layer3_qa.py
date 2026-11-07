@@ -80,8 +80,7 @@ def test_QA_bad_black_video(project, tmp_path):
     assert any("black frame" in f.message for f in fs)
 
 
-# Audit 2026-10-25 item 9: the kit's empty_runs tracked only the blankest third, so two empty thirds that took turns
-# being the blankest were missed. R38 judges every third of every sample on its own.
+# R38 judges every third of every sample independently so two empty thirds that alternate being the blankest are both caught.
 def _alternating(k):
     """Top and middle thirds both empty (luma std < 6); which of them is the blankest alternates with k."""
     a = noise(k)
@@ -157,14 +156,14 @@ def test_good_QA_single_sample_is_not_reported_as_no_motion(project, monkeypatch
 
 
 def test_R38_good_dark_source_not_false_positive():
-    """Snapshot gelap karena sumbernya gelap (peta malam) -> warn, bukan fail black frame."""
+    """A dark snapshot from a genuinely dark source (e.g. a night map) emits warn rather than a black-frame fail."""
     fs = layer3.r38_check(stats(np.full((H, W, 3), 8)), 0, "t", source_mean=18.0)
     assert len(fs) == 1 and fs[0].gate == "R38" and fs[0].level == "warn"
     assert "dark source" in fs[0].message
 
 
 def test_R38_bad_black_frame_still_fails_with_bright_source():
-    """Sumber terang tapi snapshot hitam -> tetap fail (defect asli)."""
+    """A black snapshot from a bright source still fails R38."""
     fs = layer3.r38_check(stats(np.zeros((H, W, 3))), 0, "t", source_mean=220.0)
     assert fs[0].gate == "R38" and fs[0].level == "fail"
     assert "black frame" in fs[0].message and "source mean luma 220" in fs[0].message
@@ -177,8 +176,8 @@ def test_R38space_good_dark_source_is_info_not_warn():
     assert fs and all(f.level == "info" for f in fs)
 
 
-def test_R38_snapshots_dark_map_source_is_lenient(project, tmp_path):
-    """Peta sumber gelap: snapshot gelap tidak lagi fail R38."""
+def test_R38_snapshots_dark_map_source_is_lenient(project, tmp_path, monkeypatch):
+    """A dark source asset emits a warning rather than an R38 black-frame failure in both Layer 3 and post-render QA."""
     from PIL import Image
     p, tl = project()
     seg = tl.segments[0]
@@ -191,3 +190,8 @@ def test_R38_snapshots_dark_map_source_is_lenient(project, tmp_path):
     assert means[seg.seg_index] < 25
     fs, _ = layer3.r38_snapshots(tl, p, {})
     assert not [f for f in fs if f.gate == "R38" and f.level == "fail"], fs
+    dark_frames = [np.full((H, W, 3), 8, dtype=np.uint8).tobytes() for _ in range(6)]
+    monkeypatch.setattr(qa, "iter_sample_frames", lambda v, w, h, step=5, threads=4: iter(dark_frames))
+    qa_fs, _ = qa.pixel_gates(None, tl, project_dir=p)
+    assert not [f for f in qa_fs if f.gate == "R38" and f.level == "fail"], qa_fs
+    assert any(f.gate == "R38" and f.level == "warn" and "dark source" in f.message for f in qa_fs)

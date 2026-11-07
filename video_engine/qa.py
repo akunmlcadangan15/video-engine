@@ -10,7 +10,7 @@ import hypoverum_core_rs as core
 
 from . import config
 from .gates.core import Finding
-from .gates.layer3 import SNAP_DIV, r38_check
+from .gates.layer3 import SNAP_DIV, _source_mean_lumas, r38_check
 from .timeline import Timeline
 from .util import EngineError
 
@@ -60,7 +60,7 @@ def sample_frames(video: Path, W: int, H: int, step: int = SAMPLE_STEP,
 
 
 def pixel_gates(video: Path, tl: Timeline, step: int = SAMPLE_STEP,
-                threads: int = 4) -> tuple[list[Finding], dict]:
+                threads: int = 4, project_dir: Path | None = None) -> tuple[list[Finding], dict]:
     W, H = tl.settings.width, tl.settings.height
     ow, oh = W // SNAP_DIV, H // SNAP_DIV
     stats, motion, batch, prev = [], [], [], None
@@ -77,6 +77,7 @@ def pixel_gates(video: Path, tl: Timeline, step: int = SAMPLE_STEP,
         if len(batch) >= QA_BATCH_FRAMES:
             flush()
     flush()
+    sources = _source_mean_lumas(tl, project_dir)
     out, per_seg = [], {}
     for s in tl.segments:
         idx = [i for i in range(len(stats)) if s.start_frame <= i * step < s.end_frame]
@@ -86,7 +87,8 @@ def pixel_gates(video: Path, tl: Timeline, step: int = SAMPLE_STEP,
             continue
         bad, space_runs, last_space = [], [], {}
         for i in idx:
-            fs = r38_check(stats[i], s.seg_index, f"frame {i * step}", s.intent)
+            fs = r38_check(stats[i], s.seg_index, f"frame {i * step}", s.intent,
+                           source_mean=sources.get(s.seg_index), landscape=(W > H))
             for f in fs:
                 if f.gate != "R38space":
                     bad.append(f)

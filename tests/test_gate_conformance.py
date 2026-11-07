@@ -1,8 +1,8 @@
-"""Gate <-> profile conformance (video_engine/gate_conformance.py) and the registry tiers.
+"""Gate <-> profile conformance compatibility layer (video_engine/gate_conformance.py) and registry tiers.
 
-The point: gates stay flexible for the channel (a profile may require a style gate or lower a flexible technical
-gate), but a choice must be real - a required gate without its config table is an error, a dead advisory entry is
-a warning, and the mandatory core can never be lowered.
+Runtime enforcement uses the 2-tier model in `gate_registry.py` (`KERNEL_GATE_IDS` vs `LINT_GATE_IDS`), while
+`gate_conformance.py` and `Gate.tier` (`mandatory` / `profile` / `flexible`) provide backward-compatible reporting
+without rejecting profiles that omit optional style-gate tables.
 """
 import dataclasses
 
@@ -21,7 +21,7 @@ def _with_gates(profile, **kw):
 
 def test_good_tiers_are_derived_and_the_mandatory_core_is_frozen():
     assert set(reg.MANDATORY_GATE_IDS) == {"T02", "M01", "W01", "L22", "R38", "A01", "G01", "M03"}
-    assert reg.MANDATORY_GATE_IDS == reg.KERNEL_GATE_IDS  # alias kernel, bukan mandatory 12
+    assert reg.MANDATORY_GATE_IDS == reg.KERNEL_GATE_IDS  # alias for the 8 kernel integrity gates
     assert set(reg.PROFILE_GATE_IDS) == set(reg.STYLE_GATE_IDS)
     assert set(reg.FLEXIBLE_GATE_IDS) == set(reg.TECHNICAL_GATE_IDS) - set(reg.NEVER_ADVISORY)
     assert all(reg.BY_ID[g].tier == "mandatory" for g in reg.MANDATORY_GATE_IDS)
@@ -120,7 +120,7 @@ def test_good_duplicate_entries_are_no_longer_warnings():
 
 
 def test_good_profile_load_accepts_a_required_gate_without_config(tmp_path, monkeypatch):
-    """End to end: a channel profile TOML yang requires C01 tanpa [gates.cuts] kini tetap lolos load (shim)."""
+    """End to end: a channel profile TOML that requires C01 without [gates.cuts] loads cleanly through the compatibility shim."""
     import tomllib
     from video_engine import config
 

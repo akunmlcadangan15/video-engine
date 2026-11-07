@@ -69,7 +69,7 @@ const place=()=>{
 place();
 const D=S.n_frames/FPS, drv={t:0};
 window.__fxPlace=place;
-if(!S.globe){
+if(!S.globe&&!S.cam3d){
   tl.fromTo(drv,{t:0},{t:D,duration:D,ease:'none',immediateRender:true,onUpdate:place},0);
 }
 })();

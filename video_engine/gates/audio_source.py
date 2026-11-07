@@ -1,6 +1,6 @@
-"""A02 audio source gate (preferred, not mandatory): with profile `[audio] require_source`, every music and SFX file
-of the mix should come from that source (provenance `source`); a file from any other source (local-test tones,
-project bgm_path) warns — Epidemic diutamakan, bukan wajib, tidak block."""
+"""A02 audio source gate (preferred, not mandatory by default): with profile `[audio] require_source`, every music and
+SFX file of the mix should come from that source (provenance `source`); a file from any other source (local-test tones,
+project bgm_path) emits a warning unless A02 is explicitly required in `gates.require`."""
 from __future__ import annotations
 
 from .. import profiles
@@ -23,8 +23,8 @@ def sources(tl, mix) -> list[tuple[str, dict]]:
 
 
 def a02_audio_source(tl, mix, require: str | None = None) -> list[Finding]:
-    """`require` defaults to the timeline profile's [audio] require_source; None = skip. Mismatch -> warn
-    (diutamakan, bukan wajib); tidak block."""
+    """`require` defaults to the timeline profile's [audio] require_source; None = skip. Mismatch emits a warning
+    by default and blocks only when A02 is listed in `gates.require`."""
     req = require if require is not None else profiles.of(tl).audio.require_source
     if req is None:
         return [Finding(GATE, "skip", "profile requires no audio source")]
@@ -32,11 +32,11 @@ def a02_audio_source(tl, mix, require: str | None = None) -> list[Finding]:
     bad = [f"{label} {p.get('id')!r} source {p.get('source')!r}" for label, p in items if p.get("source") != req]
     if bad:
         return [Finding(GATE, "warn", f"{len(bad)} of {len(items)} audio files not from preferred '{req}' "
-                                       f"(diutamakan, bukan wajib): " + "; ".join(bad))]
+                                       f"(preferred, not required by default): " + "; ".join(bad))]
     return [Finding(GATE, "pass", f"{len(items)} audio files from '{req}'")]
 
 
 def build_findings(tl, mix) -> list[Finding]:
     """A02 as a delivery gate of the build: no finding when the profile sets no preferred source (like S01 without
-    its table), else a02_audio_source (warn, severity tidak block)."""
+    its table), else a02_audio_source (warns by default unless A02 is in `gates.require`)."""
     return [] if profiles.of(tl).audio.require_source is None else a02_audio_source(tl, mix)

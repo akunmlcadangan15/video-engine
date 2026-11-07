@@ -12,8 +12,8 @@ Model kernel vs lint (video_engine/gate_registry.py; registry is the single defi
 Intent and waivers (only for lint/advisory gates outside the required set):
   - a P01 hold or N01 gap finding whose frame range starts inside a beat or segment marked
     `hold: "read"` -> info;
-  - a finding of a gate listed in timeline `gates.waive` -> info (waive untuk lint cukup
-    info; tidak ada meta-gate GW01 lagi - Fase 2).
+  - a finding of a gate listed in timeline `gates.waive` -> info (waiving a lint gate lowers
+    it to info without emitting a separate meta-gate finding).
 A waive or a hold intent on a required or kernel gate changes nothing and emits no
 extra finding. Lowered findings keep their original level in `waived`.
 Two more ways to lower a gate:
@@ -35,10 +35,11 @@ from ..timeline import HYPERFRAMES, Timeline
 from .core import Finding
 
 HOLD_GATES = ("P01", "N01")   # style gates whose frame-ranged findings a hold:"read" intent lowers
+WARN_ONLY_LINT_GATES = ("R38space", "A02", "N01", "K01", "D01", "P03", "U01")
 
 
 def is_style(gate: str, tl: Timeline | None = None) -> bool:
-    """True untuk gate lint: style/lint registry atau advisory di profile channel."""
+    """True for lint gates: style/lint registry entries or gates listed in the channel profile's advisory list."""
     return gate in STYLE_GATE_IDS or gate in LINT_GATE_IDS or (tl is not None and gate in profiles.of(tl).gates.advisory)
 
 
@@ -86,6 +87,9 @@ def apply(findings: list[Finding], tl: Timeline, *, draft: bool = False) -> list
             f.level = "fail"
             f.waived = None
             f.message += "; R38space explicitly required: local negative-space intent does not waive this requirement"
+        elif f.gate in WARN_ONLY_LINT_GATES and f.gate in req and f.level == "warn":
+            f.level = "fail"
+            f.waived = None
         if f.level not in ("fail", "warn"):
             continue
         if f.gate in reasons and f.gate not in req:

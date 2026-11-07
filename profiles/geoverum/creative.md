@@ -1,6 +1,6 @@
 # Geoverum Creative Direction Specification
 
-The engine loads all `- ` bullet lines in this document as `[draft] rules` via `rules_file = "geoverum/creative.md"`. Keep channel identity, default staging behaviors, and storyboard alternatives explicit so any third-party engineer, director, or AI agent can interpret them without ambiguity. Defaults serve as baseline staging principles rather than rigid blocking validators; any intentional creative departure must be documented in the segment's `intent` and `rationale` fields. Factual accuracy, licensed asset provenance, and render integrity are mandatory and never waived by creative intent.
+The engine loads all `- ` bullet lines in this document as `[draft] rules` via `rules_file = "geoverum/creative.md"`. Keep channel identity, default staging behaviors, and storyboard alternatives explicit so any third-party engineer, director, or AI agent can interpret them without ambiguity. Defaults serve as baseline staging principles rather than rigid blocking validators; any intentional creative departure must be documented in the segment's `intent` (and `intent.reason`) field. Factual accuracy, licensed asset provenance, and render integrity are mandatory and never waived by creative intent.
 
 ## Identity
 
