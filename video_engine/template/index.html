@@ -451,8 +451,8 @@ if(TH.text_outline_px>0){
   root.style.setProperty('--txt-shadow',TXT_SHADOW);
 }
 // adaptive text (legibility profiles): S.inks[id].segs = [{t,pol,ink,halo,ha,va,step}] chosen by the engine from
-// the measured background; colours crossfade over crossfade_ms ending on a segment start, halo and vignette alpha
-// approach their new value with time constant ema_tau_ms starting crossfade_ms + 2 tau before it
+// the measured background; at each segment start (the switch) colours crossfade over crossfade_ms and halo and
+// vignette alpha approach their new value with time constant ema_tau_ms (legibility.midpoint checks crossfade_ms / 2 later)
 const ADAPT=[], hx=h=>[1,3,5].map(k=>parseInt(h.slice(k,k+2),16));
 const mixHex=(a,b,k)=>'#'+hx(a).map((v,j)=>Math.round(v+(hx(b)[j]-v)*k).toString(16).padStart(2,'0')).join('');
 // em: halo width as a fraction of the element's font size; lines: leader lines that follow the element's ink

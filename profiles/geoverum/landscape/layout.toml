@@ -13,7 +13,7 @@ safe = [96, 54, 1824, 1026]   # landscape safe area (96 px sides, 54 px top / bo
 z1 = [116, 72, 1100, 200]     # title band at the top left
 z2 = [116, 216, 1804, 880]    # map focus: the wide middle of the frame
 z2_pad = 48
-z3 = [116, 880, 1804, 1026]   # caption band (lower third)
+z3 = [116, 880, 1804, 1026]   # optional reference zone (lower third); not read by the planner or gates
 group_gap = 48
 
 [layout.sizes]

@@ -499,3 +499,17 @@ def test_good_entity_text_ink_clamped_to_the_print_band():
 
 def test_bad_light_text_takes_the_fixed_light_override():
     assert L.light_ink(GEO, {"light": "#F7F2E6"}) == "#F7F2E6" and L.light_ink(GEO) != "#F7F2E6"
+
+
+@pytest.mark.parametrize("lcs, kind, want", [((70, 80), "title", 1),     # step 0 passes lc_title 60, step 1 reaches aim 75
+                                             ((70, 72), "title", 0),     # no step reaches the aim: the first pass wins
+                                             ((70, 80), "figure", 0),    # only titles seek an aim
+                                             ((50, 65), "title", 1)])    # step 0 fails lc_title outright
+def test_good_title_ladder_seeks_lc_title_aim_then_settles_for_lc_title(monkeypatch, lcs, kind, want):
+    """[legibility] lc_title_aim (geoverum 75) is the contrast the title ladder seeks; lc_title (60) stays the
+    pass/fail target. Before the fix lc_title_aim was validated but never used."""
+    lg = json.loads(json.dumps(profiles.load("geoverum").data.legibility.model_dump(mode="json")))
+    assert (lg["lc_title"], lg["lc_title_aim"], lg["lc_figure"]) == (60, 75, 60)
+    styles = [L.Style("light", "#ffffff", "#000000", 0.0, 0.0, k) for k in range(2)]
+    monkeypatch.setattr(L, "evaluate", lambda s, st, lg: L.Eval(lcs[st.step], 90.0, 7.0, (0.1, 0.1, 0.1)))
+    assert L._ladder_pick(styles, [object()], kind, lg) is styles[want]

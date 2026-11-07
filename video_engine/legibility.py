@@ -590,9 +590,18 @@ def _first_passing(styles: list[Style], samples: list[Sample], kind: str, lg: di
     return None
 
 
+def _ladder_pick(styles: list[Style], samples: list[Sample], kind: str, lg: dict) -> Style | None:
+    """First style of one polarity's ladder passing every sample. Titles first seek `lc_title_aim` on that ladder and
+    settle for `lc_title` (the pass/fail target) only when no step reaches the aim."""
+    if kind == "title" and lg.get("lc_title_aim", lg["lc_title"]) > lg["lc_title"]:
+        if st := _first_passing(styles, samples, kind, {**lg, "lc_title": lg["lc_title_aim"]}):
+            return st
+    return _first_passing(styles, samples, kind, lg)
+
+
 def choose(el: dict, samples: list[Sample], lg: dict, fps: int) -> Choice:
     """One polarity and style for the whole interval: the rule polarity's ladder first, then the other polarity's;
-    the first style passing every sample wins. Otherwise the stability fallback (`schedule`). An element "polarity"
+    the first style passing every sample wins (titles: the first reaching lc_title_aim, else lc_title; _ladder_pick). Otherwise the stability fallback (`schedule`). An element "polarity"
     ([print]: dark ink on paper maps, light text on imagery) replaces the rule polarity."""
     pol = el.get("polarity") or polarity(samples, lg)
     other = "light" if pol == "dark" else "dark"
@@ -602,7 +611,7 @@ def choose(el: dict, samples: list[Sample], lg: dict, fps: int) -> Choice:
     lads = {p: ladder(p, el, lg, halo) for p in (pol, other)}
     if not lg.get("polarity_fallback", True):
         lads[other] = []
-    st = _first_passing(lads[pol], samples, el["kind"], lg) or _first_passing(lads[other], samples, el["kind"], lg)
+    st = _ladder_pick(lads[pol], samples, el["kind"], lg) or _ladder_pick(lads[other], samples, el["kind"], lg)
     if st:
         return Choice([(el["start"], st)], False, [(s.t, st, evaluate(s, st, lg)) for s in samples])
     return schedule(el, samples, lg, fps, pol, lads)

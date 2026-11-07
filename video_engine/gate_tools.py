@@ -140,29 +140,6 @@ def render_markdown() -> str:
     return "\n".join(out)
 
 
-def render_profile_summary(p, issues: list | None = None) -> str:
-    """Per-tier, per-profile state (SimReady-style: gate -> tier -> profile). `issues` are gate_conformance issues
-    for the profile; when omitted they are computed here."""
-    from . import gate_conformance
-    if issues is None:
-        issues = gate_conformance.check_profile(p)
-    rep = gate_conformance.mandatory_report(p)
-    lines = [f"profile {p.name!r}: tiers"]
-    on = ", ".join(rep["mandatory_on"]) or "none"
-    lines.append(f"  mandatory ({len(rep['mandatory_on'])} on): {on}")
-    if rep["mandatory_switch_off"]:
-        lines.append(f"  mandatory switch-off by design: {', '.join(rep['mandatory_switch_off'])} "
-                     "(their switch is absent from this profile; they cannot be lowered, only switched off)")
-    lines.append(f"  profile-tier active ({len(rep['profile_active'])}): {', '.join(rep['profile_active']) or 'none'}")
-    lines.append(f"  flexible lowered to advisory ({len(rep['flexible_advisory'])}): "
-                 f"{', '.join(rep['flexible_advisory']) or 'none'}")
-    for i in issues:
-        lines.append(f"  {i.level.upper():5} {i.gate}: {i.message}")
-    for w in (getattr(p, "gate_warnings", ()) or ()):
-        lines.append(f"  WARN  {w}")
-    return "\n".join(lines)
-
-
 # --- statistics over build reports --------------------------------------------------------------------------------
 
 def collect_reports(paths: list[str | Path]) -> list[Path]:

@@ -37,10 +37,6 @@ def orientation(obj) -> str:
     return orientation_of(W, H)
 
 
-def ref_canvas(obj) -> tuple[int, int]:
-    return REF[orientation(obj)]
-
-
 def _size(obj) -> tuple[int, int]:
     if isinstance(obj, tuple):
         return int(obj[0]), int(obj[1])

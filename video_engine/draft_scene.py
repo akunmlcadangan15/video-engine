@@ -23,7 +23,6 @@ from .timeline import (Backdrop, Beat, Border, Bubble, Cutaway, Flag, FlagCharac
                        sec_to_frame)
 from .util import EngineError
 
-GATED = ("globe", "props", "morph", "beats", "cross_section", "historical", "terrain3d", "blind_spot", "data_viz")
 PROP_ASSET_EXT = (".png", ".webp")
 
 s, n, i, b = {"type": "string"}, {"type": "number"}, {"type": "integer"}, {"type": "boolean"}

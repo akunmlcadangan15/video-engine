@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from conftest import base_doc
-from video_engine import assets, audio, batch, build, cli, hyperframes, manifest, native, profiles, timeline
+from video_engine import assets, audio, build, cli, hyperframes, manifest, native, profiles, timeline
 from video_engine.util import EngineError
 
 

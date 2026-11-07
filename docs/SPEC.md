@@ -167,7 +167,8 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   (`micro_frames` 4, `overlay_frames` 7, `panel_frames` 12, `stagger_frames` 2); role eases `entrance` (`power2.out`),
   `move` (`power2.inOut`) and `exit` (`power2.in`), plus `entrance_scale` 0.96 and `overlay_fade_s` 0.20. The role names
   keep the existing look until a profile names an Emil curve. The HyperFrames scene carries `theme.motion` and the
-  template uses the role names; native drawn overlay fades read `overlay_fade_s`. A default `[motion]` table is left
+  template uses the role names (the frame durations are exported as `micro_s` / `overlay_s` / `panel_s` / `stagger_s`
+  but not read by any renderer yet); native drawn overlay fades read `overlay_fade_s`. A default `[motion]` table is left
   out of the profile hash. Native camera easing is baked in the Rust `camera_windows` kernel (`ALGO_VERSION`), so the
   Python path carries no easing literal to rewire.
 - HyperFrames `camera_path`: several camera keys in one map segment (legs tweened key to key, glide end speeds continuous

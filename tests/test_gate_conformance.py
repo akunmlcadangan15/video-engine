@@ -6,7 +6,6 @@ without rejecting profiles that omit optional style-gate tables.
 """
 import dataclasses
 
-import pytest
 
 from video_engine import gate_conformance as conf, gate_registry as reg, gate_tools, profiles
 
@@ -121,7 +120,6 @@ def test_good_duplicate_entries_are_no_longer_warnings():
 
 def test_good_profile_load_accepts_a_required_gate_without_config(tmp_path, monkeypatch):
     """End to end: a channel profile TOML that requires C01 without [gates.cuts] loads cleanly through the compatibility shim."""
-    import tomllib
     from video_engine import config
 
     import shutil

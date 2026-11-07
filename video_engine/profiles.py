@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from . import config
-from .gate_registry import ANTI_SLOP_IDS, KERNEL_GATE_IDS, LINT_GATE_IDS, NEVER_ADVISORY, STYLE_GATE_IDS, TECHNICAL_GATE_IDS
+from .gate_registry import ANTI_SLOP_IDS, KERNEL_GATE_IDS, LINT_GATE_IDS, NEVER_ADVISORY, STYLE_GATE_IDS, TECHNICAL_GATE_IDS  # noqa: F401  (re-exported as profiles.*, docs/GATES.md)
 # (Gate id lists live in gate_registry, the single definition; other modules import them from there.)
 from .grade import Grade
 from .layout import LayoutProfile

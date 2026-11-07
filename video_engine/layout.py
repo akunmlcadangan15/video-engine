@@ -50,7 +50,7 @@ class LayoutZones(_M):
     z1: tuple[float, float, float, float] = (64, 304, 888, 440)      # top slot: title or data card
     z2: tuple[float, float, float, float] = (64, 488, 888, 1100)     # map focus: active region, pins, labels, routes
     z2_pad: float = 48             # camera fit padding inside Z2
-    z3: tuple[float, float, float, float] | None = None  # grid overlay: street map, borough division
+    z3: tuple[float, float, float, float] | None = None  # optional reference zone; not read by the planner or gates
     group_gap: float = 48          # min gap between zones
 
 

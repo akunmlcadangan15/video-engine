@@ -15,7 +15,6 @@ from .util import EngineError, blake3_files, blake3_json, code_hash, decode_colo
 
 NATIVE_VERSION = "native-1"
 COPY_FORMAT = "copy-edit-list"   # stream-copy segment layout (render_copy); part of every copy-mode key
-IMAGE_MAX_SIDE = 8192
 CODE = (Path(__file__), Path(overlays.__file__))   # engine sources of a native segment's pixels (cache key)
 BT709_VF = config.BT709_VF   # raw RGB frames -> BT.709 yuv420p
 

@@ -1,10 +1,9 @@
 """P0 structure locks: single source creative rules, span naming, canonical type scale, taste/profile agreement."""
 import json
-from pathlib import Path
 
 import pytest
 
-from video_engine import config, director, profiles, taste_lint
+from video_engine import config, profiles, taste_lint
 
 
 def test_creative_rules_single_source():

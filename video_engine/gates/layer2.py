@@ -324,8 +324,8 @@ def caption_events(tl: Timeline, words: list[CaptionWord], y_overrides: list | N
 
 
 def r62_caption_margins(tl: Timeline, words: list[CaptionWord]) -> tuple[list[Finding], list[tuple]]:
-    W, H = tl.settings.width, tl.settings.height
-    st = profiles.caption_style(tl)
+    W = tl.settings.width
+    profiles.caption_style(tl)   # raises EngineError on forbid_box with box_bg before any caption compiles
     try:
         events = caption_events(tl, words)
     except ValueError as e:
@@ -691,7 +691,7 @@ def r63_dom(tl: Timeline, project_dir: Path, workdir: Path, snaps: dict) -> tupl
     """Builds each HyperFrames segment, seeks 3 times, checks element rects. Returns (findings, {seg: probe result});
     a probe result also carries "build_s" (build_dir wall seconds, the legibility ink probe included), "cached" and
     the probe phase "timing" (hyperframes.probe_dom)."""
-    W, H, fps = tl.settings.width, tl.settings.height, tl.settings.fps
+    fps = tl.settings.fps
     hf_segs = [s for s in tl.segments if s.engine_type == HYPERFRAMES and (project_dir / s.gsap_scene_config.map_asset).is_file()]
     if not hf_segs:
         return [Finding("R63", "skip", "no HyperFrames segments")], {}
@@ -830,7 +830,7 @@ def b01_watermark(tl: Timeline, events: list[tuple], boxes: dict[int, list[dict]
     pl = watermark.placement(tl)
     if pl is None:
         return []
-    W, H = tl.settings.width, tl.settings.height
+    W = tl.settings.width
     r = pl.text_rect()
     pr = profiles.of(tl).data.print
     gap = units(tl).y(pr.watermark_clear_px) if pr is not None else 0.0

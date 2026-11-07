@@ -26,7 +26,7 @@ A profile may override single values per orientation and shot (profile `[framing
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass, replace
 
 from .units import LANDSCAPE, PORTRAIT, orientation_of
 
@@ -155,5 +155,3 @@ def describe(orientation: str, overrides: dict | None = None) -> str:
     return "\n".join(lines)
 
 
-def as_dict(f: Framing) -> dict:
-    return asdict(f)

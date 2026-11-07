@@ -24,7 +24,6 @@ SUB_RATIO = 0.62                 # subtitle size / title size
 PAD = {"label": (22, 14), "text_card": (40, 32), "lower_third": (36, 22)}   # (x, y) padding at 1920 height
 ACCENT = (242, 177, 52, 255)
 BG = {"label": (12, 16, 22, 196), "text_card": (14, 18, 24, 214), "lower_third": (10, 12, 16, 200)}
-FADE_S = 0.20
 SAFE_X, SAFE_TOP, SAFE_BOTTOM = 60, 100, 100   # portrait R63 safe area (landscape: units.SAFE)
 HEADING_PAD = 16                 # px at 1920: box bottom to the heading baseline (room for the shadow)
 HEADING_BASE = (360, 400)        # px at 1920: allowed heading baseline y (brand profile, portrait)
@@ -301,7 +300,8 @@ def _fade_s(ov: Overlay, pr, motion) -> float:
 def ffmpeg_parts(seg: Segment, tl: Timeline, png_dir: Path, first_input: int) -> tuple[list[str], str]:
     """Extra ffmpeg inputs (one looped PNG per drawn overlay) and a filter_complex fragment that takes [vbase] (BT.709
     yuv420p) and yields [vout]. Each overlay is converted to BT.709 yuva420p on its own and blended in yuv420
-    (config.OVERLAY_YUV_VF), so the base pixels keep their values. Fades: FADE_S in/out (shortened for short ranges)."""
+    (config.OVERLAY_YUV_VF), so the base pixels keep their values. Fades: `[motion] overlay_fade_s` in/out
+    (`[print] heading_fade_s` for headings; shortened for short ranges)."""
     from . import profiles
     prof = profiles.of(tl)
     pr = prof.print

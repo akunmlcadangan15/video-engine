@@ -28,7 +28,7 @@ registry keeps PROFILE_GATE_IDS / FLEXIBLE_GATE_IDS exports for backward compat.
 from __future__ import annotations
 
 from .. import profiles
-from ..gate_registry import KERNEL_GATE_IDS, LINT_GATE_IDS, STYLE_GATE_IDS, WAIVABLE_WITH_REASON
+from ..gate_registry import KERNEL_GATE_IDS, LINT_GATE_IDS, STYLE_GATE_IDS
 # Backward-compat alias used by older callers that imported it from here.
 MANDATORY_GATE_IDS = KERNEL_GATE_IDS
 from ..timeline import HYPERFRAMES, Timeline

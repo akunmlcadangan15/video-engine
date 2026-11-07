@@ -30,7 +30,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from .vecmath import add as _add, cross as _cross, dot as _dot, length as _norm, mul as _mul, sub as _sub
+from .vecmath import add as _add, cross as _cross, length as _norm, mul as _mul, sub as _sub
 
 ARC_STEPS = 64          # arc-length samples per leg
 NEAR_FRAC = 1e-4        # three.js near plane as a fraction of the eye height (scene3d.js uses the same)

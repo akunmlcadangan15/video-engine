@@ -13,9 +13,9 @@ Naming (NN = settings.project_number, Topik = settings.topic, date = settings.da
                 "NN - Topik - final.mp4.partN"       byte-split parts, N = 1.., each <= PART_MAX_BYTES
                 "NN - JOIN.txt"                      join instructions (always written)
                 "NN - credits.txt"                   copy of <project>/credits.txt
-                "NN - final.srt"                     captions from the pinned timeline words
-                "NN - thumbnail.jpg"                 middle frame of the final video
-                "NN - metadata.json"                 YouTube Shorts / Reels title, description, tags
+                "NN - Topik - final.srt"             captions from the pinned timeline words
+                "NN - Topik - thumbnail.jpg"         middle frame of the final video
+                "NN - Topik - metadata.json"         YouTube Shorts / Reels title, description, tags
 
 `export_package` writes the same tree into a local destination (upload to Drive is not part of the engine).
 """
@@ -275,6 +275,3 @@ def export_package(tl: Timeline, project_dir: Path, final: Path, out_dir: Path,
             "metadata": metadata(tl), "srt_cues": srt(tl).count(" --> ")}
 
 
-def write_package(*args, **kwargs) -> dict:
-    """Deprecated alias kept for callers of the earlier name; use export_package."""
-    return export_package(*args, **kwargs)

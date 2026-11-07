@@ -107,7 +107,6 @@ import difflib
 import hashlib
 import re
 import shutil
-from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
 from functools import lru_cache
 
@@ -136,7 +135,6 @@ _KINDS = {
     'music': {'.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac'},
 }
 _HASHES: dict[tuple[str, int, int], str] = {}
-_USED: ContextVar[tuple[Resolved, ...]] = ContextVar("used_assets", default=())
 
 
 def _hash(path: Path) -> str:
@@ -368,12 +366,6 @@ def find(query: str, kind: str | None = None, project: Path | None = None, limit
     return [replace(hit[3], sha256=_hash(hit[3].path)) for hit in (hits[:limit] if limit > 0 else hits)]
 
 
-def register_used(resolved: Resolved) -> None:
-    used = _USED.get()
-    if resolved not in used:
-        _USED.set((*used, resolved))
-
-
 def register(path: Path, *, licence: str, source: str, source_url: str = '', author: str = '',
              dest: str = 'stock', kind: str | None = None, project: Path | None = None,
              asset_id: str | None = None, dry_run: bool = False) -> dict:
@@ -502,17 +494,6 @@ def ensure_credits(tl, project: Path) -> tuple[object, list[dict]]:
                'author': asset.author or None, 'watermark_free': True}
         result.credits_manifest.append(Credit.model_validate(row))
         new.append(row)
-    for asset in _USED.get():
-        if asset.tier == 'vendor' or result.credit_for(path=asset.ref):
-            continue
-        if not _allowed(asdict(asset), asset.kind):
-            raise EngineError('asset metadata invalid; fill registry row: ' + json.dumps(asdict(asset), default=str))
-        aid = re.sub(r'[^a-z0-9_]+', '_', asset.path.stem.lower()).strip('_')
-        row = {'asset_id': aid, 'path': asset.ref, 'source_url': asset.source_url, 'license': asset.licence,
-               'author': asset.author or None, 'watermark_free': True}
-        result.credits_manifest.append(Credit.model_validate(row))
-        new.append(row)
-    _USED.set(())
     return result, new
 
 

@@ -24,6 +24,8 @@ The format of a channel profile and the profiles that ship with the engine.
 - `[motion]`: Named motion tokens: `ease_out`, `ease_in_out`, `ease_drawer` (CSS cubic-bezier, Emil Kowalski), `micro_frames` (4), `overlay_frames` (7), `panel_frames` (12), `stagger_frames` (2) at 30 fps, role eases `entrance` (`power2.out`), `move` (`power2.inOut`), `exit` (`power2.in`), `entrance_scale` (0.96) and `overlay_fade_s` (0.20).
   The role names keep the engine look; set one to a token curve to adopt it.
   The HyperFrames scene carries `theme.motion`; native drawn overlay fades read `overlay_fade_s`.
+  The frame durations are validated and exported (`micro_s`, `overlay_s`, `panel_s`, `stagger_s`) but no renderer reads them yet;
+  element timings come from `[layout.timing]`, `[theme]` and `[transitions]`.
   A default `[motion]` table is left out of the profile hash.
 - `[camera]`: HyperFrames camera pulses inside every drift (the camera waiting on a view): `pulse_zoom` (ln zoom of a pulse, 0-1; 0 = no pulses), `pulse_s` (length), `pulse_gap_s` (minimum drift before, between and after pulses), `pulse_pan` (frame-centre shift of a pulse away, frame widths, sides alternate), `pulse_ease` (CSS cubic-bezier), `pulse_anchor` (screen point, frame fractions, that stays put), `pulse_direction` (`in` = push in then back, `out` = pull out then back), `max_zoom` (deepest camera zoom: camera keys, layout fit and draft `map_path` stop there; 1-64), `mode` (`planar`, the default, or `3d`: every map scene uses the full 3D camera of `gsap_scene_config.camera3d` unless its `camera_mode` says otherwise; the planar default adds nothing to the hash).
   Defaults: 0, 0.8, 0.6, 0, [0.3, 0, 0.15, 1], [0.5, 0.5], `out`, 4.0.

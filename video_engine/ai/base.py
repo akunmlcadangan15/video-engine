@@ -37,7 +37,6 @@ HTTP_TIMEOUT_S = 300
 FRAME_PX = 384
 _sleep = time.sleep   # patched in tests
 
-TASKS = ("planning", "qa")
 
 
 # ------------------------------------------------------------------------------------------------------------ parts

@@ -15,7 +15,7 @@ safe = [48, 288, 888, 1248]   # Overall map typography and overlay safe bounding
 z1 = [64, 304, 888, 440]      # Upper zone [x0, y0, x1, y1]: reserved for primary display titles, section headings, or top stat cards
 z2 = [64, 488, 888, 1100]     # Central map focus zone [x0, y0, x1, y1]: primary active polygon, pins, map labels, and animated routes
 z2_pad = 48                   # Internal padding in pixels inside the Z2 map focus zone
-z3 = [64, 1100, 888, 1248]    # Lower secondary zone [x0, y0, x1, y1] above the burned-in caption band
+z3 = [64, 1100, 888, 1248]    # Optional reference zone [x0, y0, x1, y1] above the caption band; not read by the planner or gates (they use safe, z1, z2)
 group_gap = 48                # Minimum vertical/horizontal separation in pixels between distinct visual groups
 
 [layout.sizes]

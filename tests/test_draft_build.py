@@ -2,7 +2,6 @@
 no final encode. GOOD and BAD cases on a synthetic native-only project (no HyperFrames toolchain needed).
 """
 import json
-import subprocess
 
 import pytest
 
