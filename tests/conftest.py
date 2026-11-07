@@ -112,6 +112,25 @@ def ff(*args):
     subprocess.run(["ffmpeg", "-v", "error", "-y", *map(str, args)], check=True)
 
 
+def require_ffmpeg_major() -> None:
+    """For pixel-exact colour tests: skip with the reason unless both the `ffmpeg` on PATH (test helpers) and
+    config.FFMPEG (the engine) are at least doctor.FFMPEG_MAJOR_MIN (7), the version `engine doctor` requires; older
+    swscale rounds the grade's colour conversions differently. VIDEO_ENGINE_REQUIRE_TOOLCHAIN=1 turns the skip into
+    a failure, like a missing vendored toolchain."""
+    from video_engine import config, doctor
+    for exe in dict.fromkeys(("ffmpeg", config.FFMPEG)):
+        try:
+            text = subprocess.run([exe, "-version"], capture_output=True, text=True, timeout=30).stdout
+        except (OSError, subprocess.SubprocessError):
+            text = ""
+        major = doctor.parse_ffmpeg_major(text)
+        if major is None or major < doctor.FFMPEG_MAJOR_MIN:
+            msg = f"needs ffmpeg >= {doctor.FFMPEG_MAJOR_MIN} (engine doctor); {exe} is {major or 'unknown'}"
+            if os.environ.get("VIDEO_ENGINE_REQUIRE_TOOLCHAIN") == "1":
+                pytest.fail(msg)
+            pytest.skip(msg)
+
+
 def engine_clip(out: Path, n: int, size=(1080, 1920), fps: int = 30, src: str = "testsrc2", extra=()) -> Path:
     """n-frame clip in the engine segment format (raw RGB frames -> config.X264_SEGMENT, as native._encoder); `extra`
     output options are appended after config.X264_SEGMENT."""

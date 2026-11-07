@@ -35,6 +35,10 @@ Tests that need the DOM probe or a HyperFrames render need `vendor/node` and `ve
 While the toolchain is missing they skip with that hint.
 `VIDEO_ENGINE_REQUIRE_TOOLCHAIN=1` makes them fail instead, as in the nightly CI job.
 A build test that fails because Node is missing only skips when the error reaches pytest; a CLI test that calls `cli.main` turns the error into exit code 1 and fails.
+The two pixel-exact colour-grade checks (`test_golden_colour_grade`, `test_good_grade_intermediate_is_lossless`) need ffmpeg 7 or newer
+(the `engine doctor` minimum) both on `PATH` and as `VIDEO_ENGINE_FFMPEG`, because ffmpeg 6 swscale rounds the grade's colour conversions
+differently; with an older ffmpeg they skip with that reason (`conftest.require_ffmpeg_major`), and `VIDEO_ENGINE_REQUIRE_TOOLCHAIN=1` makes them fail.
+`tests/test_examples.py` needs network: `examples/minimal/prepare.sh` downloads OpenStreetMap tiles, and the tests skip only when that download fails.
 
 ## Golden frames
 

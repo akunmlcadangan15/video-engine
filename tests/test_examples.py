@@ -1,4 +1,6 @@
-"""The shipped examples/ project is buildable end to end (generated local assets, no network)."""
+"""The shipped examples/ project is buildable end to end. examples/minimal/prepare.sh downloads real OpenStreetMap
+tiles (tile.openstreetmap.org) for its map, so these tests need network: when that download fails they skip with the
+reason; any other prepare.sh failure (for example a map too dark for R38) still fails."""
 import shutil
 import subprocess
 from pathlib import Path
@@ -11,13 +13,22 @@ ROOT = Path(__file__).resolve().parent.parent
 EXAMPLE = ROOT / "examples" / "minimal"
 
 
+def _prepare(dst: Path) -> None:
+    """Run the example's prepare.sh; skip when its OpenStreetMap tile download fails (no network)."""
+    r = subprocess.run(["sh", str(dst / "prepare.sh")], capture_output=True, text=True)
+    if r.returncode and "gagal unduh ubin OSM" in r.stderr:
+        pytest.skip("examples/minimal/prepare.sh needs network: " + r.stderr.strip().splitlines()[-1])
+    if r.returncode:
+        raise AssertionError(f"prepare.sh failed ({r.returncode}): {r.stderr.strip()}")
+
+
 @pytest.mark.skipif(not EXAMPLE.is_dir(), reason="examples/minimal is missing")
 def test_good_minimal_example_passes_preflight_without_the_toolchain(tmp_path):
     """Every gate that needs no browser passes on the shipped example (credits, licences, map resolution, captions)."""
     from video_engine import cli
     dst = tmp_path / "minimal"
     shutil.copytree(EXAMPLE, dst)
-    subprocess.run(["sh", str(dst / "prepare.sh")], check=True, capture_output=True)
+    _prepare(dst)
     assert cli.main(["preflight", str(dst), "--no-dom"]) == 0
 
 
@@ -27,7 +38,7 @@ def test_good_minimal_example_passes_preflight_without_the_toolchain(tmp_path):
 def test_good_minimal_example_builds(tmp_path):
     dst = tmp_path / "minimal"
     shutil.copytree(EXAMPLE, dst)
-    subprocess.run(["sh", str(dst / "prepare.sh")], check=True, capture_output=True)
+    _prepare(dst)
     r = build.build(dst)
     assert r.ok and r.final.is_file() and r.final.stat().st_size > 0
     assert (dst / "out" / "build_report.json").is_file()

@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from conftest import engine_clip
+from conftest import engine_clip, require_ffmpeg_major
 from video_engine import config, grade, native, platform_info, profiles, transitions
 
 GOLDEN = Path(__file__).parent / "golden"
@@ -124,6 +124,7 @@ def test_golden_page_turn_frames():
 
 
 def test_golden_colour_grade(project, tmp_path):
+    require_ffmpeg_major()   # ffmpeg 6 swscale rounds the grade's conversions differently (mean diff 8.2)
     def mut(d):
         _small(d)
         d["segments"][0]["grade"] = {"lift": 0.04, "gamma": 1.15, "gain": 0.95, "saturation": 1.35}
