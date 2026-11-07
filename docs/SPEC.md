@@ -455,7 +455,7 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   caption and watermark excluded). B01: every element box keeps `watermark_clear_px` from the watermark.
 - Fonts (`vendor/fonts`, OFL): EB Garamond, EB Garamond Italic, Cinzel, Kalam Bold, Playfair Display, Inter.
   Textures (`vendor/textures`, CC0): paper, grain. Each file has a row in the folder README.
-- Camera fit zoom is capped at the profile camera limit (`[camera] max_zoom`: default 4, `geoverum` 16; schema ceiling `timeline.ZOOM_MAX` = 64).
+- Camera fit zoom is capped at the profile camera limit (`[camera] max_zoom`: default 4, `geoverum` 16; schema ceiling `timeline.ZOOM_LIMIT` = 64; `timeline.ZOOM_MAX` = 4 is the default-profile limit).
 
 ### G. Beats layout (profile `[layout]`; `geoverum`)
 - Scope: HyperFrames map scenes with `gsap_scene_config.beats` (`video_engine/layout.py`). Positions, sizes,
@@ -492,8 +492,8 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 - Fly-through (`[layout.fly]`, optional): the title, figures, pin labels and area labels enter by scaling from
   `title_in` / `figure_in` / `label_in` to 1 over the span's enter time (`ease_in`) with opacity over
   `<kind>_opacity_in_s` (span enter time when unset), and exit by scaling to `out` with opacity to 0 over the exit
-  time (`ease_out`). Absent = opacity fades. Geoverum: 2.6 / 2.2 / 3.0 -> 1 in 0.35 s `expo.out`, title opacity 0.15 s,
-  year opacity 0.40 s, exit 1 -> 2.6 in 0.3 s `power2.in`. R63, caption clearance and B01 skip a text while it flies
+  time (`ease_out`). Absent = opacity fades. Geoverum: 2.6 / 2.2 / 3.0 -> 1 in 0.33 s `power2.inOut`, title opacity 0.15 s,
+  figure opacity 0.40 s, exit 1 -> 2.6 in 0.33 s `power2.out`. R63, caption clearance and B01 skip a text while it flies
   (inside an entry or an exit of any of its spans).
 - Output: the planner writes `camera_path`, element `at_frame`s and the scene `layout` block (spans, positions,
   label tracks, area labels, region steps); the template applies it after the main timeline.

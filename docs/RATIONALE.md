@@ -141,7 +141,7 @@ Why the engine is designed the way it is.
 - R63, caption clearance and B01 skip a fly-through text only inside each entry and exit of its spans, so a text that exits and enters again is checked at scale 1 in every later span.
   They read fly-through texts only at scale 1: a text in flight crosses the frame by design, and its settled box is the one the layout gates hold to the safe area.
 - Fly-through texts scale only on entry and exit and stay at scale 1 while held, so the layout plan (boxes at scale 1) and the L gates hold for every settled frame.
-  Geoverum exits in 0.3 s: at 0.35 s the shifted beat schedule puts the first wait's area label within a pin head's clearance on pushed-in frames, which removes most of that wait's pulses.
+  Geoverum exits in 0.33 s (`[layout.timing] exit_s`): at 0.35 s the shifted beat schedule puts the first wait's area label within a pin head's clearance on pushed-in frames, which removes most of that wait's pulses.
 - Hook and novelty gates read pin and card appear frames from the same functions the HyperFrames scene uses, so the gate and the render cannot disagree on when an element appears.
 - The default mix cuts its length after the sidechain compressor and before loudnorm, not on the compressor inputs: sidechaincompress ends at the first input EOF without draining its buffered samples, so trimmed inputs lose a music tail whose length depends on packet sizes and thread timing, and padding afterwards hides the loss in the duration.
   Unbounded inputs (padded voiceover, looped music) keep the compressor fed up to the cut, which makes the PCM identical on every render;
@@ -167,13 +167,13 @@ Why the engine is designed the way it is.
   A profile's `require_source` is checked by a delivery gate (A02) rather than by the resolver, so builds and tests without sourced audio still mix with local tones and A02 warns by default unless required.
 - Map scenes are laid out from beats rather than hand positions because untidy frames came from independent choices (centred stacks, labels across region edges, numbers on seams, several highlighted regions at once);
     one planner that knows every box per frame can keep one hero, one active region and a fixed reading order.
-- Positions use a 6-column grid with an 8 px unit and the Shorts safe area (x 48-888, y 288-1248), so titles and data cards line up on one left edge and nothing sits under the YouTube UI;
+- Positions use a 6-column grid with an 8 px unit and the layout text safe area (`[layout.zones] safe`, x 48-888, y 288-1248), so titles and data cards line up on one left edge and nothing sits under the YouTube UI;
     Z1 above the map keeps text off the map, and Z2 gives the camera a known window for the active region.
 - One hero per beat at >= 1.5x the next text and never two big numbers together follow the size-contrast rule of visual hierarchy: a reader finds the focal element first only when it is clearly larger (Nielsen Norman Group, "Visual Hierarchy in UX", https://www.nngroup.com/articles/visual-hierarchy-ux-definition/).
 - Pin labels try the cartographic preference order (upper right first) and keep an edge clearance, because a label that crosses a region edge reads as belonging to both areas (Imhof, "Positioning Names on Maps", 1975; Axis Maps, "Labeling", https://www.axismaps.com/guide/labeling).
 - Area labels go inside their polygon, uppercase and tracked, because a name inside an area labels the area and a name beside a point labels the point (Axis Maps, "Labeling").
 - Routes anchor to map points and stop short of the pin head, because an arrow that starts at a title points from text, not from a place.
-- Elements enter only after the camera settles and leave before it moves, staggered, with holds of max(1 s, chars / 20), because text moving with the camera cannot be read and a reader needs time proportional to the text length.
+- Elements enter only after the camera settles and leave before it moves, staggered, with holds of max(`min_hold_s`, chars / `chars_per_s`) (engine default max(1 s, chars / 20); Geoverum max(2 s, chars / 20)), because text moving with the camera cannot be read and a reader needs time proportional to the text length.
 - Label positions keep their previous choice unless a hard rule breaks or a clear gain persists, because labels that jump between candidates read as flicker.
 - Layout gates check every frame and, with DOM on, the rendered boxes at each beat's settled frame and mid-move, because an overlap may exist only during a move (for example a pin label over a figure for one second) and a plan that the template paints differently would pass a plan-only check.
 - Legibility samples a beats element only while its span shows it, because the layout hides elements between beats and a hidden element has no contrast to measure.

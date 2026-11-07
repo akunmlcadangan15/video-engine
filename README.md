@@ -94,7 +94,6 @@ Referensi lengkap seluruh perintah dan opsi: [docs/CLI.md](docs/CLI.md).
 | `video_engine/gates/` | Modul gate 3-lapis; definisi terpusat di `video_engine/gate_registry.py`. |
 | `rust/hypoverum_core_rs/` | Ekstensi Rust (PyO3): interpolasi kamera, kompilator `.ass`, deteksi jeda suara, dan statistik piksel. |
 | `profiles/` | Profil channel (`default.toml`, `geoverum.toml`, `geoverum_landscape.toml`, sub-tabel `geoverum/`, dan `taste/`). |
-| `tools/rea-style/` | Template style-sheet (`template.toml`) dan utilitas `profile-builder.py`. |
 | `scripts/` | Skrip pemeriksaan dokumentasi (`check_docs.py`) dan *wrapper* eksekusi (`engine-build`, `engine-batch`, `engine-draft`). |
 | `docs/` | Dokumentasi teknis lengkap. Mulai dari [docs/README.md](docs/README.md). |
 | `tests/` | Rangkaian pengujian `pytest` untuk seluruh modul dan gate. |
@@ -123,6 +122,5 @@ Referensi lengkap seluruh perintah dan opsi: [docs/CLI.md](docs/CLI.md).
 | [docs/RATIONALE.md](docs/RATIONALE.md) | Alasan rekayasa di balik setiap keputusan desain. |
 | [docs/LIMITS.md](docs/LIMITS.md) | Batasan sistem saat ini. |
 | [docs/GLOSSARY.md](docs/GLOSSARY.md) | Glosarium istilah teknis. |
-| [docs/REA-VIDEO.md](docs/REA-VIDEO.md) | Alur kompilasi `tools/rea-style/` ke profil channel. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Panduan kontribusi dan pemeriksaan pra-commit. |
 | [CHANGELOG.md](CHANGELOG.md) | Riwayat perubahan fitur dan perbaikan. |

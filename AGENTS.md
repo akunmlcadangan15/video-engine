@@ -17,7 +17,6 @@ Dokumen ini merupakan panduan operasional teknis bagi *engineer* maupun *AI agen
   - `default.toml`: Nilai dasar mesin.
   - `geoverum.toml` & `geoverum_landscape.toml`: Profil channel Geoverum (portrait 9:16 & landscape 16:9) yang berbagi aturan inti melalui `profiles/geoverum/core.toml` serta sub-tabel modular (`entities.toml`, `legibility.toml`, `print.toml`, `sound.toml`, `layout.toml`, `creative.md`).
   - `taste/geoverum.json`: Basis data preferensi desain (*liked* / *rejected*) dengan pemeriksaan otomatis (`engine taste geoverum --lint`).
-- `tools/rea-style/` — Skema antara (`template.toml`) dan utilitas `profile-builder.py` untuk mengonversi metrik analisis video menjadi blok konfigurasi profil.
 - `scripts/` — Skrip pemeriksaan dokumentasi (`check_docs.py`) dan pembungkus eksekusi aman (`engine-build`, `engine-batch`, `engine-draft`).
 - `docs/` — Dokumentasi teknis terindeks di [docs/README.md](docs/README.md).
 - `tests/` — Rangkaian pengujian otomatis `pytest` (kasus `GOOD` dan `BAD` untuk setiap gate dan fitur).

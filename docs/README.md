@@ -26,12 +26,11 @@ Indeks seluruh dokumentasi. Cari pertanyaan Anda di tabel pertama, lalu buka dok
 | Mengerti sebuah istilah atau singkatan | [GLOSSARY.md](GLOSSARY.md) |
 | Ikut menulis kode | [CONTRIBUTING.md](../CONTRIBUTING.md) |
 | Melihat apa yang berubah | [CHANGELOG.md](../CHANGELOG.md) |
-| Mengolah hasil bedah video menjadi profil | [REA-VIDEO.md](REA-VIDEO.md) |
 | Memahami spesifikasi arsitektur visual, kamera, dan opsi gaya `[reference_style.*]` (hatch, count-up, bubble, ...) | [REFERENCE-STYLE.md](REFERENCE-STYLE.md) |
 
 ## Bahasa dan pembaca
 
-- **README, panduan, glosarium, indeks ini, STRUCTURE, dan REA-VIDEO** ditulis dalam bahasa Indonesia untuk tim.
+- **README, panduan, glosarium, indeks ini, dan STRUCTURE** ditulis dalam bahasa Indonesia untuk tim.
 - **Dokumen referensi teknis** (CLI, ENVIRONMENT, TIMELINE, PROFILES, GATES, BUILD, DELIVERY, AI, TESTING, LIMITS,
   SPEC, RUST, SOUND, RATIONALE) ditulis dalam bahasa Inggris yang ringkas dan deklaratif. Pembacanya manusia dan agent
   AI. Istilah teknis tidak diterjemahkan; artinya ada di [GLOSSARY.md](GLOSSARY.md).
