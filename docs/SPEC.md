@@ -150,13 +150,14 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 - Caption bottom limit (`caption_style.max_bottom_y`, px at 1920 height; default profile: none): gate Z01 fails when
   any caption box bottom (centre y + 0.75 x font size + `caption_pad`; contains glyphs, descenders, outline and
   shadow) is below it; automatic caption placement never moves a caption below it. `caption_pad` = the ink reach
-  below the glyphs beyond 24 px: soft shadow `shadow_dy` (default 1.5 x `shadow`) + `outline` + 2 + 2 x `shadow_blur`,
-  hard shadow `outline` + `shadow` (0 for the default style). Geoverum: `fixed_y` 1417, `max_bottom_y` 1480 (caption
-  box bottom 1480 px at Inter Bold 84, pad 0; rendered ink and shadow included, inside it); `auto_place` moves a
-  caption only inside `place_band` 0.58-0.76 H.
+  below the glyphs beyond 24 px x font size / 84 (the band's slack below the glyphs scales with the font): soft
+  shadow `shadow_dy` (default 1.5 x `shadow`) + `outline` + 2 + 2 x `shadow_blur`, hard shadow `outline` + `shadow`
+  (0 for the default style). Geoverum: `fixed_y` 1366, `max_bottom_y` 1480 (caption box bottom 1402 px at Inter
+  Bold 48, pad 0; rendered ink and shadow included, inside it); `auto_place` moves a caption only inside
+  `place_band` 0.58-0.76 H.
 - Caption soft shadow offset: `shadow_dx`, `shadow_dy` (px; absent = `shadow`, 1.5 x `shadow`). Geoverum captions:
-  white Inter Bold 84 (the approved caption size for this channel: larger sizes were measured and found to
-  crowd the safe area, so 84 is the largest size that fits), at most 3 words (`max_words = 3`, pure white `primary = "FFFFFF"` and `highlight_colour = "FFFFFF"`), no outline, soft shadow 0 3 px, `shadow_blur` 4 (libass
+  white Inter Bold 48 (the caption size measured on the channel's 48 reference Shorts: x-height 24 px and cap
+  height 36 px at 1080x1920; 84, 92 and 104 px crowd the map), at most 4 words (`max_words = 4`, pure white `primary = "FFFFFF"` and `highlight_colour = "FFFFFF"`), no outline, soft shadow 0 3 px, `shadow_blur` 4 (libass
   Gaussian, about a CSS 8 px blur), black at 55 % (`shadow_alpha` 115), no backing box.
 - No captions (no voiceover): every caption gate passes or skips on the empty list.
 - Segment field `visual_type` (map / photo / video / diagram / archive / illustration; inferred when absent).

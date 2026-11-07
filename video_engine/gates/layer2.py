@@ -27,7 +27,8 @@ SAFE_X = 60                  # portrait safe area, px at 1080 wide; scaled with 
 SAFE_TOP = 100               # px at 1920 high; scaled with height
 SAFE_BOTTOM = 100
 CAPTION_BAND_HALF = 0.75     # caption box half-height as a fraction of font size
-CAPTION_REACH_BAND = 24.0    # px of outline/shadow reach below the glyphs the band already holds (caption_pad)
+CAPTION_REACH_BAND = 24.0    # px of outline/shadow reach below the glyphs the band already holds at ...
+CAPTION_REACH_SIZE = 84.0    # ... this font size; the slack (band half minus glyph descent) scales with the size
 PLACE_STEP = 10              # px: vertical search step of automatic caption placement
 OVERLAP_TOL = 2              # px
 M02_WARN = 1.2               # map source detail px per on-screen px at the deepest zoom: warn below
@@ -484,7 +485,8 @@ def caption_box(ev: tuple, pad: float = 0.0) -> tuple[float, float, float, float
 def caption_pad(tl: Timeline) -> float:
     """Output px the caption ink reaches below the CAPTION_BAND_HALF band. Ink reach below the glyphs: soft shadow
     (layer 0) shadow_dy + its border (outline + 2) + 2 x shadow_blur; hard shadow: outline + shadow. The band absorbs
-    CAPTION_REACH_BAND (the default style, 23.5 px); tests render libass ink to check it."""
+    CAPTION_REACH_BAND (the default style, 23.5 px) at CAPTION_REACH_SIZE 84 px and proportionally less for smaller
+    captions (Geoverum 48 px: 13.7 px); tests render libass ink to check it."""
     st = profiles.caption_style(tl)
     outline, shadow = float(st.get("outline", 5.0)), float(st.get("shadow", 3.0))
     if st.get("soft_shadow", True) and not st.get("box_bg", False):
@@ -492,7 +494,8 @@ def caption_pad(tl: Timeline) -> float:
         reach = (shadow * 1.5 if dy is None else float(dy)) + outline + 2.0 + 2.0 * float(st.get("shadow_blur", 6.0))
     else:
         reach = outline + max(0.0, shadow)
-    return units(tl).y(max(0.0, reach - CAPTION_REACH_BAND))
+    band = CAPTION_REACH_BAND * float(st.get("size", CAPTION_REACH_SIZE)) / CAPTION_REACH_SIZE
+    return units(tl).y(max(0.0, reach - band))
 
 
 def max_bottom(tl: Timeline) -> float | None:

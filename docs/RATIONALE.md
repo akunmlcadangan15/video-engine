@@ -110,10 +110,12 @@ Why the engine is designed the way it is.
   The cut-rate warn applies to hard cuts and the fail levels to every shot change, so transitions cannot hide an over-cut edit.
   Camera moves inside one segment change the frame continuously and are not counted.
 - Camera pulses replace long still drifts because short-form maps that hold still for seconds read as frozen;
-    a reference channel moves the camera in about 90 % of frames with holds under 1.7 s. Pulses are fast cubic-bezier moves (0.3, 0, 0.15, 1) separated by drift so the camera never stops;
+    an earlier reference channel moved the camera in about 90 % of frames with holds under 1.7 s (the 48 reference Shorts re-measured in 2026-11: median 77 %, see below). Pulses are fast cubic-bezier moves (0.3, 0, 0.15, 1) separated by drift so the camera never stops;
     Geoverum pushes in rather than pulling out because pulling out shrinks the space between map labels and heads, while pushing in only spreads it.
-- Geoverum camera values are calibrated to maintain continuous visual momentum across 96-100 % of frames with maximum holds under 0.90 s (`[camera]` `pulse_zoom = 0.18`, `pulse_s = 0.85`, `pulse_gap_s = 0.45`, and `[theme]` `camera_drift_per_s = 0.06`);
-    the P01 thresholds (`hold_warn_s = 1.7`, `moving_warn = 0.80`) guard against unintended static freezes while allowing brief narrative settles.
+- Geoverum camera values keep the rendered camera moving (`[camera]` `pulse_zoom = 0.18`, `pulse_s = 0.85`, `pulse_gap_s = 0.45`, and `[theme]` `camera_drift_per_s = 0.06`);
+    the P01 thresholds (`hold_warn_s = 3.0`, `hold_fail_s = 5.0`, `moving_warn = 0.65`) follow the 48 reference Shorts measured in 2026-11
+    (camera moving on a median 77 % of frames, p10 64 %; longest hold per Short median 2.6 s, p75 3.6 s, p90 4.5 s, while overlays keep animating),
+    so they flag freezes longer than the reference holds without warning on its ordinary settles.
 - The Geoverum drift (0.06 ln / s) lies above the P01 still threshold (0.05 ln / s), so the drift between pulses counts as active camera motion;
     the still threshold stays at 0.05 so a near-stopped camera is still counted as a hold.
 - The Geoverum pulse anchor (`[0.5, 0.48]`) is centred in zone Z2, so the content framed in Z2 stays centred while the camera pushes in.
@@ -150,7 +152,7 @@ Why the engine is designed the way it is.
   The failure report has its own name so a reader of `build_report.json` always gets the report of the published file, and the API fails on every fail finding (raise, or `ok=False` on the return path) so a library caller cannot publish what the CLI rejects.
 - Silence is gated on the final file because ducking, loudnorm and the AAC encode change the level of quiet passages after the mix.
 - A fixed caption y is a Python override placed last, so project `y_overrides` still win and the Rust compiler keeps one placement mechanism.
-- Geoverum captions are centred at `fixed_y = 1417` and end at or above `max_bottom_y = 1480` because the YouTube Shorts lower UI overlay covers the bottom of the 1080x1920 frame below y 1480;
+- Geoverum captions (Inter Bold 48, the reference Shorts' caption size) are centred at `fixed_y = 1366` (the reference ink centre) and end at or above `max_bottom_y = 1480` because the YouTube Shorts lower UI overlay covers the bottom of the 1080x1920 frame below y 1480;
     the limit is a profile key enforced by gate Z01 so a later `fixed_y`, project override or automatic placement within `place_band = [0.58, 0.76]` cannot move a caption below the safe boundary.
   Z01 checks the same caption box as R62/R63 and placement; a libass render test keeps that box around the real ink, so the gate does not need to read pixels.
 - Caption rhythm follows the voiceover word timestamps; a fixed cadence target would contradict the narration timing, so captions per 10 s is reported and not gated.

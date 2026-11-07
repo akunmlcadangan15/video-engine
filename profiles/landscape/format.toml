@@ -7,10 +7,10 @@
 orientation = "landscape"     # a portrait timeline with this profile is rejected (and vice versa)
 
 [caption_style]
-size = 58                     # 5.4 % of H (portrait 84 = 4.4 % of 1920; 84 at 1080 high is too large)
+size = 58                     # 5.4 % of H (the Rust portrait default 84 = 4.4 % of 1920; 84 at 1080 high is too large)
 ab_sizes = [58]
 margin_x = 160
-max_words = 4                 # long-form rhythm: more words per caption than the 2-3 of Shorts
+max_words = 4                 # long-form rhythm: up to 4 words per caption (the Rust default allows 2)
 fixed_y = 900                 # lower third, about 0.83 H
 place_band = [0.74, 0.88]
 clearance = 90                # px at 1080 height (portrait 160 at 1920)

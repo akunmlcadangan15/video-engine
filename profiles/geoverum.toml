@@ -11,8 +11,8 @@ bold = true                   # Enforces bold weight for rapid legibility on mob
 primary = "FFFFFF"            # Locks base caption glyph color to pure white (#FFFFFF)
 highlight_colour = "FFFFFF"   # Locks active spoken word color to pure white (#FFFFFF), overriding the Rust compiler's #FFD84A yellow default
 emphasis_colour = "FFFFFF"    # Locks emphasized word color to pure white (#FFFFFF) so emphasis is conveyed via scale rather than yellow tinting
-size = 84                     # Font size in pixels at 1080 x 1920 reference resolution; balances mobile readability with map visibility
-ab_sizes = [84]               # Allowed caption font size candidates for timeline validation
+size = 48                     # Font size in pixels at 1080 x 1920 reference resolution: the reference Shorts set captions at ~48 px (x-height 24 px, cap height 36 px, ±4 px), leaving the map visible
+ab_sizes = [48]               # Allowed caption font size candidates for timeline validation
 outline = 0                   # Disables hard stroke outlines around glyphs so letterforms remain clean
 soft_shadow = true            # Enables a soft Gaussian drop shadow beneath caption text instead of a hard outline or opaque box
 shadow_dx = 0                 # Horizontal shadow offset in pixels
@@ -21,8 +21,8 @@ shadow_blur = 4               # Gaussian blur radius applied by libass (\blur ta
 shadow_alpha = 115            # ASS alpha value (0x73 = 115/255, producing 55% shadow opacity)
 active_word_highlight = true  # Synchronizes word-by-word dialogue events to spoken word timestamps
 emphasis_scale = 1.15         # Scale multiplier (115%) applied to emphasized words
-max_words = 3                 # Maximum words displayed simultaneously per caption cue to enforce a single-line phrase rhythm
-fixed_y = 1417                # Vertical center of the caption line in pixels (~73.8% of 1920 px height), placing the bottom edge of an 84 px line at 1480 px
+max_words = 4                 # Maximum words displayed simultaneously per caption cue (reference median 3, 79% of cues hold <= 4 words) on a single line
+fixed_y = 1366                # Vertical center of the caption line in pixels (~71.1% of 1920 px height; reference ink centre 1366, p10-p90 1360-1376), placing the bottom of a 48 px caption box at 1402 px
 max_bottom_y = 1480           # Lower safe-area boundary in pixels (gate Z01) to prevent overlap with platform UI overlays
 forbid_box = false            # Permits optional caption backing boxes per segment when explicitly specified by the creator without triggering a style block
 auto_place = true             # Automatically shifts captions within place_band if a static pin, label, or figure occupies fixed_y (gate R63)
@@ -35,8 +35,8 @@ require = []                  # Empty list: all non-mandatory style gates operat
 advisory = []                 # Optional list of flexible technical gates downgraded to warnings
 
 [gates.duration]              # D01: Permitted total runtime window in seconds for vertical Shorts
-min_s = 45.0                  # Minimum total video duration in seconds
-max_s = 100.0                 # Maximum total video duration in seconds
+min_s = 30.0                  # Minimum total video duration in seconds (reference Shorts run 30.3-187.7 s; 47 of 48 within 30-120 s)
+max_s = 120.0                 # Maximum total video duration in seconds
 
 # Persistent channel watermark burned into the safe area during the final composite mux.
 [watermark]

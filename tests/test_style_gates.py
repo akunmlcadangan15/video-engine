@@ -256,7 +256,7 @@ def test_good_and_bad_d02_exact_duration(project):
 
 
 # D01 duration ------------------------------------------------------------------------------------------------------------
-@pytest.mark.parametrize("sec,lv", [(45, "pass"), (90, "pass"), (30, "warn"), (100, "pass"), (101, "warn")])
+@pytest.mark.parametrize("sec,lv", [(30, "pass"), (60, "pass"), (29, "warn"), (120, "pass"), (121, "warn")])
 def test_d01_duration_good_and_bad(project, sec, lv):
     _, tl = project(layout(("map", sec / 2, None), ("photo", sec / 2, None)))
     assert levels(style.d01_duration(tl, profiles.load("geoverum").gates.duration), "D01") == [lv]
@@ -313,16 +313,16 @@ def test_good_geoverum_caption_style_fixed_y_two_words(project):
     _, tl = project(layout(("map", 30, None), ("photo", 30, None)))
     txt, ev = captions.compile_ass(GEO_WORDS, tl)
     style_line = next(l for l in txt.splitlines() if l.startswith("Style:")).split(",")
-    assert style_line[1:3] == ["Inter", "84"] and style_line[7] == "-1"               # font, size, bold on
+    assert style_line[1:3] == ["Inter", "48"] and style_line[7] == "-1"               # font, size, bold on
     assert style_line[15] == "1" and style_line[16] == "0"                            # no box, no outline
-    assert all(e[6] == 1417.0 for e in ev) and all(len(e[2].split()) <= 3 for e in ev)
+    assert all(e[6] == 1366.0 for e in ev) and all(len(e[2].split()) <= 4 for e in ev)
     assert "\\1c" in txt                                                            # active_word_highlight=true: per-word highlight
 
 
 def test_good_project_y_override_beats_profile_fixed_y(project):
     _, tl = project(layout(("map", 30, None), ("photo", 30, None), cs={"y_overrides": [[0, 20, 1100]]}))
     ev = captions.compile_ass(GEO_WORDS, tl)[1]
-    assert ev[0][6] == 1100.0 and ev[-1][6] == 1417.0
+    assert ev[0][6] == 1100.0 and ev[-1][6] == 1366.0
 
 
 def test_good_default_captions_not_fixed(project):
@@ -401,7 +401,7 @@ def ink_rows(tl, ws, tmp_path):
 
 
 def test_good_geoverum_caption_bottom_within_max_bottom_y(project):
-    """GOOD: Geoverum fixed_y 1382 keeps every caption box bottom <= max_bottom_y 1480 (Z01 pass)."""
+    """GOOD: Geoverum fixed_y 1366 keeps every caption box bottom <= max_bottom_y 1480 (Z01 pass)."""
     _, tl = project(layout(("map", 30, None), ("photo", 30, None)))
     assert profiles.caption_style(tl)["max_bottom_y"] == 1480
     ev = layer2.caption_events(tl, GEO_WORDS, [])
@@ -533,7 +533,7 @@ def test_good_default_draft_prompt_keeps_engine_rules():
 def test_good_geoverum_draft_prompt_adds_channel_rules():
     p = draft.prompt(_inp("geoverum"))
     rules = profiles.load("geoverum").draft.rules
-    assert "Suggested length 3.0-20.0 s each (90-600 frames)" in p
+    assert "Suggested length 3.0-30.0 s each (90-900 frames)" in p
     assert all(f"\n- {r}" in p for r in rules) and p.endswith("matching the schema.")
 
 
@@ -562,15 +562,15 @@ def test_good_geoverum_caption_thin_outline_and_straight_soft_shadow(project):
     _, tl = project(layout(("map", 30, None), ("photo", 30, None)))
     txt, ev = captions.compile_ass(GEO_WORDS, tl)
     shadow = [l for l in txt.splitlines() if l.startswith("Dialogue: 0,")]
-    assert shadow and all("\\3a&H73&" in l and "\\blur4" in l and "\\pos(540,1420)" in l for l in shadow)   # 0 3 px, .55
+    assert shadow and all("\\3a&H73&" in l and "\\blur4" in l and "\\pos(540,1369)" in l for l in shadow)   # 0 3 px, .55
     assert all("BorderStyle" not in l for l in shadow) and layer2.caption_pad(tl) == 0
     assert levels(layer2.z01_caption_bottom(tl, ev), "Z01") == ["pass"]
 
 
 def test_bad_deep_caption_shadow_is_counted_by_z01(project, tmp_path):
-    """BAD: a 60 px shadow drop at fixed_y 1382 puts shadow ink below 1480: caption_pad extends the box and Z01 fails,
-    and the rendered ink stays inside the padded box."""
-    _, tl = project(layout(("map", 30, None), ("photo", 30, None), cs={"shadow_dy": 60}))
+    """BAD: a 100 px shadow drop at fixed_y 1366 (48 px captions) puts shadow ink below 1480: caption_pad extends the
+    box and Z01 fails, and the rendered ink stays inside the padded box."""
+    _, tl = project(layout(("map", 30, None), ("photo", 30, None), cs={"shadow_dy": 100}))
     pad = layer2.caption_pad(tl)
     assert pad > 25
     ev = layer2.caption_events(tl, GEO_WORDS, [])

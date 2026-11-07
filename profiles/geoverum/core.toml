@@ -27,8 +27,8 @@ tolerance_lu = 0.2            # Allowed deviation in LU from target_lufs during 
 
 # AI storyboard and timeline drafting constraints (used by video_engine/draft.py and video_engine/draft_scene.py).
 [draft]
-min_seg_s = 3.0               # Minimum segment duration in seconds; supports both rapid 3-6 s evidence cuts and extended 6-20 s continuous map flights
-max_seg_s = 20.0              # Maximum single-segment duration in seconds before requiring a narrative beat or scene transition
+min_seg_s = 3.0               # Minimum segment duration in seconds; supports both rapid 3-6 s evidence cuts and extended 6-30 s continuous map flights
+max_seg_s = 30.0              # Maximum single-segment duration in seconds before requiring a narrative beat or scene transition (reference shot length p90 30.8 s)
 map_path = true               # Enables multi-keyframe continuous camera trajectories (flow, glide, reveal, whip, settle) within a single map segment
 scene = ["globe", "props", "beats", "radar", "terrain3d", "cross_section", "historical", "flag_char", "data_viz", "blind_spot", "grid_split"]   # Scene capabilities unlocked for the AI draft generator
 rules_file = "geoverum/creative.md"   # External markdown file containing the canonical creative direction rules injected into the draft prompt
@@ -52,7 +52,7 @@ camera_start_speed = 0.85     # Initial velocity ratio at the first camera keyfr
 camera_end_speed = 0.85       # Terminal velocity ratio at the final camera keyframe relative to the last leg's mean speed (maintains momentum up to segment cuts)
 whip_s = 0.45                 # Duration in seconds for fast in-map whip pans between distant coordinates
 whip_blur_px = 16             # Directional motion-blur radius in pixels applied at the peak velocity of a whip pan
-region_fill_opacity = 0.45    # Polygon interior fill opacity (45%) on dark satellite basemaps, ensuring saturated territorial color while preserving underlying terrain detail
+region_fill_opacity = 0.85    # Polygon interior fill opacity (85%) on dark satellite basemaps: the reference fills pass only 0.07-0.26 of the terrain texture, so territory colour reads near-solid (matches flags.alpha 0.85)
 region_edge = "glow"          # Renders country borders with a luminous outer glow matching the polygon color on dark satellite surfaces
 region_edge_px = 4            # Solid border core width in pixels around highlighted polygons
 region_glow_px = 18           # Outer neon glow radius in pixels around highlighted polygons on dark satellite basemaps
@@ -150,7 +150,7 @@ style = "light"               # High-contrast white speech bubble with dark ink 
 font_px = 46                  # Font size in pixels for speech bubble dialogue text
 pop_frames = 5                # Elastic pop-in duration in frames at 30 fps (~167 ms)
 max_width_pct = 0.60          # Maximum bubble width as a fraction of canvas width
-max_bottom_pct = 0.70         # Lowest permitted vertical position as a fraction of canvas height (keeps bubbles above the caption zone)
+max_bottom_pct = 0.68         # Lowest permitted bubble bottom as a fraction of canvas height (1306 px = caption box top 1330 px minus gap_px 24, keeping bubbles above the caption zone)
 gap_px = 24                   # Minimum pixel clearance between speech bubbles and adjacent pins or badges
 
 [fx.flag_character]
@@ -276,9 +276,9 @@ graphic_fail_s = 2.0          # Threshold (2.00 s) above which delayed visual ho
 open_on_moving_map = true     # Requires the opening shot to begin with active camera motion from frame 0 rather than a static hold
 
 [gates.camera]                # P01 & P02: Camera motion continuity and minimum drift verification
-hold_warn_s = 1.7             # Emits a warning if the camera remains below the motion threshold for more than 1.70 s
-hold_fail_s = 2.0             # Threshold (2.00 s) above which a static camera hold is flagged
-moving_warn = 0.8             # Minimum fraction of frames (80%) across the video that must exhibit active camera movement
+hold_warn_s = 3.0             # Emits a warning if the camera remains below the motion threshold for more than 3.0 s (reference longest hold per Short: median 2.6 s, p75 3.6 s)
+hold_fail_s = 5.0             # Threshold (5.0 s) above which a static camera hold is flagged (reference p90 4.5 s)
+moving_warn = 0.65            # Minimum fraction of frames (65%) that must exhibit active camera movement (reference per-Short median 0.77, p10 0.64)
 still_zoom_ln_s = 0.05        # Logarithmic zoom speed floor (0.05 ln/s) below which a frame is classified as stationary in the absence of pan
 still_pan_w_s = 0.02          # Screen-width pan speed floor (0.02 W/s) below which a frame is classified as stationary in the absence of zoom
 min_drift_per_s = 0.06        # Minimum required inter-keyframe camera drift rate (0.06 ln/s, matching [theme] camera_drift_per_s)

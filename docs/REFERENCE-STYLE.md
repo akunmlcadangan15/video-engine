@@ -28,9 +28,33 @@ profil Geoverum (diukur pada kecepatan 30 frame per detik):
 | **Pola 10** | Kontras Iklim Kutub, Navigasi Maritim Sejarah, & Efek Vignette | 59,92 s | 96,6 % | 0,83 s | 2 (cut ke vignette teleskop & foto) | 0,04 s | 0,59 s | 0,089 |
 
 ### Kesimpulan Kalibrasi Parameter dari Data Kuantitatif:
-1. **Permukaan Peta Satelit Gelap (`median APCA Y ≈ 0,08`)**: Sembilan dari sepuluh pola produksi menggunakan citra satelit gelap dengan luminansi median antara `0,052` dan `0,089` (dan hingga `0,208` saat menyorot daratan benua bersalju atau gurun terang). Oleh sebab itu, batas klasifikasi kertas (`[print] paper_min_y`) ditetapkan pada `0.52` agar peta satelit tidak pernah secara keliru diberi tekstur kertas antik atau mode blend `multiply`, melainkan selalu mempertahankan warna isian wilayah yang hidup (`region_fill_opacity = 0.45`) dan garis batas bersinar (`region_edge = "glow"`, `region_glow_px = 18`).
-2. **Kontinuitas Gerak Kamera (`95,9% – 100%` Frame Bergerak)**: Kamera tidak pernah berhenti statis lebih dari `0,90 detik`. Di antara perpindahan lokasi utama, kamera mempertahankan drift logaritmik sebesar `0.06 ln(scale)/s` (`camera_drift_per_s = 0.06`) dan denyut dorong halus (`pulse_zoom = 0.18`, `pulse_s = 0.85`).
+1. **Permukaan Peta Satelit Gelap (`median APCA Y ≈ 0,08`)**: Sembilan dari sepuluh pola produksi menggunakan citra satelit gelap dengan luminansi median antara `0,052` dan `0,089` (dan hingga `0,208` saat menyorot daratan benua bersalju atau gurun terang). Oleh sebab itu, batas klasifikasi kertas (`[print] paper_min_y`) ditetapkan pada `0.52` agar peta satelit tidak pernah secara keliru diberi tekstur kertas antik atau mode blend `multiply`, melainkan selalu mempertahankan warna isian wilayah yang hidup dan nyaris padat (`region_fill_opacity = 0.85`, lihat pengukuran ulang di bawah) dan garis batas bersinar (`region_edge = "glow"`, `region_glow_px = 18`).
+2. **Kontinuitas Gerak Kamera**: Pada sepuluh pola di atas kamera bergerak `95,9% – 100%` frame dengan tahan maksimum `0,90 detik`; pengukuran ulang 48 Shorts (subbagian berikut) menunjukkan rentang yang lebih lebar (median `77%`, tahan terpanjang median `2,6 detik`), sehingga gate `P01` memakai `moving_warn = 0.65`, `hold_warn_s = 3.0`, dan `hold_fail_s = 5.0`. Di antara perpindahan lokasi utama, kamera mempertahankan drift logaritmik sebesar `0.06 ln(scale)/s` (`camera_drift_per_s = 0.06`) dan denyut dorong halus (`pulse_zoom = 0.18`, `pulse_s = 0.85`).
 3. **Hook Instan Tanpa Jeda (`VO Onset 0,00 – 0,27 s`)**: Suara narator dan caption pertama langsung masuk sejak awal video di atas peta yang sudah bergerak (`open_on_moving_map = true`), dengan celah hening maksimum di seluruh durasi video di bawah `0,60 detik` (dijaga oleh gate `S01` pada `max_gap_s = 0.8`).
+
+### Pengukuran Ulang Referensi (2026-11: 5 Kompilasi, 48 Shorts)
+
+Lima video kompilasi (854×480, 30 fps, total 57 menit) berisi 48 Shorts portrait 9:16 yang di-*pillarbox* (area aktif
+270×480; setiap piksel sumber = 4 piksel kanvas `1080×1920`, sehingga setiap ukuran membawa ketidakpastian ±4 px) dan satu
+segmen landscape 16:9 yang dikeluarkan dari statistik. Nilai profil di kolom kanan adalah nilai `geoverum` yang berlaku.
+
+| Metrik | Hasil Ukur | Nilai Profil `geoverum` |
+|---|---|---|
+| Durasi per Short | 30,3 – 187,7 s (median 60,1 s; 47 dari 48 di 30 – 120 s) | `[gates.duration]` `min_s = 30.0`, `max_s = 120.0` |
+| Frame dengan kamera bergerak (pan ≥ 0,02 W/s atau zoom ≥ 0,05 ln/s) | median 77 %, p10 64 %, maks 96 % per Short | `[gates.camera] moving_warn = 0.65` |
+| Tahan kamera terpanjang per Short | median 2,6 s, p75 3,6 s, p90 4,5 s, maks 7,1 s | `hold_warn_s = 3.0`, `hold_fail_s = 5.0` |
+| Panjang shot | median 8,5 s, p90 30,8 s; 3,6 transisi per menit | `[draft] min_seg_s = 3.0`, `max_seg_s = 30.0` |
+| Caption pertama / grafik hook pertama | median 0,13 s / 0,30 s (p90 0,67 s / 1,15 s) | `[gates.hook] caption_warn_s = 0.2`, `graphic_warn_s = 1.5` |
+| Ukuran caption (tinggi-x / tinggi kapital) | 24 px / 36 px, setara Inter ±48 px | `[caption_style] size = 48`, `ab_sizes = [48]` |
+| Pusat tinta caption (posisi utama, 86 % frame caption) | y 1366 px (p10 – p90 1360 – 1376); posisi bawah minoritas y 1548 | `fixed_y = 1366`, `max_bottom_y = 1480` |
+| Kata per cue caption | median 3, rerata 3,4; 79 % ≤ 4 kata | `max_words = 4` |
+| Opasitas isian wilayah | tekstur medan tersisa 0,07 – 0,26 → alfa ≈ 0,85 – 0,9 | `[theme] region_fill_opacity = 0.85`, `[flags] alpha = 0.85` |
+| Kuning rute / garis ukur | #FFD701 (OKLCH 0,887 / 0,182 / 95) | `route_colour = "#FFD417"` (cocok) |
+| Label pin / tempat | tinggi kapital 37 – 40 px, setara ±52 px | `[type] pin_label_px = 52` (cocok) |
+| Kontras caption putih (APCA) | median Lc 97, 85 % ≥ 75 | `[legibility] lc_label = 75` (cocok) |
+| Celah hening ≥ 0,8 s pada −40 dB | 0 kejadian (terpanjang 0,64 s) | `[gates.silence] max_gap_s = 0.8` (cocok) |
+| Whip pan | durasi median 0,43 – 0,57 s | `[theme] whip_s = 0.45` (cocok) |
+| Watermark | tidak ada | `[watermark]` "Geoverum" tetap dipertahankan sebagai identitas channel |
 
 ## 2. Prinsip Dasar Arsitektur Visual
 

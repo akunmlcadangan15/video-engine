@@ -150,6 +150,21 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ### Diubah
 
+- **Profil `geoverum` dikalibrasi ulang dari bedah forensik 48 Shorts referensi** (5 kompilasi 854×480, 30 fps;
+  tabel lengkap di `docs/REFERENCE-STYLE.md`, "Pengukuran Ulang Referensi"). Caption portrait kini Inter Bold
+  48 px (`size`/`ab_sizes`, sebelumnya 84; tinggi-x terukur 24 px), `fixed_y = 1366` (pusat tinta referensi,
+  sebelumnya 1417), `max_words = 4` (sebelumnya 3); `[gates.duration]` portrait 30–120 s (sebelumnya 45–100 s);
+  `[gates.camera]` `hold_warn_s = 3.0`, `hold_fail_s = 5.0`, `moving_warn = 0.65` (sebelumnya 1.7 / 2.0 / 0.8;
+  referensi bergerak pada median 77 % frame dengan tahan terpanjang median 2,6 s); `[theme] region_fill_opacity =
+  0.85` (sebelumnya 0.45; isian referensi nyaris padat); `[draft] max_seg_s = 30` (sebelumnya 20; panjang shot p90
+  30,8 s); `[fx.bubble] max_bottom_pct = 0.68` agar bubble tetap 24 px di atas kotak caption baru (y 1330).
+  `creative.md`, `taste/geoverum.json` (entri dan `check`), `docs/PROFILES.md`, `docs/SPEC.md`, `docs/RATIONALE.md`
+  dan tes ikut diselaraskan; `engine taste geoverum --lint` 22/22 ok. Hash `profiles.load("default")` tidak berubah.
+- **Gate Z01 menskalakan slack pita caption dengan ukuran font**: `caption_pad` mengurangi `24 px × size / 84`
+  (bukan 24 px tetap), karena pada caption 48 px tinta bayangan libass yang dirender melewati kotak yang dihitung.
+- **`legibility`: judul mengejar `lc_title_aim`** pada tiap tangga eskalasi sebelum puas dengan `lc_title`, sesuai
+  `docs/SPEC.md` dan `profiles/geoverum/legibility.toml` (sebelumnya kunci ini hanya divalidasi).
+
 - **HyperFrames 0.8.214 -> 0.9.13** (pin `vendor/VERSIONS.json`, `vendor/npm/package.json` + lockfile; dependensi
   baru `undici`). Flag `render` yang dipakai engine tidak berubah; breaking change 0.9.0 (Plan v1 distributed render)
   tidak menyentuh engine. Semua segmen HyperFrames dirender ulang sekali (toolchain identity berubah).
@@ -172,6 +187,18 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ### Diperbaiki
 
+- Kunci cache segmen native kini memuat `[motion] overlay_fade_s` (fade overlay yang dibakar ke piksel).
+- Region `block` pada scene beats kini ikut meredup sesuai level `layout.regions` (template hanya menelusuri anak
+  langsung `<svg>`).
+- `assets.resolve_timeline_paths` dan `ensure_credits` menangani kedua panel segmen split (peta, morph, prop, layer).
+- `audio_chain.true_peak` proyek yang lebih longgar dari batas global −1,5 dBTP kini ditolak (`profiles.loudness`).
+- Isyarat SFX whip jatuh di tengah leg whip kamera setelah `hold` kunci sebelumnya.
+- Kembaran Python↔JS: aturan `boxed` legibilitas, pembulatan warna termometer (half-up), batas frame partikel
+  (`f_out` eksklusif), dan ease counter (`gsap_ease`, kembaran persis ease GSAP yang di-vendor).
+- `tests/test_gates_layer3_qa.py`: uji R38 sumber gelap kini memasok sampel untuk setiap segmen.
+- Dokumen: angka fly-through Geoverum (0,33 s `power2.inOut`/`power2.out`), `min_hold_s`, kotak aman teks layout,
+  `timeline.ZOOM_LIMIT`, nama file paket delivery, komentar crossfade tinta, serta token `[motion]` dan zona `z3`
+  yang tidak dibaca renderer.
 - Field draft `[draft] scene` yang kosong tidak masuk hash profil, sehingga profil default yang tidak memakai
   scene opsional tetap menghasilkan hash yang sama dan cache lama tetap dapat dipakai.
 - **Warna footage sumber**: footage tanpa tag warna kini didekode sesuai standar ukuran (HD ke atas = BT.709, SD =
@@ -190,3 +217,12 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 - `tests/test_build_publish.py` menganggap berkas kunci `.batch.lock` sebagai sisa build, sehingga dua tesnya gagal
   begitu toolchain HyperFrames terpasang.
 - `tests/test_director.py` masih mengharapkan batas "hard cuts per 10 s" yang sudah dihapus dari catatan selera.
+
+### Dihapus
+
+- Perkakas konversi style-sheet REA (seluruh direktori `tools/`: template, skrip pembangun profil, dan README-nya)
+  beserta dokumen alurnya di `docs/` dan seluruh rujukannya di `README.md`, `AGENTS.md`, dan `docs/README.md`.
+- Kode mati tanpa rujukan: `hyperframes.build_timeline_dir`, `framing.as_dict`, `units.ref_canvas`,
+  `gate_tools.render_profile_summary`, `deliver.write_package`, `blocks.render_svg`, `assets.register_used`
+  (beserta loop `_USED` yang tak pernah terisi), dan konstanta `native.IMAGE_MAX_SIDE`, `ai.base.TASKS`,
+  `draft_scene.GATED`, `overlays.FADE_S`; impor dan variabel lokal yang tak terpakai (lint `ruff` AGENTS.md lulus).

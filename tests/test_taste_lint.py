@@ -121,17 +121,17 @@ def test_good_the_geoverum_store_agrees_with_the_geoverum_profile():
 
 
 def test_good_cli_lint_exit_codes_and_check_option(store, capsys):
-    assert cli.main(["taste", "geoverum", "--like", "size 84", "--why", "approved", "--check",
-                     "caption_style.size == 84", "--check", "caption_style.box_bg exists false"]) == 0
+    assert cli.main(["taste", "geoverum", "--like", "size 48", "--why", "approved", "--check",
+                     "caption_style.size == 48", "--check", "caption_style.box_bg exists false"]) == 0
     capsys.readouterr()
     assert cli.main(["taste", "geoverum", "--lint"]) == 0
     assert "2 of 2 checks ok" in capsys.readouterr().out
     assert cli.main(["taste", "geoverum", "--reject", "size 92", "--why", "too heavy", "--check",
-                     "caption_style.size == 92"]) == 0                          # the profile says 84: a mismatch
+                     "caption_style.size == 92"]) == 0                          # the profile says 48: a mismatch
     capsys.readouterr()
     assert cli.main(["taste", "geoverum", "--lint"]) == 1
     out = capsys.readouterr().out
-    assert "MISMATCH" in out and "profile has 84" in out and "1 of 3 checks" not in out and "2 of 3 checks ok" in out
+    assert "MISMATCH" in out and "profile has 48" in out and "1 of 3 checks" not in out and "2 of 3 checks ok" in out
 
 
 def test_bad_cli_taste_option_combinations_are_clean_errors(store, capsys):

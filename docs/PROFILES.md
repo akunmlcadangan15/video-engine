@@ -73,11 +73,11 @@ The format of a channel profile and the profiles that ship with the engine.
 
 - `default`: the engine values; every anti-slop rule warns and no channel gate is required.
 - `geoverum`: map-led geography shorts.
-  - Captions: white Inter Bold 84 px, no outline, optional backing box, soft shadow 0 3 px with blur 4 at 55 %, active-word emphasis and at most 3 words.
-    `fixed_y` 1417, `max_bottom_y` 1480, `auto_place` inside `place_band` 0.58-0.76 H, `clearance` 0. The effective timeline/profile, not dated taste notes, determines placement.
+  - Captions: white Inter Bold 48 px, no outline, optional backing box, soft shadow 0 3 px with blur 4 at 55 %, active-word emphasis and at most 4 words.
+    `fixed_y` 1366, `max_bottom_y` 1480, `auto_place` inside `place_band` 0.58-0.76 H, `clearance` 0. The effective timeline/profile, not dated taste notes, determines placement.
   - Audio: -14 LUFS and -1.5 dBTP (the default), optional `require_source` (unset by default so local or Epidemic Sound assets can be mixed; set `require_source = "epidemic"` to enforce A02), music ducked -12 dB under the voiceover with keyframed ramps.
     SFX cues: pin and figure `pop`, label and region `tick`, route and whip `whoosh` (peak on the move), `counter_tick` per counter step, title `impact`.
-  - Pacing: suggested draft segments of 3-20 s with free cuts; hard cuts, with a 0.35 s state dissolve between segments on one map; page turns and map morphs disabled (`page_turn = false`, `map_morph = false`). Channel creative direction separates identity, defaults and alternatives; these are not universal shot quotas.
+  - Pacing: suggested draft segments of 3-30 s with free cuts; hard cuts, with a 0.35 s state dissolve between segments on one map; page turns and map morphs disabled (`page_turn = false`, `map_morph = false`). Channel creative direction separates identity, defaults and alternatives; these are not universal shot quotas.
   - Camera: zoom up to 16x; drift of 0.06 per second between moves (counts as P01 motion).
   - Render: HyperFrames quality `high` at CRF 8; intermediates CRF 8 `medium`; final CRF 16 `medium`, 10-bit (High 10), capped at 40 Mb/s; map JPEG quality 95.
   - Gates: every style gate is on except C01 (cut rate), V01 (visual type) and D02 (exact duration).

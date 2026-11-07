@@ -4,8 +4,8 @@
   "liked": [
     {
       "what": "continuous multi-stop camera path across one map or dynamic cuts that follow narrative beats",
-      "why": "Preserves spatial orientation from macro continental views down to 16x micro-enclave close-ups while keeping visual momentum continuous across 96-100% of frames.",
-      "at": "2026-10-29T00:00:00+00:00",
+      "why": "Preserves spatial orientation from macro continental views down to 16x micro-enclave close-ups while keeping the camera moving on most frames (the re-measured reference Shorts move on a median 77% of frames, longest hold median 2.6 s).",
+      "at": "2026-11-07T00:00:00+00:00",
       "check": [
         {
           "key": "camera.max_zoom",
@@ -37,9 +37,9 @@
       ]
     },
     {
-      "what": "vibrant translucent region fill with glowing edge and dark charcoal banner boxes (#18181c) on dark satellite maps",
-      "why": "Dark satellite basemaps (median APCA luminance Y ~ 0.08) require luminous outer border glows (region_edge = 'glow') and 45% translucent fills for territorial separation, while reserving paper multiply grading strictly for bright archival surfaces (paper_min_y >= 0.52).",
-      "at": "2026-10-29T00:00:00+00:00",
+      "what": "vibrant near-solid region fill with glowing edge and dark charcoal banner boxes (#18181c) on dark satellite maps",
+      "why": "Dark satellite basemaps (median APCA luminance Y ~ 0.08) require luminous outer border glows (region_edge = 'glow') and 85% fills (the reference fills pass only 0.07-0.26 of the terrain texture) for territorial separation, while reserving paper multiply grading strictly for bright archival surfaces (paper_min_y >= 0.52).",
+      "at": "2026-11-07T00:00:00+00:00",
       "check": [
         {
           "key": "theme.region_edge",
@@ -49,7 +49,7 @@
         {
           "key": "theme.region_fill_opacity",
           "op": ">=",
-          "value": 0.4
+          "value": 0.8
         },
         {
           "key": "print.paper_min_y",
@@ -74,14 +74,14 @@
       "at": "2026-10-29T00:00:00+00:00"
     },
     {
-      "what": "caption Inter bold 84 px putih tanpa box/outline di y≈0,74 H (fixed_y 1417)",
-      "why": "Ukuran 84 px berwarna putih bersih (primary = 'FFFFFF', highlight_colour = 'FFFFFF' untuk menimpa warna kuning bawaan compiler Rust #FFD84A) menghasilkan keterbacaan optimal di layar ponsel dalam satu baris pendek (maksimal 3 kata) tanpa menutupi area fokus peta di zona tengah, sedangkan fixed_y = 1417 px menempatkan batas bawah teks tepat pada batas aman antarmuka vertikal (max_bottom_y = 1480 px).",
-      "at": "2026-10-29T00:00:00+00:00",
+      "what": "caption Inter bold 48 px putih tanpa box/outline di y≈0,71 H (fixed_y 1366)",
+      "why": "Ukuran 48 px (tinggi-x 24 px dan tinggi kapital 36 px pada 48 Shorts referensi) berwarna putih bersih (primary = 'FFFFFF', highlight_colour = 'FFFFFF' untuk menimpa warna kuning bawaan compiler Rust #FFD84A) terbaca di layar ponsel dalam satu baris pendek (maksimal 4 kata) tanpa menutupi area fokus peta, sedangkan fixed_y = 1366 px (pusat tinta caption referensi) menempatkan dasar kotak caption di 1402 px, di atas batas aman antarmuka vertikal (max_bottom_y = 1480 px).",
+      "at": "2026-11-07T00:00:00+00:00",
       "check": [
         {
           "key": "caption_style.size",
           "op": "==",
-          "value": 84
+          "value": 48
         },
         {
           "key": "caption_style.primary",
@@ -96,7 +96,7 @@
         {
           "key": "caption_style.fixed_y",
           "op": "==",
-          "value": 1417
+          "value": 1366
         },
         {
           "key": "caption_style.forbid_box",
@@ -164,14 +164,14 @@
   ],
   "rejected": [
     {
-      "what": "static frame or camera hold over 1.7 s",
-      "why": "Violates camera continuity gates P01 and P02; map viewports and documentary stills must maintain continuous drift or rhythmic micro-pulsing so the image never freezes.",
-      "at": "2026-10-29T00:00:00+00:00",
+      "what": "static camera hold over 3 s",
+      "why": "Violates camera continuity gate P01 (hold_warn_s = 3.0; the reference Shorts' longest hold is 2.6 s at the median and 3.6 s at p75); map viewports and documentary stills keep drifting, pulsing or animating an overlay so the image never freezes.",
+      "at": "2026-11-07T00:00:00+00:00",
       "check": [
         {
           "key": "gates.camera.hold_warn_s",
           "op": "<=",
-          "value": 1.7
+          "value": 3.0
         }
       ]
     },
@@ -194,7 +194,7 @@
     },
     {
       "what": "cluttered multi-line paragraphs or backing boxes on captions",
-      "why": "Multi-line caption blocks obscure the lower map focus zone and disrupt the rapid 2-3 word reading cadence.",
+      "why": "Multi-line caption blocks obscure the lower map focus zone and disrupt the rapid 2-4 word reading cadence.",
       "at": "2026-10-29T00:00:00+00:00"
     },
     {
@@ -210,15 +210,15 @@
       ]
     },
     {
-      "what": "caption 92/104 px atau caption dengan box latar",
-      "why": "Ukuran huruf 92 px dan 104 px terlalu dominan secara visual dan menutupi detail peta di zona fokus bawah, sehingga kandidat ukuran dikunci pada 84 px tanpa kotak latar bawaan.",
-      "at": "2026-10-29T00:00:00+00:00",
+      "what": "caption 84/92/104 px atau caption dengan box latar",
+      "why": "Ukuran huruf 84, 92, dan 104 px terlalu dominan secara visual (caption Shorts referensi sekitar 48 px) dan menutupi detail peta di zona fokus bawah, sehingga kandidat ukuran dikunci pada 48 px tanpa kotak latar bawaan.",
+      "at": "2026-11-07T00:00:00+00:00",
       "check": [
         {
           "key": "caption_style.ab_sizes",
           "op": "==",
           "value": [
-            84
+            48
           ]
         },
         {
