@@ -473,9 +473,10 @@ def test_good_geoverum_fly_values_reach_the_scene(project):
     d, tl = project(beats_doc)
     p = layout.apply_segment(tl.segments[2], tl, d)
     fly = layout.scene_layout(p)["fly"]
-    assert (fly["title_in"], fly["figure_in"], fly["label_in"], fly["out"]) == (2.6, 2.2, 3.0, 2.6)
+    assert (fly["title_in"], fly["figure_in"], fly["label_in"], fly["out"]) == (1.0, 1.1, 1.15, 1.15)   # no 3x fly-through
     assert (fly["title_opacity_in_s"], fly["figure_opacity_in_s"]) == (0.15, 0.40)
-    assert (fly["ease_in"], fly["ease_out"]) == ("power2.inOut", "power2.out")
+    assert (fly["ease_in"], fly["ease_out"]) == ("power3.out", "power2.out")
+    assert fly == {k: v for k, v in profiles.load("geoverum").data.layout.fly.model_dump().items() if k in fly}
 
 
 def test_good_layout_without_fly_keeps_its_hash(tmp_path, monkeypatch):

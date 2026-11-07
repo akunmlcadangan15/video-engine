@@ -44,7 +44,8 @@ def test_good_label_plate_hugs_the_text_in_theme_style():
     assert short.size == long.size == (600, 110)                       # the PNG keeps the overlay box size
     (x0, y0, x1, y1), (lx0, _, lx1, _) = short.getchannel("A").getbbox(), long.getchannel("A").getbbox()
     assert x1 - x0 < 260 and x1 - x0 < lx1 - lx0                         # plate width follows the text
-    assert y1 - y0 < 0.8 * 110 and abs((x0 + x1) / 2 - 300) <= 1          # height follows the font, centred in the box
+    # height follows the font (text plus LABEL_PAD 0.20 + 0.24 em), inside the 110 px box, centred in it
+    assert y1 - y0 < 110 and y1 - y0 <= 1.6 * th.label_box_px and abs((x0 + x1) / 2 - 300) <= 1
     fill = overlays._hex(th.label_box_colour)
     assert short.getpixel((x0 + 3, (y0 + y1) // 2)) == fill               # opaque theme colour (label_box_colour)
     assert overlays.fit(Overlay(**LABEL), max_px=th.label_box_px).title_px <= th.label_box_px   # font capped by theme
