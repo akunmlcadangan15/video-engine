@@ -56,6 +56,17 @@ segmen landscape 16:9 yang dikeluarkan dari statistik. Nilai profil di kolom kan
 | Whip pan | durasi median 0,43 – 0,57 s | `[theme] whip_s = 0.45` (cocok) |
 | Watermark | tidak ada | `[watermark]` "Geoverum" tetap dipertahankan sebagai identitas channel |
 
+### Gaya Teks & Urutan Kemunculan (pengukuran 2026-11)
+
+| Elemen | Referensi (frame demi frame) | Nilai Profil `geoverum` |
+|---|---|---|
+| Title | ±104 px saat muncul ("Kiribati": tinggi tinta 76 px, lebar 37% W), 0,2 s setelah katanya diucapkan, huruf renggang lalu merapat; lalu ikut membesar bersama zoom kamera | `[type] title_px = 104`, `title_font = "title"`, `title_entrance = "track"`, `title_anchor = "region"` |
+| Akronim / pernyataan | "NAT": huruf muncul satu per satu ±4 frame; "ENEMIES": diketik, keluar dengan huruf merenggang | `title_entrance = "track"` (keluar: huruf merenggang pada exit layout) |
+| Pil label | "Pan American Highway": pil tumbuh dari kiri mengikuti teks yang diketik; "North Korea": pil merah tua (#691111) di atas wilayah merah, huruf kecil-besar, miring ±3° | `label_box_entrance = "type"`, `label_box_lc = 80`, `label_box_case = "none"`, `label_box_tilt_deg = -3.0` |
+| Angka | "40,000,000": kuning, ±91–110 px, tanpa membal | `figure_px = 96`, `figure_accent = "#FFD417"`, `figure_pop = "back"` |
+| Pin | merah terang #E61129, titik putih, bayangan | `pin_colour = "#E61129"` |
+| Isian wilayah | jenuh (C 0,17–0,20) di peta satelit | `vivid_chroma_scale = 1.8` (peta kertas tetap palet redup) |
+
 ## 2. Prinsip Dasar Arsitektur Visual
 
 - **Tumpang Tindih Terencana Diizinkan (`[reference_style.overlap]`)**: Elemen visual diperbolehkan saling bertumpuk mengikuti hierarki komposisi yang direncanakan (misalnya caption berada di atas banner wilayah, angka statistik utama melintas di atas batas poligon, atau ikon cutout menutup sebagian garis rute). Satu-satunya syarat teknis yang diberlakukan adalah **keterbacaan (`rule = "readability"`)**: teks di lapisan depan harus mempertahankan kontras luminansi yang memadai terhadap latar di belakangnya. Daftar larangan tumpang tindih (`forbid = []`) sengaja dikosongkan.
@@ -81,7 +92,7 @@ segmen landscape 16:9 yang dikeluarkan dari statistik. Nilai profil di kolom kan
   4. `handwritten`: Catatan bertuliskan tangan berwarna kuning sinyal (`#FFD417`) atau putih yang dipadukan dengan panah lengkung gambar-tangan (`handwritten_arrow = true`).
   5. `slanted_route`: Label yang dimiringkan sejajar dengan sudut kemiringan garis rute atau garis lintang.
 - **Stempel Miring (`stamp = true`)**: Kotak teks berbingkai miring berwarna kontras tinggi untuk penegasan julukan wilayah.
-- **Judul Sinematik Raksasa (`title_cinematic = true`)**: Judul berukuran besar (`title_px = 112`) dengan pendaran cahaya lembut (`title_glow_px = 28`) yang meluncur masuk di atas wilayah fokus.
+- **Judul Sinematik Raksasa (`title_cinematic = true`)**: Judul Archivo Black (`title_font = "title"`, `title_px = 104`) putih tanpa outline dengan pendaran tipis warna entitas (`title_glow_px = 18`) yang masuk dengan huruf merapat (`title_entrance = "track"`) tepat di atas wilayahnya (`title_anchor = "region"`).
 - **Transformasi Ejaan Judul (`title_morph = true`)**: Animasi perubahan huruf demi huruf pada judul untuk memperlihatkan evolusi etimologi atau perubahan status nama wilayah.
 - **Coretan Rumus Perbandingan (`equation_slash = true`)**: Menampilkan persamaan dua istilah geografis di mana tanda sama dengan (`=`) dicoret secara dinamis dengan garis miring merah menjadi tidak sama dengan (`≠`).
 

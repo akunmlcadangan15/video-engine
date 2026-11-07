@@ -11,6 +11,17 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ### Ditambahkan
 
+- **Opsi gaya tema baru** (`[theme]`, tidak masuk hash profil saat bernilai default, jadi tampilan engine tidak
+  berubah): `vivid_chroma_scale`/`vivid_l` (warna entitas jenuh dengan hue tetap hanya di peta satelit gelap;
+  `entities.vivid_colour`, `entities.scene_colours`; gate E01 membandingkan fill dengan warna scene),
+  `title_entrance = "track"` (huruf title merapat dengan lebar tetap; keluar merenggang pada exit layout),
+  `title_anchor = "region"` (title scene tanpa beats masuk di atas wilayah `title_entity`),
+  `label_box_entrance = "type"` + `label_type_cps` (pil tumbuh bersama teks yang diketik), `label_box_case`,
+  `label_box_tilt_deg`, `figure_pop = "back"` (pop 0,45 s tanpa overshoot elastis; kembaran Python
+  `hyperframes.FIGURE_POP_S`), dan `figure_accent` (warna angka tanpa entitas). Pengujian:
+  `tests/test_geoverum_style.py` (termasuk render Chrome: lebar title konstan saat tracking-in, pil terketik,
+  angka tidak keluar frame).
+
 - **Opsi gaya referensi `[reference_style.*]` di profil Geoverum** (portrait + landscape), hasil bedah
   frame-per-frame sembilan video referensi 02–10 (17.792 frame dilihat seluruhnya; lihat
   `docs/REFERENCE-STYLE.md`). Opsi mencakup: isian hatch per fase dan fill dua-lapis, label ketikan/banner/
@@ -150,6 +161,14 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ### Diubah
 
+- **Gaya teks dan warna Geoverum** dari analisis frame demi frame Shorts referensi: title Archivo Black 104 px
+  (sebelumnya Inter Bold 112) putih murni tanpa outline (`[legibility] light_c = 0`, `text_outline_px = 0`, bayangan
+  lembut 4/14/0,55, glow entitas 18), masuk dengan tracking-in di atas wilayahnya; angka 96 px (sebelumnya 156)
+  kuning `#FFD417` dengan pop `back`; pil label versi gelap warna entitas (`label_box_lc = 80`), 56 px, huruf
+  kecil-besar, miring −3°, tumbuh bersama teks; pin `#E61129` (juga `signal_colors.pin`); warna wilayah jenuh di
+  peta satelit (`vivid_chroma_scale = 1.8`); `[layout.fly]` 1,0/1,1/1,15 dengan `power3.out` (sebelumnya 2,6/2,2/3,0)
+  dan `head_drop_s = 0.3`; tahun pada peta gelap putih. `creative.md` mendapat aturan urutan kemunculan
+  (wilayah → pin → label → title/angka pada katanya, maksimal dua elemen masuk bersamaan); taste 34/34 cek ok.
 - **Profil `geoverum` dikalibrasi ulang dari bedah forensik 48 Shorts referensi** (5 kompilasi 854×480, 30 fps;
   tabel lengkap di `docs/REFERENCE-STYLE.md`, "Pengukuran Ulang Referensi"). Caption portrait kini Inter Bold
   48 px (`size`/`ab_sizes`, sebelumnya 84; tinggi-x terukur 24 px), `fixed_y = 1366` (pusat tinta referensi,

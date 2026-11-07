@@ -160,6 +160,53 @@
           "value": -1.5
         }
       ]
+    },
+    {
+      "what": "title Archivo Black 104 px putih yang masuk dengan tracking-in di atas regionnya, pil label yang tumbuh mengikuti teks yang diketik, angka kuning sinyal, dan isian region jenuh di peta satelit",
+      "why": "Pada Shorts referensi, title muncul selebar ±37% layar (±104 px) 0,2 s setelah katanya diucapkan dengan huruf yang merapat, pil tumbuh bersama teksnya, angka berwarna kuning, dan wilayah diwarnai jenuh (chroma 0,17–0,20); peta kertas tetap memakai palet redup agar tidak bertabrakan dengan grading multiply.",
+      "at": "2026-11-07T00:00:00+00:00",
+      "check": [
+        {
+          "key": "theme.title_font",
+          "op": "==",
+          "value": "title"
+        },
+        {
+          "key": "theme.title_px",
+          "op": "==",
+          "value": 104.0
+        },
+        {
+          "key": "theme.title_entrance",
+          "op": "==",
+          "value": "track"
+        },
+        {
+          "key": "theme.title_anchor",
+          "op": "==",
+          "value": "region"
+        },
+        {
+          "key": "theme.label_box_entrance",
+          "op": "==",
+          "value": "type"
+        },
+        {
+          "key": "theme.figure_accent",
+          "op": "==",
+          "value": "#FFD417"
+        },
+        {
+          "key": "theme.vivid_chroma_scale",
+          "op": ">=",
+          "value": 1.5
+        },
+        {
+          "key": "theme.pin_colour",
+          "op": "==",
+          "value": "#E61129"
+        }
+      ]
     }
   ],
   "rejected": [
@@ -237,6 +284,33 @@
       "what": "peta satelit pecah/blur saat zoom dalam atau tilt",
       "why": "Aset raster peta dan tekstur bendera harus mempertahankan kepadatan minimal 1 texel per piksel layar pada puncak zoom (gate M02) agar detail garis pantai dan perbatasan tetap tajam.",
       "at": "2026-10-29T00:00:00+00:00"
+    },
+    {
+      "what": "title krem tipis dengan outline yang lebih kecil dari angka, efek masuk yang berbeda-beda, dan angka yang bounce elastis hingga meluber keluar frame",
+      "why": "Render geoverum sebelumnya memakai Inter Bold 112 px krem dengan outline 2 px di bawah angka 156 px, setiap elemen masuk dengan efeknya sendiri tanpa urutan baca, dan angka yang membesar elastis dari skala 0 melewati lebar frame pada 0,8–0,9 s.",
+      "at": "2026-11-07T00:00:00+00:00",
+      "check": [
+        {
+          "key": "theme.text_outline_px",
+          "op": "==",
+          "value": 0.0
+        },
+        {
+          "key": "theme.figure_px",
+          "op": "<",
+          "value": 104.0
+        },
+        {
+          "key": "theme.figure_pop",
+          "op": "==",
+          "value": "back"
+        },
+        {
+          "key": "layout.fly.title_in",
+          "op": "==",
+          "value": 1.0
+        }
+      ]
     }
   ],
   "recent": {

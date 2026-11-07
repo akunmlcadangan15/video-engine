@@ -494,8 +494,8 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 - Fly-through (`[layout.fly]`, optional): the title, figures, pin labels and area labels enter by scaling from
   `title_in` / `figure_in` / `label_in` to 1 over the span's enter time (`ease_in`) with opacity over
   `<kind>_opacity_in_s` (span enter time when unset), and exit by scaling to `out` with opacity to 0 over the exit
-  time (`ease_out`). Absent = opacity fades. Geoverum: 2.6 / 2.2 / 3.0 -> 1 in 0.33 s `power2.inOut`, title opacity 0.15 s,
-  figure opacity 0.40 s, exit 1 -> 2.6 in 0.33 s `power2.out`. R63, caption clearance and B01 skip a text while it flies
+  time (`ease_out`). Absent = opacity fades. Geoverum: 1.0 / 1.1 / 1.15 -> 1 in 0.33 s `power3.out` (the title enters by tracking-in, theme
+  `title_entrance`), title opacity 0.15 s, figure opacity 0.40 s, exit 1 -> 1.15 in 0.33 s `power2.out`. R63, caption clearance and B01 skip a text while it flies
   (inside an entry or an exit of any of its spans).
 - Output: the planner writes `camera_path`, element `at_frame`s and the scene `layout` block (spans, positions,
   label tracks, area labels, region steps); the template applies it after the main timeline.

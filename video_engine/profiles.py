@@ -332,6 +332,23 @@ class Theme(_Strict):
     year_box_ink: str = "#ffffff"                     # year text on year_box_colour
     year_box_px: float | None = Field(None, ge=20, le=320)   # year size on year_box_colour (None = figure_px)
     year_box_texture: str | None = None               # vendor/textures file multiplied over year_box_colour
+    # Style options below are left out of the dump (and so of the profile hash) at their defaults, the engine look.
+    # Dark satellite maps (no [print], or [print] classifies the map "dark"): entity colours at this x chroma, same hue,
+    # OKLCH L mapped from entities.VIVID_SOURCE_L onto vivid_l (entities.vivid_colour); None = palette colours everywhere
+    vivid_chroma_scale: float | None = Field(None, gt=1, le=4, exclude_if=lambda v: v is None)
+    vivid_l: tuple[float, float] = Field((0.44, 0.78), exclude_if=lambda v: tuple(v) == (0.44, 0.78))
+    title_entrance: Literal["fade", "track"] = Field("fade", exclude_if=lambda v: v == "fade")   # track: letters close
+    #                                                 in from TITLE_TRACK_EM (tracking-in) and track out on a layout exit
+    title_anchor: Literal["top", "region"] = Field("top", exclude_if=lambda v: v == "top")   # region: a scene title
+    #                                                 enters above its title_entity's region (scenes without beats)
+    label_box_entrance: Literal["pop", "type"] = Field("pop", exclude_if=lambda v: v == "pop")   # type: a box label
+    #                                                 grows left to right with its text at label_type_cps (no elastic)
+    label_type_cps: float = Field(20.0, ge=5, le=80, exclude_if=lambda v: v == 20.0)   # characters per second
+    label_box_case: Literal["upper", "none"] = Field("upper", exclude_if=lambda v: v == "upper")   # box label case
+    label_box_tilt_deg: float = Field(0.0, ge=-8, le=8, exclude_if=lambda v: v == 0.0)   # box labels rotated (deg)
+    figure_pop: Literal["elastic", "back"] = Field("elastic", exclude_if=lambda v: v == "elastic")   # entry of a
+    #                                                 non-counter figure: elastic 0.9 s from scale 0, or back 0.45 s
+    figure_accent: str | None = Field(None, exclude_if=lambda v: v is None)   # number figures without an entity
     entities: dict[str, str] = {}                     # entity -> "#rrggbb" (resolved into the scene, not in `theme`)
     palette: list[str] = Field(min_length=1)          # colours for entities missing from `entities`, in order
 
@@ -339,9 +356,12 @@ class Theme(_Strict):
     def _hex(self):
         if self.block_l_min > self.block_l_max:
             raise ValueError("theme block_l_min must be <= block_l_max")
+        if not 0.2 <= self.vivid_l[0] < self.vivid_l[1] <= 0.95:
+            raise ValueError(f"theme vivid_l {self.vivid_l}: need 0.2 <= low < high <= 0.95 (OKLCH L)")
         for c in [*self.entities.values(), *self.palette, self.pin_colour, self.route_colour, self.text_outline_colour,
                   self.block_edge_colour, self.label_box_colour, self.year_box_ink,
-                  *([self.year_box_colour] if self.year_box_colour else [])]:
+                  *([self.year_box_colour] if self.year_box_colour else []),
+                  *([self.figure_accent] if self.figure_accent else [])]:
             if not re.fullmatch(r"#[0-9a-fA-F]{6}", c):
                 raise ValueError(f"theme colour {c!r} must be #rrggbb")
         if self.year_box_texture and not self.year_box_colour:

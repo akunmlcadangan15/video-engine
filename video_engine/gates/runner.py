@@ -55,7 +55,7 @@ def _run(tl: Timeline, project_dir: Path, words, workdir: Path, dom: bool, snaps
         with rep.timed("layer2_dom"):
             fs, dom_res = layer2.r63_dom(tl, project_dir, workdir, dom_snaps)
             rep.extend(fs)
-            rep.extend(layer2.e01_entity_colours(tl, dom_res))
+            rep.extend(layer2.e01_entity_colours(tl, dom_res, project_dir))
             t64 = time.perf_counter()
             rep.extend(layer2.r64_legibility(tl, dom_res))
             rep.subtimings["layer2_dom"] = layer2.dom_timing(dom_res, time.perf_counter() - t64)

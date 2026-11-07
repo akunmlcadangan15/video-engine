@@ -19,7 +19,7 @@ z3 = [64, 1100, 888, 1248]    # Optional reference zone [x0, y0, x1, y1] above t
 group_gap = 48                # Minimum vertical/horizontal separation in pixels between distinct visual groups
 
 [layout.sizes]
-title = 112                   # Display title height in pixels (matches [type] title_px)
+title = 104                   # Display title height in pixels (matches [type] title_px)
 year = 128                    # Standalone chronological year height in pixels inside layout beats
 time = 56                     # Secondary time/date subtitle height in pixels
 pin_label = 52                # Standard pin label height in pixels (matches [type] pin_label_px)
@@ -40,6 +40,7 @@ exit_s = 0.33                 # Duration in seconds for scale-out exit animation
 exit_max_s = 0.33             # L10 ceiling; must be at least exit_s so the profile's own exit is legal
 stagger_s = 0.2               # Stagger delay in seconds between sequential elements entering in the same beat
 settle_s = 0.8                # Settling window in seconds after camera arrival before secondary labels pop in
+head_drop_s = 0.3             # Teardrop pin head drop-in in seconds (engine default 0.6): a short landing, then its label
 min_hold_s = 2.0              # Minimum duration in seconds a text element remains readable on screen before exiting
 chars_per_s = 20              # Character reveal rate per second for typewriter-style labels
 
@@ -56,11 +57,11 @@ dim_alpha = 0.10              # Background darkening alpha applied behind high-d
 caption_ground = 0.10         # Subtle lower-band gradient grounding opacity behind burned-in captions
 
 [layout.fly]                  # 3D-style perspective scale-through entrance and exit parameters for map text
-title_in = 2.6                # Initial scale multiplier from which display titles fly inward toward 1.0x
-figure_in = 2.2               # Initial scale multiplier from which hero numbers fly inward toward 1.0x
-label_in = 3.0                # Initial scale multiplier from which map labels fly inward toward 1.0x
-out = 2.6                     # Terminal scale multiplier toward which exiting text scales outward
+title_in = 1.0                # Titles do not fly in by scale: they enter by tracking-in ([theme] title_entrance)
+figure_in = 1.1               # Hero numbers settle from 1.1x to 1.0x
+label_in = 1.15               # Map labels settle from 1.15x to 1.0x (no 3x fly-through)
+out = 1.15                    # Exiting text grows to 1.15x while it fades (titles also track out)
 title_opacity_in_s = 0.15     # Opacity fade-in duration in seconds at the start of a title fly-in
 figure_opacity_in_s = 0.40    # Opacity fade-in duration in seconds at the start of a hero number fly-in
-ease_in = "power2.inOut"      # GSAP easing function for fly-in scale animations
+ease_in = "power3.out"        # GSAP easing of every entry: one ease-out family for all texts
 ease_out = "power2.out"       # GSAP easing function for fly-out scale animations

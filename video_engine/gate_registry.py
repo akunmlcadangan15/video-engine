@@ -135,7 +135,8 @@ GATES: tuple[Gate, ...] = (
        "clearance or are moved automatically.",
        "dom"),
     _t("E01", "Entity colours",
-       "Every region fill painted in the probe equals its entity colour; two entities sharing a colour warn.",
+       "Every region fill painted in the probe equals its entity colour as the scene paints it (vivid on a dark "
+       "map when theme vivid_chroma_scale is set); two entities sharing a colour warn.",
        "dom"),
     _t("R64", "Text legibility",
        "Adaptive map text reaches its APCA contrast target on the hard-case background; lines and pins reach "

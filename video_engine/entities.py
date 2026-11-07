@@ -2,8 +2,12 @@
 palette colour in order of first appearance in the timeline (segment order; in a segment regions, title, figures)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from . import profiles
 from .timeline import HYPERFRAMES, Timeline
+
+VIVID_SOURCE_L = (0.38, 0.84)   # OKLCH L band of a muted palette (tests/test_geoverum_profile.py), mapped onto vivid_l
 
 
 def names(tl: Timeline) -> list[str]:
@@ -37,6 +41,34 @@ def colours(tl: Timeline) -> dict[str, str]:
             k += 1
         out[e] = pick
     return out
+
+
+def vivid_colour(colour: str, th) -> str:
+    """An entity colour on a dark satellite map (theme vivid_chroma_scale set): same hue, chroma x vivid_chroma_scale
+    (gamut-mapped by legibility.oklch_hex), OKLCH L mapped linearly from VIVID_SOURCE_L onto th.vivid_l and clamped.
+    Scaling keeps the palette's chroma and lightness differences, so distinct palette colours stay distinct."""
+    from . import legibility
+    L, C, h = legibility.rgb_oklch(legibility.hex_rgb(colour))
+    (s0, s1), (lo, hi) = VIVID_SOURCE_L, th.vivid_l
+    return legibility.oklch_hex(min(max(lo + (L - s0) * (hi - lo) / (s1 - s0), lo), hi), C * th.vivid_chroma_scale, h)
+
+
+def dark_map(seg, tl: Timeline, project_dir) -> bool:
+    """Whether seg's map is a dark satellite surface: the profile has no [print], or [print] classifies it "dark"."""
+    prof = profiles.of(tl)
+    if prof.print is None:
+        return True
+    from . import printstyle
+    return printstyle.surface(Path(project_dir) / seg.gsap_scene_config.map_asset, prof.print) == "dark"
+
+
+def scene_colours(seg, tl: Timeline, project_dir) -> dict[str, str]:
+    """entity -> colour as seg's HyperFrames scene paints it: `colours`, made vivid on a dark map when the theme sets
+    vivid_chroma_scale (paper maps keep the palette colours). Gate E01 compares painted fills with these."""
+    col, th = colours(tl), profiles.of(tl).theme
+    if th.vivid_chroma_scale and dark_map(seg, tl, project_dir):
+        return {e: vivid_colour(c, th) for e, c in col.items()}
+    return col
 
 
 def block_colour(colour: str, theme: dict) -> str:

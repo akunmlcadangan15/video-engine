@@ -152,6 +152,11 @@ Why the engine is designed the way it is.
   The failure report has its own name so a reader of `build_report.json` always gets the report of the published file, and the API fails on every fail finding (raise, or `ok=False` on the return path) so a library caller cannot publish what the CLI rejects.
 - Silence is gated on the final file because ducking, loudnorm and the AAC encode change the level of quiet passages after the mix.
 - A fixed caption y is a Python override placed last, so project `y_overrides` still win and the Rust compiler keeps one placement mechanism.
+- Geoverum titles track in (letters close in from 0.35 em at the settled width) above their region instead of fading in on a fixed top line, because the reference titles appear about 0.2 s after their spoken word next to the place they name, and a letter-level entry reads as one deliberate event where a whole-word scale or bounce read as random.
+    The title keeps its settled width on every entry frame, so the entry never crosses the safe area that the settled title respects.
+- Entity colours are vivid only on dark satellite maps (`vivid_chroma_scale`): the reference fills there carry chroma 0.17-0.20, while a muted fill at 85 % opacity read as a flat patch; on paper maps the muted palette multiplies into the paper as a print would, so it stays.
+    Scaling chroma (not raising it to one floor) keeps the palette's differences, so the vivid twins stay at least 0.07 apart in OKLab like the palette.
+- Numbers pop with a short back ease from 0.6 rather than an elastic bounce from 0, because the elastic overshoot of a wide number crossed the frame edge.
 - Geoverum captions (Inter Bold 48, the reference Shorts' caption size) are centred at `fixed_y = 1366` (the reference ink centre) and end at or above `max_bottom_y = 1480` because the YouTube Shorts lower UI overlay covers the bottom of the 1080x1920 frame below y 1480;
     the limit is a profile key enforced by gate Z01 so a later `fixed_y`, project override or automatic placement within `place_band = [0.58, 0.76]` cannot move a caption below the safe boundary.
   Z01 checks the same caption box as R62/R63 and placement; a libass render test keeps that box around the real ink, so the gate does not need to read pixels.

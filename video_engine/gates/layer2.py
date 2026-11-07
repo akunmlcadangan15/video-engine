@@ -791,8 +791,9 @@ def _rgb_hex(css: str) -> str | None:
     return rgb_to_hex(tuple(int(v) for v in m.groups())) if m else None
 
 
-def e01_entity_colours(tl: Timeline, dom: dict[int, dict]) -> list[Finding]:
-    """E01: every region fill the DOM probe painted shows its entity's one colour (entities.colours; a block face its
+def e01_entity_colours(tl: Timeline, dom: dict[int, dict], project_dir: Path | None = None) -> list[Finding]:
+    """E01: every region fill the DOM probe painted shows its entity's one colour (entities.colours, or with project_dir
+    the colour that segment's scene paints, entities.scene_colours: vivid on a dark map; a block face its
     entities.block_colour) exactly; two entities never share a colour. Text colour is not checked (R64 owns it). No
     finding when no region is painted."""
     col, theme = entities.colours(tl), profiles.of(tl).render_values("hf")
@@ -805,6 +806,8 @@ def e01_entity_colours(tl: Timeline, dom: dict[int, dict]) -> list[Finding]:
     n = 0
     for seg, res in sorted(dom.items()):
         seen = set()
+        sc_col = (entities.scene_colours(tl.segments[seg], tl, project_dir)
+                  if project_dir is not None and tl.segments[seg].gsap_scene_config else col)
         for item in res.get("times", [])[:1]:
             for p in item.get("paints", []):
                 if p["kind"] not in ("fill", "block"):
@@ -814,7 +817,7 @@ def e01_entity_colours(tl: Timeline, dom: dict[int, dict]) -> list[Finding]:
                     continue
                 seen.add(key)
                 n += 1
-                want, got = col.get(p["entity"]), _rgb_hex(p["color"])
+                want, got = sc_col.get(p["entity"]), _rgb_hex(p["color"])
                 if want and p["kind"] == "block":
                     want = entities.block_colour(want, theme)
                 if got != want:

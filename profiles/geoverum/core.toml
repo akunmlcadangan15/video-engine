@@ -13,7 +13,7 @@ pin_height_pct = 4.5          # Height of a pin flag badge expressed as a percen
 
 # Canonical typographic scale across all rendering surfaces (matched against [theme] and [print]).
 [type]
-title_px = 112                # Primary display title height in pixels on dark satellite basemaps
+title_px = 104                # Primary display title size in pixels on dark satellite basemaps (reference titles enter at ~104 px, 37% of the width)
 title_px_paper = 88           # Primary display title height in pixels on bright archival or parchment surfaces
 pin_label_px = 52             # Standard text height in pixels for map pin and place labels
 
@@ -60,26 +60,36 @@ region_glow_alpha = 0.95      # Opacity of the outer polygon border glow
 region_style = "tint"         # Renders regions as flat translucent color overlays with glowing edges rather than 3D extruded blocks
 label_style = "plain"         # Default map label style; individual pins, regions, or figures can opt into a dark banner pill via box = true
 label_box_colour = "#18181c"  # Dark charcoal background color (#18181c) for banner-style text pills and callout tags
-label_box_px = 46             # Font size in pixels for text rendered inside a dark banner pill
+label_box_px = 56             # Font size in pixels for text rendered inside a banner pill (reference pill text ~52-71 px)
 label_box_radius_px = 4       # Corner radius in pixels for dark banner pills
-label_pop_s = 0.45            # Pop-in animation duration in seconds for map labels
+label_pop_s = 0.45            # Pop-in animation duration in seconds for box labels when label_box_entrance is "pop"
+label_box_lc = 80             # Entity-coloured pills darken until white text reaches APCA Lc 80 (reference: deep red #691111 pill on a red region)
+label_box_entrance = "type"   # Box labels grow left to right with their typed text (reference "Pan American Highway" pill), no elastic pop
+label_type_cps = 20.0         # Typing speed of box labels in characters per second (entry clamped to 0.25-1.0 s)
+label_box_case = "none"       # Box labels keep the written case ("North Korea"), not forced uppercase
+label_box_tilt_deg = -3.0     # Box labels rotated -3 degrees, as the reference pills
 year_box_colour = "#f6efe0"   # Warm cream background color for historical year badges on archival scenes
 year_box_ink = "#2a231d"      # Dark espresso ink color for digits inside a historical year badge
 year_box_px = 88              # Font size in pixels for boxed historical year badges
 year_box_texture = "grain-paper002.jpg" # Subtle paper grain texture overlaid on boxed historical year badges
 pin_style = "teardrop"        # Map marker geometry: red teardrop pin with an inner white dot, drop shadow, and bounce entrance animation
-pin_colour = "#c4302a"        # Crimson red fill color for map pins
+pin_colour = "#E61129"        # Signal red fill color for map pins (reference pin OKLCH 0.587 / 0.232 / 25)
 label_font = "inter"          # Default typeface family for map labels on dark satellite imagery ([print] overrides this on archival paper surfaces)
-title_font = "inter"          # Default typeface family for display titles and numeric counters on dark satellite imagery
-title_px = 112                # Display title font size in pixels
-title_glow_px = 28            # Soft ambient glow radius in pixels behind display titles and hero figures
-text_outline_px = 2           # Subtle dark stroke width in pixels around map labels for separation over high-frequency satellite terrain
+title_font = "title"          # Archivo Black (vendor/fonts) for display titles and numeric counters on dark satellite imagery: the heavy sans of the reference titles
+title_px = 104                # Display title font size in pixels (matches [type] title_px)
+title_entrance = "track"      # Titles enter with their letters closing in (tracking-in) and track out on a layout exit, as the reference titles
+title_anchor = "region"       # A scene title (without beats) enters above its title_entity's region instead of the fixed top line
+title_glow_px = 18            # Soft glow radius in pixels in the title entity's colour behind display titles
+text_outline_px = 0           # No hard outline around titles and pin labels (the reference uses a soft shadow; [legibility] adds halos only where contrast fails)
 text_outline_colour = "#101418" # Deep slate stroke color for map text outlines
 text_outline_alpha = 0.80     # Opacity of the map text outline stroke
-text_shadow_dy_px = 3         # Vertical drop-shadow offset in pixels for map labels and titles
-text_shadow_blur_px = 8       # Gaussian blur radius in pixels for map text drop shadows
-text_shadow_alpha = 0.65      # Opacity of map text drop shadows
-figure_px = 156               # Default font size in pixels for standalone hero numbers and animated counters
+text_shadow_dy_px = 4         # Vertical drop-shadow offset in pixels for map labels and titles
+text_shadow_blur_px = 14      # Gaussian blur radius in pixels for map text drop shadows (soft shadow instead of an outline)
+text_shadow_alpha = 0.55      # Opacity of map text drop shadows
+figure_px = 96                # Font size in pixels for standalone numbers and counters (reference counters ~91-110 px; below title_px so the title leads)
+figure_pop = "back"           # Non-counter figures pop in 0.45 s from 0.6 scale (back.out) instead of a 0.9 s elastic bounce from 0 that overflowed the frame
+figure_accent = "#FFD417"     # Numbers without an entity in signal yellow (reference "40,000,000"); years keep [print] year_dark_colour
+vivid_chroma_scale = 1.8      # Dark satellite maps: entity colours at 1.8x chroma, same hue, L mapped onto 0.44-0.78 (reference fills C 0.17-0.20); paper maps keep the muted palette
 counter_s = 1.2               # Default duration in seconds for numeric count-up animations
 # Fallback OKLCH-balanced categorical palette (lightness L 0.40-0.82, chroma C <= 0.12) assigned sequentially
 # to map entities that do not have a fixed entry in [theme.entities]. Adjacent colors maximize hue separation.
@@ -249,7 +259,7 @@ year_big = true               # Displays historical epoch years as large bold ty
 bubble_one_word = true        # Favors ultra-concise 1-4 word exclamations inside comic speech bubbles
 typing_chars_per_s = 20       # Synchronizes typewriter label speed across unified style presets (20 characters/second)
 signal_colors_locked = true   # Locks semantic signal colors to fixed hex values for instant cross-video recognition
-signal_colors = { distance = "#FFD417", usa = "#00B0FF", pin = "#C4302A", text = "#FFFFFF", conflict_red = "#D81E1E", alliance_blue = "#1868E8", empire_orange = "#F57C00", safe_green = "#28A828", empire_purple = "#6828E8" }
+signal_colors = { distance = "#FFD417", usa = "#00B0FF", pin = "#E61129", text = "#FFFFFF", conflict_red = "#D81E1E", alliance_blue = "#1868E8", empire_orange = "#F57C00", safe_green = "#28A828", empire_purple = "#6828E8" }
 
 # Encoding and rasterization quality settings for intermediate segments and final delivery masters.
 [render]

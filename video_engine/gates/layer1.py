@@ -115,7 +115,8 @@ def t02_integrity(tl: Timeline, project_dir: Path) -> list[Finding]:
             if sc.title_entity and not sc.title:
                 out.append(Finding("T02", "fail", f"title_entity '{sc.title_entity}' without a title", s.seg_index))
             for f in sc.figures or []:
-                end = hyperframes.figure_end_frame(f, tl.settings.fps, profiles.of(tl).theme.counter_s)
+                th = profiles.of(tl).theme
+                end = hyperframes.figure_end_frame(f, tl.settings.fps, th.counter_s, th.figure_pop)
                 if end > s.n_frames - 1:
                     out.append(Finding("T02", "fail", f"figure {f.value:g} at_frame {f.at_frame}: entrance ends at frame "
                                        f"{end}, after the segment's last frame {s.n_frames - 1}", s.seg_index))

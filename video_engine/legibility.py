@@ -138,7 +138,8 @@ def elements(scene: dict) -> list[dict]:
     for i, f in enumerate(scene.get("figures") or []):
         if box or (f.get("box") and th.get("label_style") != "box"):   # theme boxes, or a P10 opt-in box
             continue
-        settle = 0.9 if f["motion"] == "bounce" else 0.2
+        from .hyperframes import FIGURE_POP_S   # the template's entry length of a bouncing figure
+        settle = FIGURE_POP_S[th.get("figure_pop", "elastic")] if f["motion"] == "bounce" else 0.2
         out.append({"id": f"figure:{i}", "kind": "figure", "start": f["at_frame"] / fps + settle, "end": end,
                     "entity": f.get("entity"), "colour": f.get("entity_colour"), "px": th["figure_px"]})
         if pr:
@@ -147,6 +148,8 @@ def elements(scene: dict) -> list[dict]:
             out[-1].update({"colour": None, "px": P.get("px", th["figure_px"]),
                             "ink": mix(pr["ink"], scene["legibility"]["paper_colour"], 1 - pr["time_alpha"]) if time
                             else pr["ink"], "light": pr["year_dark_colour"]})
+        if f.get("accent"):                        # theme figure_accent: the number keeps its accent as light ink
+            out[-1]["light"] = f["accent"]
     if lay := scene.get("layout"):                  # beats scenes: area labels, in their region's entity colour
         regs = scene.get("regions") or []
         for a in lay.get("areas") or []:

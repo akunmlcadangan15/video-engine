@@ -30,9 +30,9 @@ entity_text_l_max = 0.36      # Maximum OKLCH lightness for entity-colored place
 entity_text_c_scale = 0.8     # Chroma scaling factor applied when deriving text ink from an entity's polygon fill color
 text_fallback = "#5F4025"     # Deep umber fallback ink color when an entity's palette color cannot achieve sufficient contrast as text
 never_text = ["#C99D4E"]      # Palette colors (such as high-luminance ochre) excluded from direct use as dark text ink on light paper
-light_l = 0.95                # Base OKLCH lightness for light text rendered over dark satellite imagery
-light_c = 0.02                # Base OKLCH chroma for light text rendered over dark satellite imagery
-light_hue = 85                # Base OKLCH hue angle for warm off-white text on dark satellite imagery
+light_l = 0.98                # OKLCH lightness for light text over dark satellite imagery (pure white, as the reference titles and labels)
+light_c = 0.0                 # OKLCH chroma 0: neutral white light text (no warm cream cast)
+light_hue = 85                # OKLCH hue of light text (no effect while light_c = 0)
 water_ink_l = 0.34            # OKLCH lightness for italic hydrographic (ocean, sea, river) labels on paper maps (#033D57)
 water_ink_c = 0.07            # OKLCH chroma for hydrographic labels on paper maps
 water_ink_hue = 235           # OKLCH hue angle (235 deg, deep marine blue) for hydrographic labels

@@ -36,10 +36,10 @@ def test_storyboard_schema_uses_spans_not_beats():
 
 def test_type_scale_canonical():
     g = profiles.load("geoverum")
-    assert g.type.title_px == g.theme.title_px == 112
+    assert g.type.title_px == g.theme.title_px == g.data.layout.sizes.title == 104
     assert g.type.title_px_paper == g.data.print.title_px == 88
     assert g.type.pin_label_px == 52
-    assert g.type.title_for(paper=True) == 88 and g.type.title_for() == 112
+    assert g.type.title_for(paper=True) == 88 and g.type.title_for() == 104
     d = profiles.load("default")
     assert d.type.title_px == 96 and d.type.title_px_paper == 88
 

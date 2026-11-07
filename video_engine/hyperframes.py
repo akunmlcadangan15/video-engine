@@ -87,6 +87,8 @@ CARD_TOP = {"top": 0.12, "bottom": 0.77}
 TITLE_TOP = 0.11                       # big title top edge (fraction of the frame height)
 CARD_TOP_LANDSCAPE = {"top": 0.10, "bottom": 0.70}   # landscape (units.py): cards fit the z1 / z2 bands
 TITLE_TOP_LANDSCAPE = 0.10
+FIGURE_POP_S = {"elastic": 0.9, "back": 0.45}   # entry of a non-counter figure by theme figure_pop (template twin)
+TITLE_GAP_EM = 0.5                      # theme title_anchor "region": gap between the title and its region (title em)
 TEMPLATE_SCALED = {"label_box_radius_px"}   # the template scales these itself (S.width / reference width)
 
 
@@ -689,7 +691,7 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
             img = cr.path
         cards.append({"title": c.title, "subtitle": c.subtitle, "img": img, "top": round(card_top[c.position] * S.height),
                       "at_frame": card_frame(c, n, S.fps)})
-    ecol = entities.colours(tl)
+    ecol = entities.scene_colours(seg, tl, project_dir)   # vivid on a dark map (theme vivid_chroma_scale)
     if theme["label_style"] == "box":
         for c, cd in zip(sc.cards, cards):
             cd["box"] = entities.box_colour(ecol[c.entity], theme) if c.entity else theme["label_box_colour"]
@@ -725,12 +727,14 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
         out["map_texts"] = [{"text": m.text, "points": [[round(x * mw, 2), round(y * mh, 2)] for x, y in m.points],
                              "at_frame": m.at_frame, "out_frame": m.out_frame, "reveal_s": m.reveal_s, "px": m.px,
                              "colour": m.colour.lower(), "depth": m.depth_px} for m in sc.map_texts]
-    if sc.title or sc.figures:
-        col = entities.colours(tl)
+    col = ecol
     if sc.title:
         out["title"] = {"text": sc.title, "entity": sc.title_entity,
                         "colour": tint(col.get(sc.title_entity, "#ffffff"), theme["title_tint"]),
                         "at_frame": sc.title_at_frame or 0, "top": round(title_top * S.height)}
+        if prof.theme.title_anchor == "region" and lay is None and not G and not C3:
+            if (at := title_place(sc, cam, mw, mh, tl, theme["title_px"])) is not None:
+                out["title"]["left"], out["title"]["top"] = at
     if sc.figures:
         out["figures"] = [{"kind": f.kind, "text": figure_text(f, f.value, theme), "value": f.value, "from": f.count_from,
                            "decimals": f.decimals, "prefix": f.prefix, "suffix": f.suffix, "motion": f.motion,
@@ -738,7 +742,9 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
                            "x": round(f.position[0] * (mw if f.anchor == "map" else S.width), 2),
                            "y": round(f.position[1] * (mh if f.anchor == "map" else S.height), 2),
                            **({"px": f.px} if f.px else {}), **({"map": True} if f.anchor == "map" else {}),
-                           "entity": f.entity, "colour": col.get(f.entity, "#ffffff")} for f in sc.figures]
+                           "entity": f.entity, "colour": col.get(f.entity) or _accent(f, prof.theme) or "#ffffff",
+                           **({"accent": _accent(f, prof.theme)} if not f.entity and _accent(f, prof.theme) else {})}
+                          for f in sc.figures]
     if sc.thermometers:
         out["thermometers"] = [components.thermo_data(t, S.width, S.height) for t in sc.thermometers]
     if sc.flows:
@@ -922,9 +928,38 @@ def counter_value(f, frame: int, fps: int, count_s: float, ease: str = "power2.o
     return f.count_from + (f.value - f.count_from) * gsap_ease(ease)(p)
 
 
-def figure_end_frame(f, fps: int, default_count_s: float) -> int:
-    """Frame (relative to the segment start) at which a figure's entrance (bounce 0.9 s or counter) ends."""
-    return f.at_frame + math.ceil((0.9 if f.motion == "bounce" else (f.count_s or default_count_s)) * fps)
+def _accent(f, th) -> str | None:
+    """theme figure_accent for a number figure (not a year) without an entity; None otherwise."""
+    return th.figure_accent.lower() if th.figure_accent and f.kind != "year" and not f.entity else None
+
+
+def title_place(sc, cam: dict, mw: float, mh: float, tl: Timeline, px: float) -> tuple[float, float] | None:
+    """(left, top) in output px of a scene title above its title_entity's region (theme title_anchor "region"): the
+    region's on-screen box at the title's at_frame (layout.camera_at), the title TITLE_GAP_EM above it, or below it
+    when that would leave the safe area; horizontally centred on the region and kept inside the side margins at an
+    estimated width. None when no region of the title entity exists."""
+    from . import layout
+    rings = [ring for r in sc.regions or [] if r.entity == sc.title_entity for ring in r.all_rings()]
+    if not rings:
+        return None
+    st = layout.camera_at(cam, sc.title_at_frame or 0)
+    xs = [x * mw * st["s"] + st["x"] for ring in rings for x, _ in ring]
+    ys = [y * mh * st["s"] + st["y"] for ring in rings for _, y in ring]
+    S, (sx, top_min, bottom_y) = tl.settings, units(tl).safe()   # side margin, safe top y, safe bottom y (output px)
+    h, gap = px * 1.04, px * TITLE_GAP_EM
+    top = min(ys) - gap - h
+    if top < top_min:
+        top = max(ys) + gap
+    top = min(max(top, top_min), bottom_y - h)
+    w = min(900.0 * S.width / 1080, 0.62 * px * len(sc.title))
+    left = min(max((min(xs) + max(xs)) / 2, sx + w / 2), S.width - sx - w / 2)
+    return round(left, 1), round(top, 1)
+
+
+def figure_end_frame(f, fps: int, default_count_s: float, pop: str = "elastic") -> int:
+    """Frame (relative to the segment start) at which a figure's entrance ends: a bounce lasts FIGURE_POP_S[pop] (theme
+    figure_pop), a counter its count_s."""
+    return f.at_frame + math.ceil((FIGURE_POP_S[pop] if f.motion == "bounce" else (f.count_s or default_count_s)) * fps)
 
 
 def sfx_events(tl: Timeline) -> list[dict]:

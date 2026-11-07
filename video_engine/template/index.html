@@ -203,11 +203,27 @@ if('r' in C.start){const rw=document.createElement('div');rw.id='roll';
 const NS='http://www.w3.org/2000/svg', mk=(tag,at)=>{const e=document.createElementNS(NS,tag);for(const k in at)e.setAttribute(k,at[k]);return e;};
 const mapSvg=()=>{const v=mk('svg',{width:S.map_size[0],height:S.map_size[1]});v.style.cssText='position:absolute;left:0;top:0;overflow:visible';base.appendChild(v);return v;};
 const TH=S.theme, BOXR=TH.label_box_radius_px*S.width/(S.units?S.units.ref[0]:1080);
-// solid box label: elastic pop-in at t0
-const pop=(el,t0)=>{tl.fromTo(el,{opacity:0},{opacity:1,duration:0.12,ease:'none',immediateRender:true},t0);
+// solid box label: elastic pop-in at t0, or (theme label_box_entrance "type") the box growing left to right with its
+// text at label_type_cps characters per second (0.25-1 s), the clip released when it is complete
+const typeIn=(el,t0)=>{const d=Math.min(1,Math.max(0.25,(el.textContent||'').length/(TH.label_type_cps||20)));
+  tl.fromTo(el,{opacity:0},{opacity:1,duration:0.06,ease:'none',immediateRender:true},t0);
+  tl.fromTo(el,{clipPath:'inset(-40% 100% -40% -12%)'},{clipPath:'inset(-40% -12% -40% -12%)',duration:d,ease:'none',immediateRender:true},t0);
+  tl.set(el,{clipPath:'none'},t0+d);};
+const pop=(el,t0)=>{if(TH.label_box_entrance==='type')return typeIn(el,t0);
+  tl.fromTo(el,{opacity:0},{opacity:1,duration:0.12,ease:'none',immediateRender:true},t0);
   tl.fromTo(el,{scale:0.35},{scale:1,duration:TH.label_pop_s,ease:'elastic.out(1,0.55)',immediateRender:true},t0);};
 const boxify=(el,col,px)=>{el.classList.add('box');el.style.background=col;el.style.borderRadius=BOXR+'px';
+  if(TH.label_box_case==='none')el.style.textTransform='none';if(TH.label_box_tilt_deg)el.style.rotate=TH.label_box_tilt_deg+'deg';
   if(px)el.style.fontSize=px+'px';el.setAttribute('data-box',TH.label_box_lc);return el;};
+// title tracking-in (theme title_entrance "track"): letters close in from TRACK_EM em over the rest spacing while the
+// title scales so its width stays the settled width on every frame (spread small letters -> tight full-size word);
+// widths are measured on each update (offsetWidth ignores the transform), so loaded fonts are always used
+const TRACK_EM=window.__trackEm=0.35;
+const trackIn=(el,t0,d)=>{const r0=parseFloat(el.style.letterSpacing)||0, pr={k:1};d=d||0.35;
+  const upd=()=>{el.style.letterSpacing=(r0+TRACK_EM)+'em';const w1=el.offsetWidth;el.style.letterSpacing=r0+'em';
+    const w0=el.offsetWidth;el.style.letterSpacing=(r0+pr.k*TRACK_EM)+'em';gsap.set(el,{scale:w0/Math.max(1,w0+(w1-w0)*pr.k)});};
+  tl.fromTo(el,{opacity:0},{opacity:1,duration:0.6*d,ease:'none',immediateRender:true},t0);
+  tl.fromTo(pr,{k:1},{k:0,duration:d,ease:'power3.out',onUpdate:upd,immediateRender:true},t0);};
 window.__boxify=boxify;   // the layout block runs in its own script scope
 // title and figures in a box: white text without their glow, shadow or outline
 const unbox=(el,ink)=>{el.style.color=ink||'#fff';el.style.textShadow='none';el.style.webkitTextStroke='0';};
@@ -584,9 +600,11 @@ if(S.title){
   el.textContent=T.text;el.style.cssText+=';top:'+T.top+'px;color:'+T.colour+';font-family:'+FONT.f+';font-weight:'+FONT.w+';font-size:'+TH.title_px+'px;'+
     'text-shadow:0 0 '+TH.title_glow_px+'px '+T.colour+',0 0 '+(TH.title_glow_px/2)+'px '+T.colour+','+(TH.text_outline_px>0?TXT_SHADOW:'0 4px 12px rgba(0,0,0,.7)');
   if(T.box)unbox(boxify(el,T.box));else if(LG)adapt(el,'title',LG.halo_width_em);
+  if(T.left!==undefined)el.style.left=T.left+'px';   // theme title_anchor "region": above the title entity's region
   ui.appendChild(el);gsap.set(el,{xPercent:-50});const t0=f2t(T.at_frame);
   tl.set(el,{visibility:'visible'},t0);
   if(T.box)pop(el,t0);
+  else if(TH.title_entrance==='track')trackIn(el,t0);
   else tl.fromTo(el,{opacity:0,scale:0.86},{opacity:1,scale:1,duration:0.5,ease:'power3.out',immediateRender:true},t0);
 }
 const figText=(F,v)=>{
@@ -617,7 +635,9 @@ const figText=(F,v)=>{
   }else{
     el.textContent=F.text;
     tl.fromTo(el,{opacity:0},{opacity:1,duration:0.15,ease:'none',immediateRender:true},t0);
-    tl.fromTo(el,{scale:0},{scale:1,duration:0.9,ease:'elastic.out(1,0.45)',immediateRender:true},t0);
+    if(TH.figure_pop==='back')   // short back-out pop from 0.6 (hyperframes.FIGURE_POP_S): no elastic overshoot
+      tl.fromTo(el,{scale:0.6},{scale:1,duration:0.45,ease:'back.out(1.6)',immediateRender:true},t0);
+    else tl.fromTo(el,{scale:0},{scale:1,duration:0.9,ease:'elastic.out(1,0.45)',immediateRender:true},t0);
   }
 });
 // native scene overlays rendered directly inside HyperFrames DOM (label, text_card, lower_third, heading)
@@ -750,13 +770,17 @@ const fades=(el,spans,ein,eout)=>{
 // fly-through (LY.fly, [layout.fly]): spans scale in from LY.fly[kind+'_in'] and out to LY.fly.out with opacity;
 // without LY.fly the spans are plain opacity fades
 const fly=(el,spans,kind)=>{const F=LY.fly, s0=F[kind+'_in'], oi=F[kind+'_opacity_in_s'];
+  // theme title_entrance "track": the title's letters close in on entry and track out on exit (rest -> rest + TRACK_EM)
+  const rs=parseFloat(el.style.letterSpacing)||0, trk=kind==='title'&&TH.title_entrance==='track'?[rs+'em',(rs+window.__trackEm)+'em']:null;
   gsap.set(el,{opacity:0,scale:1});
   (spans||[]).forEach((s,j)=>{const d=Math.max(s[1],1e-3);
     tl.fromTo(el,{scale:s0},{scale:1,duration:d,ease:F.ease_in,immediateRender:j===0},s[0]);
     tl.fromTo(el,{opacity:0},{opacity:1,duration:oi==null?d:oi,ease:'none',immediateRender:j===0},s[0]);
+    if(trk)tl.fromTo(el,{letterSpacing:trk[1]},{letterSpacing:trk[0],duration:d,ease:F.ease_in,immediateRender:j===0},s[0]);
     if(s[2]!==null){const o=Math.max(s[3],1e-3);
       tl.fromTo(el,{scale:1},{scale:F.out,duration:o,ease:F.ease_out,immediateRender:false},s[2]);
-      tl.fromTo(el,{opacity:1},{opacity:0,duration:o,ease:F.ease_out,immediateRender:false},s[2]);}
+      tl.fromTo(el,{opacity:1},{opacity:0,duration:o,ease:F.ease_out,immediateRender:false},s[2]);
+      if(trk)tl.fromTo(el,{letterSpacing:trk[0]},{letterSpacing:trk[1],duration:o,ease:F.ease_out,immediateRender:false},s[2]);}
   });
 };
 const show=(el,spans,kind)=>LY.fly?fly(el,spans,kind):fades(el,spans);

@@ -132,7 +132,7 @@ Tiers (historical registry classification; runtime blocking uses `KERNEL_GATE_ID
 | ID | Class | Tier | Name | Rule | Switch |
 |---|---|---|---|---|---|
 | R63 | technical | flexible | Element margins and collisions | HyperFrames elements stay inside the safe area (fail) and do not overlap (warn); captions keep their clearance or are moved automatically. | always |
-| E01 | technical | flexible | Entity colours | Every region fill painted in the probe equals its entity colour; two entities sharing a colour warn. | always |
+| E01 | technical | flexible | Entity colours | Every region fill painted in the probe equals its entity colour as the scene paints it (vivid on a dark map when theme vivid_chroma_scale is set); two entities sharing a colour warn. | always |
 | R64 | technical | flexible | Text legibility | Adaptive map text reaches its APCA contrast target on the hard-case background; lines and pins reach their line target. | `[legibility]` |
 
 ### Layer 2: caption placement
@@ -238,7 +238,7 @@ The full rule of each gate, with its thresholds. Where this list and the index d
 - **R62** (layer 2 math): Caption font >= 0.6 of the configured size after width fitting; caption width inside the safe area
 - **R63** (layer 2 DOM): HyperFrames elements (headless Chrome probe at 30 %, 60 %, last frame, every `camera_path` key frame and per prop its first settled, middle and last pre-exit frame) inside the safe area (60 px sides, 100 px top/bottom; fail) and without pairwise overlap (warn; repeated seeks of one element are reported as one time span);
     caption clearance and automatic placement (see [Captions](TIMELINE.md#captions))
-- **E01** (layer 2 DOM): Every region fill as painted in the probe equals its entity colour; fail otherwise; two entities sharing a colour (palette exhausted) = warn.
+- **E01** (layer 2 DOM): Every region fill as painted in the probe equals its entity colour as the scene paints it (`entities.scene_colours`: vivid on a dark map when theme `vivid_chroma_scale` is set); fail otherwise; two entities sharing a colour (palette exhausted) = warn.
   Text colour is not checked.
   No finding when no region is painted.
 - **R64** (layer 2 DOM): Profile `[legibility]` only: every adaptive text element (teardrop label, title, year, counter, area label) at each of its `samples` times has APCA Lc >= target - `lc_fail_margin` on the hard-case percentile of its background under the dilated glyph mask (painted ink, halo and vignette composited), and Lc >= `lc_floor` against its adjacent pixels;

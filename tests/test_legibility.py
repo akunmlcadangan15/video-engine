@@ -352,7 +352,10 @@ def test_good_geoverum_scene_paints_adaptive_ink_and_passes_R64(project, tmp_pat
     lines = layer2.r64_line_rows({2: res})
     assert min(w["lc"] for w in lines if w["id"] == "pin:0") >= LG["lc_line"]
     assert min(w["lc"] for w in lines if w["id"] == "region:0") >= LG["lc_line_fail"]
-    assert layer2.e01_entity_colours(tl, {2: res})[-1].level == "pass"
+    # geoverum paints entity fills vivid on a dark map (theme vivid_chroma_scale): E01 with project_dir compares the
+    # painted fill with entities.scene_colours, as gates/runner.py calls it
+    assert layer2.e01_entity_colours(tl, {2: res}, p)[-1].level == "pass"
+    assert layer2.e01_entity_colours(tl, {2: res})[-1].level == "fail"      # the muted palette colour is not painted
 
 
 def test_good_default_profile_scene_has_no_adaptive_ink(project, tmp_path):
