@@ -190,7 +190,10 @@ def test_R38_snapshots_dark_map_source_is_lenient(project, tmp_path, monkeypatch
     assert means[seg.seg_index] < 25
     fs, _ = layer3.r38_snapshots(tl, p, {})
     assert not [f for f in fs if f.gate == "R38" and f.level == "fail"], fs
-    dark_frames = [np.full((H, W, 3), 8, dtype=np.uint8).tobytes() for _ in range(6)]
+    # one sample per 5 frames over the whole timeline (QA fails a segment without a sampled frame): dark inside the
+    # dark-source segment, mid-grey in the others, which keep their ordinary sources
+    dark_frames = [np.full((H, W, 3), 8 if seg.start_frame <= f < seg.end_frame else 128, dtype=np.uint8).tobytes()
+                   for f in range(0, max(s.end_frame for s in tl.segments), 5)]
     monkeypatch.setattr(qa, "iter_sample_frames", lambda v, w, h, step=5, threads=4: iter(dark_frames))
     qa_fs, _ = qa.pixel_gates(None, tl, project_dir=p)
     assert not [f for f in qa_fs if f.gate == "R38" and f.level == "fail"], qa_fs
