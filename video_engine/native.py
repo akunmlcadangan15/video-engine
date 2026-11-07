@@ -109,7 +109,8 @@ def _key(job: NativeJob, tl: Timeline, mode: str, src_hash: str) -> str:
         "cam": seg.camera_move.model_dump() if seg.camera_move else None, "W": S.width, "H": S.height, "fps": S.fps,
         "x264": seg_x264(tl), "threads": resources.X264_THREADS, "ffmpeg": toolchain.ffmpeg_version(config.FFMPEG),
         "code": code_hash(CODE), "algo": core.ALGO_VERSION, **({"copy": COPY_FORMAT} if mode == "copy" else {}),
-        **({"ov": ov} if (ov := overlays.key_part(seg, profiles.of(tl).print, profiles.of(tl).theme)) else {}),
+        **({"ov": ov} if (ov := overlays.key_part(seg, profiles.of(tl).print, profiles.of(tl).theme,
+                                                           profiles.of(tl).motion)) else {}),
         **({"profile": pv} if (pv := profiles.of(tl).render_values("native")) else {}),
     })
 

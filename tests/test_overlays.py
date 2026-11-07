@@ -128,6 +128,18 @@ def test_good_overlay_drawn_in_box_and_timed(project, tmp_path, seg):
     assert sum(abs(x - y) for x, y in zip(px(off_a, cx, cy), px(off_b, cx, cy))) < 20
 
 
+def test_bad_overlay_fade_change_misses_the_native_cache(project):
+    """BAD before the fix: `[motion] overlay_fade_s` is baked into the drawn-overlay fade but was missing from the
+    native segment key, so a changed fade reused the stale cached segment."""
+    lbl = dict(LABEL, start_frame=20, end_frame=50)
+    keys = []
+    for fade in (0.2, 0.9):
+        p, tl = project(lambda d, f=fade: (d["segments"][0].update(overlays=[lbl]),
+                                           d.update(profile_overrides={"motion": {"overlay_fade_s": f}})))
+        keys.append(native.plan(tl.segments[0], tl, p).key)
+    assert keys[0] != keys[1]
+
+
 def test_good_snapshot_and_preview_include_overlay(project, tmp_path):
     p, tl = project(lambda d: d["segments"][1].update(overlays=[LABEL]))
     _, plain = project()

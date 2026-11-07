@@ -777,6 +777,16 @@ if(R0){
       steps.forEach((st,j)=>tl.fromTo(e,{attr:at(st[2])},{attr:at(st[3]),duration:Math.max(st[1],1e-3),ease:MO.entrance,immediateRender:j===0},st[0]));
     });
   });
+  // block regions: the face sits inside <g data-block> (not a direct child) and its drawn edge <g data-line> follows
+  // the group, so both step between the same levels through their opacity instead of fill and stroke alpha
+  R0.ownerSVGElement.querySelectorAll('g[data-block]').forEach(g=>{
+    const r=g.getAttribute('data-block'), steps=LY.regions[+r]||[];
+    [g,R0.ownerSVGElement.querySelector('g[data-line="region:'+r+'"]')].forEach(e=>{if(!e)return;
+      tl.getTweensOf(e).forEach(tw=>{if('opacity' in (tw.vars||{}))tw.kill();});
+      gsap.set(e,{opacity:0});
+      steps.forEach((st,j)=>tl.fromTo(e,{opacity:st[2]},{opacity:st[3],duration:Math.max(st[1],1e-3),ease:MO.entrance,immediateRender:j===0},st[0]));
+    });
+  });
 }
 // routes: drawn from their at_frame by the main block; fade out with their span, hidden when no beat shows them
 (S.routes||[]).forEach((r,i)=>{const g=q('g[data-route="'+i+'"]');if(!g)return;

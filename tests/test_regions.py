@@ -69,6 +69,28 @@ def test_good_beats_region_uses_the_profile_region_style(project):
     assert sc["regions"][0]["style"] == "block" and sc["regions"][0]["block"]
 
 
+@pytest.mark.parametrize("style", ["tint", "block"])
+def test_good_beats_dim_levels_reach_tint_and_block_regions(project, tmp_path, style):
+    """The beats `layout.regions` levels dim a region once another region takes the beat. A block region's face sits
+    inside <g data-block>, so before the fix the template never found it and the block stayed at full strength."""
+    from test_layout import beats_doc
+
+    def mut(d):
+        beats_doc(d)
+        for r in d["segments"][2]["gsap_scene_config"]["regions"]:
+            r["style"] = style
+
+    p, tl = project(mut)
+    sc = hyperframes.scene_data(tl.segments[2], tl, p)
+    steps = sc["layout"]["regions"][0]
+    t_full, t_dim = steps[0][0] + steps[0][1] + 0.2, steps[-1][0] + steps[-1][1] + 0.2
+    assert steps[-1][3] < 0.5 < steps[0][3]                         # region 0: full, then dimmed when region 1 leads
+    d, _ = hyperframes.build_dir(tl.segments[2], tl, p, tmp_path / "hf")
+    dom = hyperframes.probe_dom(d, [t_full, t_dim], 1080, 1920)
+    edge = [max((ln["opacity"] for ln in t["lines"] if ln["id"] == "region:0"), default=0.0) for t in dom["times"]]
+    assert edge[0] > 0.9 and edge[1] < 0.5 * edge[0], edge
+
+
 def test_good_render_values_exclude_entity_map():
     th = profiles.load().render_values("hf")
     assert "entities" not in th and "palette" not in th and th["region_edge"] == "white"

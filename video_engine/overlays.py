@@ -275,8 +275,9 @@ def frame_range(ov: Overlay, seg: Segment) -> tuple[int, int]:
     return a, b
 
 
-def key_part(seg: Segment, pr=None, th=None) -> dict | None:
-    """Cache-key contribution of the drawn overlays (None when nothing is drawn)."""
+def key_part(seg: Segment, pr=None, th=None, motion=None) -> dict | None:
+    """Cache-key contribution of the drawn overlays (None when nothing is drawn): every input ffmpeg_parts bakes into
+    the pixels, including the fade length of non-heading overlays (`[motion] overlay_fade_s`)."""
     ds = drawn(seg)
     if not ds:
         return None
@@ -288,6 +289,8 @@ def key_part(seg: Segment, pr=None, th=None) -> dict | None:
     if any(o.kind == "heading" for o in ds):
         out["heading"] = {"print": _print(pr).model_dump(mode="json"), "pad": HEADING_PAD, "ss": HEADING_SS,
                           "font": blake3_files([config.FONTS_DIR / "Cinzel[wght].ttf"])}
+    if motion is not None and any(o.kind != "heading" for o in ds):
+        out["fade_s"] = motion.overlay_fade_s
     return out
 
 
