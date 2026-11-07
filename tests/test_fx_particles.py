@@ -67,3 +67,12 @@ def test_good_canvas_draws_particles_in_the_dom(project, tmp_path):
     dom = json.loads(result.stdout)
     rect = next(r for r in dom["times"][0]["rects"] if r["id"] == "particles-test")
     assert rect["ink"] > 50 and not dom.get("errors")
+
+
+def test_good_python_mirror_draws_the_same_frames_as_fx2_js():
+    """hf/fx2.js draws an emitter for f_in <= f < f_out; the Python mirror returned fire particles at f == f_out."""
+    for kind in ("fire", "fireworks"):
+        e = {"kind": kind, "x": 500.0, "y": 900.0, "f_in": 10, "f_out": 40, "seed": 7, "scale": 1.0, "count": 12,
+             "gravity": 0.18, "colours": ["#fff176", "#ff9800"]}
+        assert fx.particle_state(e, 9, 30, 1920) == [] and fx.particle_state(e, 40, 30, 1920) == []
+        assert len(fx.particle_state(e, 10, 30, 1920)) == 12 and len(fx.particle_state(e, 39, 30, 1920)) == 12

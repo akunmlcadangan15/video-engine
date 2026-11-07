@@ -45,3 +45,19 @@ def test_resolve_timeline_paths_keeps_old_and_resolves_prefixed(roots, project):
     assert converted.segments[0].source == str(external)
     assert converted.credits_manifest[0].path == str(external)
     assert tl.segments[0].source == 'download:copy.jpg'
+
+
+def test_resolve_timeline_paths_resolves_both_split_panels(roots, project):
+    """A split segment's second panel is rendered from its own map: its prefixed reference is resolved like the top
+    panel's (before the fix only the top panel was rewritten and the render looked for '<project>/download:...')."""
+    from test_components import _split, tl_n
+    n = tl_n(project)
+    p, tl = project(_split(n))
+    external = roots / 'stock' / 'copy.jpg'
+    external.write_bytes((p / 'assets' / 'map.jpg').read_bytes())
+    registry(roots / 'stock', [row('copy.jpg')])
+    for panel in tl.segments[2].gsap_scene_config.panels():
+        panel.map_asset = 'download:copy.jpg'
+    converted = assets.resolve_timeline_paths(tl, p)
+    assert [sc.map_asset for sc in converted.segments[2].gsap_scene_config.panels()] == [str(external)] * 2
+    assert all(sc.map_asset == 'download:copy.jpg' for sc in tl.segments[2].gsap_scene_config.panels())

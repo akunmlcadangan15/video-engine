@@ -320,6 +320,13 @@ def test_good_label_style_box_reaches_layout_titles_and_figures(project, monkeyp
     from video_engine import hyperframes
     sc = hyperframes.scene_data(tl.segments[2], tl, d)
     assert sc["title"]["box"] and all("box" in f for f in sc["figures"])
+    # legibility agrees with the template's BOXED rule: boxed title and figures are not adaptive text (before the fix
+    # legibility.boxed was False for any scene with a layout, so R64 measured text the template never adapts)
+    from video_engine import legibility
+    assert sc.get("layout") and not sc.get("print") and legibility.boxed(sc)
+    ids = {e["id"] for e in legibility.elements(sc)}
+    assert "title" not in ids and not any(i.startswith("figure:") for i in ids)
+    assert not legibility.boxed({**sc, "print": {"ink": "#000000"}})       # layout + print: print owns the look
 
 
 @pytest.mark.skipif(not config.NODE.is_file(), reason="vendor node/Chrome not installed")

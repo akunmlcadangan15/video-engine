@@ -63,14 +63,20 @@ def test_good_year_bold_serif_with_elastic_bounce(project, tmp_path):
     assert (c["x"] + c["w"] / 2, c["y"] + c["h"] / 2) == pytest.approx((540, 0.4 * 1920), abs=2)
 
 
-def test_good_counter_matches_python_rule_and_lands_on_value(project, tmp_path):
+@pytest.mark.parametrize("ease", [None, "expo.out", "sine.inOut"])
+def test_good_counter_matches_python_rule_and_lands_on_value(project, tmp_path, ease):
+    """The DOM counter text equals the Python twin for the profile's [motion] entrance ease (the template tweens the
+    counter with MO.entrance; the twin was fixed to power2.out before)."""
     fig = {"kind": "number", "value": 20000, "motion": "counter", "count_s": 1.0, "at_frame": 6, "suffix": " jiwa"}
-    p, tl = project(_scene(figures=[fig]))
+    over = (lambda d: d.update(profile_overrides={"motion": {"entrance": ease}})) if ease else (lambda d: None)
+    p, tl = project(lambda d: (_scene(figures=[fig])(d), over(d)))
     F = tl.segments[2].gsap_scene_config.figures[0]
     frames = [6, 9, 15, 21, 36, 45]
     _, _, its = _probe(tl, p, tmp_path, [f / 30 for f in frames])
     th = profiles.of(tl).render_values("hf")
-    want = [hyperframes.figure_text(F, hyperframes.counter_value(F, f, 30, 1.0), th) for f in frames]
+    assert th["motion"]["entrance"] == (ease or "power2.out")
+    want = [hyperframes.figure_text(F, hyperframes.counter_value(F, f, 30, 1.0, th["motion"]["entrance"]), th)
+            for f in frames]
     assert [it["figure:0"]["text"] for it in its] == want
     assert want[0] == "0 jiwa" and want[-1] == "20.000 jiwa" and want[2] not in want[1::4]
 
@@ -127,3 +133,18 @@ def test_bad_title_entity_without_title_fails_T02(project):
 def test_bad_figure_schema(fig, msg):
     with pytest.raises(ValidationError, match=msg):
         Figure(**fig)
+
+
+@pytest.mark.parametrize("name, p, want", [("power2.out", 0.5, 0.875), ("power2", 0.5, 0.875), ("power2.in", 0.5, 0.125),
+                                           ("power2.inOut", 0.25, 0.0625), ("none", 0.3, 0.3),
+                                           ("sine.out", 1 / 3, 0.5), ("expo.in", 0.0, 0.0), ("expo.out", 1.0, 1.0),
+                                           ("back.out(1.7)", 1.0, 1.0), ("circ.in", 1.0, 1.0)])
+def test_good_gsap_ease_twin_values(name, p, want):
+    assert hyperframes.gsap_ease(name)(p) == pytest.approx(want, abs=1e-9)
+
+
+@pytest.mark.parametrize("name", ["elastic.out(1, 0.3)", "power2.sideways"])
+def test_bad_gsap_ease_twin_names_what_it_cannot_mirror(name):
+    from video_engine.util import EngineError
+    with pytest.raises(EngineError, match="ease"):
+        hyperframes.gsap_ease(name)

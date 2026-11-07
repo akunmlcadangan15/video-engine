@@ -113,9 +113,10 @@ LAYOUT_SETTLE_S = 0.1   # after a beats element's entry tween
 
 
 def boxed(scene: dict) -> bool:
-    """Pin labels, title and figures in solid boxes (theme label_style "box", scenes without a layout): fixed white on
-    the box colour, not adaptive."""
-    return scene["theme"].get("label_style") == "box" and not scene.get("layout")
+    """Pin labels, title and figures in solid boxes: theme label_style "box" unless the scene has both a beats layout
+    and a [print] block (the same rule as hyperframes.scene_data and the template's BOXED). Boxed text is fixed white
+    on the box colour, not adaptive."""
+    return scene["theme"].get("label_style") == "box" and not (scene.get("layout") and scene.get("print"))
 
 
 def elements(scene: dict) -> list[dict]:

@@ -475,9 +475,9 @@ def ensure_credits(tl, project: Path) -> tuple[object, list[dict]]:
     refs = visual_refs(result)
     for segment in result.segments:
         scene = segment.gsap_scene_config
-        if scene and scene.morph:
-            refs.append((segment.seg_index, scene.morph.asset_id, scene.morph.asset, "morph"))
         for scene in scene.panels() if scene else []:   # a split segment: both panels
+            if scene.morph:
+                refs.append((segment.seg_index, scene.morph.asset_id, scene.morph.asset, "morph"))
             flags = [p.flag for p in scene.pins]
             flags += [f for r in scene.regions or [] for f in [r.flag, *(c.flag for c in r.changes)]]
             flags += [c.flag for c in scene.flag_characters or []]
@@ -538,18 +538,19 @@ def resolve_timeline_paths(tl, project: Path):
         if segment.source_video:
             rewrite(segment, 'source_video')
         scene = segment.gsap_scene_config
-        if scene:
-            rewrite(scene, 'map_asset', 'map')
-            if scene.morph:
-                rewrite(scene.morph, 'asset', 'map')
-            for _, prop, _, _ in props.flat(segment):
+        for panel in scene.panels() if scene else []:   # a split segment: both panels (as layer1.visual_refs)
+            seg = segment if panel is scene else segment.model_copy(update={"gsap_scene_config": panel})
+            rewrite(panel, 'map_asset', 'map')
+            if panel.morph:
+                rewrite(panel.morph, 'asset', 'map')
+            for _, prop, _, _ in props.flat(seg):
                 rewrite(prop, 'asset')
-            for layer in scene.layers or []:
+            for layer in panel.layers or []:
                 rewrite(layer, 'asset')
     if result.audio_chain.bgm_path:
         rewrite(result.audio_chain, 'bgm_path', 'music')
     card_ids = {card.asset_ref for segment in result.segments if segment.gsap_scene_config
-                for card in segment.gsap_scene_config.cards if card.asset_ref}
+                for panel in segment.gsap_scene_config.panels() for card in panel.cards if card.asset_ref}
     for credit in result.credits_manifest:
         if credit.path:
             if credit.path in replacements:

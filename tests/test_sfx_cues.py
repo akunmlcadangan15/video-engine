@@ -45,6 +45,21 @@ def test_good_render_events_map_to_profile_kinds_at_their_frames(project):
     assert sfx.kinds_used(tl) == sorted({sp.events[e["event"]] for e in ev})
 
 
+@pytest.mark.parametrize("hold", [0, 30, 40])
+def test_good_whip_cue_sits_mid_camera_whip_leg_after_a_hold(project, hold):
+    """The whoosh lands mid-way through the whip leg hyperframes.camera_plan renders, which starts after the previous
+    key's hold. Before the fix the cue ignored the hold (a 40-frame hold before the whip key at frame 45 put it 4
+    frames early)."""
+    def extra(d):
+        d["segments"][2]["gsap_scene_config"]["camera_path"][0]["hold"] = hold
+    p, tl = project(_geo(extra))
+    sc = hyperframes.scene_data(tl.segments[2], tl, p)
+    whip = [L for L in sc["camera"]["legs"] if L["ease"] == "whip"]
+    assert len(whip) == 1
+    want = tl.segments[2].start_frame + round((whip[0]["f0"] + whip[0]["f1"]) / 2)
+    assert [e["frame"] for e in sfx.events(tl) if e["event"] == "whip"] == [want]
+
+
 def test_good_cues_carry_time_kind_gain_and_source_asset(project):
     p, tl = project(_geo())
     sp = profiles.of(tl).sound

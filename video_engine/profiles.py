@@ -1463,7 +1463,12 @@ def caption_style(tl: "Timeline") -> dict:
 
 
 def loudness(tl: "Timeline") -> Loudness:
+    """Effective loudness targets: the project's audio_chain values over the profile's. A project may tighten the
+    global true-peak safety limit (the default profile's audio.true_peak, as _check_safety holds every profile to)
+    but never loosen it."""
     ac, a = tl.audio_chain, of(tl).audio
+    if ac.true_peak is not None and ac.true_peak > (limit := load().audio.true_peak):
+        raise EngineError(f"audio_chain.true_peak {ac.true_peak} is looser than the global limit {limit} dBTP")
     pick = lambda v, d: d if v is None else v   # noqa: E731
     return Loudness(pick(ac.target_lufs, a.target_lufs), pick(ac.true_peak, a.true_peak), pick(ac.lra, a.lra),
                     a.tolerance_lu)

@@ -5,6 +5,7 @@ seed; the template animates them from the paused timeline only (no wall clock): 
 number come from one tweened value; a flow's dash offset is (phase + speed x (t - t0)) at render time t."""
 from __future__ import annotations
 
+import math
 import random
 
 TUBE_W = 0.2     # tube width / thermometer height
@@ -30,7 +31,7 @@ def thermo_fraction(t) -> float:
 def thermo_colour(t, frac: float) -> str:
     """Fill colour at a fill fraction: linear RGB mix of colour_low and colour_high (same as the template)."""
     a, b = (tuple(int(c[k:k + 2], 16) for k in (1, 3, 5)) for c in (t.colour_low, t.colour_high))
-    return "#" + "".join(f"{round(x + (y - x) * frac):02x}" for x, y in zip(a, b))
+    return "#" + "".join(f"{math.floor(x + (y - x) * frac + 0.5):02x}" for x, y in zip(a, b))   # Math.round: half up
 
 
 def flow_data(fl, mw: float, mh: float, seed_base: int) -> dict:

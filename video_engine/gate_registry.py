@@ -2,7 +2,8 @@
 
 The id lists that other modules need (`profiles.STYLE_GATE_IDS`, `TECHNICAL_GATE_IDS`, `NEVER_ADVISORY`) are derived
 from `GATES` below, so a gate is added in one place. `engine gates` and the generated table in docs/GATES.md read the
-same data; tests/test_gate_registry.py checks that every id a gate module emits is registered.
+same data; tests/test_gate_registry.py checks that every gate id a gate module emits is registered. The post-render
+stage's all-clear record `QA` (qa.pixel_gates, docs/GATES.md) is a stage summary that only ever passes, not a gate.
 
 Classes:
   technical  technical check (integrity, geometry, media, or asset rules)

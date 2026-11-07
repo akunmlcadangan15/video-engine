@@ -37,12 +37,12 @@ def events(tl: Timeline) -> list[dict]:
                     add("region", s, c.at_frame)
             for r in sc.routes or []:
                 add("route", s, (r.at_frame + hyperframes.route_end_frame(r, fps, th["route_draw_s"])) / 2)
-            f0 = 0
-            for k in (sc.camera_path or [])[1:]:
-                if k.move == "whip":   # same leg timing as hyperframes.camera_plan
-                    fw = max(f0, k.at_frame - max(1, round(th["whip_s"] * fps)))
+            keys = sc.camera_path or []
+            for prev, k in zip(keys, keys[1:]):
+                if k.move == "whip":   # same leg timing as hyperframes.camera_plan: the leg starts after the previous
+                    f0 = min(n, prev.at_frame + prev.hold)   # key's hold and lasts move_s (else theme whip_s)
+                    fw = max(f0, k.at_frame - max(1, round((k.move_s or th["whip_s"]) * fps)))
                     add("whip", s, (fw + k.at_frame) / 2)
-                f0 = k.at_frame
             if sc.title:
                 add("title", s, sc.title_at_frame or 0)
             for f in sc.figures or []:

@@ -881,11 +881,45 @@ def figure_text(f, v: float, theme: dict) -> str:
     return f"{f.prefix}{'-' if v < 0 and n else ''}{whole}{frac}{f.suffix}"
 
 
-def counter_value(f, frame: int, fps: int, count_s: float) -> float:
-    """Value a counter figure shows at `frame` (relative to the segment start): GSAP power2.out (cubic ease-out) from
-    count_from to value."""
+# ease-in curves exactly as vendor/js/gsap.min.js defines them (its Expo lands on 0 and 1: 2^(10(p-1)) p + p^6 (1-p))
+_GSAP_IN = {"none": lambda p: p, "linear": lambda p: p, "power0": lambda p: p,
+            "sine": lambda p: 1.0 if p == 1 else 1 - math.cos(p * math.pi / 2),
+            "expo": lambda p: 2 ** (10 * (p - 1)) * p + p ** 6 * (1 - p),
+            "circ": lambda p: 1 - math.sqrt(max(0.0, 1 - p * p))}
+_GSAP_POWER = {"power1": 2, "quad": 2, "power2": 3, "cubic": 3, "power3": 4, "quart": 4, "power4": 5, "quint": 5,
+               "strong": 5}
+
+
+def gsap_ease(name: str):
+    """Python twin of a GSAP 3 ease name ("power2.out", "sine.inOut", "back.out(1.7)", "none"): the ease-in curve of the
+    family, mirrored for .out and joined at 0.5 for .inOut exactly as GSAP builds them; a bare family is .out."""
+    fam, _, kind = name.strip().partition(".")
+    kind, _, arg = kind.partition("(")
+    fam, kind = fam.lower(), kind or "out"
+    if fam in _GSAP_POWER:
+        n = _GSAP_POWER[fam]
+        e_in = lambda p: p ** n   # noqa: E731
+    elif fam == "back":
+        s = float(arg.rstrip(")")) if arg else 1.70158
+        e_in = lambda p: p * p * ((s + 1) * p - s)   # noqa: E731
+    elif fam in _GSAP_IN:
+        e_in = _GSAP_IN[fam]
+    else:
+        raise EngineError(f"ease {name!r}: counter figures mirror the GSAP power, sine, expo, circ, back and none eases")
+    if fam in ("none", "linear", "power0") or kind == "in":
+        return e_in
+    if kind == "out":
+        return lambda p: 1 - e_in(1 - p)
+    if kind == "inOut":
+        return lambda p: e_in(2 * p) / 2 if p < 0.5 else 1 - e_in(2 * (1 - p)) / 2
+    raise EngineError(f"ease {name!r}: unknown ease type {kind!r} (in, out or inOut)")
+
+
+def counter_value(f, frame: int, fps: int, count_s: float, ease: str = "power2.out") -> float:
+    """Value a counter figure shows at `frame` (relative to the segment start): the template tweens it from count_from
+    to value with the profile's [motion] entrance ease (default power2.out, the cubic ease-out)."""
     p = min(1.0, max(0.0, (frame - f.at_frame) / fps / count_s))
-    return f.count_from + (f.value - f.count_from) * (1 - (1 - p) ** 3)
+    return f.count_from + (f.value - f.count_from) * gsap_ease(ease)(p)
 
 
 def figure_end_frame(f, fps: int, default_count_s: float) -> int:
@@ -903,10 +937,10 @@ def sfx_events(tl: Timeline) -> list[dict]:
         for i, f in enumerate(s.gsap_scene_config.figures or []):
             if f.motion != "counter":
                 continue
-            cs = f.count_s or th["counter_s"]
+            cs, ease = f.count_s or th["counter_s"], th["motion"]["entrance"]   # the template's MO.entrance
             prev = figure_text(f, f.count_from, th)
             for fr in range(f.at_frame + 1, figure_end_frame(f, fps, th["counter_s"]) + 1):
-                txt = figure_text(f, counter_value(f, fr, fps, cs), th)
+                txt = figure_text(f, counter_value(f, fr, fps, cs, ease), th)
                 if txt != prev:
                     out.append({"kind": "counter_tick", "frame": s.start_frame + fr, "seg": s.seg_index, "figure": i})
                 prev = txt

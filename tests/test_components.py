@@ -194,3 +194,12 @@ def test_good_split_dom_gate_probes_each_panel(project, tmp_path):
     fs, dom = layer2.r63_dom(tl, p, tmp_path / "w", {})
     assert 2 in dom and any(f.seg == 2 for f in fs)
     assert (tmp_path / "w" / "hf" / "seg002_t").is_dir() and (tmp_path / "w" / "hf" / "seg002_b").is_dir()
+
+
+@pytest.mark.parametrize("low, high, frac, want", [("#000000", "#010101", 0.5, "#010101"),
+                                                   ("#000000", "#050505", 0.5, "#030303"),
+                                                   ("#0a0a0a", "#0b0b0b", 0.5, "#0b0b0b")])
+def test_good_thermo_colour_rounds_half_up_like_the_template(low, high, frac, want):
+    """The template mixes with Math.round (half up); Python's round() is half-to-even and disagreed on .5 steps."""
+    from types import SimpleNamespace
+    assert components.thermo_colour(SimpleNamespace(colour_low=low, colour_high=high), frac) == want

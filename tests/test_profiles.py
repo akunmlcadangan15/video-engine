@@ -71,6 +71,16 @@ def test_good_precedence_default_profile_project(pdir, project):
     assert captions.rust_style(tl) == {"outline": 4}
 
 
+def test_bad_project_true_peak_cannot_loosen_the_global_limit(project):
+    """docs/STRUCTURE.md: the true-peak safety limit may only be tightened. A project audio_chain.true_peak above the
+    default profile's -1.5 dBTP used to pass straight into loudnorm and gate A01."""
+    _, tl = project(lambda d: d.setdefault("audio_chain", {}).update(true_peak=-2.0))
+    assert profiles.loudness(tl).true_peak == -2.0                                    # tighter: allowed
+    _, tl = project(lambda d: d.setdefault("audio_chain", {}).update(true_peak=0.0))
+    with pytest.raises(EngineError, match="looser than the global limit -1.5"):
+        profiles.loudness(tl)
+
+
 def test_good_profile_loudness_reaches_loudnorm(pdir, project):
     pdir("chan", '[audio]\ntarget_lufs = -15.0\ntrue_peak = -2.0\n')
     _, tl = project(lambda d: d.update(profile="chan"))

@@ -344,7 +344,7 @@ def particle_blocks(seg: Segment, tl: Timeline, prof) -> list[dict]:
 def _fireworks(e: dict, f: float, fps: int, H: int) -> list[dict]:
     dur = (e["f_out"] - e["f_in"]) / fps
     t = (f - e["f_in"]) / fps
-    if t < 0 or t > dur:
+    if t < 0 or t >= dur:   # the JS twin (hf/fx2.js) draws frames f_in <= f < f_out
         return []
     rnd = _lcg(e["seed"])
     g = e["gravity"] * H * e["scale"]
@@ -362,7 +362,7 @@ def _fireworks(e: dict, f: float, fps: int, H: int) -> list[dict]:
 def _fire(e: dict, f: float, fps: int, H: int) -> list[dict]:
     dur = (e["f_out"] - e["f_in"]) / fps
     t = (f - e["f_in"]) / fps
-    if t < 0 or t > dur:
+    if t < 0 or t >= dur:   # the JS twin (hf/fx2.js) draws frames f_in <= f < f_out
         return []
     rnd = _lcg(e["seed"])
     out = []
