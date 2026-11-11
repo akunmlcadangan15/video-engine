@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MD_FILES = [ROOT / n for n in ("README.md", "CONTRIBUTING.md", "CHANGELOG.md", "AGENTS.md")]
+MD_FILES = [ROOT / n for n in ("README.md", "CONTRIBUTING.md", "CHANGELOG.md", "AGENTS.md", "CLAUDE.md")]
 MD_FILES += sorted((ROOT / "docs").rglob("*.md")) + sorted((ROOT / "examples").rglob("*.md"))
 LINK = re.compile(r"(?<!\!)\[(?:[^\]]|\][^(])*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 FENCE = re.compile(r"^\s*(```|~~~)")
