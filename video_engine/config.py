@@ -9,7 +9,12 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import platform_info
+from . import discover, platform_info
+
+# Local engine.env (VIDEO_ENGINE_ENV_FILE, ./engine.env, or <user-config>/video-engine/engine.env)
+# fills in unset variables only: an explicit environment always wins.
+for _k, _v in discover.load_engine_env().items():
+    os.environ.setdefault(_k, _v)
 
 ENGINE_ROOT = Path(__file__).resolve().parent.parent
 PKG = Path(__file__).resolve().parent
@@ -20,13 +25,13 @@ GSAP_JS = VENDOR / "js" / "gsap.min.js"
 TEMPLATE_DIR = PKG / "template"
 PROFILES_DIR = Path(os.environ.get("VIDEO_ENGINE_PROFILES", ENGINE_ROOT / "profiles"))
 # Folder that holds the machine's shared libraries (geo library, open assets, stock footage, downloads). Each default
-# below sits in it and each has its own override. Only the defaults depend on the workspace, nothing else.
-# Default: /workspace on Linux (render server layout), ~/workspace on macOS (its root is read-only).
-_DEFAULT_WORKSPACE = Path("/workspace") if sys.platform.startswith("linux") else Path.home() / "workspace"
-WORKSPACE = Path(os.environ.get("VIDEO_ENGINE_WORKSPACE", _DEFAULT_WORKSPACE))
+# below sits in it and each has its own override. The default is the portable user-data directory
+# (`<XDG_DATA_HOME or ~/.local/share>/video-engine` on Linux, `~/Library/Application Support/video-engine` on macOS,
+# `%LOCALAPPDATA%\video-engine` on Windows). Machine-specific folders belong in a local engine.env, not here.
+WORKSPACE = Path(os.environ.get("VIDEO_ENGINE_WORKSPACE", str(discover.default_workspace())))
 GEO_LIBRARY = Path(os.environ.get("VIDEO_ENGINE_GEO_LIBRARY", WORKSPACE / "geo-library"))
 OPEN_ASSETS = Path(os.environ.get("VIDEO_ENGINE_OPEN_ASSETS", WORKSPACE / "open-assets"))
-STOCK_DIRS = tuple(Path(p) for p in os.environ.get("VIDEO_ENGINE_STOCK_DIRS", str(WORKSPACE / "asset-cache")).split(":") if p)
+STOCK_DIRS = tuple(Path(p) for p in os.environ.get("VIDEO_ENGINE_STOCK_DIRS", str(WORKSPACE / "asset-cache")).split(os.pathsep) if p)
 DOWNLOAD_DIR = Path(os.environ.get("VIDEO_ENGINE_DOWNLOAD_DIR", WORKSPACE / "downloads"))
 
 # Persistent content-addressed cache (word timestamps, rendered segments) on disk; survives /dev/shm cleanup.
@@ -47,20 +52,37 @@ RUST_THREADS_ACTIVE = _core.set_threads(RUST_THREADS)
 # HyperFrames toolchain: pinned in vendor/VERSIONS.json, installed into vendor/ by `engine doctor --install`.
 _PINS = json.loads((VENDOR / "VERSIONS.json").read_text())
 _CH = _PINS["chrome"]
-NODE = VENDOR / "node" / "bin" / "node"
-HF_CLI = VENDOR / "npm" / "node_modules" / "hyperframes" / "bin" / "hyperframes.mjs"
-PUPPETEER = VENDOR / "npm" / "node_modules" / "puppeteer-core"
+def _resolved(res, fallback: Path | str):
+    return res.path if res.found and res.path is not None else fallback
+
+# Tool paths: env override > vendor > global npm / PATH > platform-standard locations (discover.py).
+# When nothing is found the historical vendor (or "ffmpeg") path is kept so error messages stay stable.
+_NODE_RES = discover.resolve_node(vendor=VENDOR, environ=os.environ)
+NODE = Path(_resolved(_NODE_RES, VENDOR / "node" / "bin" / "node"))
+_HF_RES = discover.resolve_hyperframes(vendor=VENDOR, environ=os.environ)
+HF_CLI = Path(_HF_RES.path / "bin" / "hyperframes.mjs") if (_HF_RES.found and _HF_RES.path and (_HF_RES.path / "bin" / "hyperframes.mjs").is_file()) else (
+    Path(_HF_RES.path) if (_HF_RES.found and _HF_RES.path and _HF_RES.path.suffix) else VENDOR / "npm" / "node_modules" / "hyperframes" / "bin" / "hyperframes.mjs")
+_PPTR_RES = discover.resolve_puppeteer(vendor=VENDOR, environ=os.environ)
+PUPPETEER = Path(_resolved(_PPTR_RES, VENDOR / "npm" / "node_modules" / "puppeteer-core"))
 # Unsupported platform: importing config must still work, so CHROME points at a path that does not exist and
 # `engine doctor` reports the platform (and so the missing chrome) as FAIL.
 _PLATFORM = platform_info.supported_key()
-CHROME = VENDOR / "chrome" / _CH["product"] / (platform_info.chrome_relpath(_CH["product"], _CH["version"], _PLATFORM)
-                                               if _PLATFORM else Path("unsupported-platform") / _CH["product"])
+_CHROME_FALLBACK = VENDOR / "chrome" / _CH["product"] / (platform_info.chrome_relpath(_CH["product"], _CH["version"], _PLATFORM)
+                                                         if _PLATFORM else Path("unsupported-platform") / _CH["product"])
+# On an unsupported platform keep the historical fallback path so `engine doctor` can report the platform
+# (discovery must not pick a real Chrome built for a different OS).
+if _PLATFORM:
+    CHROME = Path(_resolved(discover.resolve_chrome(vendor=VENDOR, environ=os.environ), _CHROME_FALLBACK))
+else:
+    CHROME = _CHROME_FALLBACK
 
-FFMPEG = os.environ.get("VIDEO_ENGINE_FFMPEG", "ffmpeg")
-FFPROBE = os.environ.get("VIDEO_ENGINE_FFPROBE", "ffprobe")
-# ffmpeg the HyperFrames CLI encodes with: /usr/bin on Linux; elsewhere (macOS: Homebrew) whatever is on PATH.
-_SYSTEM_FFMPEG, _SYSTEM_FFPROBE = (("/usr/bin/ffmpeg", "/usr/bin/ffprobe") if sys.platform.startswith("linux") else
-                                   (shutil.which(FFMPEG) or FFMPEG, shutil.which(FFPROBE) or FFPROBE))
+_FF_RES = discover.resolve_ffmpeg(environ=os.environ, probe=False)
+_FP_RES = discover.resolve_ffmpeg(environ=os.environ, probe=True)
+FFMPEG = str(_resolved(_FF_RES, os.environ.get("VIDEO_ENGINE_FFMPEG", "ffmpeg")))
+FFPROBE = str(_resolved(_FP_RES, os.environ.get("VIDEO_ENGINE_FFPROBE", "ffprobe")))
+# ffmpeg the HyperFrames CLI encodes with: the resolved binaries (absolute when found).
+_SYSTEM_FFMPEG, _SYSTEM_FFPROBE = (str(Path(FFMPEG).resolve()) if Path(FFMPEG).is_file() else FFMPEG,
+                                   str(Path(FFPROBE).resolve()) if Path(FFPROBE).is_file() else FFPROBE)
 
 # Encoder defaults when a profile's [render] sets nothing for a stage. Intermediates are encoded again by the final
 # composite, so they use a fast preset at a low CRF: crf 16 veryfast matches crf 18 medium after the final pass

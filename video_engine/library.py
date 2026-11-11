@@ -24,7 +24,8 @@ from .util import EngineError
 OPEN_ASSETS = Path(os.environ.get("VIDEO_ENGINE_OPEN_ASSETS", config.WORKSPACE / "open-assets"))
 STOCK_DIRS = tuple(Path(x) for x in os.environ.get(
     "VIDEO_ENGINE_STOCK_DIRS",
-    f"{config.WORKSPACE / 'asset-cache' / 'footage'}:{config.WORKSPACE / 'asset-cache'}").split(":") if x)
+    os.pathsep.join((str(config.WORKSPACE / "asset-cache" / "footage"),
+                     str(config.WORKSPACE / "asset-cache")))).split(os.pathsep) if x)
 VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv", ".m4v"}
 IMAGE_EXT = {".png", ".webp", ".jpg", ".jpeg", ".svg"}
 MODEL_EXT = {".glb", ".gltf", ".obj"}

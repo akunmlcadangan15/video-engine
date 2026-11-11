@@ -98,12 +98,17 @@ def installed_versions(vendor: Path | None = None) -> list[str]:
 
 
 def system_root() -> Path | None:
-    """Package dir of the `hyperframes` on PATH (its bin is a symlink into …/node_modules/hyperframes/bin)."""
+    """Package dir of a HyperFrames install found outside vendor: PATH CLI, global npm roots, or env override."""
     exe = shutil.which("hyperframes")
-    if not exe:
-        return None
-    root = Path(exe).resolve().parent.parent
-    return root if (root / "package.json").is_file() else None
+    if exe:
+        root = Path(exe).resolve().parent.parent
+        if (root / "package.json").is_file():
+            return root
+    from . import config, discover
+    r = discover.resolve_hyperframes(vendor=config.VENDOR, environ=os.environ)
+    if r.found and r.path is not None and r.source != "vendor" and (r.path / "package.json").is_file():
+        return r.path
+    return None
 
 
 def _pkg_version(root: Path | None) -> str:

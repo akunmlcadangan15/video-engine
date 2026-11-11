@@ -71,7 +71,7 @@ The engine's own per-project lock (`out/.batch.lock`) is separate and still appl
 |---|---|---|
 | `VIDEO_ENGINE_RENDER_LOCK` | `/workspace/.render.lock` if `/workspace` exists, else `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/video-engine.render.lock` | global render lock file; one render at a time per lock |
 | `VIDEO_ENGINE_MIN_FREE_GB` | 8 | minimum free disk (GB, decimals allowed) on the filesystem of `out/`; `0` disables the check |
-| `VIDEO_ENGINE_ENV_FILE` | unset (then `./engine.env` if present) | shell-syntax file of `KEY=value` lines sourced before the checks (for example `VIDEO_ENGINE_CACHE`, `VIDEO_ENGINE_THREADS`) |
+| `VIDEO_ENGINE_ENV_FILE` | unset (then `./engine.env` if present, else `<user-config>/video-engine/engine.env`) | `KEY=value` file of machine-specific overrides. Wrappers source it in the shell; the engine also loads it (without overwriting variables already in the environment). |
 
 Tests: `pytest -q tests/test_wrapper_scripts.py` (uses a stub `engine`).
 
@@ -83,7 +83,7 @@ Tests: `pytest -q tests/test_wrapper_scripts.py` (uses a stub `engine`).
 | Rust | `source ~/.cargo/env`; on the Linux server build with `CC=/usr/bin/gcc` (macOS: the default Apple clang) |
 | Rust extension | `hypoverum_core_rs` (PyO3 0.27, abi3). Rebuild: `cd rust/hypoverum_core_rs && CC=/usr/bin/gcc maturin develop --release` (macOS: without `CC=`) |
 | ffmpeg / ffprobe | major version 7 or newer on PATH (verified 7.1.5 and 9.0.2; macOS: Homebrew latest `ffmpeg` or `ffmpeg@7`, keg-only; override: `VIDEO_ENGINE_FFMPEG`, `VIDEO_ENGINE_FFPROBE`) |
-| HyperFrames, Node, Chrome, Puppeteer | engine-owned, pinned in `vendor/VERSIONS.json` (Node v22.23.4 SHA-256 checked per platform, hyperframes 0.9.13, puppeteer-core 25.16.0, three 0.186.1 via `vendor/npm/package-lock.json`, chrome-headless-shell 152.0.7977.30). Installed trees `vendor/node`, `vendor/npm/node_modules`, `vendor/chrome` are gitignored. Check: `engine doctor`; install: `engine doctor --install`. Override the whole directory with `VIDEO_ENGINE_VENDOR`. The HyperFrames version is selectable (`VIDEO_ENGINE_HYPERFRAMES_VERSION` or `engine toolchain use`: `pinned`, `X.Y.Z` in `vendor/hf/`, `latest`, `system` = global CLI); no other toolchain location is read. |
+| HyperFrames, Node, Chrome, Puppeteer, ffmpeg, Python, Modal | Pins live in `vendor/VERSIONS.json` and `engine doctor --install` still writes the vendor tree. At runtime and in `engine doctor`, paths are resolved by `video_engine.discover` in this order: env override (`VIDEO_ENGINE_NODE`, `VIDEO_ENGINE_CHROME`, `VIDEO_ENGINE_HYPERFRAMES`, `VIDEO_ENGINE_PUPPETEER`, `VIDEO_ENGINE_THREE`, `VIDEO_ENGINE_FFMPEG` / `FFPROBE`, `VIDEO_ENGINE_PYTHON`, `VIDEO_ENGINE_MODAL`) > `vendor/` > global npm roots (`NODE_PATH`, `npm root -g`, platform-typical directories) > `PATH` > platform-standard cache/data dirs and common install locations. `VIDEO_ENGINE_VENDOR` still overrides the vendor directory. The HyperFrames *version policy* is `VIDEO_ENGINE_HYPERFRAMES_VERSION` or `engine toolchain use` (`pinned`, `X.Y.Z`, `latest`, `system`). |
 | Gemini (optional provider) | extra `gemini` (`google-genai`) and `GEMINI_API_KEY`. Never print the key. Unused unless that provider is selected. |
 | Other AI providers | API key in the env var named by `api_key_env` in `ai_providers.toml`. Never print it. |
 
@@ -103,8 +103,9 @@ Tests: `pytest -q tests/test_wrapper_scripts.py` (uses a stub `engine`).
 | `VIDEO_ENGINE_AI_MODEL` | unset | agent provider: the name of the model that answers, written to the reports (wins over `[agent] model_label`) |
 | `VIDEO_ENGINE_AI_CONFIG` | `<repo>/ai_providers.toml` | AI provider registry file |
 | `VIDEO_ENGINE_PROFILES` | `<repo>/profiles` | channel profile directory |
-| `VIDEO_ENGINE_WORKSPACE` | `/workspace` (Linux), `~/workspace` (macOS) | folder that holds the shared libraries; the defaults of the four variables below sit in it |
+| `VIDEO_ENGINE_WORKSPACE` | `<user-data>/video-engine` (Linux: `$XDG_DATA_HOME` or `~/.local/share`; macOS: `~/Library/Application Support`; Windows: `%LOCALAPPDATA%`) | folder that holds the shared libraries; the defaults of the four variables below sit in it. Machine-specific paths go in a local `engine.env`, not in the default. |
 | `VIDEO_ENGINE_GEO_LIBRARY` | `<workspace>/geo-library` | Natural Earth `land` GeoJSON for gate G02 (absent: the land check skips) |
 | `VIDEO_ENGINE_OPEN_ASSETS` | `<workspace>/open-assets` | `open-assets/catalog.csv` and the files it lists |
-| `VIDEO_ENGINE_STOCK_DIRS` | `<workspace>/asset-cache` | stock and B-roll roots, separated by `:` |
+| `VIDEO_ENGINE_STOCK_DIRS` | `<workspace>/asset-cache` | stock and B-roll roots, separated by the platform path separator (`:` on Unix, `;` on Windows) |
 | `VIDEO_ENGINE_DOWNLOAD_DIR` | `<workspace>/downloads` | folder searched for assets downloaded earlier (asset resolver) |
+| `VIDEO_ENGINE_ASSET_ROOTS` | unset | extra asset search roots (same path separator), looked up before the per-library defaults |

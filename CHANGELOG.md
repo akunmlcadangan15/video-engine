@@ -12,6 +12,17 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 ### Ditambahkan
 
 
+- **Penemuan perkakas dan akar aset yang portabel** (`video_engine/discover.py`): mesin dan `engine doctor`
+  memakai satu resolver. Urutan pencarian perkakas: override lingkungan > `vendor/` > akar npm global
+  (`NODE_PATH`, `npm root -g`, direktori npm khas per platform) > `PATH` > direktori cache/data standar
+  platform (XDG di Linux, `~/Library` di macOS, `%LOCALAPPDATA%` / `%APPDATA%` di Windows), cache browser
+  Puppeteer, dan lokasi pemasangan yang umum. Akar aset (`VIDEO_ENGINE_ASSET_ROOTS` serta variabel
+  per-pustaka yang sudah ada) memakai default di bawah direktori data pengguna (`…/video-engine`), bukan
+  folder khusus satu mesin; path khusus mesin diletakkan di `engine.env` lokal (`VIDEO_ENGINE_ENV_FILE`,
+  `./engine.env`, atau `<user-config>/video-engine/engine.env`). `engine doctor` menampilkan path dan sumber
+  temuan, dan lokasi yang dicari bila tidak ada. `--install` tetap hanya mengisi `vendor/`. Pengujian
+  (lingkungan palsu per platform): `tests/test_discover.py`.
+
 - **`extends` pada profil**: sebuah profil dapat dibangun di atas profil lain (`extends = "geoverum"`). Urutan
   lapisan: default model < `default.toml` < rantai `extends` (tiap profil: file `include`, lalu filenya) <
   `profile_overrides` proyek. Loop, basis yang tidak ada, dan `extends` di file `include` adalah error.

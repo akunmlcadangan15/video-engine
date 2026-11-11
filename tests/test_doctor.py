@@ -49,7 +49,7 @@ def _fake_vendor(tmp_path: Path, *, node=True, hf_version=None, hf_dist=True, hf
 
 
 def test_good_complete_vendor_passes(tmp_path):
-    res = doctor.check(_fake_vendor(tmp_path), run_binaries=False)
+    res = doctor.check(_fake_vendor(tmp_path), run_binaries=False, machine=False)
     assert all(c.ok for c in res), [c.line() for c in res]
 
 
@@ -63,7 +63,7 @@ def test_good_complete_vendor_passes(tmp_path):
 ])
 def test_bad_missing_or_mismatched_component_fails(tmp_path, kw, bad):
     bad = (bad,) if isinstance(bad, str) else bad
-    res = {c.name: c for c in doctor.check(_fake_vendor(tmp_path, **kw), run_binaries=False)}
+    res = {c.name: c for c in doctor.check(_fake_vendor(tmp_path, **kw), run_binaries=False, machine=False)}
     assert all(not res[b].ok for b in bad)
     assert all(c.ok for n, c in res.items() if n not in bad)
 
@@ -72,14 +72,14 @@ def test_bad_node_without_npm_fails(tmp_path):
     """A node tree whose bin/npm is missing (broken symlink or stripped lib/) fails the node check."""
     v = _fake_vendor(tmp_path)
     (v / "node" / "bin" / "npm").unlink()
-    res = {c.name: c for c in doctor.check(v, run_binaries=False)}
+    res = {c.name: c for c in doctor.check(v, run_binaries=False, machine=False)}
     assert not res["node"].ok and "npm missing" in res["node"].got
     assert all(c.ok for n, c in res.items() if n != "node")
 
 
 def test_good_hyperframes_other_than_the_pin_warns_and_does_not_fail(tmp_path, monkeypatch):
     monkeypatch.delenv("VIDEO_ENGINE_HYPERFRAMES_VERSION", raising=False)
-    res = {c.name: c for c in doctor.check(_fake_vendor(tmp_path, hf_version="0.8.100"), run_binaries=False)}
+    res = {c.name: c for c in doctor.check(_fake_vendor(tmp_path, hf_version="0.8.100"), run_binaries=False, machine=False)}
     assert all(c.ok for c in res.values()), [c.line() for c in res.values()]
     assert res["hyperframes"].warn and res["hyperframes"].line().startswith("[WARN]")
     assert res["hyperframes-active"].warn and "0.8.100" in res["hyperframes-active"].got
@@ -134,7 +134,7 @@ def test_bad_ffmpeg_versions_below_min_or_unparseable_fail():
 def test_good_check_runs_ffmpeg_version_as_its_own_check(tmp_path, monkeypatch):
     monkeypatch.setattr(doctor, "_ffmpeg_names", lambda flag: {"subtitles", "loudnorm", "sidechaincompress", "libx264", "aac"})
     monkeypatch.setattr(doctor, "check_ffmpeg_version", lambda: doctor.Check("ffmpeg-version", False, "7.x", "6.1"))
-    res = {c.name: c for c in doctor.check(_fake_vendor(tmp_path))}
+    res = {c.name: c for c in doctor.check(_fake_vendor(tmp_path), machine=False)}
     assert res["ffmpeg"].ok and not res["ffmpeg-version"].ok
     assert [n for n, c in res.items() if not c.ok] == ["ffmpeg-version"]
 
@@ -147,7 +147,7 @@ def test_good_check_reports_platform_first():
 def test_bad_unsupported_platform_fails_check_and_blocks_install(tmp_path, monkeypatch):
     v = _fake_vendor(tmp_path)
     monkeypatch.setattr(platform_info.sys, "platform", "freebsd14")
-    res = doctor.check(v, run_binaries=False)
+    res = doctor.check(v, run_binaries=False, machine=False)
     assert [c.name for c in res] == ["platform"] and not res[0].ok and "unsupported platform" in res[0].got
     with pytest.raises(EngineError, match="unsupported platform"):
         doctor.install(v, tmp_path / "tmp")
@@ -272,3 +272,20 @@ def test_good_install_does_nothing_when_everything_matches(tmp_path, monkeypatch
         monkeypatch.setattr(doctor, name, lambda *a, n=name: calls.append(n))
     doctor.install(v, tmp_path / "tmp")
     assert calls == []
+
+
+
+def test_good_doctor_reports_machine_path_when_vendor_missing(tmp_path):
+    """A node binary outside vendor is reported found (with source), not missing, when machine discovery is on."""
+    v = _fake_vendor(tmp_path, node=False)
+    bundled = tmp_path / "onpath" / "node"
+    bundled.parent.mkdir()
+    bundled.write_text("")
+    bundled.chmod(0o755)
+    env = {"HOME": str(tmp_path), "PATH": str(bundled.parent), "NODE_PATH": ""}
+    res = {c.name: c for c in doctor.check(v, run_binaries=False, machine=True,
+                                           environ=env, home=tmp_path, system="linux", confine=tmp_path)}
+    assert res["node"].ok and res["node"].warn
+    assert res["node"].source == "PATH"
+    assert res["node"].path == str(bundled)
+    assert "path:" in res["node"].line()

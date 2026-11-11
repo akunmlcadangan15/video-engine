@@ -10,7 +10,9 @@ Components (pins in vendor/VERSIONS.json):
 - chrome: chrome-headless-shell via @puppeteer/browsers (dependency of puppeteer-core), vendor/chrome.
 - ffmpeg: system package, not vendored; version 7.x with the filters and encoders a build needs.
 
-The engine resolves every toolchain path from vendor/ (config.py); no other location is read.
+Doctor reports each tool and asset root via `video_engine.discover` (env override, vendor,
+global npm, PATH, platform-standard cache/data dirs). `engine doctor --install` still
+installs only into vendor/, so the pinned tree stays complete even when a global copy exists.
 """
 from __future__ import annotations
 
@@ -58,10 +60,19 @@ class Check:
     want: str
     got: str
     warn: bool = False   # ok for `engine doctor`'s exit code, printed as WARN
+    path: str = ""
+    source: str = ""
+    searched: tuple[str, ...] = ()
 
     def line(self) -> str:
         tag = "FAIL" if not self.ok else "WARN" if self.warn else "OK"
-        return f"[{tag}] {self.name}: want {self.want}, got {self.got}"
+        msg = f"[{tag}] {self.name}: want {self.want}, got {self.got}"
+        if self.path:
+            loc = f" ({self.source})" if self.source else ""
+            msg += f"\n     path: {self.path}{loc}"
+        elif not self.ok and self.searched:
+            msg += "\n     searched: " + ", ".join(self.searched)
+        return msg
 
 
 def _pkg_version(d: Path) -> str:
@@ -71,7 +82,11 @@ def _pkg_version(d: Path) -> str:
         return "missing"
 
 
-def check(vendor: Path | None = None, run_binaries: bool = True) -> list[Check]:
+def check(vendor: Path | None = None, run_binaries: bool = True, *, machine: bool = True,
+          environ: dict | None = None, home: Path | None = None, system: str | None = None,
+          confine: Path | None = None) -> list[Check]:
+    """Vendor pin checks, then (when `machine` is true) the portable resolver so a tool
+    present on PATH or in a global npm root is not reported as missing."""
     vendor = vendor or config.VENDOR
     p = pins(vendor)
     plat = check_platform()
@@ -107,6 +122,8 @@ def check(vendor: Path | None = None, run_binaries: bool = True) -> list[Check]:
     if run_binaries:
         out.append(check_ffmpeg())
         out.append(check_ffmpeg_version())
+    if machine:
+        out = _merge_machine_discovery(out, vendor, environ=environ, home=home, system=system, confine=confine)
     return out
 
 
@@ -247,7 +264,7 @@ def install(vendor: Path | None = None, tmp: Path | None = None) -> list[Check]:
     platform_info.platform_key()   # unsupported platform: EngineError before anything is downloaded
     tmp = tmp or config.workdir("doctor")
     p = pins(vendor)
-    status = {c.name: c.ok and not c.warn for c in check(vendor)}
+    status = {c.name: c.ok and not c.warn for c in check(vendor, machine=False)}
     if not status["node"]:
         install_node(vendor, p, tmp)
     if not all(status[n] for n in p["npm"]) or not status["hyperframes-cli"]:
@@ -300,3 +317,54 @@ def install_hf_version(vendor: Path, version: str, tmp: Path) -> Path:
     if esb.is_file() and subprocess.run([esb, "--version"], capture_output=True, check=False).returncode:
         raise EngineError(f"esbuild in {d} does not run; reinstall without --ignore-scripts")
     return root
+
+
+def _merge_machine_discovery(out: list[Check], vendor: Path, *, environ: dict | None, home: Path | None,
+                             system: str | None, confine: Path | None) -> list[Check]:
+    """If a vendor pin check failed but the portable resolver found the tool, report it as found
+    (WARN when a version pin exists and does not match). Asset roots and extra tools are appended."""
+    from . import discover
+    env = environ if environ is not None else __import__("os").environ
+    disc = discover.resolve_all(vendor=vendor, environ=env, system=system, home=home, confine=confine)
+    by = {c.name: c for c in out}
+    # Map resolver names to doctor check names
+    aliases = {"puppeteer-core": "puppeteer-core", "hyperframes": "hyperframes", "ffprobe": "ffprobe",
+               "ffmpeg": "ffmpeg", "python": "python", "modal": "modal", "node": "node", "chrome": "chrome",
+               "three": "three"}
+    merged = list(out)
+    seen = {c.name for c in merged}
+    for res in disc.tools:
+        name = aliases.get(res.name, res.name)
+        extra_kw = dict(path=str(res.path) if res.path else "", source=res.source, searched=res.searched)
+        if name in by and not by[name].ok and res.found:
+            # Promote a vendor-miss to a machine hit; keep the pin as `want`.
+            c = by[name]
+            c.ok = True
+            c.warn = True
+            c.got = f"{res.detail or 'present'} (not in vendor)"
+            c.path = extra_kw["path"]
+            c.source = res.source
+            c.searched = res.searched
+        elif name in by and res.found:
+            by[name].path = extra_kw["path"]
+            by[name].source = res.source
+            by[name].searched = res.searched
+        elif name not in seen:
+            optional = name in {"python", "modal"}
+            ok = res.found or optional
+            merged.append(Check(name, ok, "present", res.detail or ("present" if res.found else "missing"),
+                                warn=optional and not res.found,
+                                path=extra_kw["path"], source=res.source if res.found else "",
+                                searched=res.searched))
+            seen.add(name)
+        elif name in by and not res.found and not by[name].ok and not by[name].searched:
+            by[name].searched = res.searched
+    for res in disc.assets:
+        if res.name in seen:
+            continue
+        merged.append(Check(res.name, True, "present", "present" if res.found else "missing",
+                            warn=not res.found,
+                            path=str(res.path) if res.path else "", source=res.source if res.found else "",
+                            searched=res.searched))
+        seen.add(res.name)
+    return merged
