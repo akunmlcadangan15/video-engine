@@ -186,8 +186,13 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
   di `ai_providers.toml` > `agent`. Tanpa pilihan, permintaan menjadi bundel berkas untuk provider `agent`: model AI
   yang sedang menjalankan mesin yang menjawab (nama modelnya dicatat dari `VIDEO_ENGINE_AI_MODEL` atau
   `[agent] model_label`, bawaan `agent`). `ai_providers.toml` tidak lagi menulis `default`, dan entri fallback ke
-  host tunnel sementara dihapus; fallback Gemini hanya ada bila `[gemini] fallback_provider` ditulis eksplisit.
-  `google-genai` pindah ke extra `gemini` (dan `test`).
+  host tunnel sementara dihapus. `google-genai` pindah ke extra `gemini`.
+- **Gemini bukan provider istimewa**: tidak ada fallback lintas layanan. Kunci `[gemini] fallback_provider` (dan
+  kunci `[gemini]` lain selain `models` / `qa_models`) ditolak, dan kegagalan Gemini tidak pindah ke provider lain.
+  Daftar modelnya di-retry seperti provider API lain. `AIResult.provider` tidak lagi bawaan `"gemini"`. Extra
+  `test` tidak memasang `google-genai`; pengujian yang membangun klien SDK sungguhan melewati diri sendiri bila
+  paket itu tidak ada, dan pengujian dengan klien palsu tetap berjalan. Gemini tetap opsional lewat
+  `--provider gemini` dan extra `gemini`. Tanpa pilihan, provider tetap `agent`.
 - **Retry AI mencakup status sementara**: HTTP 408, 500, 502, 504 kini di-retry seperti 429 dan 503; 400, 401, 403
   tetap tidak. Balasan Gemini tanpa teks dengan alasan berhenti selain normal menjadi error yang menyebut alasannya.
 - **Profil Geoverum dibersihkan tanpa mengubah hash `geoverum`**: kunci yang hanya mengulang `default.toml` dihapus

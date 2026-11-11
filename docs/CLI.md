@@ -11,7 +11,7 @@ Every `engine` command with its options and exit codes.
 All commands take the project directory.
 Exit code 0 = success, 1 = gate failure or engine error, 2 = usage error, 3 = waiting for an agent response (agent provider wrote a request bundle).
 
-AI options (`draft`, `director`, `preflight --ai-qa`, `build --ai-qa`): `--provider NAME` (`agent`, `gemini` or a `[providers.NAME]` entry; none selected = `agent`, the model that runs the engine answers the request bundle), `--resume` (agent provider: read the pending bundle's `response.json`).
+AI options (`draft`, `director`, `preflight --ai-qa`, `build --ai-qa`): `--provider NAME` (`agent`, optional `gemini`, or a `[providers.NAME]` entry; none selected = `agent`, the model that runs the engine answers the request bundle), `--resume` (agent provider: read the pending bundle's `response.json`).
 
 ## `engine validate P`
 

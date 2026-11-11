@@ -15,7 +15,7 @@ from video_engine.cli import main
 from video_engine.util import EngineError
 
 from test_ai_director import APIErr, client as gemini_client
-from test_draft import client as draft_client, good_plan, proj, storyboards  # noqa: F401  (fixture)
+from test_draft import good_plan, proj, storyboards  # noqa: F401  (fixture)
 
 SECRET = "sk-test-SECRET-value-0000"
 
@@ -40,9 +40,9 @@ api_key_env = "MYLLM_KEY"
 capabilities = ["image"]
 """
 
-GEMINI_DS = """default = "gemini"
-[gemini]
-fallback_provider = "deepseek"
+GEMINI_AND_OTHER = """[gemini]
+models = ["gemini-3.8-flash"]
+qa_models = ["gemini-3.8-flash"]
 [providers.deepseek]
 base_url = "https://ds.example/v1"
 models = ["ds-model"]
@@ -66,16 +66,17 @@ def test_good_precedence_flag_env_config_default(tmp_path, monkeypatch):
 
 
 def test_good_get_builds_each_provider(tmp_path, monkeypatch):
-    write_config(tmp_path, monkeypatch, LLM.format(default="gemini"))
-    assert isinstance(ai.get(), GeminiProvider)
+    write_config(tmp_path, monkeypatch, LLM.format(default="myllm"))
+    assert isinstance(ai.get(), openai_compat.OpenAICompatProvider)   # config default, not a vendor built-in
     assert isinstance(ai.get("agent", root=tmp_path), agent.AgentProvider)
+    assert isinstance(ai.get("gemini"), GeminiProvider)               # gemini only when named
     p = ai.get("myllm")
     assert isinstance(p, openai_compat.OpenAICompatProvider) and p.entry.base_url == "https://llm.example/v1"
     assert p.models == {"planning": ["big", "small"], "qa": ["big", "small"]}
 
 
 def test_bad_unknown_provider_names_known_ones(tmp_path, monkeypatch):
-    write_config(tmp_path, monkeypatch, LLM.format(default="gemini"))
+    write_config(tmp_path, monkeypatch, LLM.format(default="myllm"))
     with pytest.raises(EngineError, match="unknown AI provider 'nope'.*agent, gemini, myllm"):
         ai.resolve("nope")
 
@@ -100,8 +101,11 @@ def test_good_repo_config_names_no_vendor_default_and_no_fallback(monkeypatch):
     cfg = tomllib.loads((config.ENGINE_ROOT / "ai_providers.toml").read_text())
     assert "default" not in cfg and ai.resolve(None, cfg) == "agent"       # the session's own model drafts
     assert cfg["agent"]["model_label"] == agent.MODEL_LABEL == "agent"
-    assert "fallback_provider" not in cfg["gemini"] and not cfg.get("providers")   # nothing leaves on its own
-    assert ai.get("gemini").fallback is None
+    assert set(cfg["gemini"]) <= set(ai.GEMINI_KEYS) and not cfg.get("providers")  # nothing leaves on its own
+    monkeypatch.delenv(ai.ENV_CONFIG, raising=False)
+    prov = ai.get("gemini")
+    assert isinstance(prov, GeminiProvider) and prov.models == {"planning": ["gemini-3.8-flash"],
+                                                                "qa": ["gemini-3.8-flash"]}
 
 
 def test_good_agent_reports_the_model_named_by_the_session(tmp_path, monkeypatch):
@@ -503,10 +507,12 @@ def test_good_cli_director_agent_bundle_root(tmp_path, assets, capsys):
     assert out["provider"] == "agent" and out["model"] == agent.MODEL_LABEL and out["data"]["summary"] == "s"
 
 
-# --------------------------------------------------------------------------------------- gemini: single model + fallback
-def gemini_ds(tmp_path, monkeypatch):
-    write_config(tmp_path, monkeypatch, GEMINI_DS)
+# --------------------------------------------------------------------------------------- gemini: optional, no cross-provider hop
+def gemini_and_other(tmp_path, monkeypatch):
+    """Gemini selected by name, with another provider configured beside it. That neighbour is not a fallback."""
+    write_config(tmp_path, monkeypatch, GEMINI_AND_OTHER)
     monkeypatch.setenv("OPENGATEWAY_API_KEY", "ds-fake-key")
+    monkeypatch.delenv(ai.ENV_PROVIDER, raising=False)
 
 
 @pytest.fixture
@@ -534,139 +540,87 @@ def test_good_only_gemini_3_8_flash_is_called(tmp_path, monkeypatch):
     assert found == {"gemini-3.8-flash"}
 
 
-def test_good_gemini_success_skips_fallback(tmp_path, monkeypatch):
-    gemini_ds(tmp_path, monkeypatch)
+def test_good_configured_gemini_is_not_the_default(tmp_path, monkeypatch):
+    gemini_and_other(tmp_path, monkeypatch)
+    assert ai.resolve(None) == "agent"
+    assert isinstance(ai.get(None, root=tmp_path), agent.AgentProvider)
+
+
+def test_good_gemini_success_stays_on_gemini(tmp_path, monkeypatch):
+    gemini_and_other(tmp_path, monkeypatch)
     c = gemini_client({"gemini-3.8-flash": [json.dumps({"v": 1})]})
     post = FakePost({"ds-model": [ok({"v": 99})]})
-    r = ai.get(None, client=c, post=post).generate_json("planning", [Text("x")], None)
+    r = ai.get("gemini", client=c, post=post).generate_json("planning", [Text("x")], None)
     assert r.provider == "gemini" and r.model == "gemini-3.8-flash" and r.fallback is False and r.warning is None
     assert post.calls == [] and [m for m, _ in c.models.calls] == ["gemini-3.8-flash"]
 
 
-def test_good_gemini_exhausted_falls_back_to_deepseek(tmp_path, monkeypatch, capsys):
-    gemini_ds(tmp_path, monkeypatch)
+def test_bad_gemini_exhausted_does_not_call_another_provider(tmp_path, monkeypatch):
+    gemini_and_other(tmp_path, monkeypatch)
     c = gemini_client({"gemini-3.8-flash": [APIErr(503)]})
     post = FakePost({"ds-model": [ok({"v": 2})]})
-    r = ai.get(None, client=c, post=post).generate_json("planning", [Text("x")], None)
-    assert r.provider == "deepseek" and r.model == "ds-model" and r.fallback is True
-    assert "FALLBACK" in r.warning and "deepseek/ds-model" in r.warning
-    assert [m for m, _ in c.models.calls] == ["gemini-3.8-flash"] * 4
-    assert [m for m, _ in r.tried] == ["gemini-3.8-flash"] * 4 + ["ds-model"]
-    assert [s for _, s in r.tried] == ["error 503"] * 4 + ["ok"]
-    assert len(post.calls) == 1
-    err = capsys.readouterr().err
-    assert "warning: FALLBACK: gemini-3.8-flash did not answer" in err and "answer is from deepseek/ds-model" in err
+    with pytest.raises(EngineError, match="all Gemini models failed") as ei:
+        ai.get("gemini", client=c, post=post).generate_json("planning", [Text("x")], None)
+    assert "deepseek" not in str(ei.value) and "ds-model" not in str(ei.value)
+    assert [m for m, _ in c.models.calls] == ["gemini-3.8-flash"] * 4 and post.calls == []
 
 
-def test_good_qualified_model_prefixes_only_when_missing():
-    prefixed = "deepseek/deepseek-v4.1-flash-ultrafast"
-    assert base.qualified_model("deepseek", prefixed) == prefixed
-    assert base.qualified_model("deepseek", "ds-model") == "deepseek/ds-model"
-
-
-def test_good_gemini_fallback_warning_does_not_double_prefix(tmp_path, monkeypatch, capsys):
-    model = "deepseek/deepseek-v4.1-flash-ultrafast"
-    write_config(tmp_path, monkeypatch, GEMINI_DS.replace("ds-model", model))
-    monkeypatch.setenv("OPENGATEWAY_API_KEY", "ds-fake-key")
-    c = gemini_client({"gemini-3.8-flash": [APIErr(503)]})
-    post = FakePost({model: [ok({"v": 5})]})
-    r = ai.get(None, client=c, post=post).generate_json("planning", [Text("x")], None)
-    assert r.provider == "deepseek" and r.model == model and r.fallback
-    assert model in r.warning and "answer is from " + model in r.warning
-    assert "deepseek/deepseek/" not in r.warning
-    assert "answer is from " + model in capsys.readouterr().err
-
-
-def test_good_draft_report_names_fallback_provider_and_model(proj, tmp_path, monkeypatch):
-    model = "deepseek/deepseek-v4.1-flash-ultrafast"
-    write_config(tmp_path, monkeypatch, GEMINI_DS.replace("ds-model", model))
-    monkeypatch.setenv("OPENGATEWAY_API_KEY", "ds-fake-key")
-    c = draft_client({"gemini-3.8-flash": [APIErr(503)]})
-    post = FakePost({model: [ok(good_plan())]})
-    r = draft.draft(proj, provider=ai.get(None, client=c, post=post), dom=False, director=False, video_proxies=0)
-    rep = json.loads((proj / "draft_report.json").read_text())
-    assert r.ok and rep["provider"] == "deepseek" and rep["model"] == model and rep["fallback"] is True
-    ai_meta = rep["rounds"][0]["ai"]
-    assert set(ai_meta) == {"provider", "model", "retries", "fallback", "warning", "tried", "seconds", "usage"}
-    assert ai_meta["provider"] == "deepseek" and ai_meta["model"] == model
-    assert ai_meta["fallback"] is True and model in ai_meta["warning"]
-
-
-def test_good_gemini_404_falls_back_at_once(tmp_path, monkeypatch):
-    gemini_ds(tmp_path, monkeypatch)
+def test_bad_gemini_404_does_not_call_another_provider(tmp_path, monkeypatch):
+    gemini_and_other(tmp_path, monkeypatch)
     c = gemini_client({"gemini-3.8-flash": [APIErr(404)]})
     post = FakePost({"ds-model": [ok({"v": 3})]})
-    r = ai.get(None, client=c, post=post).generate_json("planning", [Text("x")], None)
-    assert r.provider == "deepseek" and r.fallback and r.tried == [("gemini-3.8-flash", "error 404"), ("ds-model", "ok")]
-    assert [m for m, _ in c.models.calls] == ["gemini-3.8-flash"]
+    with pytest.raises(EngineError, match="all Gemini models failed"):
+        ai.get("gemini", client=c, post=post).generate_json("planning", [Text("x")], None)
+    assert [m for m, _ in c.models.calls] == ["gemini-3.8-flash"] and post.calls == []
 
 
-def test_good_missing_gemini_key_falls_back_to_deepseek(tmp_path, monkeypatch):
-    gemini_ds(tmp_path, monkeypatch)
+def test_bad_missing_gemini_key_is_not_a_fallback(tmp_path, monkeypatch):
+    gemini_and_other(tmp_path, monkeypatch)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     post = FakePost({"ds-model": [ok({"v": 4})]})
     parts = [Media(tmp_path / "a.wav", "audio", "audio/wav", "narration", transcript="halo")]
-    r = ai.get(None, post=post).generate_json("planning", parts, None)
-    assert r.provider == "deepseek" and r.model == "ds-model" and r.fallback
-    assert "GEMINI_API_KEY is not set" in r.warning and len(post.calls) == 1
+    with pytest.raises(EngineError, match="GEMINI_API_KEY is not set"):
+        ai.get("gemini", post=post).generate_json("planning", parts, None)
+    assert post.calls == []
 
 
 def test_good_qa_uses_gemini_3_8_flash(tmp_path, monkeypatch, png):
-    gemini_ds(tmp_path, monkeypatch)
+    gemini_and_other(tmp_path, monkeypatch)
     reply = {"segments": [{"seg": 1, "overlap": False, "cut_off_text": False, "issues": []}]}
     c = gemini_client({"gemini-3.8-flash": [json.dumps(reply)]})
     post = FakePost({"ds-model": [ok({"segments": [{"seg": 1, "overlap": False, "cut_off_text": False,
                                                     "issues": []}]})]})
     meta: dict = {}
-    fs = tasks.qa_snapshots({1: str(png)}, ai.get(None, client=c, post=post), meta=meta)
+    fs = tasks.qa_snapshots({1: str(png)}, ai.get("gemini", client=c, post=post), meta=meta)
     assert [f.level for f in fs] == ["pass"]
     assert meta == {"provider": "gemini", "model": "gemini-3.8-flash", "retries": 0, "fallback": False}
     assert [m for m, _ in c.models.calls] == ["gemini-3.8-flash"] and post.calls == []
 
 
-def test_good_qa_gemini_failure_falls_back_with_warn_finding(tmp_path, monkeypatch, png):
-    gemini_ds(tmp_path, monkeypatch)
+def test_good_qa_gemini_failure_warns_without_another_provider(tmp_path, monkeypatch, png):
+    gemini_and_other(tmp_path, monkeypatch)
     c = gemini_client({"gemini-3.8-flash": [APIErr(503)]})
     post = FakePost({"ds-model": [ok({"segments": [{"seg": 1, "overlap": False, "cut_off_text": False,
                                                     "issues": []}]})]})
     meta: dict = {}
-    fs = tasks.qa_snapshots({1: str(png)}, ai.get(None, client=c, post=post), meta=meta)
-    assert [f.level for f in fs] == ["warn", "pass"] and "FALLBACK" in fs[0].message
-    assert meta["provider"] == "deepseek" and meta["model"] == "ds-model" and meta["fallback"] is True
+    fs = tasks.qa_snapshots({1: str(png)}, ai.get("gemini", client=c, post=post), meta=meta)
+    assert [f.level for f in fs] == ["warn"] and "unavailable" in fs[0].message and "FALLBACK" not in fs[0].message
+    assert meta == {} and post.calls == []
 
 
-def test_bad_deepseek_also_fails_raises_both(tmp_path, monkeypatch):
-    gemini_ds(tmp_path, monkeypatch)
-    c = gemini_client({"gemini-3.8-flash": [APIErr(404)]})
-    post = FakePost({"ds-model": [(400, {"error": {"message": "bad"}})]})
-    with pytest.raises(EngineError) as ei:
-        ai.get(None, client=c, post=post).generate_json("planning", [Text("x")], None)
-    msg = str(ei.value)
-    assert "gemini-3.8-flash" in msg and "deepseek" in msg and "ds-model" in msg
-
-
-@pytest.mark.parametrize("bad", ["nope", "agent", "gemini"])
-def test_bad_explicit_gemini_fallback_must_be_a_provider(tmp_path, monkeypatch, bad):
-    text = f"""default = "gemini"
-[gemini]
-fallback_provider = "{bad}"
-[providers.other]
-base_url = "https://other.example/v1"
-models = ["m"]
-api_key_env = "OTHER_KEY"
+@pytest.mark.parametrize("key", ["fallback_provider", "default_provider"])
+def test_bad_gemini_unknown_key_is_rejected(tmp_path, monkeypatch, key):
+    text = f"""[gemini]
+{key} = "deepseek"
+models = ["gemini-3.8-flash"]
+[providers.deepseek]
+base_url = "https://ds.example/v1"
+models = ["ds-model"]
+api_key_env = "OPENGATEWAY_API_KEY"
 """
     write_config(tmp_path, monkeypatch, text)
-    with pytest.raises(EngineError, match=rf"fallback_provider '{bad}'.*known: other"):
-        ai.get(None)
-
-
-def test_good_fallback_only_when_the_config_names_one(tmp_path, monkeypatch):
-    write_config(tmp_path, monkeypatch, GEMINI_DS)
-    assert ai.get(None).fallback.name == "deepseek"
-    write_config(tmp_path, monkeypatch, GEMINI_DS.replace('[gemini]\nfallback_provider = "deepseek"\n', ""))
-    assert ai.get(None).fallback is None                 # a configured provider is not a fallback by itself
-    write_config(tmp_path, monkeypatch, LLM.format(default="gemini"))
-    assert ai.get(None).fallback is None
+    with pytest.raises(EngineError, match=rf"unknown key\(s\) {key}"):
+        ai.get("gemini")
 
 
 @pytest.mark.parametrize("code", [408, 500, 502, 504])

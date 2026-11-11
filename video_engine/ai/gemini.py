@@ -1,20 +1,20 @@
-"""Gemini provider (google-genai SDK).
+"""Gemini provider (google-genai SDK). Optional: selected only with `--provider gemini` (or env / config `default`).
 
-  MODEL            the only Gemini model, used for planning/draft/director and visual QA
+  MODEL            model used when `[gemini] models` is absent
   PLANNING_MODELS  footage analysis / timeline drafting
   QA_MODELS        visual QA on gate snapshots
-A configured fallback provider receives the same request when Gemini raises EngineError (after the normal retries,
-on 404, or on a missing GEMINI_API_KEY). Retry/fallback rules: `video_engine.ai.base`. Every HTTP request has a
-HTTP_TIMEOUT_S timeout. Request config: media_resolution=MEDIA_RESOLUTION_LOW, thinking_budget=1024,
-response_mime_type=application/json. Media parts (audio, video) go through the File API once per provider instance;
-`cleanup()` deletes every upload, verifies the deletion and delegates to the fallback provider.
-Key: env GEMINI_API_KEY; never printed or logged.
+Retry rules are the shared ones in `video_engine.ai.base` (the model list of this provider, nothing else). A failed
+call is not sent to another provider. Every HTTP request has a HTTP_TIMEOUT_S timeout. Request config:
+media_resolution=MEDIA_RESOLUTION_LOW, thinking_budget=1024, response_mime_type=application/json. Media parts
+(audio, video) go through the File API once per provider instance; `cleanup()` deletes every upload and verifies
+the deletion.
+Key: env GEMINI_API_KEY; never printed or logged. Package: the `gemini` extra (`google-genai`).
 """
 from __future__ import annotations
 
 import os
-import sys
 import time
+from types import SimpleNamespace
 
 from . import base
 from .base import AIResult, Image, Media, Part, Text, code_of, status_of
@@ -31,23 +31,49 @@ FILE_ACTIVE_TIMEOUT_S = 120
 CAPABILITIES = {"image", "audio", "video"}
 
 
+def _sdk():
+    """google-genai modules, or EngineError naming the extra. A missing key is reported by `_client` first."""
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        raise EngineError("the gemini provider needs the optional package google-genai "
+                          "(pip install 'video-engine[gemini]')") from None
+    return genai, types
+
+
 def _client():
     if not os.environ.get("GEMINI_API_KEY"):
         raise EngineError("GEMINI_API_KEY is not set")
-    from google import genai
-    from google.genai import types
+    genai, types = _sdk()
     return genai.Client(api_key=os.environ["GEMINI_API_KEY"],
                         http_options=types.HttpOptions(timeout=HTTP_TIMEOUT_S * 1000))
 
 
 def _gen_config(schema: dict | None = None):
-    from google.genai import types
+    """SDK config when google-genai is installed. A plain object with the same fields otherwise, so a test can
+    drive this adapter with a fake client without the package. A real call goes through `_client`, which requires it."""
+    try:
+        from google.genai import types
+    except ImportError:
+        return SimpleNamespace(response_mime_type="application/json", media_resolution="MEDIA_RESOLUTION_LOW",
+                               thinking_config=SimpleNamespace(thinking_budget=THINKING_BUDGET),
+                               response_json_schema=schema)
     kw = dict(response_mime_type="application/json",
               media_resolution=types.MediaResolution.MEDIA_RESOLUTION_LOW,
               thinking_config=types.ThinkingConfig(thinking_budget=THINKING_BUDGET))
     if schema:
         kw["response_json_schema"] = schema
     return types.GenerateContentConfig(**kw)
+
+
+def _inline_image(data: bytes, mime: str):
+    """Inline image part. SDK `Part` when google-genai is installed; a plain stand-in for a fake client otherwise."""
+    try:
+        from google.genai import types
+    except ImportError:
+        return SimpleNamespace(data=data, mime_type=mime)
+    return types.Part.from_bytes(data=data, mime_type=mime)
 
 
 def _finish_reason(r) -> str | None:
@@ -120,11 +146,9 @@ class GeminiProvider:
     name = NAME
     capabilities = CAPABILITIES
 
-    def __init__(self, client=None, models: list[str] | None = None, qa_models: list[str] | None = None,
-                 fallback=None):
+    def __init__(self, client=None, models: list[str] | None = None, qa_models: list[str] | None = None):
         self._client = client
         self.models = {"planning": models or PLANNING_MODELS, "qa": qa_models or QA_MODELS}
-        self.fallback = fallback
         self.uploads: list = []
         self._by_path: dict[str, object] = {}
 
@@ -140,8 +164,7 @@ class GeminiProvider:
             if isinstance(p, Text):
                 out.append(p.text)
             elif isinstance(p, Image):
-                from google.genai import types
-                out.append(types.Part.from_bytes(data=p.data, mime_type=p.mime))
+                out.append(_inline_image(p.data, p.mime))
             elif isinstance(p, Media):
                 key = str(p.path)
                 if key not in self._by_path:
@@ -153,35 +176,9 @@ class GeminiProvider:
 
     def generate_json(self, task: str, parts: list[Part], schema: dict | None, request_id: str = "",
                       attachments: dict | None = None) -> AIResult:
-        t0 = time.perf_counter()
-        try:
-            contents = self._contents(parts)
-            return generate_json(self.models[task], contents, schema, client=self.client)
-        except EngineError as e:
-            if self.fallback is None:
-                raise
-            primary = self.models[task][0]
-            gemini_error = e
-            gemini_tried = list(getattr(e, "tried", None) or [(primary, f"error {e}")])
-            gemini_seconds = time.perf_counter() - t0
-        try:
-            r = self.fallback.generate_json(task, parts, schema, request_id, attachments)
-        except EngineError as fallback_error:
-            raise EngineError(f"Gemini call failed: {gemini_error}; fallback {self.fallback.name} call failed: "
-                              f"{fallback_error}") from None
-        statuses = ", ".join(status for _, status in gemini_tried)
-        warning = (f"FALLBACK: {primary} did not answer ({statuses}); "
-                   f"answer is from {base.qualified_model(r.provider, r.model)}")
-        print(f"warning: {warning}", file=sys.stderr)
-        return AIResult(r.data, r.model, gemini_tried + list(r.tried), round(gemini_seconds + r.seconds, 2),
-                        r.usage, r.retries, True, warning, r.provider)
+        return generate_json(self.models[task], self._contents(parts), schema, client=self.client)
 
     def cleanup(self) -> list[dict]:
         out = [delete_and_verify(self.client, f.name) for f in self.uploads] if self.uploads else []
         self.uploads, self._by_path = [], {}
-        cleanup = getattr(self.fallback, "cleanup", None)
-        if callable(cleanup):
-            records = cleanup()
-            if isinstance(records, list):
-                out += records
         return out

@@ -13,8 +13,9 @@
 model_label = "agent"
 
 [gemini]
-# Used only with `--provider gemini` (key: GEMINI_API_KEY). No fallback unless `fallback_provider = "NAME"` names a
-# [providers.NAME] entry below: a request never leaves for another service on its own.
+# Optional provider. Used only when `--provider gemini`, VIDEO_ENGINE_AI_PROVIDER or `default` selects it.
+# Key: GEMINI_API_KEY. Package: the `gemini` extra (google-genai). A failed call is not sent to another provider.
+# Known keys: models, qa_models.
 models = ["gemini-3.8-flash"]
 qa_models = ["gemini-3.8-flash"]
 

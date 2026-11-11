@@ -11,7 +11,7 @@ dependencies = ["pydantic>=2.12", "numpy", "pillow", "httpx"]
 
 [project.optional-dependencies]
 gemini = ["google-genai"]              # only for `--provider gemini`
-test = ["pytest", "google-genai"]      # the provider tests drive the Gemini adapter with a fake client
+test = ["pytest"]                      # provider tests use a fake client; they do not install google-genai
 
 [project.scripts]
 engine = "video_engine.cli:main"

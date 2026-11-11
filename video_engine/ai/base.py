@@ -19,7 +19,7 @@ import random
 import re
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Protocol
 
@@ -85,7 +85,7 @@ class AIResult:
     retries: int = 0                 # failed attempts on the answering model before its answer
     fallback: bool = False           # answered by a model other than models[0]
     warning: str | None = None
-    provider: str = "gemini"
+    provider: str = field(kw_only=True)   # set by the provider that answered; there is no vendor default
 
     def meta(self) -> dict:
         return {"provider": self.provider, "model": self.model, "retries": self.retries, "fallback": self.fallback,
@@ -128,12 +128,6 @@ def backoff_delay(retry: int) -> float:
     """Delay before same-model retry number `retry` (1-based): BACKOFF_S[retry-1] + jitter."""
     base = BACKOFF_S[min(retry, len(BACKOFF_S)) - 1]
     return base + random.uniform(0.0, JITTER_FRAC * base)
-
-
-def qualified_model(provider: str, model: str) -> str:
-    """`provider/model` label; a model id that already starts with `provider/` is returned unchanged."""
-    prefix = f"{provider}/"
-    return model if model.startswith(prefix) else f"{prefix}{model}"
 
 
 _FENCE = re.compile(r"```[A-Za-z0-9_-]*[ \t]*\n(.*?)```", re.DOTALL)
@@ -225,7 +219,7 @@ def run_models(models: list[str], attempt: Callable[[str], tuple[str, dict]], la
                 warning = f"FALLBACK: {models[0]} did not answer ({', '.join(first)}); answer is from {m}"
                 print(f"warning: {warning}", file=sys.stderr)
             return AIResult(data if isinstance(data, dict) else {"items": data}, m, tried,
-                            round(time.perf_counter() - t0, 2), usage, retries, fallback, warning, provider)
+                            round(time.perf_counter() - t0, 2), usage, retries, fallback, warning, provider=provider)
     err = EngineError(f"all {label} models failed: {tried}")
     err.tried = list(tried)
     raise err

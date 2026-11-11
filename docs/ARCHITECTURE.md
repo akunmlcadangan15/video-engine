@@ -107,7 +107,7 @@ module imports without a built `hypoverum_core_rs` wheel ([CONTRIBUTING.md](../C
 - The engine names no vendor default. Selection: `--provider` > env `VIDEO_ENGINE_AI_PROVIDER` > `default` in
   `ai_providers.toml` > `agent`. With nothing selected the request is a file handoff: the model (or person) running
   the engine answers the bundle under `<project>/ai_request/` and reruns the command with `--resume`. A request
-  reaches a second service only through an explicit `[gemini] fallback_provider`. Details: [AI.md](AI.md).
+  is not forwarded to a second service. Details: [AI.md](AI.md).
 - A provider implements `generate_json(task, parts, schema, request_id, attachments) -> AIResult` and `cleanup()`.
 - Retry rules live in `ai/base.run_models`. Do not add a retry loop elsewhere.
 - Model output is untrusted. Order of checks: `parse_json_text` -> `schema_errors` (structure) -> `assemble`

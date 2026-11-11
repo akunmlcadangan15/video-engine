@@ -34,8 +34,9 @@ The specification of the engine: goal, architecture, components, gates, profiles
 - Target: total processing 2-5 min per project on 8 vCPU / 15 GB RAM / no GPU.
 
 ## Architecture: 4 layers
-1. PRE-PROCESSING & AI DIRECTOR (Python + Rust + AI provider, default Gemini): Rust makes 360p low-fps proxy + silence
-   detection in /dev/shm (~3 s); the AI provider analyses and drafts master_timeline.json (~15 s with Gemini).
+1. PRE-PROCESSING & AI DIRECTOR (Python + Rust + the selected AI provider; with nothing selected, the agent file
+   handoff): Rust makes 360p low-fps proxy + silence detection in /dev/shm (~3 s); the provider analyses and drafts
+   master_timeline.json.
 2. ZERO-RENDER PRE-FLIGHT GATES (< 5 s): text/credit gates from JSON/text; camera (R56) by curve math; DOM margins
    (R62/R63) via seek-at-3-points snapshots.
 3. SMART ROUTER, parallel by segment type:
@@ -78,13 +79,11 @@ The specification of the engine: goal, architecture, components, gates, profiles
 - Provider interface: `generate_json(task, parts, schema, request_id, attachments) -> AIResult` (task `planning` or
   `qa`), `cleanup() -> file deletion records`. AIResult records provider, model, retries, fallback, warning, tried.
 - Selection: --provider > env VIDEO_ENGINE_AI_PROVIDER > `default` in ai_providers.toml (env VIDEO_ENGINE_AI_CONFIG) >
-  gemini.
-- gemini (default, google-genai SDK). Model: gemini-3.8-flash for planning, draft, director and visual QA.
-  Fallback: `[gemini] fallback_provider` in ai_providers.toml (default `deepseek`) answers the same request when
-  Gemini raises EngineError after its retries, on 404 or on a missing GEMINI_API_KEY. The result records provider,
-  model, fallback, warning and tried; the next request tries gemini-3.8-flash first. With no configured fallback the
-  Gemini error is raised.
-  Rules: raw footage -> Rust 360p low-fps proxy in /dev/shm -> upload via Gemini File API;
+  agent. The shipped file sets no `default`.
+- gemini (optional: `--provider gemini`, extra `gemini` / google-genai SDK). Models from `[gemini] models` and
+  `qa_models` (shipped: gemini-3.8-flash) for planning, draft, director and visual QA. A failed call is an error;
+  it is not sent to another provider. Unknown `[gemini]` keys are an error (known: `models`, `qa_models`).
+  Rules: raw footage -> Rust 360p low-fps proxy in /dev/shm -> upload via the Gemini File API;
   media_resolution=MEDIA_RESOLUTION_LOW; thinking_config thinking_budget=1024; response_mime_type="application/json";
   every upload deleted after the last request and the deletion verified. Key: env GEMINI_API_KEY (never print it).
 - agent: file handoff, no API. Request bundle <root>/<request_id>/ (request.md, schema.json, images/,
@@ -96,8 +95,8 @@ The specification of the engine: goal, architecture, components, gates, profiles
   output and base64 inline images; audio -> transcript and video -> sampled JPEG frames without the capability.
   Key read from the named env var at call time, never stored or printed.
 - Retry semantics, all API providers: 429/503/transport drop/invalid JSON -> same model up to 3 retries (2/5/12 s +
-  jitter), then next model; 404 -> next model; other status -> error. 300 s HTTP timeout. A Gemini EngineError hands
-  the request to the fallback provider (same task, parts, schema) and prints the FALLBACK warning.
+  jitter), then the next model in that provider's list; 404 -> next model; other status -> error. 300 s HTTP timeout.
+  Once that list is exhausted the error is raised. Nothing hands the request to a different provider.
 
 ### C. Gates: pre-flight gates in 3 layers, all BEFORE render
 - Layer 1 Static & metadata (~0.05 s): R07 every source URL in credits; R14 licence + watermark-free flag; R44 no duplicated

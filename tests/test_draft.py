@@ -1,5 +1,6 @@
-"""`engine draft` with a mocked Gemini client: good and bad cases (inputs, assembly, repair loop, retries,
-fallback, upload deletion verified, URLs only from credits.txt)."""
+"""`engine draft` driven by an explicit GeminiProvider with a fake client (not the default provider): good and bad
+cases (inputs, assembly, repair loop, retries, in-list model fallback, upload deletion verified, URLs only from
+credits.txt)."""
 from __future__ import annotations
 
 import json

@@ -234,6 +234,7 @@ def test_good_qa_fallback_warns():
 
 
 def test_good_client_has_request_timeout(monkeypatch):
+    pytest.importorskip("google.genai")
     monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
     c = ai._client()
     assert c._api_client._http_options.timeout == ai.HTTP_TIMEOUT_S * 1000
@@ -242,4 +243,20 @@ def test_good_client_has_request_timeout(monkeypatch):
 def test_bad_client_without_key(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     with pytest.raises(EngineError, match="GEMINI_API_KEY"):
+        ai._client()
+
+
+def _genai_installed() -> bool:
+    import importlib.util
+    try:
+        return importlib.util.find_spec("google.genai") is not None
+    except ModuleNotFoundError:
+        return False
+
+
+def test_bad_client_without_package_names_the_extra(monkeypatch):
+    if _genai_installed():
+        pytest.skip("google-genai is installed; this case is the missing-package error")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
+    with pytest.raises(EngineError, match="google-genai"):
         ai._client()

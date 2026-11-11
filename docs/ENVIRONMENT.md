@@ -84,7 +84,7 @@ Tests: `pytest -q tests/test_wrapper_scripts.py` (uses a stub `engine`).
 | Rust extension | `hypoverum_core_rs` (PyO3 0.27, abi3). Rebuild: `cd rust/hypoverum_core_rs && CC=/usr/bin/gcc maturin develop --release` (macOS: without `CC=`) |
 | ffmpeg / ffprobe | major version 7 or newer on PATH (verified 7.1.5 and 9.0.2; macOS: Homebrew latest `ffmpeg` or `ffmpeg@7`, keg-only; override: `VIDEO_ENGINE_FFMPEG`, `VIDEO_ENGINE_FFPROBE`) |
 | HyperFrames, Node, Chrome, Puppeteer | engine-owned, pinned in `vendor/VERSIONS.json` (Node v22.23.4 SHA-256 checked per platform, hyperframes 0.9.13, puppeteer-core 25.16.0, three 0.186.1 via `vendor/npm/package-lock.json`, chrome-headless-shell 152.0.7977.30). Installed trees `vendor/node`, `vendor/npm/node_modules`, `vendor/chrome` are gitignored. Check: `engine doctor`; install: `engine doctor --install`. Override the whole directory with `VIDEO_ENGINE_VENDOR`. The HyperFrames version is selectable (`VIDEO_ENGINE_HYPERFRAMES_VERSION` or `engine toolchain use`: `pinned`, `X.Y.Z` in `vendor/hf/`, `latest`, `system` = global CLI); no other toolchain location is read. |
-| Gemini | `GEMINI_API_KEY` in the environment. Never print it. |
+| Gemini (optional provider) | extra `gemini` (`google-genai`) and `GEMINI_API_KEY`. Never print the key. Unused unless that provider is selected. |
 | Other AI providers | API key in the env var named by `api_key_env` in `ai_providers.toml`. Never print it. |
 
 | Variable | Default | Meaning |

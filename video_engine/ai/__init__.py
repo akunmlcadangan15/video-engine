@@ -1,11 +1,11 @@
 """AI providers for `engine draft`, `engine director` and `--ai-qa`.
 
-Providers: `agent` (file handoff, `agent.py`), `gemini` (`gemini.py`), and every `[providers.NAME]` entry of the
-AI config file (OpenAI-compatible, `openai_compat.py`).
+Providers: `agent` (file handoff, `agent.py`), `gemini` (`gemini.py`, optional), and every `[providers.NAME]` entry
+of the AI config file (OpenAI-compatible, `openai_compat.py`).
 The engine names no vendor default. Selection precedence: --provider flag > env VIDEO_ENGINE_AI_PROVIDER > `default`
 in the AI config file > `agent`. With nothing selected the request goes to the agent provider: the AI model (or
 person) that is running the engine answers it from the request bundle, so the model in use is the model that drafts.
-A fallback provider exists only where the config asks for one (`[gemini] fallback_provider = "NAME"`).
+A call stays on the provider that was selected. Nothing forwards a failure to a second service.
 AI config file: env VIDEO_ENGINE_AI_CONFIG, else <engine root>/ai_providers.toml.
 """
 from __future__ import annotations
@@ -20,6 +20,7 @@ from .base import AIResult, AwaitingAgent, Image, Media, Part, Provider, Text  #
 
 SESSION = "agent"                 # no provider selected: the model that runs the engine answers (file handoff)
 BUILTIN = ("agent", "gemini")
+GEMINI_KEYS = ("models", "qa_models")
 ENV_PROVIDER = "VIDEO_ENGINE_AI_PROVIDER"
 ENV_CONFIG = "VIDEO_ENGINE_AI_CONFIG"
 ENV_MODEL = "VIDEO_ENGINE_AI_MODEL"   # agent provider: the name of the model that answers, written to the reports
@@ -62,25 +63,21 @@ def _openai_provider(name: str, cfg: dict, post=None):
 def get(flag: str | None = None, *, root: Path | None = None, resume_cmd: str = "", resume: bool = False,
         client=None, models: list[str] | None = None, post=None) -> Provider:
     """Provider instance. `root`, `resume_cmd`, `resume`: agent bundle root and the command that resumes.
-    `client`/`models` (gemini) and `post` (openai_compat, including the Gemini fallback) are injection points for
-    tests."""
+    `client`/`models` (gemini) and `post` (openai_compat) are injection points for tests."""
     cfg = load_config()
     name = resolve(flag, cfg)
     if name == "gemini":
         from .gemini import GeminiProvider
-        gemini_cfg, providers = cfg.get("gemini", {}), cfg.get("providers", {})
-        if "fallback_provider" in gemini_cfg:
-            fallback_name = gemini_cfg["fallback_provider"]
-            if fallback_name not in providers:
-                known = ", ".join(sorted(providers)) or "none"
-                raise EngineError(f"AI provider 'gemini': fallback_provider '{fallback_name}' is not a "
-                                  f"[providers.NAME] entry (known: {known})")
-        else:
-            fallback_name = None      # never implicit: a request leaves for another service only when configured
-        fallback = _openai_provider(fallback_name, cfg, post) if fallback_name else None
+        gemini_cfg = cfg.get("gemini", {})
+        if not isinstance(gemini_cfg, dict):
+            raise EngineError(f"{config_path()}: [gemini] must be a table")
+        unknown = sorted(set(gemini_cfg) - set(GEMINI_KEYS))
+        if unknown:
+            raise EngineError(f"AI provider 'gemini': unknown key(s) {', '.join(unknown)} "
+                              f"(known: {', '.join(GEMINI_KEYS)}). A Gemini call is not sent to another provider")
         cfg_models = models or gemini_cfg.get("models")
         cfg_qa_models = gemini_cfg.get("qa_models") or cfg_models
-        return GeminiProvider(client=client, models=cfg_models, qa_models=cfg_qa_models, fallback=fallback)
+        return GeminiProvider(client=client, models=cfg_models, qa_models=cfg_qa_models)
     if name == "agent":
         from .agent import MODEL_LABEL, AgentProvider
         if root is None:

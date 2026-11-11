@@ -681,9 +681,10 @@ def parser() -> argparse.ArgumentParser:
         return x
 
     def ai_args(x, what: str, resume_also: str = ""):
-        x.add_argument("--provider", help=f"AI provider for {what}: agent, gemini or a name from the AI config file "
-                                          "(default: env VIDEO_ENGINE_AI_PROVIDER, config `default`, else agent: "
-                                          "the model that runs the engine answers the request bundle)")
+        x.add_argument("--provider", help=f"AI provider for {what}: this flag, else env VIDEO_ENGINE_AI_PROVIDER, "
+                                          "else `default` in the AI config, else agent (the model that runs the "
+                                          "engine answers the request bundle). Names: agent, gemini (optional; "
+                                          "needs the gemini extra) or a [providers.NAME] entry")
         x.add_argument("--resume", action="store_true", help="agent provider: read response.json of the pending "
                                                              "request bundle(s) instead of starting over" + resume_also)
     x = add("validate", cmd_validate, "Schema check of master_timeline.json.")
