@@ -107,14 +107,21 @@ def _norm(t: str) -> str:
 
 
 def apply_fixes(words: list[dict], fixes) -> list[dict]:
-    """Replace recognised word sequences (STT corrections); timing of the run is split evenly over the new words."""
+    """Replace recognised word sequences (STT corrections); timing of the run is split evenly over the new words.
+    A blank `to` removes the matched words. A blank `from` matches nothing (an empty pattern would match at every
+    position and never advance)."""
     out = list(words)
     for fx in fixes:
         pat = [_norm(x) for x in fx.match.split()]
         rep = fx.to.split()
+        if not pat:
+            continue
         i = 0
         while i + len(pat) <= len(out):
             if [_norm(w["word"]) for w in out[i:i + len(pat)]] == pat:
+                if not rep:
+                    del out[i:i + len(pat)]
+                    continue
                 s, e = out[i]["start"], out[i + len(pat) - 1]["end"]
                 step = (e - s) / len(rep)
                 new = [{"word": r, "start": round(s + k * step, 3), "end": round(s + (k + 1) * step, 3), "prob": 1.0}

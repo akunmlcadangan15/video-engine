@@ -155,6 +155,30 @@ def test_bad_taste_feedback_rejected(verdict, what, why):
         director.record_feedback("geo", verdict, what, why)
 
 
+def test_bad_corrupt_taste_store_names_the_file(_taste_dir):
+    _taste_dir.mkdir(parents=True, exist_ok=True)
+    (_taste_dir / "geo.json").write_text('{"channel": "geo", "liked": [')          # a half-written file
+    with pytest.raises(EngineError, match=r"taste store .*geo\.json: invalid JSON"):
+        director.load_taste("geo")
+    (_taste_dir / "geo.json").write_text("[]")
+    with pytest.raises(EngineError, match="expected a JSON object"):
+        director.load_taste("geo")
+
+
+def test_good_taste_save_is_atomic_and_leaves_no_part_file(_taste_dir):
+    director.record_feedback("geo", "liked", "route tracing", "shows movement")
+    director.remember("geo", "opener A", ["hold"])
+    assert sorted(f.name for f in _taste_dir.iterdir()) == ["geo.json"]
+    assert json.loads((_taste_dir / "geo.json").read_text())["recent"]["openers"] == ["opener A"]
+
+
+def test_good_storyboard_prompt_names_the_frame_format(proj):
+    inp = draft.collect(proj)
+    assert "director of a vertical documentary short." in director.prompt(inp, director.load_taste("default"))
+    inp.settings = inp.settings.model_copy(update={"width": 1920, "height": 1080})
+    assert "director of a landscape 16:9 documentary video." in director.prompt(inp, director.load_taste("default"))
+
+
 def test_good_geoverum_seed_from_brand_profile(monkeypatch):
     from video_engine import config
     monkeypatch.setenv("VIDEO_ENGINE_TASTE_DIR", str(config.PROFILES_DIR / "taste"))

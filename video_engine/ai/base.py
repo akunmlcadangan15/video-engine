@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import subprocess
 import sys
 import time
@@ -135,13 +136,48 @@ def qualified_model(provider: str, model: str) -> str:
     return model if model.startswith(prefix) else f"{prefix}{model}"
 
 
-def parse_json_text(text: str):
-    """JSON object from a model reply; a ```json fenced block is accepted."""
-    t = (text or "").strip()
-    if t.startswith("```"):
-        t = t.split("\n", 1)[1] if "\n" in t else ""
-        t = t.rsplit("```", 1)[0]
-    return json.loads(t)
+_FENCE = re.compile(r"```[A-Za-z0-9_-]*[ \t]*\n(.*?)```", re.DOTALL)
+
+
+def _no_constant(name: str):
+    raise json.JSONDecodeError(f"{name} is not valid JSON", name, 0)
+
+
+def _loads(t: str):
+    """json.loads without the NaN / Infinity extension: a number the timeline cannot hold is an invalid reply."""
+    return json.loads(t, parse_constant=_no_constant)
+
+
+def parse_json_text(text):
+    """JSON value from a model reply. Accepted, in this order: a bare JSON document; a ```json fenced block at the
+    start; the first fenced block after leading prose; one JSON document that starts at the first `{` or `[` and is
+    followed by prose. Chat-completions content given as a list of parts is read as its joined text parts. Anything
+    else raises json.JSONDecodeError, which `run_models` retries. A cut-off document is never repaired: only a
+    complete document at the first bracket counts, so a fragment inside a truncated reply is not taken for it."""
+    if isinstance(text, list):
+        parts = [p.get("text") if isinstance(p, dict) else p for p in text]
+        text = "".join(p for p in parts if isinstance(p, str))
+    if not isinstance(text, str):
+        text = ""
+    t = text.strip()
+    body = t
+    if body.startswith("```"):
+        body = body.split("\n", 1)[1] if "\n" in body else ""
+        body = body.rsplit("```", 1)[0]
+    try:
+        return _loads(body)
+    except json.JSONDecodeError as first:
+        m = _FENCE.search(t)
+        if m and not t.startswith("```"):
+            return _loads(m.group(1))
+        start = min((i for i in (t.find("{"), t.find("[")) if i >= 0), default=-1)
+        if start < 0:
+            raise
+        try:
+            data, _ = json.JSONDecoder(parse_constant=_no_constant).raw_decode(t, start)
+        except json.JSONDecodeError:
+            raise first from None
+        return data
 
 
 def run_models(models: list[str], attempt: Callable[[str], tuple[str, dict]], label: str, provider: str

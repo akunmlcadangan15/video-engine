@@ -11,7 +11,7 @@ Caption tidak digambar di dalam HTML, melainkan dikompilasi oleh ekstensi Rust m
 
 ## Mulai cepat
 
-Syarat sistem: Linux x64 atau macOS Apple Silicon, Python 3.10+, toolchain Rust (`cargo`), `ffmpeg` (versi 7+ dengan filter `subtitles`, `loudnorm`, `sidechaincompress`, serta encoder `libx264` dan `aac`), dan ruang disk ~700 MB untuk toolchain HyperFrames.
+Syarat sistem: Linux x64 atau macOS Apple Silicon, Python 3.11+, toolchain Rust (`cargo`), `ffmpeg` (versi 7+ dengan filter `subtitles`, `loudnorm`, `sidechaincompress`, serta encoder `libx264` dan `aac`), dan ruang disk ~700 MB untuk toolchain HyperFrames.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate

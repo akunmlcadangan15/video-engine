@@ -630,3 +630,33 @@ def test_good_absent_gemini_fallback_key_defaults_to_deepseek(tmp_path, monkeypa
     assert ai.get(None).fallback.name == "deepseek"
     write_config(tmp_path, monkeypatch, LLM.format(default="gemini"))
     assert ai.get(None).fallback is None
+
+
+@pytest.mark.parametrize("reply", [
+    '{"v": 3}',
+    '```json\n{"v": 3}\n```',
+    '```json\n{"v": 3}\n```\nHope this helps!',
+    'Here is the JSON:\n```json\n{"v": 3}\n```',
+    '{"v": 3}\n\nDone.',
+    [{"type": "text", "text": '{"v": '}, {"type": "text", "text": "3}"}],     # content given as parts
+])
+def test_good_parse_json_text_accepts_wrapped_replies(reply):
+    assert base.parse_json_text(reply) == {"v": 3}
+
+
+@pytest.mark.parametrize("reply", [
+    "nope", "", None,
+    '{"segments": [{"start_frame": 0, "tags": [1, 2]}, {"start_frame"',      # cut off: no inner fragment is taken
+    'See [the] notes: {"v": 3}',                                           # the first bracket is not the document
+    '{"v": NaN}', '{"v": Infinity}',
+])
+def test_bad_parse_json_text_rejects_invalid_replies(reply):
+    with pytest.raises(json.JSONDecodeError):
+        base.parse_json_text(reply)
+
+
+def test_good_openai_content_parts_are_parsed(key):
+    post = FakePost({"big": [(200, {"choices": [{"message": {"content": [{"type": "text", "text": '{"v": 3}'}]}}]})]})
+    r = openai_compat.OpenAICompatProvider(entry(), post).generate_json("planning", [Text("x")], None, "r")
+    assert r.data == {"v": 3} and r.tried == [("big", "ok")]
+

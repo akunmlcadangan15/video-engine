@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 import tomllib
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,8 @@ from typing import Any
 
 from .. import config
 from ..ai.base import Image, Text
+from ..units import units
+from ..util import EngineError
 
 HERE = Path(__file__).parent
 DIRECTIONS = ("grounded", "contrast", "bold")
@@ -53,19 +56,38 @@ def _empty(channel: str) -> dict:
 
 
 def load_taste(channel: str) -> dict:
+    """Taste store of `channel`, or an empty one when the channel has no file. A file that is not a JSON object is
+    an EngineError naming it: drafting on silently emptied taste would repeat what the channel rejected."""
     p = taste_dir() / f"{channel}.json"
     d = _empty(channel)
     if p.is_file():
-        d.update(json.loads(p.read_text()))
+        try:
+            stored = json.loads(p.read_text())
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            raise EngineError(f"taste store {p}: invalid JSON ({e})") from None
+        if not isinstance(stored, dict) or not isinstance(stored.get("recent", {}), dict):
+            raise EngineError(f"taste store {p}: expected a JSON object with a `recent` object")
+        d.update(stored)
         d.setdefault("recent", {}).setdefault("openers", [])
         d["recent"].setdefault("transitions", [])
     return d
 
 
 def save_taste(d: dict) -> Path:
+    """Atomic replace: a reader (another draft of the same channel) sees one whole version, never a half-written
+    file."""
     p = taste_dir() / f"{d['channel']}.json"
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(d, indent=2, ensure_ascii=False) + "\n")
+    fd, name = tempfile.mkstemp(dir=p.parent, prefix=f".{p.name}.", suffix=".part")
+    tmp = Path(name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(d, indent=2, ensure_ascii=False) + "\n")
+        os.chmod(tmp, p.stat().st_mode & 0o777 if p.exists() else 0o644)
+        os.replace(tmp, p)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     return p
 
 
@@ -155,7 +177,8 @@ def prompt(inp, taste: dict) -> str:
                      for k, v in sorted(patterns().items()))
     assets = "\n".join(f"- {a.id}: {'/'.join(sorted(asset_kinds(a)))}" + (f", {a.duration_s:.1f}s" if a.duration_s else "")
                        + "".join(f"; {h}" for h in a.hints) for a in inp.assets)
-    return f"""STORYBOARD REQUEST. You are the director of a vertical documentary short. Before any timeline is drafted,
+    fmt = "landscape 16:9 documentary video" if units(inp.settings).landscape else "vertical documentary short"
+    return f"""STORYBOARD REQUEST. You are the director of a {fmt}. Before any timeline is drafted,
 propose exactly 3 storyboard concepts for the attached narration, one per direction: grounded, contrast, bold.
 
 NARRATION WORDS, indexed [k] (locked: keep this order, cover every word exactly once):

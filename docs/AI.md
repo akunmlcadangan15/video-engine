@@ -25,6 +25,7 @@ Every result records `provider` and the `model` that answered.
 Retry and fallback (every API provider): HTTP 429 / 503 (`RESOURCE_EXHAUSTED` / `UNAVAILABLE`) or invalid JSON -> retry the same model up to 3 times, waiting 2 s, 5 s, 12 s (+ up to 25 % random jitter).
 Then the next model.
 Transport drops without an HTTP status (`RemoteProtocolError`, read/connect timeouts, `ConnectionError`) count as 503.
+A reply counts as JSON when it is a bare JSON document, a ```` ```json ```` fenced block (also after leading prose), or one complete document that starts at the first `{` / `[` and is followed by prose; chat-completions content given as a list of text parts is joined first. `NaN` / `Infinity` and a cut-off document are invalid JSON (`ai.base.parse_json_text`).
 HTTP 404 -> next model at once.
 Any other status (400, 401, 403, ...) -> error, no retry.
 Every HTTP request has a 300 s timeout.

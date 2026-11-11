@@ -94,6 +94,13 @@ class Inputs:
     words_meta: CaptionsMeta
     total_frames: int
     profile: str | None = None
+    profile_overrides: dict = field(default_factory=dict)   # the existing timeline's project values over the profile
+
+
+def _profile(inp: Inputs) -> profiles.Profile:
+    """Effective profile of the draft: the channel profile (default when none) with the project's overrides, the
+    same one the drafted Timeline validates against."""
+    return profiles.load(inp.profile, inp.profile_overrides)
 
 
 # ---------------------------------------------------------------------------------------------------------- inputs
@@ -252,7 +259,7 @@ def collect(pdir: Path, voiceover: str | None = None, script: str | None = None,
     pid = existing.project_id if existing else config.safe_project_id(pdir.name)
     style = {k: v for k, v in (existing.caption_style if existing else {}).items() if k != "y_overrides"}
     return Inputs(pdir, pid, settings, ac, style, _find_script(pdir, script), lines, assets, rep, words, meta, total,
-                  profile)
+                  profile, dict(existing.profile_overrides) if existing else {})
 
 
 # ---------------------------------------------------------------------------------------------------------- prompt
@@ -283,7 +290,7 @@ def schema(inp: Inputs) -> dict:
                      "required": ["title"]},
         "overlays": {"type": "array", "items": overlay}},
         "required": ["start_frame", "end_frame", "kind", "asset", "narration", "why"]}
-    prof = profiles.load(inp.profile or profiles.DEFAULT)
+    prof = _profile(inp)
     seg["properties"].update(draft_scene.schema_props(prof.draft, prof.layout is not None, prof.transitions.map_morph))
     seg["properties"]["map_recipe"] = RECIPE_SCHEMA
     if prof.draft.map_path:
@@ -310,8 +317,8 @@ def prompt(inp: Inputs) -> str:
         + ("".join(f"\n    {h}" for h in a.hints)) for a in inp.assets)
     credits = "\n".join(f"{c.n}. {c.text}" for c in inp.credit_lines)
     segs = "\n".join(f"- frames {a}-{b}" for a, b in inp.pause_report.segments)
-    dp = profiles.load(inp.profile or profiles.DEFAULT).draft
-    mz = profiles.load(inp.profile or profiles.DEFAULT).camera.max_zoom
+    prof = _profile(inp)
+    dp, mz = prof.draft, prof.camera.max_zoom
     lo, hi = dp.min_seg_s, dp.max_seg_s
     extra = ("\n\nCHANNEL CREATIVE DIRECTION (identity, defaults and alternatives; defaults are not hard constraints)"
              + "".join(f"\n- {r}" for r in dp.rules)) if dp.rules else ""
@@ -321,7 +328,6 @@ def prompt(inp: Inputs) -> str:
                  "\n   the key: glide (default) or whip (fast blurred move for a far jump; the camera drifts until it); roll = optional"
                  "\n   map turn in degrees (-25..25) reached at the key."
                  if dp.map_path else "")
-    prof = profiles.load(inp.profile or profiles.DEFAULT)
     scene_rule = draft_scene.prompt(prof.draft, prof.layout is not None, prof.transitions.map_morph)
     recipes_rule = RECIPE_RULE
     return f"""You are the editor of a {_format_words(S)} ({S.width}x{S.height}, {fps} fps, Indonesian narration).
@@ -546,7 +552,7 @@ def assemble(inp: Inputs, data: dict) -> tuple[Timeline, list[str], list[dict]]:
     """Model JSON -> (Timeline, normalisation notes, per-segment rationale). Raises ValueError / ValidationError with a message fit for the repair prompt."""
     S, fps = inp.settings, inp.settings.fps
     by_id = {a.id: a for a in inp.assets}
-    prof = profiles.load(inp.profile or profiles.DEFAULT)
+    prof = _profile(inp)
     max_zoom, layout_on = prof.camera.max_zoom, prof.layout is not None
     seg_keys = set(schema(inp)["properties"]["segments"]["items"]["properties"]) | set(draft_scene.FIELDS)   # gated
                                                                          # scene keys: draft_scene names the profile
@@ -646,7 +652,8 @@ def assemble(inp: Inputs, data: dict) -> tuple[Timeline, list[str], list[dict]]:
         if old:
             credits.append(old)
     tl = Timeline(project_id=inp.project_id, profile=inp.profile, settings=S, credits_manifest=credits, audio_chain=inp.audio_chain,
-                  segments=out, captions=inp.words, captions_meta=inp.words_meta, caption_style=dict(inp.caption_style))
+                  segments=out, captions=inp.words, captions_meta=inp.words_meta, caption_style=dict(inp.caption_style),
+                  profile_overrides=dict(inp.profile_overrides))
     try:   # open assets the scene names (flag-icons flags): credits from their registry rows, as the build adds them
         tl, auto = assets.ensure_credits(tl, inp.pdir)
     except EngineError as e:

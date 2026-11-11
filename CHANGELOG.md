@@ -206,6 +206,25 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ### Diperbaiki
 
+- **`caption_fixes` tidak lagi menggantung atau crash**: `from` kosong membuat `audio.apply_fixes` berputar tanpa
+  henti (pola kosong cocok di setiap posisi) dan `to` kosong berakhir `ZeroDivisionError`. Sekarang `from` kosong
+  ditolak saat validasi timeline dan `to` kosong menghapus kata yang cocok. Pengujian:
+  `tests/test_audio_loudness.py`.
+- **Balasan model yang dibungkus prosa tidak lagi dibuang**: `ai.base.parse_json_text` menerima blok ```` ```json ````
+  setelah kalimat pembuka, satu dokumen JSON lengkap yang diikuti prosa, dan `content` berbentuk daftar part
+  (sebelumnya `AttributeError` tanpa retry). `NaN`/`Infinity` dan dokumen terpotong tetap dianggap JSON tidak valid
+  (di-retry); fragmen di dalam balasan terpotong tidak pernah diambil. Pengujian: `tests/test_ai_providers.py`.
+- **Redraft mempertahankan `profile_overrides` proyek**: `engine draft` pada proyek yang sudah punya timeline
+  membuang `profile_overrides` (misalnya `camera.max_zoom` atau `watermark = null`) padahal `settings`,
+  `audio_chain` dan `caption_style` dipertahankan; prompt, skema dan perakitan kini memakai profil efektif yang sama
+  dengan validasi timeline (`draft._profile`). Pengujian: `tests/test_draft.py`.
+- **Prompt storyboard menyebut format frame yang benar**: `director.prompt` selalu menulis "vertical documentary
+  short", juga untuk profil landscape 16:9. Pengujian: `tests/test_director.py`.
+- **Taste store**: file `profiles/taste/<channel>.json` yang rusak kini menjadi `EngineError` yang menyebut filenya,
+  dan penyimpanan memakai penggantian atomik (file sementara + `os.replace`) sehingga draf lain pada channel yang
+  sama tidak pernah membaca file setengah tertulis. Pengujian: `tests/test_director.py`.
+- **Metadata paket**: `requires-python` menjadi `>=3.11` (kode memakai `tomllib`) dan `pydantic>=2.12` (profil
+  memakai `Field(exclude_if=...)`; versi lebih lama mengabaikannya diam-diam dan mengubah hash profil).
 - Kunci cache segmen native kini memuat `[motion] overlay_fade_s` (fade overlay yang dibakar ke piksel).
 - Region `block` pada scene beats kini ikut meredup sesuai level `layout.regions` (template hanya menelusuri anak
   langsung `<svg>`).

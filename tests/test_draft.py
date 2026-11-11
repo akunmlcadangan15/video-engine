@@ -137,6 +137,18 @@ def test_good_draft_first_round(proj):
     assert not (proj / "master_timeline.json").read_text().count("draft")                # original untouched
 
 
+def test_good_redraft_keeps_project_profile_overrides(proj):
+    doc = json.loads((proj / "master_timeline.json").read_text())
+    doc["profile_overrides"] = {"camera": {"max_zoom": 9.0}, "watermark": None}
+    (proj / "master_timeline.json").write_text(json.dumps(doc))
+    inp = draft.collect(proj)
+    assert inp.profile_overrides == doc["profile_overrides"]
+    assert "zoom 1.0-9.0" not in draft.prompt(inp)            # the default profile exposes no map_path ...
+    assert draft._profile(inp).camera.max_zoom == 9.0          # ... but the draft plans against the project's zoom
+    r = run(proj, client({"m38": [good_plan()]}))
+    assert r.ok and timeline.load(r.timeline_path).profile_overrides == doc["profile_overrides"]
+
+
 def test_good_repair_round_feeds_gate_errors_back(proj):
     bad = good_plan()
     bad["segments"][1].update(asset="clip_1280x720_25")                              # no fixed credit, no pick

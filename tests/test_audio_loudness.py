@@ -121,6 +121,25 @@ def test_good_caption_fix_multiword():
     assert out[0]["start"] == 0.0 and out[2]["end"] == pytest.approx(0.9)
 
 
+def test_good_caption_fix_blank_to_removes_the_words():
+    ws = [{"word": w, "start": i * 0.3, "end": i * 0.3 + 0.3} for i, w in enumerate(["eh", "Surabaya", "eh", "eh"])]
+    from video_engine.timeline import CaptionFix
+    out = audio.apply_fixes(ws, [CaptionFix.model_validate({"from": "eh", "to": ""})])   # was ZeroDivisionError
+    assert [w["word"] for w in out] == ["Surabaya"] and out[0]["start"] == pytest.approx(0.3)
+
+
+@pytest.mark.parametrize("pattern", ["", "   "])
+def test_bad_caption_fix_blank_from_is_rejected(pattern):
+    from pydantic import ValidationError
+
+    from video_engine.timeline import CaptionFix
+    with pytest.raises(ValidationError, match="at least one word"):   # was an endless loop in apply_fixes
+        CaptionFix.model_validate({"from": pattern, "to": "x"})
+    ws = [{"word": "Halo", "start": 0.0, "end": 0.4}]
+    blank = CaptionFix.model_construct(match=pattern, to="x")       # the function itself does not loop either
+    assert audio.apply_fixes(ws, [blank]) == ws
+
+
 def test_good_words_to_frames(project):
     _, tl = project()
     cw = audio.words_to_captions([{"word": "a", "start": 0.5, "end": 1.0}, {"word": "b", "start": 1.0, "end": 9.0}],

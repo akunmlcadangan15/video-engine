@@ -58,8 +58,14 @@ class Credit(Strict):
 class CaptionFix(Strict):
     """Replace a recognised word sequence (case-insensitive, punctuation kept from the replacement)."""
     match: str = Field(alias="from")
-    to: str
+    to: str                       # blank = remove the matched words
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    @model_validator(mode="after")
+    def _pattern(self):
+        if not self.match.split():
+            raise ValueError("caption_fixes: `from` must name at least one word (a blank pattern matches nothing)")
+        return self
 
 
 SFX_KINDS = ("pop", "tick", "whoosh", "click", "beep", "counter_tick", "impact", "riser")
