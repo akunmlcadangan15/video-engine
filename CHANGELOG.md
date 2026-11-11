@@ -256,6 +256,18 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 ### Diperbaiki
 
 
+- **`examples/*/prepare.sh` memakai interpreter yang punya Pillow**: skrip tidak lagi memanggil `python3` di PATH
+  (yang di beberapa mesin tidak memasang Pillow). Urutan: `$PYTHON`, lalu `$VIRTUAL_ENV/bin/python`, lalu `python3`.
+  Tes contoh mengirim interpreter venv lewat `PYTHON`.
+- **Tes profil capture HyperFrames** (`test_good_render_uses_standard_capture_and_crf14`) menangkap `RuntimeError`
+  setelah merekam perintah render, tetapi `EngineError` adalah turunan `RuntimeError`, jadi kegagalan "HyperFrames
+  missing" ditelan dan tes gagal di daftar perintah kosong. Tes kini memakai pengecualian sentinel dan mencari
+  perintah CLI yang memuat `-q` / `--crf`, sehingga toolchain yang belum terpasang di-skip oleh hook sesi, dan
+  perintah render tetap diperiksa bila `run` tercatat.
+- **`engine doctor`**: cek `node` gagal bila `bin/npm` hilang (pohon resmi memuat npm di `lib/`; symlink putus atau
+  `lib/` terhapus membuat `--install` gagal sebelum `npm ci`). `--install` memasang ulang tarball node resmi dahulu.
+  Pengujian: `tests/test_doctor.py`.
+
 - **Review tidak lagi membatalkan draf yang sudah lolos gate**: balasan review yang melanggar skema atau provider
   yang gagal saat review dicatat di `draft_report.json` (`review[].errors`) dan draf tetap ditulis. Balasan
   storyboard yang melanggar skema tidak lagi diperingkat, melainkan dikirim balik untuk diperbaiki.

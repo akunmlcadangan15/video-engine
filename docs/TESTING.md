@@ -39,7 +39,7 @@ A build test that fails because Node is missing only skips when the error reache
 The two pixel-exact colour-grade checks (`test_golden_colour_grade`, `test_good_grade_intermediate_is_lossless`) need ffmpeg 7 or newer
 (the `engine doctor` minimum) both on `PATH` and as `VIDEO_ENGINE_FFMPEG`, because ffmpeg 6 swscale rounds the grade's colour conversions
 differently; with an older ffmpeg they skip with that reason (`conftest.require_ffmpeg_major`), and `VIDEO_ENGINE_REQUIRE_TOOLCHAIN=1` makes them fail.
-`tests/test_examples.py` needs network: `examples/minimal/prepare.sh` downloads OpenStreetMap tiles, and the tests skip only when that download fails.
+`tests/test_examples.py` needs network: `examples/minimal/prepare.sh` downloads OpenStreetMap tiles, and the tests skip only when that download fails. The tests set `PYTHON` to the test interpreter so prepare.sh uses the venv (which has Pillow), not a system `python3` that may not.
 
 ## Golden frames
 

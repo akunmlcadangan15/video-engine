@@ -2,10 +2,15 @@
 from video_engine import config, hyperframes
 
 
+class _Captured(Exception):
+    """Sentinel from the fake runner. Not a RuntimeError: EngineError (a RuntimeError subclass) from a missing
+    toolchain must still propagate so the session hook can skip, or the test can fail for a real error."""
+
+
 def _fake_render(monkeypatch, seen):
     def fake_run(cmd, **kw):
         seen.append([str(c) for c in cmd])
-        raise RuntimeError("stop after command capture")
+        raise _Captured()
     monkeypatch.setattr(hyperframes, "run", fake_run)
 
 
@@ -16,9 +21,10 @@ def test_good_render_uses_standard_capture_and_crf14(project, tmp_path, monkeypa
     _fake_render(monkeypatch, seen)
     try:
         hyperframes.render(tl.segments[2], tl, p, tmp_path / "wd", workers=2, use_cache=False)
-    except RuntimeError:
+    except _Captured:
         pass
-    cmd = seen[0]
+    cmd = next((c for c in seen if "-q" in c and "--crf" in c), None)
+    assert cmd is not None, "render never reached the HyperFrames CLI command it records"
     assert cmd[cmd.index("-q") + 1] == "standard" and cmd[cmd.index("--crf") + 1] == "14"
     assert cmd[cmd.index("--workers") + 1] == "2"
 

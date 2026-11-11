@@ -14,6 +14,14 @@
 # Usage: ./prepare.sh [1080p|1440p|4k]   (default 1080p; rewrites settings.width/height in master_timeline.json)
 set -eu
 cd "$(dirname "$0")"
+# Python with Pillow: $PYTHON, then the active venv, then python3 on PATH.
+if [ -z "${PYTHON:-}" ]; then
+  if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/python" ]; then
+    PYTHON="$VIRTUAL_ENV/bin/python"
+  else
+    PYTHON="python3"
+  fi
+fi
 size="${1:-1080p}"
 case "$size" in
   1080p) w=1920; h=1080 ;;
@@ -39,7 +47,7 @@ while [ "$x" -lt $((X0 + NX)) ]; do
   x=$((x + 1))
 done
 
-python3 - <<'PY'
+"$PYTHON" - <<'PY'
 from PIL import Image
 Z, X0, Y0, NX, NY = 4, 11, 4, 4, 4
 rows = [
@@ -73,7 +81,7 @@ awk -v v="$YAVG" 'BEGIN { exit !(v >= 35) }' || { echo "cek R38 gagal: YAVG=$YAV
 
 ffmpeg -v error -y -f lavfi -i "sine=frequency=440:sample_rate=48000" -t 4 -af "volume=-26dB" assets/narration.wav
 
-python3 - <<'PY'
+"$PYTHON" - <<'PY'
 import os
 url = "https://tile.openstreetmap.org/4/11/4.png — © OpenStreetMap contributors (ODbL)"
 old = open("credits.txt").read() if os.path.exists("credits.txt") else ""
@@ -83,7 +91,7 @@ if url not in old:
 open("credits.txt", "w").write(old)
 PY
 
-python3 - "$w" "$h" <<'PY'
+"$PYTHON" - "$w" "$h" <<'PY'
 import json, sys
 p = "master_timeline.json"
 d = json.load(open(p))

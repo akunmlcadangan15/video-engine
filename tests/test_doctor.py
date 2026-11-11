@@ -22,6 +22,9 @@ def _fake_vendor(tmp_path: Path, *, node=True, hf_version=None, hf_dist=True, hf
         x["node"].parent.mkdir(parents=True)
         x["node"].write_text(f"#!/bin/sh\necho {PINS['node']['version']}\n")
         x["node"].chmod(0o755)
+        npm = x["node"].parent / "npm"
+        npm.write_text("#!/bin/sh\n")
+        npm.chmod(0o755)
         (v / "node" / ".version").write_text(PINS["node"]["version"])
     hf = v / "npm" / "node_modules" / "hyperframes"
     hf.mkdir(parents=True)
@@ -63,6 +66,15 @@ def test_bad_missing_or_mismatched_component_fails(tmp_path, kw, bad):
     res = {c.name: c for c in doctor.check(_fake_vendor(tmp_path, **kw), run_binaries=False)}
     assert all(not res[b].ok for b in bad)
     assert all(c.ok for n, c in res.items() if n not in bad)
+
+
+def test_bad_node_without_npm_fails(tmp_path):
+    """A node tree whose bin/npm is missing (broken symlink or stripped lib/) fails the node check."""
+    v = _fake_vendor(tmp_path)
+    (v / "node" / "bin" / "npm").unlink()
+    res = {c.name: c for c in doctor.check(v, run_binaries=False)}
+    assert not res["node"].ok and "npm missing" in res["node"].got
+    assert all(c.ok for n, c in res.items() if n != "node")
 
 
 def test_good_hyperframes_other_than_the_pin_warns_and_does_not_fail(tmp_path, monkeypatch):

@@ -12,6 +12,14 @@
 # tidak boleh lanjut ke engine build.
 set -eu
 cd "$(dirname "$0")"
+# Python with Pillow: $PYTHON, then the active venv, then python3 on PATH.
+if [ -z "${PYTHON:-}" ]; then
+  if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/python" ]; then
+    PYTHON="$VIRTUAL_ENV/bin/python"
+  else
+    PYTHON="python3"
+  fi
+fi
 mkdir -p assets tiles
 
 UA="video-engine-minimal/1.0 (+https://www.openstreetmap.org/copyright)"
@@ -30,7 +38,7 @@ while [ "$x" -lt $((X0 + NX)) ]; do
   x=$((x + 1))
 done
 
-python3 - <<'PY'
+"$PYTHON" - <<'PY'
 from PIL import Image
 Z, X0, Y0, NX, NY = 4, 11, 4, 4, 4
 rows = [
@@ -52,7 +60,7 @@ awk -v v="$YAVG" 'BEGIN { exit !(v >= 35) }' || { echo "cek R38 gagal: YAVG=$YAV
 
 ffmpeg -v error -y -f lavfi -i "sine=frequency=440:sample_rate=48000" -t 3 -af "volume=-26dB" assets/narration.wav
 
-python3 - <<'PY'
+"$PYTHON" - <<'PY'
 import os
 url = "https://tile.openstreetmap.org/4/11/4.png — © OpenStreetMap contributors (ODbL)"
 old = open("credits.txt").read() if os.path.exists("credits.txt") else ""

@@ -83,6 +83,10 @@ def check(vendor: Path | None = None, run_binaries: bool = True) -> list[Check]:
     if x["node"].is_file():
         got = (subprocess.run([x["node"], "-v"], capture_output=True, text=True).stdout.strip() or "unrunnable") \
             if run_binaries else (vendor / "node" / ".version").read_text().strip() if (vendor / "node" / ".version").is_file() else "present"
+        # npm ships in the official tarball (bin/npm -> lib/node_modules/npm). A tree with only the node
+        # binary cannot run `doctor --install`'s npm ci; treat it as a failed node install.
+        if not (x["node"].parent / "npm").exists():
+            got = f"{got}, npm missing"
     out.append(Check("node", got == p["node"]["version"], p["node"]["version"], got))
     nm = vendor / "npm" / "node_modules"
     for name, want in p["npm"].items():
