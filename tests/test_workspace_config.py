@@ -19,7 +19,7 @@ SCRIPT = ("import os; from video_engine import config, library; "
 
 
 def _isolated_env(**env) -> dict[str, str]:
-    """Fresh environment that cannot see the operator's engine.env or XDG dirs."""
+    """Fresh environment that does not load a user-config engine.env or inherit host XDG directories."""
     base = {k: v for k, v in os.environ.items() if k not in VARS}
     td = Path(tempfile.mkdtemp(prefix="ve-ws-test-"))
     home = td / "home"
@@ -58,7 +58,7 @@ def test_good_without_any_variable_the_defaults_are_the_platform_paths():
                                                 f"{w}/downloads")
     assert lib_open == f"{w}/open-assets"
     assert lib_stock == f"{w}/asset-cache/footage{sep}{w}/asset-cache"
-    # And the default itself must not be the old Linux render-box path.
+    # The portable default must not be the literal path /workspace.
     assert w != "/workspace"
 
 

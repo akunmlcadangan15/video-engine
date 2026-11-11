@@ -14,7 +14,7 @@ import pytest
 # removed only when this session created it and it is empty afterwards (a real build's scratch is never touched).
 SHM_PARENT = Path(os.environ.get("VIDEO_ENGINE_SHM_TEST", "/tmp/video_engine_test_shm"))
 TEST_ROOT = SHM_PARENT / f"pytest-{os.getpid()}"
-# Keep tests hermetic: do not load the operator's <user-config>/video-engine/engine.env.
+# Keep tests hermetic: do not load <user-config>/video-engine/engine.env from the host.
 os.environ.setdefault("XDG_CONFIG_HOME", str(TEST_ROOT / "xdg-config"))
 
 

@@ -143,7 +143,7 @@ Landscape profiles:
   top left `[116,72,1100,200]`, Z2 map `[116,216,1804,880]`, title 88, year 112) and `geoverum/landscape/print.toml`
   (year 960 / 380, heading baseline 150). Watermark 28 px bottom right; duration 60-3600 s. Both `geoverum.toml` and
   `geoverum_landscape.toml` share their channel tables through `geoverum/core.toml` and the modular `geoverum/*.toml` includes, overriding only orientation-specific settings.
-- Values still open for the owner: rhythm gates and duration for long-form, the landscape grid and title placement,
+- Values not yet specified in a shipped profile: rhythm gates and duration for long-form, the landscape grid and title placement,
   the O01 minimum font per orientation, the grid backdrop cell basis (`fx.grid.cell_pct` is
   a share of H in both orientations), source quality policy at 4K, delivery metadata and thumbnail rule,
   and whether portrait captions at 2160x3840 should also scale (today they do not).
@@ -177,7 +177,7 @@ Keys: `native`, `hf`, `intensity`, `subject`, `read`, `title_slot`, `caption_slo
 keys are errors. A profile without `[framing]` keeps its hash. The draft prompt lists the shot vocabulary with the
 framing of the project's orientation.
 
-Open for the owner: whether 16:9 is long-form or stays short, and whether maps stay the main visual language in
+Not yet specified in a shipped profile: whether 16:9 is long-form or stays short, and whether maps stay the main visual language in
 16:9 or footage may take a larger share.
 
 ## Splitting a profile with `include`

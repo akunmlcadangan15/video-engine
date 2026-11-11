@@ -34,7 +34,7 @@ def platform_key(system: str | None = None, machine: str | None = None) -> str:
 
 
 def supported_key() -> str | None:
-    """Platform key of this machine, or None when unsupported (never raises; for import-time use in config)."""
+    """Platform key of the current host, or None when unsupported (never raises; for import-time use in config)."""
     return _key_or_none(None, None)
 
 
