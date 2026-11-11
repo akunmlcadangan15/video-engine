@@ -6,22 +6,19 @@ import os
 import re
 from pathlib import Path
 
-from . import cache, config, profiles, streams, toolchain
+from . import ai, cache, config, profiles, streams, toolchain
 from .timeline import CaptionsMeta, CaptionWord, Timeline, sec_to_frame
-from .util import EngineError, blake3_files, blake3_json, code_hash, count_frames, probe, run
+from .util import EngineError, blake3_files, blake3_json, code_hash, count_frames, probe, run, wav_16k_mono
 
-STT_MODEL = "grok-voice-transcribe-2.0"
-STT_URL = "https://api.x.ai/v1/stt"
-STT_TIMEOUT_S = 300
+STT_MODEL = ai.STT_DEFAULTS["model"]     # defaults live in ai.STT_DEFAULTS; [stt] in the AI config overrides them
+STT_URL = ai.STT_DEFAULTS["url"]
+STT_TIMEOUT_S = ai.STT_DEFAULTS["timeout_s"]
 STT_VERSION = "stt-1-grok-2"
 
 
 def _stt_cfg() -> dict:
-    from . import ai
-    try:
-        return ai.stt_config()
-    except EngineError:
-        return {"url": STT_URL, "model": STT_MODEL, "api_key_env": "XAI_API_KEY", "timeout_s": STT_TIMEOUT_S}
+    """Effective STT settings. A broken AI config is an EngineError, not a silent return to the defaults."""
+    return ai.stt_config()
 
 
 def _key(env_name: str = "XAI_API_KEY") -> str:
@@ -43,12 +40,7 @@ def _post(url: str, headers: dict, fields: list, timeout: float):
 
 def _wav_16k(path: Path) -> bytes:
     """16 kHz mono WAV bytes via ffmpeg (the STT upload)."""
-    import subprocess
-    p = subprocess.run([config.FFMPEG, "-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", "16000",
-                        "-f", "wav", "-"], capture_output=True)
-    if p.returncode != 0:
-        raise EngineError(f"STT audio decode failed: {p.stderr[-600:].decode(errors='replace')}")
-    return p.stdout
+    return wav_16k_mono(path, "STT audio decode")
 
 
 def _fields(model: str, language: str, keyterms: list[str], wav: bytes) -> list:
@@ -81,8 +73,7 @@ def _stt(audio: Path, language: str, model: str, keyterms: list[str]) -> list[di
                 body = r.json()
             except ValueError:
                 raise EngineError("xAI STT returned invalid JSON") from None
-            return [{"word": w["text"], "start": round(float(w["start"]), 3), "end": round(float(w["end"]), 3)}
-                    for w in (body.get("words") or [])]
+            return _stt_words(body)
         if r.status_code in base.SAME_MODEL_RETRY_CODES and attempt < base.SAME_MODEL_RETRIES:
             base._sleep(base.backoff_delay(attempt + 1))
             continue
@@ -90,15 +81,34 @@ def _stt(audio: Path, language: str, model: str, keyterms: list[str]) -> list[di
     raise EngineError("xAI STT request failed: retries exhausted")
 
 
+def _stt_words(body) -> list[dict]:
+    """[{word, start, end}] from an STT response body; EngineError when it is not the documented shape (a word
+    without text or with times that are not numbers would otherwise surface as a KeyError deep in the build)."""
+    words = body.get("words") if isinstance(body, dict) else None
+    if words is None:
+        words = []
+    if not isinstance(words, list):
+        raise EngineError("xAI STT response: `words` must be a list")
+    out = []
+    for i, w in enumerate(words):
+        try:
+            out.append({"word": str(w["text"]), "start": round(float(w["start"]), 3), "end": round(float(w["end"]), 3)})
+        except (KeyError, TypeError, ValueError):
+            raise EngineError(f"xAI STT response: words[{i}] needs text, start and end (got {str(w)[:120]})") from None
+    return out
+
+
 def transcribe_words(audio: Path, language: str = "id", model: str = STT_MODEL, keyterms=(),
                      use_cache: bool = True) -> tuple[list[dict], bool]:
-    """[{word, start, end}] in seconds. Second value: cache hit."""
+    """[{word, start, end}] in seconds. Second value: cache hit. An empty transcript is returned but not cached:
+    a silent upload or a provider hiccup must not pin "no words" to this voiceover."""
     keyterms = list(keyterms or [])
     key = words_key(audio, language, model, keyterms)
-    if use_cache and (hit := cache.get_json("words", key)) is not None:
+    if use_cache and (hit := cache.get_json("words", key)):
         return hit, True
     words = _stt(audio, language, model, keyterms)
-    cache.put_json("words", key, words)
+    if words:
+        cache.put_json("words", key, words)
     return words, False
 
 

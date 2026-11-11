@@ -13,7 +13,8 @@ Keys handled in Python (not passed to Rust):
                centre inside this band (the approved caption band); absent = anywhere in the safe area
   max_bottom_y px at the reference canvas height (scaled to the output height): lowest allowed caption box bottom (Z01; automatic
                placement never moves a caption below it); absent = no limit
-All other keys are Rust Style fields (unknown keys raise ValueError).
+All other keys are Rust Style fields (`profiles.CAPTION_RUST_KEYS`); a key in neither table is rejected when the
+profile or the timeline loads (`profiles.check_caption_style`).
 
 Landscape frames (units.py): the Rust length keys (LENGTH_KEYS) are px at the 1920x1080 reference canvas and are
 scaled by the uniform k before they reach Rust and the R62 gate (effective_style); a landscape style without `size` /
@@ -28,7 +29,7 @@ from . import profiles
 from .units import units
 from .timeline import MAX_FRAME, CaptionWord, Timeline
 
-PY_KEYS = ("y_overrides", "auto_place", "place_band", "clearance", "fixed_y", "max_bottom_y", "forbid_box", "ab_sizes")
+PY_KEYS = profiles.CAPTION_PY_KEYS   # handled in Python; every other known key is a Rust Style field
 
 
 LENGTH_KEYS = ("size", "margin_x", "outline", "shadow", "shadow_blur", "shadow_dx", "shadow_dy")

@@ -76,7 +76,8 @@ bahan (aset, voiceover) ──► draft AI ──► master_timeline.json ──
 | `engine preview P --seg N --time S` | Merender satu frame PNG dari segmen tertentu untuk inspeksi cepat. |
 | `engine sheet P` | Membuat *contact sheet* dari `out/final.mp4`. |
 | `engine words P` | Mentranskripsi *voiceover* dan menyematkan *word timestamps* ke timeline. |
-| `engine draft P` | Menghasilkan draf timeline menggunakan AI *director*. |
+| `engine draft P` | Menghasilkan draf timeline menggunakan AI *director*. Tanpa `--provider`, model AI yang sedang menjalankan mesin yang menjawab (bundel di `P/ai_request/`, lanjutkan dengan `--resume`). |
+| `engine profile [NAMA] --origin` | Menampilkan profil hasil resolusi dan file asal tiap kunci. |
 | `engine deliver P --export DIR` | Menyiapkan paket siap unggah. |
 | `engine taste CHANNEL [--lint]` | Menampilkan atau memverifikasi keselarasan catatan selera channel terhadap profil TOML. |
 | `engine doctor [--install]` | Memeriksa atau memasang toolchain Node, HyperFrames, dan Chrome di `vendor/`. |
@@ -90,7 +91,7 @@ Referensi lengkap seluruh perintah dan opsi: [docs/CLI.md](docs/CLI.md).
 | Jalur | Isi |
 |---|---|
 | `video_engine/` | Paket utama Python (CLI, skema timeline, renderer native & HyperFrames, layout, legibility, audio, cache). |
-| `video_engine/ai/` & `director/` | Lapisan provider AI (Gemini, Agent, OpenAI-compatible) serta kompilator pola *storyboard*. |
+| `video_engine/ai/` & `director/` | Lapisan provider AI (Agent, Gemini, OpenAI-compatible; tanpa default vendor) serta kompilator pola *storyboard*. |
 | `video_engine/gates/` | Modul gate 3-lapis; definisi terpusat di `video_engine/gate_registry.py`. |
 | `rust/hypoverum_core_rs/` | Ekstensi Rust (PyO3): interpolasi kamera, kompilator `.ass`, deteksi jeda suara, dan statistik piksel. |
 | `profiles/` | Profil channel (`default.toml`, `geoverum.toml`, `geoverum_landscape.toml`, sub-tabel `geoverum/`, dan `taste/`). |

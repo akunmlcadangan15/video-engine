@@ -10,8 +10,15 @@ def test_creative_rules_single_source():
     p = profiles.load("geoverum")
     assert p.draft.rules_file == "geoverum/creative.md"
     md = (config.PROFILES_DIR / "geoverum" / "creative.md").read_text()
-    assert p.draft.rules == [line[2:].strip() for line in md.splitlines() if line.startswith("- ")]
+    written = [line[2:].strip() for line in md.splitlines() if line.startswith("- ")]
+    assert written == profiles._creative_rules("geoverum", "geoverum/creative.md") and len(p.draft.rules) == len(written)
+    for rule, raw in zip(p.draft.rules, written):                 # a rule is its line, placeholders filled in
+        assert rule == raw if "{{" not in raw else "{{" not in rule and rule.split(" ")[:6] == raw.split(" ")[:6]
     assert p.draft.rules and all(p.draft.rules)
+    # the two formats share the file and each quotes its own caption and title sizes
+    portrait, wide = " ".join(p.draft.rules), " ".join(profiles.load("geoverum_landscape").draft.rules)
+    assert "fixed_y = 1366" in portrait and "Inter Bold 48 px" in portrait and "Archivo Black 104 px" in portrait
+    assert "fixed_y = 900" in wide and "Inter Bold 58 px" in wide and "Archivo Black 88 px" in wide
     # taste rules are preferences only: no verbatim draft rule may be copied there
     taste = json.loads((config.PROFILES_DIR / "taste" / "geoverum.json").read_text())
     for r in taste.get("rules", []):

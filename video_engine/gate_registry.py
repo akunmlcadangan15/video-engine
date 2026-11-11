@@ -8,8 +8,8 @@ stage's all-clear record `QA` (qa.pixel_gates, docs/GATES.md) is a stage summary
 Classes:
   technical  technical check (integrity, geometry, media, or asset rules)
   style      channel style / pacing check (warns unless the profile or timeline requires it)
-Severity levels (kernel vs lint vs technical default; legacy tier exports are preserved for CLI/tooling compatibility):
-  kernel     the 8-gate frozen integrity core (KERNEL_GATE_IDS, aliased as MANDATORY_GATE_IDS):
+Severity levels (kernel vs lint vs technical default):
+  kernel     the 8-gate frozen integrity core (KERNEL_GATE_IDS):
              no profile, project, or draft mode can lower its fail to warn.
   lint       the 50 non-blocking gates in LINT_GATE_IDS (style gates, layout L01-L10, taste/anti-slop,
              margin/camera/collision, and provenance/motion lint): warns and publishes with warnings
@@ -17,9 +17,8 @@ Severity levels (kernel vs lint vs technical default; legacy tier exports are pr
   error      technical gates outside KERNEL_GATE_IDS and LINT_GATE_IDS (`F01`, `AS04`, plus `AIQA`
              when `--ai-qa` is enabled): block a release build when they emit `fail` unless lowered
              via `[gates] advisory` or `--mode draft`.
-Legacy exports PROFILE_GATE_IDS / FLEXIBLE_GATE_IDS, NEVER_ADVISORY (the 12 gates rejected in
-`[gates] advisory`), and Gate.tier (mandatory/profile/flexible) are retained so `engine gates --format md`
-and existing callers stay compatible; runtime severity (gates/severity.py) uses KERNEL_GATE_IDS vs LINT_GATE_IDS.
+NEVER_ADVISORY (the 12 gates rejected in `[gates] advisory`) and Gate.tier (mandatory/profile/flexible) describe
+each gate for `engine gates --format md`; runtime severity (gates/severity.py) uses KERNEL_GATE_IDS vs LINT_GATE_IDS.
 Layers (the order the pre-flight runs them, then the checks of the finished file):
   static, math, dom, place, layout, props, visual, profile, post, delivery, meta
 This module imports nothing from the engine, so `profiles`, `timeline` and the CLI can all import it.
@@ -293,13 +292,8 @@ STYLE_GATE_IDS: tuple[str, ...] = tuple(g.id for g in GATES if g.kind == "style"
 TECHNICAL_GATE_IDS: tuple[str, ...] = tuple(g.id for g in GATES if g.kind == "technical" and g.known)
 KNOWN_GATE_IDS: tuple[str, ...] = STYLE_GATE_IDS + TECHNICAL_GATE_IDS
 NEVER_ADVISORY: tuple[str, ...] = tuple(g.id for g in GATES if g.never_advisory)
-# Tier views (the same data, grouped by rigidity). PROFILE_GATE_IDS are the channel style gates a profile
-# may require; FLEXIBLE_GATE_IDS are the technical gates a profile may lower to warn. Both exports are
-# retained for backward compat (gate_tools / older importers); severity now uses KERNEL vs LINT below.
-# MANDATORY_GATE_IDS is defined after KERNEL_GATE_IDS below as a backward-compatible alias.
-# NEVER_ADVISORY stays derived from Gate.never_advisory (historical flag, unchanged).
-PROFILE_GATE_IDS: tuple[str, ...] = tuple(g.id for g in GATES if g.tier == "profile" and g.known)
-FLEXIBLE_GATE_IDS: tuple[str, ...] = tuple(g.id for g in GATES if g.tier == "flexible" and g.known)
+# NEVER_ADVISORY is derived from Gate.never_advisory (the gates a profile may not list as advisory). Severity uses
+# the kernel / lint split below; `Gate.tier` stays on each gate as descriptive data for the gate index.
 WAIVABLE_WITH_REASON: tuple[str, ...] = tuple(g.id for g in GATES if g.waivable)
 
 # --- 3-level gate severity model (error / fix / lint) ---
@@ -315,8 +309,6 @@ LINT_GATE_IDS: tuple[str, ...] = tuple(
            "R38space","R62","Z01","B01","R63","R56","R56px","R07","R14","A02")
     )
 )
-# MANDATORY_GATE_IDS is exported as an alias of KERNEL_GATE_IDS for backward compatibility.
-MANDATORY_GATE_IDS: tuple[str, ...] = KERNEL_GATE_IDS
 ANTI_SLOP_IDS: tuple[str, ...] = tuple(g.id for g in GATES if g.id.startswith("AS"))
 
 # profile `[gates.anti_slop]` switch of each anti-slop rule

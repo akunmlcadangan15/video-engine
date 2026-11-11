@@ -7,10 +7,11 @@ name = "video-engine"
 version = "0.1.0"
 description = "Universal hybrid video engine: native Rust/FFmpeg path + HyperFrames motion graphics, zero-render pre-flight gates"
 requires-python = ">=3.11"
-dependencies = ["pydantic>=2.12", "numpy", "pillow", "blake3", "httpx", "google-genai"]
+dependencies = ["pydantic>=2.12", "numpy", "pillow", "httpx"]
 
 [project.optional-dependencies]
-test = ["pytest"]
+gemini = ["google-genai"]              # only for `--provider gemini`
+test = ["pytest", "google-genai"]      # the provider tests drive the Gemini adapter with a fake client
 
 [project.scripts]
 engine = "video_engine.cli:main"
@@ -24,3 +25,10 @@ video_engine = ["template/*", "hf/*.mjs", "hf/*.js", "hf/*.html", "director/*.to
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-p no:cacheprovider"
+
+[tool.ruff]
+line-length = 200          # long lines by convention; the file you edit sets the practical width
+
+[tool.ruff.lint]
+# The enforced set (CI `lint` job): syntax errors, undefined names, unused imports and variables.
+select = ["E9", "F63", "F7", "F82", "F401", "F841"]

@@ -97,7 +97,8 @@ def _run(tl: Timeline, project_dir: Path, words, workdir: Path, dom: bool, snaps
         if ai_qa is not None and paths:
             from ..ai import tasks
             with rep.timed("layer3_ai"):
-                rep.extend(tasks.qa_snapshots(paths, ai_qa, meta=rep.ai))
+                rep.extend(tasks.qa_snapshots(paths, ai_qa, meta=rep.ai,
+                                              frame=(tl.settings.width, tl.settings.height)))
     rep.findings = severity.apply(rep.findings, tl, draft=draft)
     rep.timings["total"] = round(sum(v for k, v in rep.timings.items()), 3)
     return rep

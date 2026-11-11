@@ -13,7 +13,6 @@ import csv
 import json
 import re
 import shutil
-import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,10 +29,13 @@ from .hyperframes import HF_PRESETS
 from .licence import is_licence_field
 from .timeline import (HYPERFRAMES, IMAGE_EXT, NATIVE, ROLL_MAX, AudioChain, CaptionWord, CaptionsMeta, Settings, Timeline,
                        sec_to_frame)
-from .util import EngineError, video_info
+from .util import EngineError, frame_jpeg, video_info
 from . import framing
 from .units import units
 
+LANGUAGE_NAMES = {"id": "Indonesian", "en": "English", "ms": "Malay", "es": "Spanish", "pt": "Portuguese",
+                  "fr": "French", "de": "German", "ar": "Arabic", "hi": "Hindi", "ja": "Japanese", "ko": "Korean",
+                  "zh": "Chinese", "ru": "Russian", "tr": "Turkish", "it": "Italian", "nl": "Dutch"}
 VIDEO_EXT = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
 AUDIO_EXT = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
 THUMB_PX = 384
@@ -100,7 +102,7 @@ class Inputs:
 def _profile(inp: Inputs) -> profiles.Profile:
     """Effective profile of the draft: the channel profile (default when none) with the project's overrides, the
     same one the drafted Timeline validates against."""
-    return profiles.load(inp.profile, inp.profile_overrides)
+    return profiles.load(inp.profile, getattr(inp, "profile_overrides", None))
 
 
 # ---------------------------------------------------------------------------------------------------------- inputs
@@ -330,7 +332,7 @@ def prompt(inp: Inputs) -> str:
                  if dp.map_path else "")
     scene_rule = draft_scene.prompt(prof.draft, prof.layout is not None, prof.transitions.map_morph)
     recipes_rule = RECIPE_RULE
-    return f"""You are the editor of a {_format_words(S)} ({S.width}x{S.height}, {fps} fps, Indonesian narration).
+    return f"""You are the editor of a {_format_words(S)} ({S.width}x{S.height}, {fps} fps, {_language_words(inp.audio_chain.language)} narration).
 Draft the visual edit for the attached narration. Total length: frames 0..{inp.total_frames} (exclusive end).
 
 NARRATION WORDS with start frame (pinned STT transcript, authoritative timing):
@@ -387,15 +389,8 @@ def _thumb_jpeg(path: Path, kind: str, duration: float | None) -> list[bytes]:
             buf = BytesIO()
             im.save(buf, "JPEG", quality=80)
             return [buf.getvalue()]
-    outs = []
-    for k in range(VIDEO_THUMBS):
-        t = (duration or 1.0) * (k + 0.5) / VIDEO_THUMBS
-        r = subprocess.run([config.FFMPEG, "-v", "error", "-ss", f"{t:.3f}", "-i", str(path), "-frames:v", "1", "-vf",
-                            f"scale='min({THUMB_PX},iw)':-2", "-f", "image2", "-c:v", "mjpeg", "-q:v", "5", "-"],
-                           capture_output=True)
-        if r.returncode == 0 and r.stdout:
-            outs.append(r.stdout)
-    return outs
+    frames = [frame_jpeg(path, (duration or 1.0) * (k + 0.5) / VIDEO_THUMBS, THUMB_PX) for k in range(VIDEO_THUMBS)]
+    return [f for f in frames if f is not None]
 
 
 AUDIO_MIME = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4", ".flac": "audio/flac",
@@ -431,6 +426,12 @@ def attachments(inp: Inputs) -> dict:
 def _format_words(S) -> str:
     """How the draft prompt names the format (units.py orientation)."""
     return "landscape 16:9 documentary video" if units(S).landscape else "vertical documentary short"
+
+
+def _language_words(code: str) -> str:
+    """How the prompt names the narration language (audio_chain.language): its English name, else the code."""
+    code = (code or "").strip()
+    return LANGUAGE_NAMES.get(code.lower().split("-")[0], f"language code {code!r}" if code else "unspecified-language")
 
 
 def _slot(kind: str, pos: str, S: Settings) -> list[float]:
@@ -644,9 +645,10 @@ def assemble(inp: Inputs, data: dict) -> tuple[Timeline, list[str], list[dict]]:
                              f"{n!r} is not one of 1..{len(lines)}); use another asset or pick its line")
         if a.credit_line is None and n is not None:
             notes.append(f"credit {aid}: model picked line {n}")
-        wm = (picks.get(aid) or {}).get("watermark_free")
-        credits.append({"asset_id": aid, "path": a.path, "source_url": line.url, "license": line.license,
-                        **({"author": line.author} if line.author else {}), "watermark_free": wm is not False})
+        wm = (picks.get(aid) or {}).get("watermark_free")   # only what the model declared: gate R14 fails an
+        credits.append({"asset_id": aid, "path": a.path, "source_url": line.url, "license": line.license,   # undeclared one
+                        **({"author": line.author} if line.author else {}),
+                        **({"watermark_free": wm} if isinstance(wm, bool) else {})})
     if inp.audio_chain.bgm_path and inp.audio_chain.bgm_asset_id:
         old = _existing_credit(inp, inp.audio_chain.bgm_asset_id)
         if old:
@@ -728,7 +730,8 @@ def draft(pdir: Path, *, out: Path | None = None, provider=None, max_repairs: in
           video_proxies: int | None = None, voiceover: str | None = None, script: str | None = None,
           use_cache: bool = True, dom: bool = True, profile: str | None = None, director: bool = True,
           review: bool = False, review_rounds: int = 1, frame_sampler=None) -> DraftResult:
-    """provider: `ai.get(...)` instance (default gemini). video_proxies: default 2, agent provider 0 (it reads the
+    """provider: `ai.get(...)` instance (default: the session's, `ai.get` with the project's bundle root; the agent
+    provider when nothing else is selected). video_proxies: default 2, agent provider 0 (it reads the
     thumbnails). profile: channel profile (default: the existing timeline's). director: storyboard stage first
     (<project>/draft/storyboards.json). review: frame review + at most `review_rounds` (1-2) revisions, versions kept
     as <project>/draft/timeline.v<N>.json. frame_sampler: director.sample_frames replacement (tests). Raises
@@ -743,7 +746,7 @@ def draft(pdir: Path, *, out: Path | None = None, provider=None, max_repairs: in
     ddir = pdir / "draft"
     inp = collect(pdir, voiceover, script, use_cache, profile)
     channel = inp.profile or profiles.DEFAULT
-    provider = provider or ai.get()
+    provider = provider or ai.get(root=pdir / "ai_request", resume_cmd=f"engine draft {pdir} --resume")
     if video_proxies is None:
         video_proxies = 0 if provider.name == "agent" else 2
     if hasattr(provider, "reset"):
@@ -854,9 +857,25 @@ def _review(provider, inp, pdir, ddir, tl, rep, why, data, base, sch, files, dom
         times = dr.critical_times(tl)
         frames = sampler(tl, pdir, times, workdir / f"review{k}")
         goals = {s.seg_index: s.goal for s in tl.segments if s.goal}
-        r = provider.generate_json("planning", dr.review_parts(tl, inp, frames, goals), dr.review_schema(tl),
-                                   f"draft/review{k}", {"timeline.json": tl.model_dump(mode="json", exclude_none=True)})
-        fs = r.data.get("findings") or []
+        rsch = dr.review_schema(tl)
+        try:
+            r = provider.generate_json("planning", dr.review_parts(tl, inp, frames, goals), rsch, f"draft/review{k}",
+                                       {"timeline.json": tl.model_dump(mode="json", exclude_none=True)})
+        except EngineError as e:       # the draft already passed the gates: an unavailable reviewer does not undo it
+            if provider.name == "agent":
+                raise
+            log.append({"round": k, "request": f"draft/review{k}", "version": versions[-1].name, "verdict": None,
+                        "findings": [], "errors": [f"review unavailable: {e}"], "kept": versions[-1].name})
+            break
+        bad = ai.base.schema_errors(r.data, rsch)
+        if bad:                        # a malformed review is recorded, never read field by field
+            log.append({"round": k, "request": f"draft/review{k}", "ai": r.meta(), "version": versions[-1].name,
+                        "verdict": None, "findings": [], "errors": [f"schema: {e}" for e in bad[:20]],
+                        "kept": versions[-1].name})
+            break
+        known = {s.seg_index for s in tl.segments}
+        fs = [f for f in r.data.get("findings") or [] if f.get("seg") in known]
+        r.data["findings"] = fs
         entry = {"round": k, "request": f"draft/review{k}", "ai": r.meta(), "version": versions[-1].name,
                  "times": [t for t, _ in times], "verdict": r.data.get("verdict"), "findings": fs}
         log.append(entry)

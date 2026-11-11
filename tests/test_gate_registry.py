@@ -17,7 +17,7 @@ SOURCES = [*(ROOT / "video_engine" / "gates").glob("*.py"), ROOT / "video_engine
 # The id lists before they were derived from the registry (frozen here as the regression baseline).
 OLD_STYLE = {"H01", "C01", "C02", "V01", "N01", "P01", "P02", "K01", "K02", "D01", "D02", "S01",
              "AS01", "AS02", "AS03", "AS05", "AS06"}
-# KERNEL_GATES defines the 8 non-negotiable integrity gates (also aliased as MANDATORY_GATE_IDS).
+# KERNEL_GATES defines the 8 non-negotiable integrity gates.
 KERNEL_GATES = {"T02", "M01", "W01", "L22", "R38", "A01", "G01", "M03"}
 
 
@@ -33,7 +33,6 @@ def test_good_derived_id_lists_match_the_lists_before_the_registry():
     assert set(reg.STYLE_GATE_IDS) == OLD_STYLE | {"P03", "R38space"} and len(reg.STYLE_GATE_IDS) == 19
     assert len(reg.TECHNICAL_GATE_IDS) == 41 and "U01" in reg.TECHNICAL_GATE_IDS and "AS04" in reg.TECHNICAL_GATE_IDS
     assert set(reg.KERNEL_GATE_IDS) == KERNEL_GATES
-    assert set(reg.MANDATORY_GATE_IDS) == KERNEL_GATES  # alias for the 8 kernel integrity gates
     assert KERNEL_GATES <= set(reg.NEVER_ADVISORY)  # kernel gates are a subset of the 12 never-advisory gates
     assert reg.KNOWN_GATE_IDS == reg.STYLE_GATE_IDS + reg.TECHNICAL_GATE_IDS
     assert set(reg.ANTI_SLOP_IDS) == {f"AS0{i}" for i in range(1, 7)}

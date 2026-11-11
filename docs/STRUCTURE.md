@@ -32,20 +32,25 @@ tempat lain hanya mereferensikan, bukan menyalin.
 
 ## Precedence profil
 
-`profiles/default.toml` < file `include` (sesuai urutan) < profil channel < nilai proyek
-(`caption_style`, `audio_chain`). `profile_overrides` proyek hanya boleh untuk tabel di
+Default field model (`video_engine/profile_schema.py`) < `profiles/default.toml` < rantai `extends` (untuk tiap
+profil: file `include` sesuai urutan, lalu file profilnya) < `profile_overrides` proyek < nilai proyek
+(`caption_style`, `audio_chain`). Fallback berlaku per kunci; profil yang gagal dibaca atau divalidasi adalah
+error, tidak pernah diganti diam-diam dengan profil default. `engine profile NAMA --origin` menunjukkan file
+asal tiap kunci. `profile_overrides` proyek hanya boleh untuk tabel di
 `OVERRIDABLE` di `video_engine/profiles.py`. Safety limit (`true_peak`, `tolerance_lu`)
 hanya boleh diketatkan, tidak dilonggarkan.
 
 ## Type scale
 
-`[type]` adalah basis kanonis (`title_px`, `title_px_paper`, `pin_label_px`).
-`[theme] title_px`/`pin_label_px`, `[print] title_px`, dan `[layout]` sizes adalah override
-per-surface di atas basis itu. Ukuran caption tetap di `[caption_style]` (aturan caption, bukan scene type).
+`[type]` adalah basis kanonis (`title_px`, `title_px_paper`, `pin_label_px`). Ukuran yang ditulis channel di
+`[type]` mengalir otomatis ke setiap surface yang tidak ditulis channel (`profiles.TYPE_CASCADE`):
+`[theme] title_px`/`pin_label_px`, `[print] title_px`, dan `[layout.sizes] title`/`pin_label`. Nilai surface
+yang ditulis eksplisit tetap menang sebagai override per-surface. Ukuran caption tetap di `[caption_style]` (aturan caption, bukan scene type).
 
 ## Creative rules
 
 Aturan keras per channel hanya di `profiles/<channel>/creative.md`, dimuat lewat
-`[draft] rules_file`. Dilarang menyalin aturan yang sama ke `taste/*.json` (`rules` di sana
+`[draft] rules_file`. Angka yang berbeda per format ditulis sebagai placeholder `{{tabel.kunci}}` dan diisi dari
+profil efektif, bukan sebagai literal. Dilarang menyalin aturan yang sama ke `taste/*.json` (`rules` di sana
 adalah preferensi) atau ke `guidance.md` (prinsip global). `[draft] rules` inline dan
 `rules_file` saling eksklusif — keduanya bersama adalah error.

@@ -50,6 +50,14 @@ def _gen_config(schema: dict | None = None):
     return types.GenerateContentConfig(**kw)
 
 
+def _finish_reason(r) -> str | None:
+    """Finish reason of the first candidate when it is not a normal stop (MAX_TOKENS, SAFETY, RECITATION, ...)."""
+    cands = getattr(r, "candidates", None) or []
+    fr = getattr(cands[0], "finish_reason", None) if cands else None
+    name = getattr(fr, "name", None) or (str(fr) if fr else None)
+    return name if name and name not in ("STOP", "FINISH_REASON_UNSPECIFIED") else None
+
+
 def generate_json(models: list[str], contents: list, schema: dict | None = None, client=None) -> AIResult:
     """Calls models[0] (with same-model retries), then later models only as a fallback. Returns the first parsed
     JSON object. Raises EngineError on a non-retryable error or when every model is exhausted."""
@@ -60,7 +68,11 @@ def generate_json(models: list[str], contents: list, schema: dict | None = None,
         u = getattr(r, "usage_metadata", None)
         usage = {k: getattr(u, k, None) for k in ("prompt_token_count", "candidates_token_count",
                                                   "thoughts_token_count", "total_token_count")} if u else {}
-        return r.text or "", usage
+        text = r.text or ""
+        if not text.strip() and (reason := _finish_reason(r)):
+            raise EngineError(f"Gemini model {m} returned no text (finish reason {reason}); the same request would "
+                              f"end the same way")
+        return text, usage
     return base.run_models(models, attempt, "Gemini", NAME)
 
 

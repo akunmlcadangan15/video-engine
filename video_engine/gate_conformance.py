@@ -1,7 +1,7 @@
 """Gate-to-profile conformance reporting and backward-compatible inspection helpers.
 
 The gate architecture uses a two-tier enforcement model defined in :mod:`video_engine.gate_registry`:
-- ``KERNEL_GATE_IDS`` (also exported as ``MANDATORY_GATE_IDS``): the 8 non-negotiable integrity gates that always block a build on failure.
+- ``KERNEL_GATE_IDS``: the 8 non-negotiable integrity gates that always block a build on failure.
 - ``LINT_GATE_IDS``: style, layout, margin, and collision gates that emit warnings by default unless listed in ``require``.
 
 This module provides compatibility helpers (``check_profile``, ``check_timeline_gates``, and ``mandatory_report``)

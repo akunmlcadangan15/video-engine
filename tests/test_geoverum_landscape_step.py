@@ -18,6 +18,8 @@ ALLOWED = {"caption_style", "description", "format", "gates", "layout", "print",
 def test_good_geoverum_landscape_differs_only_in_orientation_tables():
     a = json.loads(profiles.load("geoverum").data.model_dump_json())
     b = json.loads(profiles.load("geoverum_landscape").data.model_dump_json())
+    # the two formats share one creative.md and each quotes its own caption and title sizes ({{table.key}})
+    assert a["draft"].pop("rules") != b["draft"].pop("rules") and a["draft"] == b["draft"]
     drift = sorted(k for k in set(a) | set(b) if k not in ALLOWED and a.get(k) != b.get(k))
     assert drift == [], f"shared tables drifted between geoverum and geoverum_landscape: {drift}"
 

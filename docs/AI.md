@@ -4,7 +4,7 @@ The AI providers and the AI-assisted draft stage.
 
 **What this document answers**
 
-- How to choose a provider, and how the Gemini, agent and OpenAI-compatible providers differ.
+- How a provider is chosen (there is no vendor default: the model that runs the engine answers), and how the agent, Gemini and OpenAI-compatible providers differ.
 - How the agent handoff works (request bundle, `response.json`, exit code 3, `--resume`).
 - How to add a model.
 - How the director picks a storyboard and how `engine draft` builds and repairs a timeline.
@@ -14,35 +14,38 @@ Prompts, schemas, normalising, gates and the repair loop are shared; only transp
 
 | Provider | Model | Media |
 |---|---|---|
-| `gemini` (default) | `gemini-3.8-flash`; falls back to `deepseek` | audio and video via the File API (deleted and verified), images inline |
-| `agent` | an agent or human editor answering request bundles; reported model = `[agent] model_label` (default `grok-bot`) | files in the bundle; video as sampled JPEG frames, audio as transcript with word frames |
+| `agent` (used when nothing is selected) | the AI model or person that is running the engine, answering request bundles; reported model = env `VIDEO_ENGINE_AI_MODEL`, else `[agent] model_label` (default `agent`) | files in the bundle; video as sampled JPEG frames, audio as transcript with word frames |
+| `gemini` | `gemini-3.8-flash` (`[gemini] models`); a fallback only when `[gemini] fallback_provider` names one | audio and video via the File API (deleted and verified), images inline |
 | `[providers.NAME]` in `ai_providers.toml` | OpenAI-compatible chat completions endpoint | images inline (base64); audio / video inline when listed in `capabilities`, else transcript / sampled frames |
 
-Selection: `--provider NAME` > env `VIDEO_ENGINE_AI_PROVIDER` > `default` in `ai_providers.toml` > `gemini`.
+Selection: `--provider NAME` > env `VIDEO_ENGINE_AI_PROVIDER` > `default` in `ai_providers.toml` > `agent`.
+The engine names no vendor default and the shipped `ai_providers.toml` sets no `default`: with nothing selected a request is a file handoff to the agent provider, so the model in use is the model that drafts, and no prompt, transcript or thumbnail leaves the machine unless a provider was chosen.
+A request reaches a second service only through an explicit `[gemini] fallback_provider`.
 An unknown name is an error listing the known names.
 Every result records `provider` and the `model` that answered.
 
-Retry and fallback (every API provider): HTTP 429 / 503 (`RESOURCE_EXHAUSTED` / `UNAVAILABLE`) or invalid JSON -> retry the same model up to 3 times, waiting 2 s, 5 s, 12 s (+ up to 25 % random jitter).
+Retry and fallback (every API provider): HTTP 408 / 429 / 500 / 502 / 503 / 504 (the transient statuses; `RESOURCE_EXHAUSTED`, `UNAVAILABLE`, `INTERNAL`, `DEADLINE_EXCEEDED`) or invalid JSON -> retry the same model up to 3 times, waiting 2 s, 5 s, 12 s (+ up to 25 % random jitter).
 Then the next model.
 Transport drops without an HTTP status (`RemoteProtocolError`, read/connect timeouts, `ConnectionError`) count as 503.
 A reply counts as JSON when it is a bare JSON document, a ```` ```json ```` fenced block (also after leading prose), or one complete document that starts at the first `{` / `[` and is followed by prose; chat-completions content given as a list of text parts is joined first. `NaN` / `Infinity` and a cut-off document are invalid JSON (`ai.base.parse_json_text`).
 HTTP 404 -> next model at once.
-Any other status (400, 401, 403, ...) -> error, no retry.
+Any other status (400, 401, 403: the request or the key is wrong) -> error, no retry.
+A Gemini reply with no text and a finish reason other than a normal stop (`MAX_TOKENS`, `SAFETY`, ...) is an error naming the reason, not three identical retries.
 Every HTTP request has a 300 s timeout.
 Every result records `model`, `retries`, `fallback`, `tried` (every attempt with its status).
 A fallback answer prints `warning: FALLBACK: ...` to stderr and stores the same text in the result (`draft_report.json` -> `rounds[].ai`, AI QA -> a `warn` finding);
   the warning names the answering provider and model as `provider/model`, with no doubled prefix when the model id already starts with `provider/`.
 
 Gemini has one model.
-Any Gemini error after these rules, including a missing `GEMINI_API_KEY`, sends the same request (task, parts, schema) to the configured fallback provider.
+Any Gemini error after these rules, including a missing `GEMINI_API_KEY`, sends the same request (task, parts, schema) to the fallback provider when one is configured; without one the error is raised.
 The next request tries `gemini-3.8-flash` again first.
 
 ## Gemini
 
 - Model: `gemini-3.8-flash` for planning, draft, director and AI QA.
-- Fallback: `[gemini] fallback_provider` in `ai_providers.toml` names the `[providers.NAME]` entry that answers a request Gemini cannot answer (absent: `deepseek` when configured, else no fallback).
+- Fallback: `[gemini] fallback_provider` in `ai_providers.toml` names the `[providers.NAME]` entry that answers a request Gemini cannot answer (absent: no fallback, whatever providers are configured).
   An explicit value that is not a `[providers.NAME]` entry, including `gemini` and `agent`, is an error naming the value and the known entries.
-  The result records provider `deepseek`, the model that answered, `fallback = true`, the FALLBACK warning and every attempt in `tried`.
+  The result records the fallback provider's name, the model that answered, `fallback = true`, the FALLBACK warning and every attempt in `tried`.
   If the fallback provider fails too, the command fails naming both errors.
   With no configured fallback the Gemini error is raised.
 - Config: JSON output with schema, `MEDIA_RESOLUTION_LOW`, `thinking_budget=1024`.
@@ -76,6 +79,7 @@ A draft response that fails the gates produces the next round's bundle with the 
   after the last round the draft is rejected (exit 1).
 Invalid JSON, a non-object, or a schema mismatch is an error naming the file and the failing paths (exit 1).
 A pending bundle without `response.json` on `--resume` is an error (exit 1).
+Each bundle stores `request.digest`, a hash of the task, the prompt text and the schema it was written for. A `response.json` whose bundle was written for a different request (the inputs, the profile or an earlier answer changed since) is an error telling you to run without `--resume`: an answer is never replayed against a prompt it was not written for.
 A run without `--resume` deletes the earlier bundles of that request first.
 The draft sends no video proxies to the agent by default (thumbnails carry 3 frames per video).
 
@@ -84,10 +88,10 @@ The draft sends no video proxies to the agent by default (thumbnails carry 3 fra
 Add a table to `ai_providers.toml` (or the file in `VIDEO_ENGINE_AI_CONFIG`) and put the key into the named environment variable:
 
 ```toml
-default = "gemini"            # provider when no --provider flag and no VIDEO_ENGINE_AI_PROVIDER
+# default = "mymodel"        # optional: provider when no --provider flag and no VIDEO_ENGINE_AI_PROVIDER (absent: agent)
 
 [agent]
-model_label = "grok-bot"
+model_label = "agent"         # reported model of agent answers; env VIDEO_ENGINE_AI_MODEL wins
 
 [providers.mymodel]
 base_url = "https://api.example.com/v1"      # POST {base_url}/chat/completions
@@ -105,6 +109,11 @@ Request: one user message with `text` and `image_url` (base64 data URL) items, `
   without a capability, audio becomes its transcript, video becomes sampled JPEG frames, images become a text note.
 Replies in a ```` ```json ```` fence are accepted.
 
+## AI QA (`--ai-qa`)
+
+The gate snapshots go to the provider's QA models with one prompt (the frame orientation comes from the timeline).
+The answer is checked against its schema; an answer that breaks it is an `AIQA` warn. An entry about a segment that was not sent is ignored, and a snapshot the answer leaves out is a warn: only a segment the model reported on can pass.
+
 ## Director
 
 - Footage: 360p 5 fps proxy (ffmpeg spawned by Rust `make_proxy`, written to the run's own `director-<pid>-<random>/proxy` scratch dir, deleted after the request) -> provider (Gemini: File API upload; agent and models without video input: 8 sampled frames).
@@ -113,6 +122,7 @@ Replies in a ```` ```json ```` fence are accepted.
 ## Director stage (`engine draft`)
 
 Before the timeline request the provider writes 3 storyboard concepts (request `draft/storyboard`, one repair `draft/storyboard1`).
+The answer is checked against its schema first; an answer that breaks it is not ranked and its schema errors go into the repair request.
 A concept is a list of spans (`spans`; legacy alias `beats`) (`from_word`, `to_word`, `goal`, `pattern`, `assets`, `on_screen_text`, `camera`, `transition`) with self scores.
 The engine rejects concepts that use unknown assets or facts absent from the narration, script, asset hints and credits, then scores the rest: fit 0.35, clarity 0.25, asset availability 0.25, render cost 0.15, minus 0.15 for an opener used in the last `avoid_recent` drafts and 0.03 per recently used transition (max 0.15).
 The best concept goes into the timeline request as `CHOSEN STORYBOARD`; each segment carries its `goal`.
@@ -127,11 +137,14 @@ Its text goes into the storyboard prompt as historical preferences, not universa
 A `revise` verdict with a blocker or major finding asks for a revised timeline (`draft/revise<k>`);
   a revision that fails the gates is dropped and the previous version kept.
 Every version is saved as `draft/timeline.v<N>.json` and `draft/review.v<N>.json`; `draft_report.json` -> `review`, `versions`.
+A review cannot undo a draft that passed the gates: a review answer that breaks its schema, or a provider error during the review (API providers), is recorded in `review[].errors` with `kept`, printed as a warning, and the gate-passing draft is written as usual. Findings about a segment the timeline does not have are dropped.
 
 ## Draft
 
 - Inputs: narration (`--voiceover`, else `audio_chain.voiceover_path`, else the first audio file named narasi/narration/voice/vo in the project root or `assets/`), script (`--script`, else `script.txt` / `narasi.txt` / `narration.txt`), `credits.txt` in the project root (required), every file under `assets/` with metadata (`assets/manifest.csv`, `<file>.json` sidecars, existing timeline credit), optional 360p 20 s video proxies.
-- Profile: `--profile`, else the existing timeline's `profile`, else `default`; written into the draft timeline.
+- Profile: `--profile`, else the existing timeline's `profile`, else `default`; written into the draft timeline. An existing timeline's `profile_overrides` are kept, and prompt, schema and assembly use that effective profile.
+- The prompt names the frame format from the timeline settings and the narration language from `audio_chain.language`.
+- `credits[].watermark_free` is written only as the model declared it; an asset without a declaration has none and gate R14 reports it.
 - Pre-model analysis: narration pauses (profile `[draft]` `min_seg_s` / `max_seg_s`; default 1.5 s / 7 s) give the boundary candidates;
     words come from the pinned captions or a transcription.
 - Prompt: engine rules 1-5 with suggested profile segment lengths, then channel identity, defaults and alternatives from `[draft] rules`. Concepts must differ in strategy, pacing and evidence, not only decoration. A moving-map opener, continuous camera, fixed act sequence and final keyword callback are not universal requirements.

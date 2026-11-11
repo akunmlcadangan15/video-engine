@@ -19,13 +19,12 @@ def _with_gates(profile, **kw):
 
 
 def test_good_tiers_are_derived_and_the_mandatory_core_is_frozen():
-    assert set(reg.MANDATORY_GATE_IDS) == {"T02", "M01", "W01", "L22", "R38", "A01", "G01", "M03"}
-    assert reg.MANDATORY_GATE_IDS == reg.KERNEL_GATE_IDS  # alias for the 8 kernel integrity gates
-    assert set(reg.PROFILE_GATE_IDS) == set(reg.STYLE_GATE_IDS)
-    assert set(reg.FLEXIBLE_GATE_IDS) == set(reg.TECHNICAL_GATE_IDS) - set(reg.NEVER_ADVISORY)
-    assert all(reg.BY_ID[g].tier == "mandatory" for g in reg.MANDATORY_GATE_IDS)
-    assert all(reg.BY_ID[g].tier == "profile" for g in reg.PROFILE_GATE_IDS)
-    assert all(reg.BY_ID[g].tier == "flexible" for g in reg.FLEXIBLE_GATE_IDS)
+    assert set(reg.KERNEL_GATE_IDS) == {"T02", "M01", "W01", "L22", "R38", "A01", "G01", "M03"}
+    tier = {g.id: g.tier for g in reg.GATES if g.known}
+    assert {g for g, t in tier.items() if t == "profile"} == set(reg.STYLE_GATE_IDS)
+    assert {g for g, t in tier.items() if t == "flexible"} == set(reg.TECHNICAL_GATE_IDS) - set(reg.NEVER_ADVISORY)
+    assert all(tier[g] == "mandatory" for g in reg.KERNEL_GATE_IDS)
+    assert not hasattr(reg, "MANDATORY_GATE_IDS") and not hasattr(reg, "PROFILE_GATE_IDS")   # one name per list
 
 
 def test_good_shipped_profiles_have_no_conformance_errors():
@@ -36,7 +35,7 @@ def test_good_shipped_profiles_have_no_conformance_errors():
 
 def test_good_geoverum_mandatory_core_is_on_and_flexible_list_is_intact():
     rep = conf.mandatory_report(profiles.load("geoverum"))
-    assert set(rep["mandatory_on"]) == set(reg.MANDATORY_GATE_IDS)
+    assert set(rep["mandatory_on"]) == set(reg.KERNEL_GATE_IDS)
     assert rep["mandatory_switch_off"] == []
     assert rep["flexible_advisory"] == [] and len(rep["profile_active"]) == len(reg.LINT_GATE_IDS)
 

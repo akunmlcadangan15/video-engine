@@ -11,6 +11,26 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ### Ditambahkan
 
+
+- **`extends` pada profil**: sebuah profil dapat dibangun di atas profil lain (`extends = "geoverum"`). Urutan
+  lapisan: default model < `default.toml` < rantai `extends` (tiap profil: file `include`, lalu filenya) <
+  `profile_overrides` proyek. Loop, basis yang tidak ada, dan `extends` di file `include` adalah error.
+  Pengujian: `tests/test_profile_layers.py`.
+- **Cascade `[type]` yang sungguh berjalan**: ukuran yang ditulis channel di `[type]` kini mengalir ke
+  `[theme] title_px` / `pin_label_px`, `[print] title_px`, dan `[layout.sizes] title` / `pin_label` yang tidak
+  ditulis channel (`profiles.TYPE_CASCADE`). Sebelumnya tabel ini divalidasi tetapi tidak dibaca kode mana pun.
+- **Placeholder di aturan kreatif**: baris `rules_file` boleh mengutip nilai profil sebagai `{{tabel.kunci}}`;
+  mesin mengisinya dari profil efektif, sehingga profil yang berbagi satu `creative.md` mengutip angkanya sendiri.
+- **`engine profile [NAMA] [--origin] [--table T]`** mencetak profil hasil resolusi dan file asal tiap kunci
+  (`profiles.origins`); **`engine schema timeline|profile`** mencetak JSON Schema kontrak dari model Pydantic.
+- **Validasi kunci `caption_style` saat muat** (`profiles.check_caption_style`): kunci yang tidak dikenal (dengan
+  saran kunci terdekat), tipe nilai yang salah, dan `slot` yang tidak dikenal ditolak untuk profil dan timeline.
+  `[reference_style.overlap]` kini bertipe, dan nama grup `[reference_style.*]` tetap.
+- **Default per kunci untuk `[legibility]` dan `[sound]`**: tabel parsial kini sah dan sisanya memakai baseline
+  mesin (sebelumnya tabel `[legibility]` parsial gagal dengan 52 error).
+- **`docs/ARCHITECTURE.md`**: model kerja mesin untuk engineer dan agent AI apa pun (dua mode, urutan resolusi,
+  alur data, peta modul, kontrak lapisan AI, jebakan). Menggantikan `CLAUDE.md` yang khusus satu agent.
+
 - **Opsi gaya tema baru** (`[theme]`, tidak masuk hash profil saat bernilai default, jadi tampilan engine tidak
   berubah): `vivid_chroma_scale`/`vivid_l` (warna entitas jenuh dengan hue tetap hanya di peta satelit gelap;
   `entities.vivid_colour`, `entities.scene_colours`; gate E01 membandingkan fill dengan warna scene),
@@ -161,6 +181,30 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ### Diubah
 
+
+- **Tidak ada provider AI bawaan**: urutan pemilihan menjadi `--provider` > `VIDEO_ENGINE_AI_PROVIDER` > `default`
+  di `ai_providers.toml` > `agent`. Tanpa pilihan, permintaan menjadi bundel berkas untuk provider `agent`: model AI
+  yang sedang menjalankan mesin yang menjawab (nama modelnya dicatat dari `VIDEO_ENGINE_AI_MODEL` atau
+  `[agent] model_label`, bawaan `agent`). `ai_providers.toml` tidak lagi menulis `default`, dan entri fallback ke
+  host tunnel sementara dihapus; fallback Gemini hanya ada bila `[gemini] fallback_provider` ditulis eksplisit.
+  `google-genai` pindah ke extra `gemini` (dan `test`).
+- **Retry AI mencakup status sementara**: HTTP 408, 500, 502, 504 kini di-retry seperti 429 dan 503; 400, 401, 403
+  tetap tidak. Balasan Gemini tanpa teks dengan alasan berhenti selain normal menjadi error yang menyebut alasannya.
+- **Profil Geoverum dibersihkan tanpa mengubah hash `geoverum`**: kunci yang hanya mengulang `default.toml` dihapus
+  dari `geoverum/core.toml`; gaya caption, watermark, dan kebijakan gate yang sama untuk dua format dipindah dari
+  kedua file channel ke `core.toml`; `title_px` ditulis sekali di `[type]`. Profil `geoverum_landscape` berubah hash
+  hanya karena aturan kreatifnya kini mengutip angka landscape (caption 58 px, `fixed_y` 900, title 88 px).
+- **Resolver profil dipisah dari skema**: model tabel ada di `video_engine/profile_schema.py`, `profiles.py` hanya
+  meresolusi lapisan dan mengekspor ulang nama model. `profiles.load` melayani profil yang tidak berubah dari memo
+  berbasis tanda-tangan berkas (path, mtime, ukuran, inode), dan perubahan `creative.md` kini terlihat dalam proses
+  yang sama. `profiles.flatten` menggabungkan tabel yang ditulis beberapa file dan mendukung `include` multi-baris.
+- **Helper kembar digabung**: satu `util.atomic_write_text`, `util.frame_jpeg`, `util.wav_16k_mono`, satu
+  `profiles.merge`, satu pemeriksaan path berkas profil, dan satu rumah untuk nilai bawaan STT (`ai.STT_DEFAULTS`).
+- **AI QA** hanya meluluskan segmen yang dilaporkan model: segmen yang tidak dijawab menjadi peringatan, dan entri
+  tentang segmen yang tidak dikirim diabaikan. Prompt QA dan analisis footage menyebut orientasi frame yang benar.
+- **Uji yang butuh toolchain HyperFrames atau pustaka open-assets** kini dilewati dengan alasannya saat tidak
+  terpasang (gagal bila `VIDEO_ENGINE_REQUIRE_TOOLCHAIN=1`).
+
 - **Gaya teks dan warna Geoverum** dari analisis frame demi frame Shorts referensi: title Archivo Black 104 px
   (sebelumnya Inter Bold 112) putih murni tanpa outline (`[legibility] light_c = 0`, `text_outline_px = 0`, bayangan
   lembut 4/14/0,55, glow entitas 18), masuk dengan tracking-in di atas wilayahnya; angka 96 px (sebelumnya 156)
@@ -205,6 +249,20 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 - `cargo fmt` pada `ass.rs` (hanya format; output crate dan `ALGO_VERSION` tidak berubah).
 
 ### Diperbaiki
+
+
+- **Review tidak lagi membatalkan draf yang sudah lolos gate**: balasan review yang melanggar skema atau provider
+  yang gagal saat review dicatat di `draft_report.json` (`review[].errors`) dan draf tetap ditulis. Balasan
+  storyboard yang melanggar skema tidak lagi diperingkat, melainkan dikirim balik untuk diperbaiki.
+- **Bundel agent yang basi ditolak**: `response.json` yang ditulis untuk permintaan lain (input, profil, atau
+  jawaban sebelumnya berubah) menjadi error, bukan diputar ulang terhadap prompt yang berbeda (`request.digest`).
+- **Race pada kunci proyek** (`batch.ProjectLock`): file kunci kini hanya dihapus selagi `flock`-nya dipegang, dan
+  kunci hanya dipercaya bila path masih menunjuk file yang dikunci, sehingga dua build tidak bisa memegang kunci
+  pada inode yang berbeda.
+- **STT**: respons dengan bentuk tak terduga menjadi `EngineError` yang menyebut kata bermasalah, transkrip kosong
+  tidak lagi di-cache, dan `ai_providers.toml` yang rusak tidak lagi diam-diam diganti nilai bawaan.
+- **Draf** tidak lagi menyatakan `watermark_free = true` untuk aset yang tidak dideklarasikan model; prompt menyebut
+  bahasa narasi dari `audio_chain.language`.
 
 - **`caption_fixes` tidak lagi menggantung atau crash**: `from` kosong membuat `audio.apply_fixes` berputar tanpa
   henti (pola kosong cocok di setiap posisi) dan `to` kosong berakhir `ZeroDivisionError`. Sekarang `from` kosong
@@ -257,6 +315,11 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 - `tests/test_director.py` masih mengharapkan batas "hard cuts per 10 s" yang sudah dihapus dari catatan selera.
 
 ### Dihapus
+
+
+- Alias `MANDATORY_GATE_IDS`, `PROFILE_GATE_IDS`, `FLEXIBLE_GATE_IDS` (pakai `KERNEL_GATE_IDS` dan `Gate.tier`),
+  field `Profile.gate_warnings` yang selalu kosong, `profiles._drop_nulls` (identik dengan `merge`), dependensi
+  Python `blake3` yang tidak diimpor (hashing lewat ekstensi Rust), dan `faster-whisper` dari instalasi CI.
 
 - Perkakas konversi style-sheet REA (seluruh direktori `tools/`: template, skrip pembangun profil, dan README-nya)
   beserta dokumen alurnya di `docs/` dan seluruh rujukannya di `README.md`, `AGENTS.md`, dan `docs/README.md`.

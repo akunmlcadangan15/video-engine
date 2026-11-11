@@ -758,7 +758,7 @@ def r63_dom(tl: Timeline, project_dir: Path, workdir: Path, snaps: dict) -> tupl
         elif y_off > 0:
             _merge_panel_dom(dom[s.seg_index], res, y_off)
         fs = []
-        ov_ok = bool((profiles.of(tl).reference_style or {}).get("overlap", {}).get("allowed"))
+        ov_ok = profiles.of(tl).reference_style.overlap_allowed
         for item in res["times"]:
             fs += check_rects(item["rects"], W, H, item["t"], s.seg_index, overlap_allowed=ov_ok)
         fs = dedupe_r63(fs)

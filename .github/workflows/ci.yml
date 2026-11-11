@@ -78,7 +78,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: python -m pip install --upgrade pip maturin
-      - run: python -m pip install -e ".[test]" faster-whisper google-genai
+      - run: python -m pip install -e ".[test]"
       - run: python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist
       - run: python -m pip install --force-reinstall dist/hypoverum_core_rs-*.whl
       - run: >-
@@ -87,7 +87,7 @@ jobs:
           tests/test_profiles.py tests/test_blocks_library.py tests/test_import_sheet_prune.py
           tests/test_scratch_safety.py tests/test_cache_lease.py tests/test_timeline_frames.py
           tests/test_gates_layer1.py tests/test_examples.py tests/test_audio_mix_exact.py tests/test_overlays.py
-          tests/test_gate_registry.py tests/test_profile_include.py tests/test_taste_lint.py tests/test_check_docs.py
+          tests/test_gate_registry.py tests/test_profile_include.py tests/test_profile_layers.py tests/test_taste_lint.py tests/test_check_docs.py
           tests/test_workspace_config.py
 
   macos-fast:
@@ -103,7 +103,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: brew install ffmpeg@7
       - run: python -m pip install --upgrade pip maturin
-      - run: python -m pip install -e ".[test]" faster-whisper google-genai
+      - run: python -m pip install -e ".[test]"
       - run: python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist
       - run: python -m pip install --force-reinstall dist/hypoverum_core_rs-*.whl
       - run: >-
@@ -112,7 +112,7 @@ jobs:
           tests/test_profiles.py tests/test_blocks_library.py tests/test_import_sheet_prune.py
           tests/test_scratch_safety.py tests/test_cache_lease.py tests/test_timeline_frames.py
           tests/test_gates_layer1.py tests/test_examples.py tests/test_audio_mix_exact.py tests/test_overlays.py
-          tests/test_gate_registry.py tests/test_profile_include.py tests/test_taste_lint.py tests/test_check_docs.py
+          tests/test_gate_registry.py tests/test_profile_include.py tests/test_profile_layers.py tests/test_taste_lint.py tests/test_check_docs.py
           tests/test_workspace_config.py
 
   macos-nightly:
@@ -129,7 +129,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: brew install ffmpeg@7
       - run: python -m pip install --upgrade pip maturin
-      - run: python -m pip install -e ".[test]" faster-whisper google-genai
+      - run: python -m pip install -e ".[test]"
       - run: python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist
       - run: python -m pip install --force-reinstall dist/hypoverum_core_rs-*.whl
       - run: python -m video_engine.cli doctor --install
@@ -147,7 +147,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: python -m pip install --upgrade pip maturin
-      - run: python -m pip install -e ".[test]" faster-whisper google-genai
+      - run: python -m pip install -e ".[test]"
       - run: python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist
       - run: python -m pip install --force-reinstall dist/hypoverum_core_rs-*.whl
       - run: python -m video_engine.cli doctor --install

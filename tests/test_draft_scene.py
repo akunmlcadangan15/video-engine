@@ -91,7 +91,7 @@ def test_good_schema_exposes_scene_fields_and_validates_before_assembly(proj):
 def test_good_draft_loop_keeps_regions_end_to_end(proj):
     """Mocked provider: the saved master_timeline.draft.json carries the region, route and counter."""
     r = run(proj, client({"m38": [plan(**ADVANCED)]}))
-    assert r.ok, r.report
+    assert r.ok, r.report["rounds"][-1]["errors"]
     sc = _scene(timeline.load(r.timeline_path))
     assert sc.regions and sc.routes and sc.figures and sc.pins[0].flag
 

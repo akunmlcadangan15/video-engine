@@ -1,9 +1,8 @@
 """Gate severity policy: kernel gates block the build, while lint gates emit warnings unless explicitly required.
 
 Model kernel vs lint (video_engine/gate_registry.py; registry is the single definition):
-  kernel   gate_registry.KERNEL_GATE_IDS (exported also as MANDATORY_GATE_IDS, alias
-           backward-compat): levels unchanged, fail blocks the build; no profile,
-           project or mode can lower them (draft mode included).
+  kernel   gate_registry.KERNEL_GATE_IDS: levels unchanged, fail blocks the build; no
+           profile, project or mode can lower them (draft mode included).
   lint     gate_registry.LINT_GATE_IDS plus any gate in the profile's `[gates] advisory`
            list (style gates, layout L*, taste/anti-slop, margin/camera/collision).
            Fail -> warn unless required. Required set = profile `[gates] require` +
@@ -21,16 +20,11 @@ Two more ways to lower a gate:
     O01) -> info, with the written reason in `waived` and in build_report.json
     `gates.waivers`;
   - draft mode (`engine build --mode draft`): a fail of any non-kernel gate -> warn.
-
-Historical tier names (mandatory/profile/flexible) are no longer used here; the
-registry keeps PROFILE_GATE_IDS / FLEXIBLE_GATE_IDS exports for backward compat.
 """
 from __future__ import annotations
 
 from .. import profiles
 from ..gate_registry import KERNEL_GATE_IDS, LINT_GATE_IDS, STYLE_GATE_IDS
-# Backward-compat alias used by older callers that imported it from here.
-MANDATORY_GATE_IDS = KERNEL_GATE_IDS
 from ..timeline import HYPERFRAMES, Timeline
 from .core import Finding
 

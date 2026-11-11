@@ -271,6 +271,51 @@ def test_bad_revision_failing_gates_keeps_previous_version(proj):
     assert timeline.load(r.timeline_path).segments[1].source_in_frame == 6        # v0, not the broken revision
 
 
+def test_good_malformed_review_keeps_the_gate_passing_draft(proj):
+    """A review answer that does not match its schema is recorded and never read field by field: the draft that
+    passed the gates is still written."""
+    c = client({"m38": [plan_with_goals()]}, review=[{"verdict": "revise", "findings": [{"seg": "zero"}]}])
+    r = run(proj, c, review=True, frame_sampler=fake_sampler)
+    assert r.ok and r.timeline_path == proj / "master_timeline.draft.json" and r.timeline_path.is_file()
+    entry = r.report["review"][0]
+    assert entry["verdict"] is None and entry["kept"] == "timeline.v0.json"
+    assert any(e.startswith("schema: $.findings[0]") for e in entry["errors"])
+    assert r.report["versions"] == [str(proj / "draft" / "timeline.v0.json")]
+
+
+def test_good_unavailable_reviewer_keeps_the_gate_passing_draft(proj, monkeypatch):
+    c = client({"m38": [plan_with_goals()]})
+    real = c.models.generate_content
+
+    def flaky(model, contents, config):
+        if any(isinstance(x, str) and x.startswith("DRAFT REVIEW") for x in contents):
+            raise EngineError("reviewer is down")
+        return real(model, contents, config)
+    monkeypatch.setattr(c.models, "generate_content", flaky, raising=False)
+    r = run(proj, c, review=True, frame_sampler=fake_sampler)
+    assert r.ok and r.timeline_path.is_file()
+    assert r.report["review"][0]["errors"] == ["review unavailable: reviewer is down"]
+
+
+def test_good_review_finding_about_an_unknown_segment_is_dropped(proj):
+    ghost = {"verdict": "revise", "findings": [{"t_s": 1.0, "seg": 99, "severity": "blocker", "issue": "x", "fix": "y"}]}
+    c = client({"m38": [plan_with_goals()]}, review=[ghost])
+    r = run(proj, c, review=True, frame_sampler=fake_sampler)
+    assert r.ok and r.report["review"][0]["findings"] == [] and len(c.models.calls) == 1     # no revision request
+
+
+def test_bad_storyboard_that_breaks_its_schema_is_repaired_not_ranked(proj):
+    """Concepts whose fields are not what the schema promises never reach rank(): the errors go back to the model."""
+    broken = {"concepts": [{"name": "x", "direction": "grounded", "opener": "o", "spans": "all of it",
+                            "self_scores": {"narration_fit": "8/10", "clarity": 7}}] * 3}
+    c = client({"m38": [good_plan()]}, sb=[broken, storyboards()])
+    r = run(proj, c)
+    assert r.ok and r.report["storyboard"]["chosen"] is not None
+    repair = c.models.side_calls["STORYBOARD REQUEST"][1][1]
+    txt = next(x for x in repair if isinstance(x, str) and "REJECTED EVERY CONCEPT" in x)
+    assert "schema: $.concepts[0].spans: expected array" in txt and "narration_fit: expected number" in txt
+
+
 def test_good_one_round_stops_after_revision(proj):
     fixed = good_plan()
     fixed["segments"][0]["intensity"] = 1.6

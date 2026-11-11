@@ -62,7 +62,7 @@ def test_good_precedence_flag_env_config_default(tmp_path, monkeypatch):
     monkeypatch.delenv(ai.ENV_PROVIDER)
     assert ai.resolve(None) == "myllm"                           # config beats default
     monkeypatch.setenv(ai.ENV_CONFIG, str(tmp_path / "absent.toml"))
-    assert ai.resolve(None) == "gemini"                          # default
+    assert ai.resolve(None) == "agent"                           # nothing selected: the model in use answers
 
 
 def test_good_get_builds_each_provider(tmp_path, monkeypatch):
@@ -76,7 +76,7 @@ def test_good_get_builds_each_provider(tmp_path, monkeypatch):
 
 def test_bad_unknown_provider_names_known_ones(tmp_path, monkeypatch):
     write_config(tmp_path, monkeypatch, LLM.format(default="gemini"))
-    with pytest.raises(EngineError, match="unknown AI provider 'nope'.*gemini, agent, myllm"):
+    with pytest.raises(EngineError, match="unknown AI provider 'nope'.*agent, gemini, myllm"):
         ai.resolve("nope")
 
 
@@ -93,11 +93,28 @@ def test_bad_config_entry_and_toml_errors(tmp_path, monkeypatch):
         ai.resolve(None)
 
 
-def test_good_repo_config_parses_and_defaults_to_gemini():
+def test_good_repo_config_names_no_vendor_default_and_no_fallback(monkeypatch):
     import tomllib
     from video_engine import config
+    monkeypatch.delenv(ai.ENV_PROVIDER, raising=False)
     cfg = tomllib.loads((config.ENGINE_ROOT / "ai_providers.toml").read_text())
-    assert ai.resolve(None, cfg) == "gemini" and cfg["agent"]["model_label"] == agent.MODEL_LABEL
+    assert "default" not in cfg and ai.resolve(None, cfg) == "agent"       # the session's own model drafts
+    assert cfg["agent"]["model_label"] == agent.MODEL_LABEL == "agent"
+    assert "fallback_provider" not in cfg["gemini"] and not cfg.get("providers")   # nothing leaves on its own
+    assert ai.get("gemini").fallback is None
+
+
+def test_good_agent_reports_the_model_named_by_the_session(tmp_path, monkeypatch):
+    assert ai.get("agent", root=tmp_path).model_label == "agent"
+    monkeypatch.setenv(ai.ENV_MODEL, "some-model-9")
+    assert ai.get(None, root=tmp_path).model_label == "some-model-9"        # no provider selected -> agent
+
+
+def test_bad_no_provider_selected_needs_a_bundle_root(tmp_path, monkeypatch):
+    monkeypatch.setenv(ai.ENV_CONFIG, str(tmp_path / "absent.toml"))
+    monkeypatch.delenv(ai.ENV_PROVIDER, raising=False)
+    with pytest.raises(EngineError, match="agent provider needs a bundle root"):
+        ai.get()
 
 
 # --------------------------------------------------------------------------------------------------------- schema
@@ -170,7 +187,7 @@ def test_good_agent_resume_with_good_response_passes_gates(proj, capsys):
     assert rep["ok"] and rep["provider"] == "agent" and rep["model"] == agent.MODEL_LABEL and rep["repair_rounds"] == 0
     assert rep["rounds"][0]["ai"]["provider"] == "agent" and rep["file_deletions"] == []
     assert (proj / "master_timeline.draft.json").is_file()
-    assert "provider agent model grok-bot" in capsys.readouterr().out
+    assert "provider agent model agent" in capsys.readouterr().out
 
 
 def test_bad_agent_response_failing_gates_writes_next_round(proj):
@@ -273,18 +290,26 @@ def test_good_and_bad_agent_ai_qa(tmp_path, png):
     d = ei.value.bundle
     assert d == tmp_path / "aiqa" / "0" and len(list((d / "images").glob("*.png"))) == 2
     assert "overlap=true" in (d / "request.md").read_text()
-    good = {"segments": [{"seg": 1, "overlap": False, "cut_off_text": False, "issues": []}]}
+    both = {1: str(png), 2: str(png)}
+    clean = {"seg": 1, "overlap": False, "cut_off_text": False, "issues": []}
+    good = {"segments": [clean, {**clean, "seg": 2}]}
     (d / "response.json").write_text(json.dumps(good))
     meta: dict = {}
-    fs = tasks.qa_snapshots({1: str(png)}, agent.AgentProvider(tmp_path, "", resume=True), meta=meta)
+    fs = tasks.qa_snapshots(both, agent.AgentProvider(tmp_path, "", resume=True), meta=meta)
     assert [f.level for f in fs] == ["pass"] and meta["provider"] == "agent"
-    bad = {"segments": [{"seg": 2, "overlap": True, "cut_off_text": False, "issues": ["pin over card"]}]}
+    bad = {"segments": [clean, {"seg": 2, "overlap": True, "cut_off_text": False, "issues": ["pin over card"]},
+                        {"seg": 9, "overlap": True, "cut_off_text": True, "issues": ["a segment that was not sent"]}]}
     (d / "response.json").write_text(json.dumps(bad))
-    fs = tasks.qa_snapshots({1: str(png)}, agent.AgentProvider(tmp_path, "", resume=True))
-    assert fs[0].level == "fail" and fs[0].seg == 2 and "pin over card" in fs[0].message
+    fs = tasks.qa_snapshots(both, agent.AgentProvider(tmp_path, "", resume=True))
+    assert [(f.level, f.seg) for f in fs] == [("fail", 2)] and "pin over card" in fs[0].message
+    (d / "response.json").write_text(json.dumps({"segments": [clean]}))               # segment 2 left out
+    fs = tasks.qa_snapshots(both, agent.AgentProvider(tmp_path, "", resume=True))
+    assert [f.level for f in fs] == ["warn"] and "did not report on segment(s) 2" in fs[0].message
     (d / "response.json").write_text('{"segments": [{"seg": 1}]}')
     with pytest.raises(EngineError, match="does not match schema.json"):
-        tasks.qa_snapshots({1: str(png)}, agent.AgentProvider(tmp_path, "", resume=True))
+        tasks.qa_snapshots(both, agent.AgentProvider(tmp_path, "", resume=True))
+    with pytest.raises(EngineError, match="the request changed since this bundle was written"):
+        tasks.qa_snapshots({1: str(png)}, agent.AgentProvider(tmp_path, "", resume=True))   # another request
 
 
 # --------------------------------------------------------------------------------------------- openai_compatible
@@ -432,14 +457,22 @@ def test_good_openai_draft_end_to_end(proj, key):
     assert SECRET not in (proj / "draft_report.json").read_text()
 
 
-def test_good_gemini_is_default_for_draft_cli(proj, monkeypatch):
+def test_good_draft_cli_without_a_provider_hands_off_to_the_running_agent(proj, monkeypatch, capsys):
+    monkeypatch.delenv(ai.ENV_PROVIDER, raising=False)
+    assert main(["draft", str(proj), "--no-dom"]) == 3                       # no vendor default: file handoff
+    assert (proj / "ai_request" / "draft" / "storyboard" / "request.md").is_file()
+    assert json.loads((proj / "draft_report.json").read_text())["provider"] == "agent"
+    assert "waiting for agent response" in capsys.readouterr().out
+
+
+def test_good_gemini_is_used_when_selected_for_draft_cli(proj, monkeypatch):
     seen = {}
 
     def fake(self, task, parts, schema, request_id, attachments=None):
         seen.update(task=task, rid=request_id, kinds=[type(x).__name__ for x in parts])
         raise EngineError("stop")
     monkeypatch.setattr(GeminiProvider, "generate_json", fake)
-    assert main(["draft", str(proj), "--no-dom"]) == 1
+    assert main(["draft", str(proj), "--no-dom", "--provider", "gemini"]) == 1
     assert seen["task"] == "planning" and seen["rid"] == "draft/storyboard" and seen["kinds"][:2] == ["Text", "Media"]
     assert json.loads((proj / "draft_report.json").read_text())["provider"] == "gemini"
 
@@ -489,7 +522,7 @@ def test_good_only_gemini_3_8_flash_is_called(tmp_path, monkeypatch):
     from video_engine import config
     assert gemini.PLANNING_MODELS == gemini.QA_MODELS == ["gemini-3.8-flash"]
     c = gemini_client({"gemini-3.8-flash": [json.dumps({"ok": 1})]})
-    prov = ai.get(None, client=c)
+    prov = ai.get("gemini", client=c)
     prov.generate_json("planning", [Text("x")], None)
     prov.generate_json("qa", [Text("x")], None)
     assert [m for m, _ in c.models.calls] == ["gemini-3.8-flash", "gemini-3.8-flash"]
@@ -582,7 +615,8 @@ def test_good_qa_uses_gemini_3_8_flash(tmp_path, monkeypatch, png):
     gemini_ds(tmp_path, monkeypatch)
     reply = {"segments": [{"seg": 1, "overlap": False, "cut_off_text": False, "issues": []}]}
     c = gemini_client({"gemini-3.8-flash": [json.dumps(reply)]})
-    post = FakePost({"ds-model": [ok({"segments": []})]})
+    post = FakePost({"ds-model": [ok({"segments": [{"seg": 1, "overlap": False, "cut_off_text": False,
+                                                    "issues": []}]})]})
     meta: dict = {}
     fs = tasks.qa_snapshots({1: str(png)}, ai.get(None, client=c, post=post), meta=meta)
     assert [f.level for f in fs] == ["pass"]
@@ -593,7 +627,8 @@ def test_good_qa_uses_gemini_3_8_flash(tmp_path, monkeypatch, png):
 def test_good_qa_gemini_failure_falls_back_with_warn_finding(tmp_path, monkeypatch, png):
     gemini_ds(tmp_path, monkeypatch)
     c = gemini_client({"gemini-3.8-flash": [APIErr(503)]})
-    post = FakePost({"ds-model": [ok({"segments": []})]})
+    post = FakePost({"ds-model": [ok({"segments": [{"seg": 1, "overlap": False, "cut_off_text": False,
+                                                    "issues": []}]})]})
     meta: dict = {}
     fs = tasks.qa_snapshots({1: str(png)}, ai.get(None, client=c, post=post), meta=meta)
     assert [f.level for f in fs] == ["warn", "pass"] and "FALLBACK" in fs[0].message
@@ -625,11 +660,20 @@ api_key_env = "OTHER_KEY"
         ai.get(None)
 
 
-def test_good_absent_gemini_fallback_key_defaults_to_deepseek(tmp_path, monkeypatch):
-    write_config(tmp_path, monkeypatch, GEMINI_DS.replace('[gemini]\nfallback_provider = "deepseek"\n', ""))
+def test_good_fallback_only_when_the_config_names_one(tmp_path, monkeypatch):
+    write_config(tmp_path, monkeypatch, GEMINI_DS)
     assert ai.get(None).fallback.name == "deepseek"
+    write_config(tmp_path, monkeypatch, GEMINI_DS.replace('[gemini]\nfallback_provider = "deepseek"\n', ""))
+    assert ai.get(None).fallback is None                 # a configured provider is not a fallback by itself
     write_config(tmp_path, monkeypatch, LLM.format(default="gemini"))
     assert ai.get(None).fallback is None
+
+
+@pytest.mark.parametrize("code", [408, 500, 502, 504])
+def test_good_transient_server_errors_retry_the_same_model(key, code):
+    post = FakePost({"big": [(code, {}), ok({"v": 3})]})
+    r = openai_compat.OpenAICompatProvider(entry(), post).generate_json("planning", [Text("x")], None, "r")
+    assert r.data == {"v": 3} and r.tried == [("big", f"error {code}"), ("big", "ok")] and r.retries == 1
 
 
 @pytest.mark.parametrize("reply", [

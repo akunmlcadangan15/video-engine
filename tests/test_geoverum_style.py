@@ -50,7 +50,7 @@ def test_good_type_scale_and_style_values_agree():
     th, d = GEO.theme, GEO.data
     assert d.type.title_px == th.title_px == d.layout.sizes.title == 104 and th.title_font == "title"
     assert th.figure_px < th.title_px and th.text_outline_px == 0 and th.pin_colour.lower() == "#e61129"
-    assert d.reference_style["style"]["unified"]["signal_colors"]["pin"].lower() == th.pin_colour.lower()
+    assert d.reference_style.style["unified"]["signal_colors"]["pin"].lower() == th.pin_colour.lower()
     assert (th.title_entrance, th.title_anchor, th.label_box_entrance, th.figure_pop) == ("track", "region", "type", "back")
     assert d.layout.fly.title_in == 1.0 and d.layout.fly.label_in <= 1.15 and d.layout.fly.ease_in == "power3.out"
 

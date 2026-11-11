@@ -16,6 +16,7 @@ from pathlib import Path
 from .util import EngineError
 
 LOCK_NAME = ".batch.lock"
+LOCK_ATTEMPTS = 8      # acquire: reopen the lock file when it was unlinked between open and flock
 
 
 def _pid_alive(pid: int) -> bool:
@@ -43,17 +44,37 @@ def _lock_pid(path: Path) -> int | None:
     return pid if pid and pid > 0 else None
 
 
-def _clean_stale_lock(path: Path) -> None:
-    """Auto-clean a stale lock file: its recorded owner process is dead, so the `flock` is long released.
+def _same_file(fd: int, path: Path) -> bool:
+    """True while `path` still names the file open as `fd` (it was not unlinked or replaced meanwhile)."""
+    try:
+        a, b = os.fstat(fd), os.stat(path)
+    except OSError:
+        return False
+    return (a.st_ino, a.st_dev) == (b.st_ino, b.st_dev)
 
-    The file itself remains on disk after a crash/kill, which reads as 'locked' to people and tools."""
-    pid = _lock_pid(path)
-    if pid is None or pid == os.getpid() or _pid_alive(pid):
+
+def _clean_stale_lock(path: Path) -> None:
+    """Remove a leftover lock file whose recorded owner is dead (after a crash or kill the file stays on disk and
+    reads as 'locked' to people and tools). The file is removed only while this process holds its `flock` and the
+    path still names it: reading the pid and unlinking by path without the lock could delete the file a build that
+    started in between has just locked, and let a third build lock a new one beside it."""
+    try:
+        fd = os.open(path, os.O_RDWR)
+    except OSError:
         return
     try:
-        path.unlink()
-    except OSError:
-        pass
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return                       # a live holder: not stale
+        pid = _lock_pid(path)
+        if pid is not None and pid != os.getpid() and not _pid_alive(pid) and _same_file(fd, path):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+    finally:
+        os.close(fd)                     # closing releases the flock
 
 
 class ProjectLock:
@@ -65,26 +86,33 @@ class ProjectLock:
         self.fd: int | None = None
 
     def acquire(self) -> "ProjectLock":
+        """Take the lock or raise EngineError. A leftover file of a dead owner is simply locked and takes this
+        process's pid (its flock died with the owner). After the flock is granted the path must still name the
+        locked file: a holder that finished between this open and this flock has unlinked it, and a lock on an
+        unlinked file excludes nobody, so the open is repeated on the current file."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        _clean_stale_lock(self.path)   # a dead owner's leftover file must not read as "locked"
-        fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o644)
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+        for _ in range(LOCK_ATTEMPTS):
+            fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o644)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                os.close(fd)
+                raise EngineError(f"project {self.project} is already locked by another build or batch") from None
+            if _same_file(fd, self.path):
+                os.ftruncate(fd, 0)
+                os.write(fd, f"{os.getpid()}\n".encode())
+                self.fd = fd
+                return self
             os.close(fd)
-            raise EngineError(f"project {self.project} is already locked by another build or batch") from None
-        os.ftruncate(fd, 0)
-        os.write(fd, f"{os.getpid()}\n".encode())
-        self.fd = fd
-        return self
+        raise EngineError(f"project {self.project}: the lock file {self.path} kept changing; try again")
 
     def release(self) -> None:
         if self.fd is None:
             return
         fd, self.fd = self.fd, None
         # Still holding the flock: if the file still records our pid, drop it so a finished build
-        # leaves no stale-looking lock behind. All acquires are non-blocking, and unlinking while we
-        # hold the lock cannot strand another holder (a newcomer opens a fresh inode and locks it).
+        # leaves no stale-looking lock behind. A process that opened the file before this unlink and
+        # gets its flock after it sees in acquire() that the path no longer names that file and retries.
         if _lock_pid(self.path) == os.getpid():
             try:
                 self.path.unlink()

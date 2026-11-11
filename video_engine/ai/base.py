@@ -6,9 +6,10 @@ Parts (in request order):
   Media(path, kind, mime, label, transcript, words)
                                      audio or video file. A provider without the matching input capability receives
                                      the transcript (audio) or sampled JPEG frames (video) instead (`degrade`).
-Retry semantics (every provider): HTTP 429 / 503, a transport drop without status (treated as 503) and invalid JSON
--> retry the same model up to SAME_MODEL_RETRIES times after BACKOFF_S[i] + jitter; then the next model.
-HTTP 404 -> next model at once. Any other status -> EngineError, no retry. A fallback answer carries a warning that is
+Retry semantics (every provider): HTTP 408 / 429 / 500 / 502 / 503 / 504 (the transient statuses), a transport drop
+without status (treated as 503) and invalid JSON -> retry the same model up to SAME_MODEL_RETRIES times after
+BACKOFF_S[i] + jitter; then the next model. HTTP 404 -> next model at once. Any other status (400, 401, 403: the
+request or the key is wrong, a retry cannot help) -> EngineError, no retry. A fallback answer carries a warning that is
 printed to stderr.
 """
 from __future__ import annotations
@@ -16,19 +17,18 @@ from __future__ import annotations
 import json
 import random
 import re
-import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 
-from .. import config
-from ..util import EngineError
+from ..util import EngineError, frame_jpeg
 
-SAME_MODEL_RETRY_CODES = {429, 503}
+SAME_MODEL_RETRY_CODES = {408, 429, 500, 502, 503, 504}
 NEXT_MODEL_CODES = {404}
-RETRY_STATUSES = {"RESOURCE_EXHAUSTED": 429, "UNAVAILABLE": 503, "NOT_FOUND": 404}
+RETRY_STATUSES = {"RESOURCE_EXHAUSTED": 429, "UNAVAILABLE": 503, "NOT_FOUND": 404, "INTERNAL": 500,
+                  "DEADLINE_EXCEEDED": 504}
 TRANSPORT_ERRORS = {"RemoteProtocolError", "ReadTimeout", "ReadError", "WriteError", "ConnectError", "ConnectTimeout",
                     "PoolTimeout", "WriteTimeout", "ServerDisconnectedError"}
 SAME_MODEL_RETRIES = 3
@@ -215,7 +215,7 @@ def run_models(models: list[str], attempt: Callable[[str], tuple[str, dict]], la
                 if retries >= SAME_MODEL_RETRIES:
                     break
                 retries += 1
-                _sleep(backoff_delay(1))
+                _sleep(backoff_delay(retries))
                 continue
             tried.append((m, "ok"))
             fallback = m != models[0]
@@ -274,11 +274,8 @@ def sample_frames(path: Path, n: int, px: int = FRAME_PX) -> list[tuple[float, b
     out = []
     for k in range(max(1, n)):
         t = dur * k / max(1, n)
-        r = subprocess.run([config.FFMPEG, "-v", "error", "-ss", f"{t:.3f}", "-i", str(path), "-frames:v", "1", "-vf",
-                            f"scale='min({px},iw)':-2", "-f", "image2", "-c:v", "mjpeg", "-q:v", "5", "-"],
-                           capture_output=True)
-        if r.returncode == 0 and r.stdout:
-            out.append((round(t, 2), r.stdout))
+        if (jpg := frame_jpeg(path, t, px)) is not None:
+            out.append((round(t, 2), jpg))
     return out
 
 
@@ -292,6 +289,8 @@ def degrade(parts: list[Part], caps: set[str]) -> list[Part]:
                 out.append(Text(f"[{p.label or p.path.name}: audio replaced by its transcript]\n{p.transcript or '(no transcript)'}"))
             else:
                 frames = sample_frames(p.path, p.frames)
+                if not frames:       # say so: a model that gets no frame would describe footage it never saw
+                    out.append(Text(f"[{p.label or p.path.name}: video could not be decoded, no frames attached]"))
                 for t, jpg in frames:
                     lab = f"{p.label or p.path.name} frame at {t:.2f} s"
                     out += ([Text(lab), Image(jpg, "image/jpeg", lab)] if "image" in caps

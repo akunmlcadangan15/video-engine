@@ -213,9 +213,15 @@ def test_bad_unknown_keys_in_an_included_file_are_still_rejected(pdir):
         profiles.load("chan")
 
 
-def test_bad_flatten_needs_a_single_line_include(pdir):
-    pdir("chan.toml", 'include = [\n  "x/a.toml",\n]\n')
-    pdir("x/a.toml", "")
-    assert profiles.load("chan").name == "chan"                  # loading accepts a multi-line list
-    with pytest.raises(EngineError, match="single-line list"):
-        profiles.flatten("chan")
+def test_good_flatten_takes_a_multi_line_include_and_merges_repeated_tables(pdir):
+    """Two layers may write the same table: the flattened text has it once, the higher layer's keys winning."""
+    pdir("chan.toml", 'description = "chan"\ninclude = [\n  "x/a.toml",\n  "x/b.toml",\n]\n'
+                      '[caption_style]\nsize = 60\n[theme]\npalette = [\n  "#111111",\n  "#222222",\n]\n')
+    pdir("x/a.toml", '[caption_style]\nsize = 40      # lower layer\nmax_words = 3\n[audio]\ntarget_lufs = -13.0\n')
+    pdir("x/b.toml", '[theme]\npalette = ["#999999"]\nroute_colour = "#abcdef"\n')
+    flat = profiles.flatten("chan")
+    assert flat.count("[caption_style]") == flat.count("[theme]") == 1 and "include" not in flat
+    table = tomllib.loads(flat)
+    assert table["caption_style"] == {"size": 60, "max_words": 3} and table["theme"]["palette"] == ["#111111", "#222222"]
+    pdir("flat.toml", flat)
+    assert profiles.load("flat").blake3 == profiles.load("chan").blake3

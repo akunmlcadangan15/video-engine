@@ -1,42 +1,15 @@
 # Geoverum Landscape (16:9) Channel Profile Specification.
-# Inherits all shared channel rules from profiles/geoverum/core.toml and modular sub-tables, applying 16:9
-# widescreen geometry overrides at 1920 x 1080, 2560 x 1440, or 3840 x 2160 resolution (docs/PROFILES.md, Orientation).
+# Everything the two Geoverum formats share is in profiles/geoverum/core.toml and the modular sub-tables. The 16:9
+# geometry comes from the included landscape files (caption geometry: landscape/format.toml; layout and print
+# positions: geoverum/landscape/), at the 1920 x 1080 reference canvas (2560 x 1440 and 3840 x 2160 scale from it;
+# docs/PROFILES.md, Orientation). This file holds the runtime window and the watermark size and corner.
 description = "Geoverum landscape: map-led geography videos (16:9)"
 include = ["geoverum/core.toml", "geoverum/entities.toml", "geoverum/legibility.toml", "geoverum/print.toml", "geoverum/sound.toml", "geoverum/layout.toml", "landscape/format.toml", "geoverum/landscape/layout.toml", "geoverum/landscape/print.toml"]
-
-# Stage 2 burned-in subtitle specification for 16:9 landscape (vertical geometry inherited from profiles/landscape/format.toml).
-[caption_style]
-font = "Inter"                # Font family resolved to vendor/fonts/Inter-Bold.otf when bold = true
-bold = true                   # Enforces bold weight for rapid legibility
-primary = "FFFFFF"            # Locks base caption glyph color to pure white (#FFFFFF)
-highlight_colour = "FFFFFF"   # Locks active spoken word color to pure white (#FFFFFF), overriding the Rust compiler's #FFD84A yellow default
-emphasis_colour = "FFFFFF"    # Locks emphasized word color to pure white (#FFFFFF)
-outline = 0                   # Disables hard stroke outlines around glyphs so letterforms remain clean
-soft_shadow = true            # Enables a soft Gaussian drop shadow beneath caption text instead of a hard outline or opaque box
-shadow_dx = 0                 # Horizontal shadow offset in pixels
-shadow_dy = 3                 # Vertical shadow offset in pixels
-shadow_blur = 4               # Gaussian blur radius applied by libass (\blur tag, approximately equivalent to an 8 px CSS blur)
-shadow_alpha = 115            # ASS alpha value (0x73 = 115/255, producing 55% shadow opacity)
-active_word_highlight = true  # Synchronizes word-by-word dialogue events to spoken word timestamps
-emphasis_scale = 1.15         # Scale multiplier (115%) applied to emphasized words
-forbid_box = false            # Permits optional caption backing boxes per segment when explicitly specified by the creator without triggering a style block
-auto_place = true             # Automatically shifts captions within the lower placement band if a static pin, label, or figure occupies the default line (gate R63)
-
-# Automated quality-gate policy (kernel integrity gates always block; style gates emit warnings).
-[gates]
-require = []                  # Empty list: all non-mandatory style gates operate in advisory warning mode
-advisory = []                 # Optional list of flexible technical gates downgraded to warnings
 
 [gates.duration]              # D01: Permitted total runtime window in seconds for widescreen landscape videos
 min_s = 60.0                  # Minimum total video duration in seconds for 16:9 format
 max_s = 3600.0                # Maximum total video duration in seconds for 16:9 format
 
-# Persistent channel watermark burned into the safe area during the final composite mux.
-[watermark]
-text = "Geoverum"             # Channel identifier text rendered in the lower-right safe area on landscape builds
-font = "inter"                # Typeface family for the channel watermark
+[watermark]                   # the mark itself is [watermark] in geoverum/core.toml
 px = 28                       # Font size in pixels at 1920 x 1080 reference resolution
 corner = "bottom_right"       # Safe-area corner placement for 16:9 landscape layout
-colour = "#ffffff"            # Pure white glyph fill color
-opacity = 0.85                # Opacity (85%) so the watermark remains unobtrusive over dark satellite terrain
-shadow = true                 # Enables a subtle drop shadow for legibility over bright cloud or snow regions

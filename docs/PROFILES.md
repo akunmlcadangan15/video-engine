@@ -5,18 +5,23 @@ The format of a channel profile and the profiles that ship with the engine.
 **What this document answers**
 
 - Which tables and keys a profile has, and the precedence default < channel profile < project.
-- How to split a profile into several files with `include`.
+- How to split a profile into several files with `include`, and how to build one profile on another with `extends`.
+- How to see the resolved profile and where each key comes from (`engine profile NAME --origin`).
 - What the `default` and `geoverum` profiles set.
 - Which safety limits a profile cannot loosen.
 
 - Files: `profiles/default.toml` holds the engine values; `profiles/<channel>.toml` lists only the keys a channel changes. Tables merge key by key.
-- Precedence: `default.toml` < channel profile < project values (`caption_style` keys, `audio_chain.target_lufs` / `true_peak` / `lra`).
+- Precedence, lowest first: model field defaults (`video_engine/profile_schema.py`) < `default.toml` < the profile's `extends` chain (for each profile its `include` files, then its own file) < project `profile_overrides` < project values (`caption_style` keys, `audio_chain.target_lufs` / `true_peak` / `lra`).
+  Fallback is per key: a key a profile does not write takes the value of the layer below. A profile that cannot be read or validated is an error; the engine never substitutes the default profile for it.
+- `engine profile NAME` prints the resolved profile; `--origin` adds the file that set each key (or `(engine default)`); `engine schema profile` prints the JSON Schema of the tables.
 - Tables:
 
 - `description`: free text
-- `[caption_style]`: Python caption keys (`auto_place`, `clearance`, `fixed_y`, `max_bottom_y`) and any Rust `Style` field (see [Captions](TIMELINE.md#captions))
+- `[caption_style]`: Python caption keys (`auto_place`, `clearance`, `fixed_y`, `max_bottom_y`, `place_band`, `forbid_box`, `ab_sizes`) and any Rust `Style` field (see [Captions](TIMELINE.md#captions)).
+  A key in neither set, a value of the wrong type or an unknown `slot` is an error when the profile (or a timeline that sets `caption_style`) loads, with the closest known key named (`profiles.check_caption_style`).
 - `[audio]`: `target_lufs`, `true_peak`, `lra`, `tolerance_lu` (A01 tolerance), `require_source` (`"epidemic"` or absent: source every music and SFX file must have, gate A02; docs/SOUND.md)
-- `[type]`: canonical type scale (`title_px`, `title_px_paper`, `pin_label_px`); `[theme]`/`[print]`/`[layout]` are per-surface overrides on this base. See [STRUCTURE](STRUCTURE.md).
+- `[type]`: base of the type scale (`title_px`, `title_px_paper`, `pin_label_px`). A size a channel sets here is written to every surface the channel leaves open: `title_px` -> `[theme] title_px` and `[layout.sizes] title`; `title_px_paper` -> `[print] title_px`; `pin_label_px` -> `[theme] pin_label_px` and `[layout.sizes] pin_label`.
+  A surface key a channel file writes wins, and a surface table the profile does not have (`[layout]`, `[print]`) stays absent. See [STRUCTURE](STRUCTURE.md).
 - `[draft]`: `min_seg_s`, `max_seg_s` (pause segmenter and draft prompt segment length), `rules` (prompt rules appended after the engine rules, numbered from 6) or `rules_file` (single-source markdown `profiles/<channel>/creative.md`; mutually exclusive with `rules`), `map_path` (true = the draft schema offers `map_path` camera keys for map segments), `scene` (opt-in draft map scene keys: `globe`, `props`, `morph`, `beats`; beats also need `[layout]`; regions, routes, borders, figures, flag characters and pin flags are always offered; docs/AI.md)
 - `[theme]`: Renderer values written into the HyperFrames scene (`theme`): `camera_drift_per_s`, `camera_start_speed`, `camera_end_speed`, `whip_s`, `whip_blur_px`, `reveal_ease` (camera move `reveal`, CSS cubic-bezier, default `[0.28, 0.37, 0.29, 0.91]`), `region_fill_opacity`, `region_edge`, `region_edge_px`, `region_glow_px`, `pin_style`, `pin_colour`, `label_font`, `pin_label_px`, `route_colour`, `route_width_px`, `route_dash_px`, `route_gap_px`, `route_arrow_px`, `route_draw_s`, `region_glow_alpha`, `title_font`, `title_px`, `title_glow_px`, `title_tint`, `text_outline_px`, `text_outline_colour`, `text_outline_alpha`, `text_shadow_dy_px`, `text_shadow_blur_px`, `text_shadow_alpha`, `figure_px`, `counter_s`, `number_group`, `number_decimal`.
   Style options, left out of the profile hash at their defaults (the engine look): `vivid_chroma_scale` and `vivid_l` (on a dark satellite map, i.e. no `[print]` or a map `[print]` classifies "dark", entity colours keep their hue at `vivid_chroma_scale` x chroma with OKLCH L mapped from 0.38-0.84 onto `vivid_l`, `entities.vivid_colour`; paper maps keep the palette; gate E01 compares fills with these scene colours),
@@ -42,7 +47,7 @@ The format of a channel profile and the profiles that ship with the engine.
   The text's right edge sits on the right edge and its top on the top edge of the safe area (60 px sides, 100 px top).
   Absent table = no watermark and the mux graph without overlay.
   Not in any segment cache key.
-- `[sound]`: Optional SFX cues, one per render event (`video_engine/sfx.py`), and the mixer (`video_engine/mixer.py`).
+- `[sound]`: Optional SFX cues, one per render event (`video_engine/sfx.py`), and the mixer (`video_engine/mixer.py`). Every key has a default: a table with only mixer keys ducks the music and plays no cues (`events` and `kinds` default to empty).
   Mixer keys: `duck_db` (music gain while the voiceover speaks, -40 to <0, default -12), `duck_attack_s` (ramp down before a phrase, default 0.15), `duck_release_s` (ramp up after it, default 0.4), `duck_merge_s` (word gaps up to this long stay ducked, default 0.5), `fade_in_s` / `fade_out_s` (music, default 0.3 / 1.0).
   Speech spans come from the voiceover word timestamps; ducking applies when `audio_chain.auto_ducking` is on and a voiceover is set.
   `[sound.events]`: render event -> SFX kind;
@@ -65,6 +70,8 @@ The format of a channel profile and the profiles that ship with the engine.
 
 - `[legibility]` (optional): adaptive map text for teardrop labels, title, years, counters and area labels (water names blue italic): polarity, sepia ink, background-tinted halo that keeps counters open, escalation, stability schedule, overlay muting, cased pins, routes, region outlines and leaders, and gate R64.
   Keys and rules: docs/SPEC.md, section F. Absent = theme text paint and R64 off.
+  Every key has a default (the engine baseline, calibrated on reference map videos), so a channel table lists only the keys it changes; `profiles/geoverum/legibility.toml` writes the full table on purpose, so the channel does not move when the baseline does.
+- `[reference_style.*]`: the channel's catalogue of creator options (docs/REFERENCE-STYLE.md). The group names are fixed (`transitions`, `fill`, `label`, `data_viz`, `overlay`, `scene_variants`, `style`, `overlap`); `[reference_style.overlap]` (`allowed`, `rule`, `forbid`) is the one group gates read and is typed, so a misspelt key there is an error.
 - `[print]` (optional): printed typography and map grade: the map surface (paper or dark imagery) fixes the text polarity;
     paper text is ink multiplied into the map (no halo, glow or box), EB Garamond titles inside their region, a centred Playfair year, Cinzel headings with rules, EB Garamond Italic pin labels above the pin on a leader, Kalam hand notes;
     regions with a multiplied fill and solid edge;
@@ -88,7 +95,7 @@ The format of a channel profile and the profiles that ship with the engine.
     Anti-slop AS01-AS06 warn.
   - Look: muted OKLCH entity palette of 17 colours with six unpinned (teal, umber, wine, mauve, jade, olive), painted vivid on dark satellite maps (`vivid_chroma_scale` 1.8); titles Archivo Black 104 px white without outline that track in above their region; box labels in a darker shade of the entity colour (`label_box_lc` 80) that grow with their typed text, written case, tilted -3 deg; numbers 96 px in signal yellow `#FFD417` with a back pop; pins `#E61129`; adaptive legibility (`[legibility]`, gate R64), printed typography (`[print]`), watermark "Geoverum" in Inter Bold 40 px, white at 85 % with a shadow.
   - Landscape variant: `geoverum_landscape` (see Orientation).
-  - Files: `profiles/geoverum.toml` holds the portrait settings and `include`s `profiles/geoverum/core.toml`, `entities.toml`, `legibility.toml`, `print.toml`, `sound.toml` and `layout.toml`.
+  - Files: `profiles/geoverum.toml` holds only what 9:16 changes (caption geometry, runtime window, watermark size) and `include`s `profiles/geoverum/core.toml` (the shared look, caption style, watermark, gates and draft rules), `entities.toml`, `legibility.toml`, `print.toml`, `sound.toml` and `layout.toml`. `core.toml` leaves out every key that only repeats `default.toml`.
   - Taste notes: `profiles/taste/geoverum.json`; `engine taste geoverum --lint` exposes historical differences from the active profile without rewriting dated feedback. The director labels them historical preferences, not hard constraints.
 
 ## Orientation (portrait and landscape)
@@ -189,7 +196,25 @@ include = ["geoverum/entities.toml", "geoverum/layout.toml"]
 - The merged profile and its hash do not depend on how the keys are split between files, so moving a table into an included file never changes a segment cache key.
   Check with `profiles.load(name).blake3` before and after.
 - Included files are validated like any profile text: unknown keys are errors, and a TOML error names the included file.
-- `profiles.flatten(name)` returns a channel profile as one text (its own text without the `include` line, then each included file) for tools and tests; the `include` line must be a single-line list for this.
+- `profiles.flatten(name)` returns a profile as one TOML text that loads to the same profile without its `include` / `extends` files, for tools and tests: the layers above `default.toml` merged table by table in load order (a table two files write appears once, the higher layer's keys winning), comments kept, `rules_file` replaced by the rules it resolves to.
+
+## Building on another profile with `extends`
+
+```toml
+extends = "geoverum"          # this profile = geoverum (its includes and its file) + the keys below
+include = ["mychannel/sound.toml"]
+
+[watermark]
+text = "My Channel"
+```
+
+- Merge order: `default.toml` < the base profile's `include` files < the base profile's file < this profile's `include` files < this profile's file. A chain may be up to 8 profiles long.
+- A loop, a missing base, `extends = "default"` (every profile already builds on it) and `extends` inside an included file or `default.toml` are errors.
+- There is no way to unset a key of the base: a base key that must not reach the child (portrait caption geometry under a landscape child) belongs in a file only the base's own format includes. That is why `geoverum_landscape` shares `geoverum/core.toml` through `include` and does not extend `geoverum`.
+
+## Placeholders in the creative rules
+
+A `[draft] rules_file` line may quote a value of the profile that loads it as `{{table.key}}` (`{{caption_style.size}}`, `{{layout.sizes.title}}`). The engine replaces it with that value of the effective profile, so profiles that share one rules file (`geoverum` and `geoverum_landscape`) each quote their own numbers. A placeholder that names no key, or a key that is not set, is an error naming the file.
 
 
 - Global safety limits: a profile may set `audio.true_peak` and `audio.tolerance_lu` only at or below the default profile value; a looser value is an error.

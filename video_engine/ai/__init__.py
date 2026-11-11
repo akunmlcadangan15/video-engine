@@ -1,9 +1,11 @@
 """AI providers for `engine draft`, `engine director` and `--ai-qa`.
 
-Providers: `gemini` (default), `agent` (file handoff, `agent.py`), and every `[providers.NAME]` entry of the AI
-config file (OpenAI-compatible, `openai_compat.py`). Gemini falls back to `[gemini] fallback_provider` (default
-`deepseek` when that provider is configured) for any request Gemini cannot answer.
-Selection precedence: --provider flag > env VIDEO_ENGINE_AI_PROVIDER > `default` in the AI config file > gemini.
+Providers: `agent` (file handoff, `agent.py`), `gemini` (`gemini.py`), and every `[providers.NAME]` entry of the
+AI config file (OpenAI-compatible, `openai_compat.py`).
+The engine names no vendor default. Selection precedence: --provider flag > env VIDEO_ENGINE_AI_PROVIDER > `default`
+in the AI config file > `agent`. With nothing selected the request goes to the agent provider: the AI model (or
+person) that is running the engine answers it from the request bundle, so the model in use is the model that drafts.
+A fallback provider exists only where the config asks for one (`[gemini] fallback_provider = "NAME"`).
 AI config file: env VIDEO_ENGINE_AI_CONFIG, else <engine root>/ai_providers.toml.
 """
 from __future__ import annotations
@@ -16,10 +18,13 @@ from .. import config
 from ..util import EngineError
 from .base import AIResult, AwaitingAgent, Image, Media, Part, Provider, Text  # noqa: F401
 
-DEFAULT = "gemini"
-BUILTIN = ("gemini", "agent")
+SESSION = "agent"                 # no provider selected: the model that runs the engine answers (file handoff)
+BUILTIN = ("agent", "gemini")
 ENV_PROVIDER = "VIDEO_ENGINE_AI_PROVIDER"
 ENV_CONFIG = "VIDEO_ENGINE_AI_CONFIG"
+ENV_MODEL = "VIDEO_ENGINE_AI_MODEL"   # agent provider: the name of the model that answers, written to the reports
+STT_DEFAULTS = {"provider": "xai", "url": "https://api.x.ai/v1/stt", "model": "grok-voice-transcribe-2.0",
+                "api_key_env": "XAI_API_KEY", "timeout_s": 300}
 
 
 def config_path() -> Path:
@@ -43,7 +48,7 @@ def names(cfg: dict | None = None) -> list[str]:
 
 def resolve(flag: str | None, cfg: dict | None = None) -> str:
     cfg = load_config() if cfg is None else cfg
-    name = flag or os.environ.get(ENV_PROVIDER) or cfg.get("default") or DEFAULT
+    name = flag or os.environ.get(ENV_PROVIDER) or cfg.get("default") or SESSION
     if name not in names(cfg):
         raise EngineError(f"unknown AI provider '{name}' (known: {', '.join(names(cfg))}; add models in {config_path()})")
     return name
@@ -71,7 +76,7 @@ def get(flag: str | None = None, *, root: Path | None = None, resume_cmd: str = 
                 raise EngineError(f"AI provider 'gemini': fallback_provider '{fallback_name}' is not a "
                                   f"[providers.NAME] entry (known: {known})")
         else:
-            fallback_name = "deepseek" if "deepseek" in providers else None
+            fallback_name = None      # never implicit: a request leaves for another service only when configured
         fallback = _openai_provider(fallback_name, cfg, post) if fallback_name else None
         cfg_models = models or gemini_cfg.get("models")
         cfg_qa_models = gemini_cfg.get("qa_models") or cfg_models
@@ -80,18 +85,24 @@ def get(flag: str | None = None, *, root: Path | None = None, resume_cmd: str = 
         from .agent import MODEL_LABEL, AgentProvider
         if root is None:
             raise EngineError("agent provider needs a bundle root")
-        return AgentProvider(root, resume_cmd, resume, cfg.get("agent", {}).get("model_label", MODEL_LABEL))
+        label = os.environ.get(ENV_MODEL) or cfg.get("agent", {}).get("model_label") or MODEL_LABEL
+        return AgentProvider(root, resume_cmd, resume, label)
     return _openai_provider(name, cfg, post)
 
 
 def stt_config(cfg: dict | None = None) -> dict:
-    """STT configuration from [stt] in ai_providers.toml with xAI Grok defaults."""
+    """STT configuration: [stt] in ai_providers.toml over STT_DEFAULTS (the one place that names them)."""
     cfg = load_config() if cfg is None else cfg
     st = cfg.get("stt", {})
-    return {
-        "provider": st.get("provider", "xai"),
-        "url": st.get("url", "https://api.x.ai/v1/stt"),
-        "model": st.get("model", "grok-voice-transcribe-2.0"),
-        "api_key_env": st.get("api_key_env", "XAI_API_KEY"),
-        "timeout_s": int(st.get("timeout_s", 300)),
-    }
+    if not isinstance(st, dict):
+        raise EngineError(f"{config_path()}: [stt] must be a table")
+    unknown = sorted(set(st) - set(STT_DEFAULTS))
+    if unknown:
+        raise EngineError(f"{config_path()}: unknown [stt] key(s) {', '.join(unknown)} "
+                          f"(known: {', '.join(STT_DEFAULTS)})")
+    out = {**STT_DEFAULTS, **st}
+    try:
+        out["timeout_s"] = int(out["timeout_s"])
+    except (TypeError, ValueError):
+        raise EngineError(f"{config_path()}: [stt] timeout_s must be a whole number of seconds") from None
+    return out

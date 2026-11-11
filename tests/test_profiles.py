@@ -177,14 +177,28 @@ def test_good_legibility_table_without_defaulted_keys_loads_with_defaults(pdir):
     assert {k: v for k, v in lg.items() if k not in LEG_DEFAULTED} == {k: v for k, v in geo.items() if k not in LEG_DEFAULTED}
 
 
-def test_good_every_legibility_key_without_default_is_required():
-    req = {k for k, f in profiles.Legibility.model_fields.items() if f.is_required()}
-    assert req.isdisjoint(LEG_DEFAULTED)
-    assert set(profiles.Legibility.model_fields) - req == set(LEG_DEFAULTED) | {"never_text"}
+def test_good_every_legibility_key_has_a_default():
+    """No key is required: a channel lists the keys it changes and the engine baseline fills the rest."""
+    assert [k for k, f in profiles.Legibility.model_fields.items() if f.is_required()] == []
 
 
-def test_bad_legibility_table_missing_a_required_key_is_an_error(pdir):
-    pdir("chan", _legibility_toml(drop=("lc_label",)))
+def test_good_partial_legibility_table_falls_back_per_key(pdir):
+    pdir("chan", "[legibility]\nlc_label = 80\n")
+    lg, base = profiles.load("chan").legibility, profiles.Legibility()
+    assert lg.lc_label == 80 and base.lc_label == 75
+    assert lg.model_dump(exclude={"lc_label"}) == base.model_dump(exclude={"lc_label"})
+    pdir("chan", _legibility_toml(drop=("lc_label",)))           # the full table minus one key: that key's baseline
+    assert profiles.load("chan").legibility.lc_label == base.lc_label
+
+
+def test_good_partial_sound_table_ducks_without_events(pdir):
+    pdir("chan", "[sound]\nduck_db = -9.0\n")
+    snd = profiles.load("chan").sound
+    assert snd.duck_db == -9.0 and snd.events == {} and snd.kinds == {}
+
+
+def test_bad_legibility_value_out_of_range_is_still_an_error(pdir):
+    pdir("chan", "[legibility]\nlc_label = 500\n")
     with pytest.raises(EngineError, match="lc_label"):
         profiles.load("chan")
 

@@ -99,7 +99,8 @@ Tests: `pytest -q tests/test_wrapper_scripts.py` (uses a stub `engine`).
 | `VIDEO_ENGINE_TASTE_DIR` | `<profiles>/taste` | director taste store directory |
 | `VIDEO_ENGINE_VENDOR` | `<repo>/vendor` | toolchain directory |
 | `VIDEO_ENGINE_HYPERFRAMES_VERSION` | unset (`vendor/hyperframes.select`, else `pinned`) | HyperFrames the build renders with: `pinned`, `latest`, `system` or `X.Y.Z` ([`engine toolchain`](CLI.md#engine-toolchain-show--list--use-spec)) |
-| `VIDEO_ENGINE_AI_PROVIDER` | unset | AI provider when `--provider` is not given |
+| `VIDEO_ENGINE_AI_PROVIDER` | unset (then `default` in the AI config, else `agent`) | AI provider when `--provider` is not given |
+| `VIDEO_ENGINE_AI_MODEL` | unset | agent provider: the name of the model that answers, written to the reports (wins over `[agent] model_label`) |
 | `VIDEO_ENGINE_AI_CONFIG` | `<repo>/ai_providers.toml` | AI provider registry file |
 | `VIDEO_ENGINE_PROFILES` | `<repo>/profiles` | channel profile directory |
 | `VIDEO_ENGINE_WORKSPACE` | `/workspace` (Linux), `~/workspace` (macOS) | folder that holds the shared libraries; the defaults of the four variables below sit in it |

@@ -73,7 +73,10 @@ def test_R62_bad_font_shrunk_below_limit(project, W):
 
 
 def test_L22_bad_unknown_style_key(project, W):
-    _, tl = project(lambda d: d.update(caption_style={"colour_of_box": "red"}))
+    with pytest.raises(Exception, match=r"caption_style\.colour_of_box: unknown key"):
+        project(lambda d: d.update(caption_style={"colour_of_box": "red"}))   # rejected when the timeline loads
+    _, tl = project()
+    tl.caption_style = {"colour_of_box": "red"}                              # set past the loader: L22 still fails
     fs, _ = layer2.r62_caption_margins(tl, W(("a", 0, 10)))
     assert fails(fs, "L22")
 

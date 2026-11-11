@@ -98,3 +98,33 @@ def test_good_keyterms_repeated(monkeypatch, tmp_path):
     fields = seen[0]["fields"]
     assert [v for k, v in fields if k == "keyterm"] == [(None, "Mallaby"), (None, "Surabaya")]
     assert fields[-1][0] == "file"
+
+
+@pytest.mark.parametrize("body, msg", [
+    ({"words": [{"text": "Halo", "start": 0.1}]}, r"words\[0\] needs text, start and end"),
+    ({"words": [{"text": "Halo", "start": "soon", "end": 0.5}]}, r"words\[0\] needs text, start and end"),
+    ({"words": "Halo dunia"}, "`words` must be a list"),
+])
+def test_bad_unexpected_response_shape_is_an_engine_error(monkeypatch, tmp_path, body, msg):
+    stub(monkeypatch, Resp(200, body))
+    with pytest.raises(EngineError, match=msg):
+        audio.transcribe_words(voiceover(tmp_path), use_cache=False)
+
+
+def test_good_empty_transcript_is_returned_but_never_cached(monkeypatch, tmp_path):
+    seen = stub(monkeypatch, Resp(200, {"words": []}), Resp(200, OK))
+    vo = voiceover(tmp_path, data=b"RIFF-empty-then-words")
+    assert audio.transcribe_words(vo) == ([], False)
+    words, hit = audio.transcribe_words(vo)                       # asked again: the empty answer was not pinned
+    assert [w["word"] for w in words] == ["Halo", "dunia"] and hit is False and len(seen) == 2
+    assert audio.transcribe_words(vo)[1] is True
+
+
+def test_bad_unknown_stt_config_key_is_reported(monkeypatch, tmp_path):
+    from video_engine import ai
+    cfg = tmp_path / "ai.toml"
+    cfg.write_text('[stt]\nmodle = "x"\n')
+    monkeypatch.setenv(ai.ENV_CONFIG, str(cfg))
+    with pytest.raises(EngineError, match=r"unknown \[stt\] key\(s\) modle"):
+        audio._stt_cfg()
+

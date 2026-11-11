@@ -19,10 +19,8 @@ z3 = [64, 1100, 888, 1248]    # Optional reference zone [x0, y0, x1, y1] above t
 group_gap = 48                # Minimum vertical/horizontal separation in pixels between distinct visual groups
 
 [layout.sizes]
-title = 104                   # Display title height in pixels (matches [type] title_px)
 year = 128                    # Standalone chronological year height in pixels inside layout beats
 time = 56                     # Secondary time/date subtitle height in pixels
-pin_label = 52                # Standard pin label height in pixels (matches [type] pin_label_px)
 pin_label_min = 44            # Minimum pin label height in pixels after collision auto-scaling
 area_label = 44               # Regional or hydrographic area label height in pixels
 area_tracking = 0.08          # Letter-spacing in em units for area labels

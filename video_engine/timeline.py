@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import re
-import tempfile
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -17,8 +15,9 @@ import hypoverum_core_rs as core
 from .projection import MERC_LAT_MAX
 
 from . import config
+from .ai import STT_DEFAULTS
 from .grade import Grade
-from .util import EngineError
+from .util import EngineError, atomic_write_text
 
 NATIVE = "NATIVE_RUST_FFMPEG"
 HYPERFRAMES = "HYPERFRAMES_GSAP"
@@ -103,7 +102,7 @@ class MusicBrief(Strict):
 
 class Stt(Strict):
     """xAI Grok Voice Transcribe settings: model id and optional keyterms (at most 100, each at most 50 chars)."""
-    model: str = "grok-voice-transcribe-2.0"
+    model: str = STT_DEFAULTS["model"]
     keyterms: list[str] = []
 
     @model_validator(mode="after")
@@ -1409,16 +1408,7 @@ class Timeline(Strict):
                 raise ValueError(f"segment {s.seg_index}: transition_in 'page_turn' is not allowed by the profile "
                                  "([transitions] page_turn = false)")
         try:
-            cs = self.caption_style
-            if "forbid_box" in cs and not isinstance(cs["forbid_box"], bool):
-                raise EngineError("caption_style.forbid_box must be true or false")
-            ab = cs.get("ab_sizes")
-            if ab is not None and (not isinstance(ab, list) or not ab
-                                   or not all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in ab)):
-                raise EngineError("caption_style.ab_sizes must be a non-empty list of positive integers")
-            st = {**prof.caption_style, **cs}
-            if st.get("forbid_box") and st.get("box_bg") is True:
-                raise EngineError("caption_style.forbid_box = true but box_bg = true; captions never use a box")
+            profiles.check_timeline_caption_style(self, prof)   # keys, types, geometry: the profile's own check
         except EngineError as e:
             raise ValueError(str(e)) from e
         for s in self.segments:
@@ -1487,13 +1477,4 @@ def save(tl: Timeline, path: str | Path) -> None:
     if p.is_dir():
         p = p / "master_timeline.json"
     data = tl.model_dump(mode="json", by_alias=True, exclude_none=True)
-    fd, name = tempfile.mkstemp(dir=p.parent, prefix=f".{p.name}.", suffix=".part")   # unique per writer
-    tmp = Path(name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
-        os.chmod(tmp, p.stat().st_mode & 0o777 if p.exists() else 0o644)
-        os.replace(tmp, p)   # atomic: a reader sees one whole version of the file, never a half-written one
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
+    atomic_write_text(p, json.dumps(data, indent=2, ensure_ascii=False) + "\n")

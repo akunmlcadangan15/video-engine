@@ -12,16 +12,15 @@ from __future__ import annotations
 import json
 import os
 import re
-import tempfile
 import tomllib
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from .. import config
-from ..ai.base import Image, Text
+from ..ai.base import Image, Text, schema_errors
 from ..units import units
-from ..util import EngineError
+from ..util import EngineError, atomic_write_text
 
 HERE = Path(__file__).parent
 DIRECTIONS = ("grounded", "contrast", "bold")
@@ -78,16 +77,7 @@ def save_taste(d: dict) -> Path:
     file."""
     p = taste_dir() / f"{d['channel']}.json"
     p.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(dir=p.parent, prefix=f".{p.name}.", suffix=".part")
-    tmp = Path(name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(json.dumps(d, indent=2, ensure_ascii=False) + "\n")
-        os.chmod(tmp, p.stat().st_mode & 0o777 if p.exists() else 0o644)
-        os.replace(tmp, p)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
+    atomic_write_text(p, json.dumps(d, indent=2, ensure_ascii=False) + "\n")
     return p
 
 
@@ -337,11 +327,14 @@ def plan(provider, inp, media: list, files: dict, taste: dict) -> dict:
     for rnd in range(2):
         rid = "draft/storyboard" if rnd == 0 else f"draft/storyboard{rnd}"
         r = provider.generate_json("planning", contents, sch, rid, files)
-        ranked = rank(r.data, inp, taste)
-        rounds.append({"round": rnd, "ai": r.meta(), "errors": [e for x in ranked for e in x["errors"]]})
+        bad = schema_errors(r.data, sch)          # structure first: rank() reads fields the schema promises
+        ranked = [] if bad else rank(r.data, inp, taste)
+        rounds.append({"round": rnd, "ai": r.meta(),
+                       "errors": [f"schema: {e}" for e in bad[:20]] or [e for x in ranked for e in x["errors"]]})
         if any(x["valid"] for x in ranked):
             break
-        errs = "\n".join(f"- concept {x['index']}: {e}" for x in ranked for e in x["errors"])
+        errs = "\n".join([f"- schema: {e}" for e in bad[:20]]
+                         or [f"- concept {x['index']}: {e}" for x in ranked for e in x["errors"]])
         contents = base + [Text("YOUR PREVIOUS STORYBOARDS:\n" + json.dumps(r.data, ensure_ascii=False)),
                            Text("THE ENGINE REJECTED EVERY CONCEPT:\n" + errs + "\nReturn 3 corrected concepts.")]
         files = {**files, "previous_response.json": r.data, "storyboard_errors.txt": errs}

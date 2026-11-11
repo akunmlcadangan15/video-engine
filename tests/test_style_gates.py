@@ -521,7 +521,7 @@ def test_bad_style_gate_tables_rejected(tmp_path, monkeypatch, gates):
 
 # per-profile draft prompt --------------------------------------------------------------------------------------------
 def _inp(profile):
-    return SimpleNamespace(settings=timeline.Settings(), assets=[], credit_lines=[], total_frames=900, words=[],
+    return SimpleNamespace(audio_chain=timeline.AudioChain(), profile_overrides={}, settings=timeline.Settings(), assets=[], credit_lines=[], total_frames=900, words=[],
                            pause_report=SimpleNamespace(segments=[(0, 900)]), script="x", profile=profile)
 
 
@@ -596,8 +596,8 @@ def test_good_empty_captions_pass_or_skip_every_caption_gate(project):
 
 
 def test_bad_empty_captions_still_fail_an_invalid_max_bottom_y(project):
-    _, tl = project(layout(("map", 30, None), cs={"max_bottom_y": "low"}))
-    assert levels(layer2.z01_caption_bottom(tl, []), "Z01") == ["fail"]
+    with pytest.raises(EngineError, match="caption_style.max_bottom_y must be a number"):   # rejected at load, before
+        project(layout(("map", 30, None), cs={"max_bottom_y": "low"}))                       # any gate has to cope
 
 
 def test_good_late_pin_does_not_block_earlier_captions(project):

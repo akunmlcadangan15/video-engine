@@ -126,3 +126,39 @@ def test_bad_live_lock_still_blocks_acquire(tmp_path):
     with batch.ProjectLock(p):
         with pytest.raises(EngineError, match="already locked"):
             batch.ProjectLock(p).acquire()
+
+
+def test_good_lock_is_retaken_when_the_file_was_unlinked_between_open_and_flock(tmp_path, monkeypatch):
+    """A holder that finishes between another build's open and its flock unlinks the file: the flock then granted
+    is on a file nobody else can reach, so acquire must notice and lock the file the path names now."""
+    import fcntl
+    p = _proj(tmp_path, "p")
+    lock = p / "out" / ".batch.lock"
+    real, calls = fcntl.flock, []
+
+    def flock(fd, op):
+        if not calls:
+            lock.unlink()                       # the earlier holder's release, right after our open
+        calls.append(op)
+        return real(fd, op)
+    monkeypatch.setattr(batch.fcntl, "flock", flock)
+    with batch.ProjectLock(p) as lk:
+        assert (os.fstat(lk.fd).st_ino, lock.read_text().strip()) == (os.stat(lock).st_ino, str(os.getpid()))
+        assert len(calls) == 2                  # locked the unlinked file once, then the real one
+        monkeypatch.undo()
+        with pytest.raises(EngineError, match="already locked"):
+            batch.ProjectLock(p).acquire()
+
+
+def test_good_stale_cleanup_never_removes_a_held_lock(tmp_path):
+    """The file of a running build is not removed even when its recorded pid reads as dead (a build that has the
+    flock but has not written its pid yet): cleanup needs the flock itself."""
+    p = _proj(tmp_path, "p")
+    with batch.ProjectLock(p) as lk:
+        lk.path.write_text(f"{_dead_pid()}\n")
+        batch._clean_stale_lock(lk.path)
+        assert lk.path.is_file()
+    lk.path.parent.mkdir(exist_ok=True)
+    lk.path.write_text(f"{_dead_pid()}\n")      # a crashed owner's leftover: removed
+    batch._clean_stale_lock(lk.path)
+    assert not lk.path.exists()

@@ -382,7 +382,7 @@ def check_segment(s: Segment, tl: Timeline, project_dir: Path, events: list[tupl
                 note("T01", f, typefaces(item["rects"], int(pr["max_typefaces"])))
         probes = len(frames)
     from .. import profiles
-    ov_allowed = bool((profiles.of(tl).reference_style or {}).get("overlap", {}).get("allowed"))
+    ov_allowed = profiles.of(tl).reference_style.overlap_allowed
     out = []
     for g, desc in {**GATES, **(PRINT_GATES if pr is not None else {})}.items():
         if bad[g]:

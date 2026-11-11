@@ -191,6 +191,25 @@ def test_bad_watermark_flag_fails_R14(proj):
     assert "[WARN] R14" in pre and "watermark_free is false" in pre and r.ok
 
 
+def test_good_undeclared_watermark_state_is_not_asserted_for_the_model(proj):
+    """Only what the model declared is written: an asset it gave no credits entry for has no watermark_free, and
+    gate R14 says so instead of the engine vouching for a thumbnail nobody checked."""
+    plan = good_plan()
+    plan["credits"] = [c for c in plan["credits"] if c["asset"] != "still"]       # `still` has a fixed credit line
+    r = run(proj, client({"m38": [plan]}))
+    by = {c.asset_id: c for c in timeline.load(r.timeline_path).credits_manifest}
+    assert by["still"].watermark_free is None and by["clip_1080x1920_30"].watermark_free is True
+    assert "watermark_free is not declared" in r.report["rounds"][-1]["preflight"]
+
+
+@pytest.mark.parametrize("code, words", [("id", "Indonesian narration"), ("en", "English narration"),
+                                         ("en-US", "English narration"), ("xx", "language code 'xx' narration")])
+def test_good_prompt_names_the_narration_language_of_the_timeline(proj, code, words):
+    inp = draft.collect(proj)
+    inp.audio_chain.language = code
+    assert words in draft.prompt(inp).splitlines()[0]
+
+
 def test_good_normalise_records_changes():
     segs, notes = draft.normalise([{"start_frame": 5, "end_frame": 40}, {"start_frame": 38, "end_frame": 40},
                                    {"start_frame": 40, "end_frame": 90}], 100)
@@ -232,7 +251,7 @@ def test_bad_missing_credits_txt(proj):
 def test_good_cli_draft(proj, monkeypatch, capsys):
     monkeypatch.setattr(ai, "_client", lambda: client({"gemini-3.8-flash": [good_plan()]}))
     monkeypatch.setattr(ai, "PLANNING_MODELS", ["gemini-3.8-flash"])
-    assert main(["draft", str(proj), "--video-proxies", "0", "--no-dom"]) == 0
+    assert main(["draft", str(proj), "--video-proxies", "0", "--no-dom", "--provider", "gemini"]) == 0
     out = capsys.readouterr().out
     assert "model gemini-3.8-flash retries 0" in out and "deleted+verified 1/1" in out
     assert main(["draft", str(proj), "--out", str(proj / "master_timeline.json")]) == 1   # refuses without --force

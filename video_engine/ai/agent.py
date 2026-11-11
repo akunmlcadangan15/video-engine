@@ -8,8 +8,11 @@ Each request is a self-contained bundle directory `<root>/<request_id>/`:
   transcript.json    narration words with start/end frames (when the request has narration audio)
   <attachment>       request-specific files (draft: inventory.json, credits.json; repair rounds: gate_errors.txt)
   response.json      written by the agent: the answer, valid against schema.json
+  request.digest     hash of the task, the prompt text and the schema this bundle was written for
 A request without response.json raises AwaitingAgent (CLI exit code 3). On resume the response is parsed and
 validated against schema.json; invalid JSON or a schema mismatch is an EngineError naming the file and the errors.
+A response whose bundle was written for a different request (the inputs, the profile or an earlier answer changed
+since) is an EngineError too: an answer is never replayed against a prompt it was not written for.
 """
 from __future__ import annotations
 
@@ -20,13 +23,23 @@ import shutil
 from pathlib import Path
 
 from .base import AIResult, AwaitingAgent, Image, Media, Part, Text, sample_frames, schema_errors
-from ..util import EngineError
+from ..util import EngineError, blake3_json
 
 NAME = "agent"
 EXIT_AWAITING = 3
-MODEL_LABEL = "grok-bot"
+MODEL_LABEL = "agent"      # reported model when neither VIDEO_ENGINE_AI_MODEL nor [agent] model_label names one
 SHEET_TILE = 256
 SHEET_COLS = 6
+
+
+DIGEST = "request.digest"
+
+
+def request_digest(task: str, parts: list[Part], schema: dict | None) -> str:
+    """Identity of a request: the task, every text part (prompt, labels, transcripts) in order, and the schema.
+    Image bytes are left out: they are derived from the same inputs the prompt lists."""
+    texts = [p.text if isinstance(p, Text) else (p.label, getattr(p, "transcript", None)) for p in parts]
+    return blake3_json({"task": task, "texts": texts, "schema": schema or {}})
 
 
 def _slug(s: str) -> str:
@@ -68,7 +81,13 @@ class AgentProvider:
                       attachments: dict | None = None) -> AIResult:
         d = self.root / request_id
         resp = d / "response.json"
+        digest = request_digest(task, parts, schema)
         if resp.is_file():
+            stored = d / DIGEST
+            if stored.is_file() and stored.read_text().strip() != digest:
+                raise EngineError(f"{d}: the request changed since this bundle was written (inputs, profile or an "
+                                  f"earlier answer differ), so {resp.name} answers another prompt; run the command "
+                                  f"without --resume to write the current request")
             return self._read(resp, schema)
         if (d / "request.md").is_file() and self.resume:
             raise EngineError(f"no response.json in {d}: write the answer there (valid against schema.json), "
@@ -93,6 +112,7 @@ class AgentProvider:
         shutil.rmtree(d, ignore_errors=True)
         (d / "images").mkdir(parents=True)
         (d / "schema.json").write_text(json.dumps(schema or {}, indent=1, ensure_ascii=False))
+        (d / DIGEST).write_text(request_digest(task, parts, schema) + "\n")
         body: list[str] = []
         images: list[tuple[str, bytes]] = []
 
@@ -120,7 +140,8 @@ class AgentProvider:
             (d / name).write_text(obj if isinstance(obj, str) else json.dumps(obj, indent=1, ensure_ascii=False))
         if len(images) >= 2:
             (d / "contact_sheet.jpg").write_bytes(contact_sheet(images))
-        files = sorted(p.relative_to(d).as_posix() for p in d.rglob("*") if p.is_file() and p.parent == d)
+        files = sorted(p.relative_to(d).as_posix() for p in d.rglob("*")
+                       if p.is_file() and p.parent == d and p.name != DIGEST)
         head = (f"# AI request: {task} ({d.name})\n\n"
                 f"Answer this request as the model. Write ONE JSON object to `response.json` in this directory, valid "
                 f"against `schema.json`, then run:\n\n    {self.resume_cmd}\n\n"

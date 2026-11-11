@@ -106,6 +106,30 @@ def pytest_runtest_call(item):
         if missing and os.environ.get("VIDEO_ENGINE_REQUIRE_TOOLCHAIN") != "1":
             pytest.skip(f"vendored toolchain not installed ({missing}); run `engine doctor --install`")
         raise
+    except Exception as e:
+        if os.environ.get("VIDEO_ENGINE_REQUIRE_TOOLCHAIN") != "1":
+            if missing_open_assets(e):
+                pytest.skip("open-assets flag library not installed; set VIDEO_ENGINE_OPEN_ASSETS to the open-assets folder")
+            if missing_hyperframes(e):
+                pytest.skip("vendored HyperFrames toolchain not installed; run `engine doctor --install`")
+        raise
+
+
+FLAG_ASSETS_NOTE = "flag assets not installed"
+
+
+def missing_open_assets(e: BaseException) -> bool:
+    """True when a test failed only because the machine has no open-assets flag library (a shared folder outside
+    the repository, config.OPEN_ASSETS): the engine reports it in its own words and the folder is indeed absent."""
+    if FLAG_ASSETS_NOTE not in str(e):
+        return False
+    from video_engine import config
+    return not (config.OPEN_ASSETS / "2d/flags/flag-icons/flags/4x3").is_dir()
+
+
+def missing_hyperframes(e: BaseException) -> bool:
+    """True when the engine itself reported the vendored HyperFrames toolchain as not installed (and it is not)."""
+    return "HyperFrames missing" in str(e) and "engine doctor --install" in str(e) and not (VENDOR / "npm" / "node_modules" / "hyperframes").is_dir()
 
 
 def ff(*args):

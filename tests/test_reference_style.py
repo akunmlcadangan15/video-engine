@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from video_engine.gate_registry import KERNEL_GATE_IDS, MANDATORY_GATE_IDS, NEVER_ADVISORY
+from video_engine.gate_registry import KERNEL_GATE_IDS, NEVER_ADVISORY
 from video_engine import profiles as _profiles
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -24,15 +24,15 @@ def profile():
 
 
 def test_mandatory_gate_set_unchanged(profile):
-    assert set(MANDATORY_GATE_IDS) == set(KERNEL_GATE_IDS) == KERNEL
+    assert set(KERNEL_GATE_IDS) == KERNEL
     assert set(NEVER_ADVISORY) == HISTORICAL_12
 
 
 def test_overlap_is_allowed_never_forbidden(profile):
-    overlap = profile.reference_style["overlap"]
-    assert overlap["allowed"] is True
-    assert overlap["rule"] == "readability"
-    assert overlap["forbid"] == []
+    overlap = profile.reference_style.overlap
+    assert overlap.allowed is True and profile.reference_style.overlap_allowed
+    assert overlap.rule == "readability"
+    assert overlap.forbid == []
 
 
 @pytest.mark.parametrize(
@@ -53,15 +53,15 @@ def test_overlap_is_allowed_never_forbidden(profile):
 )
 def test_reference_option_groups_present(profile, section, keys):
     for key in keys:
-        assert key in profile.reference_style[section], f"{section}.{key} missing"
+        assert key in getattr(profile.reference_style, section), f"{section}.{key} missing"
 
 
 def test_reference_transitions_and_camera_options(profile):
     ref = profile.reference_style
     for kind in ["zoom_blur", "warp_blur", "zoom_whip", "flash", "wipe_circle"]:
-        assert kind in ref["transitions"]["extra_kinds"]
-    assert ref["transitions"]["continuous_shot"] is True
-    assert ref["transitions"]["tilt_latitude"] is True
+        assert kind in ref.transitions["extra_kinds"]
+    assert ref.transitions["continuous_shot"] is True
+    assert ref.transitions["tilt_latitude"] is True
 
 
 def test_style_gates_still_non_blocking(profile):

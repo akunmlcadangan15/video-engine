@@ -1,7 +1,7 @@
 # Landscape 16:9 format block (docs/PROFILES.md, Orientation). Include it from any landscape channel profile:
 #   include = ["landscape/format.toml", ...]
 # Every px here is at the 1920x1080 reference canvas (video_engine/units.py); the engine scales by k = W / 1920
-# (1440p: 1.333, 4K: 2). Shorts geometry (fixed_y 1382, max_bottom_y, Z1/Z2 stack) does not apply.
+# (1440p: 1.333, 4K: 2). Shorts geometry (the 9:16 fixed_y, max_bottom_y, Z1/Z2 stack) does not apply.
 
 [format]
 orientation = "landscape"     # a portrait timeline with this profile is rejected (and vice versa)

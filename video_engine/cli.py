@@ -299,6 +299,8 @@ def cmd_draft(a) -> int:
     for x in rep.get("review", []):
         if not x.get("revision"):
             print(f"review {x['round']} ({x['version']}): {x['verdict']}, {len(x['findings'])} finding(s)")
+            for e in x.get("errors", []):
+                print(f"warning: review {x['round']} not applied ({e}); kept {x.get('kept')}", file=sys.stderr)
             for f in x["findings"]:
                 print(f"  t={float(f['t_s']):.2f}s seg {f['seg']} [{f['severity']}] {f['issue']} -> {f['fix']}")
         elif x["errors"]:
@@ -339,6 +341,54 @@ def cmd_taste(a) -> int:
         d = director.load_taste(a.channel)
     print(director.taste_text(d))
     print(f"store -> {director.taste_dir() / (a.channel + '.json')}")
+    return 0
+
+
+def cmd_profile(a) -> int:
+    """The effective profile after every layer, and with --origin the file that set each key."""
+    from . import profiles
+    if not a.name:
+        for n in profiles.names():
+            p = profiles.load(n)
+            print(f"{n:24} {p.blake3[:16]}  {p.data.description}")
+        return 0
+    prof = profiles.load(a.name)
+    data = json.loads(prof.data.model_dump_json(by_alias=True))
+    if a.table:
+        if a.table not in data:
+            raise EngineError(f"profile '{a.name}' has no table '{a.table}' (tables: {', '.join(sorted(data))})")
+        data = {a.table: data[a.table]}
+    if a.origin:
+        src = profiles.origins(a.name)
+
+        def rows(d, pre=""):
+            for k, v in d.items():
+                if isinstance(v, dict) and v:
+                    yield from rows(v, f"{pre}{k}.")
+                else:
+                    yield f"{pre}{k}", v
+        table = sorted(rows(data))
+        width = max((len(k) for k, _ in table), default=0)
+        for k, v in table:
+            print(f"{k:{width}} = {json.dumps(v, ensure_ascii=False)[:60]:60}  <- {src.get(k, profiles.ENGINE_ORIGIN)}")
+    else:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    print(f"profile {prof.name} blake3 {prof.blake3}", file=sys.stderr)
+    return 0
+
+
+def cmd_schema(a) -> int:
+    """JSON Schema of a data contract, generated from the Pydantic model that validates it."""
+    if a.contract == "timeline":
+        from .timeline import Timeline as model
+    else:
+        from .profiles import ProfileData as model
+    text = json.dumps(model.model_json_schema(by_alias=True), indent=2, ensure_ascii=False) + "\n"
+    if a.out:
+        Path(a.out).write_text(text)
+        print(f"schema ({a.contract}) -> {a.out}")
+    else:
+        sys.stdout.write(text)
     return 0
 
 
@@ -396,8 +446,6 @@ def cmd_gates(a) -> int:
             print(f"  LINT (warn unless required) ({len(reg.LINT_GATE_IDS)}): {', '.join(reg.LINT_GATE_IDS)}")
             for i in issues:
                 print(f"  {i.level.upper():5} {i.gate}: {i.message}")
-            for w in (getattr(prof, "gate_warnings", ()) or ()):
-                print(f"  WARN  {w}")
             print()
         print(gate_tools.render_detail(rows) if a.id else gate_tools.render_table(rows))
     return 0 if rows else 1
@@ -633,8 +681,9 @@ def parser() -> argparse.ArgumentParser:
         return x
 
     def ai_args(x, what: str, resume_also: str = ""):
-        x.add_argument("--provider", help=f"AI provider for {what}: gemini, agent or a name from the AI config file "
-                                          "(default: env VIDEO_ENGINE_AI_PROVIDER, config `default`, gemini)")
+        x.add_argument("--provider", help=f"AI provider for {what}: agent, gemini or a name from the AI config file "
+                                          "(default: env VIDEO_ENGINE_AI_PROVIDER, config `default`, else agent: "
+                                          "the model that runs the engine answers the request bundle)")
         x.add_argument("--resume", action="store_true", help="agent provider: read response.json of the pending "
                                                              "request bundle(s) instead of starting over" + resume_also)
     x = add("validate", cmd_validate, "Schema check of master_timeline.json.")
@@ -744,6 +793,16 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--lint", action="store_true",
                    help="compare the checks of the taste entries with the channel profile; exit 1 on a mismatch")
     x.add_argument("--profile", help="with --lint: profile to check against (default: the channel name)")
+    x = add("profile", cmd_profile, "List the profiles, or print one profile as the engine resolves it (default < "
+                                    "extends < include < channel). --origin: the file that set each key.")
+    x.add_argument("name", nargs="?", help="profile name (none: list every profile with its hash)")
+    x.add_argument("--origin", action="store_true", help="one line per key: value and the file (or [type] size, or "
+                                                         "engine default) it comes from")
+    x.add_argument("--table", help="only this top-level table (theme, caption_style, gates, ...)")
+    x = add("schema", cmd_schema, "Print the JSON Schema of master_timeline.json or of a profile, generated from "
+                                  "the models that validate them.")
+    x.add_argument("contract", choices=["timeline", "profile"])
+    x.add_argument("--out", help="write the schema to this file instead of stdout")
     x = add("gates", cmd_gates, "List the gates (id, class, layer, rule); level KERNEL (error) vs LINT (warn unless required); with --profile, what each does in that "
                                 "channel profile (off / warns / blocks); with --stats, how often each gate failed, warned "
                                 "or was waived in build reports. Read-only.")

@@ -11,6 +11,7 @@ Indeks seluruh dokumentasi. Cari pertanyaan Anda di tabel pertama, lalu buka dok
 | Menyiapkan environment dan variabel `VIDEO_ENGINE_*` | [ENVIRONMENT.md](ENVIRONMENT.md) |
 | Menulis atau memahami `master_timeline.json` dan caption | [TIMELINE.md](TIMELINE.md) |
 | Mengatur gaya dan aturan sebuah channel | [PROFILES.md](PROFILES.md) |
+| Memahami model kerja mesin dengan cepat (mode default vs profil, urutan resolusi, alur data, peta modul, jebakan) — untuk engineer dan agent AI apa pun | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Memahami arsitektur menyeluruh (HyperFrames vs FFmpeg+Rust, Gate, AI, Profil) | [SPEC.md](SPEC.md) |
 | Tahu pemisahan lapisan profil/konsep/struktur/presentasi/selera | [STRUCTURE.md](STRUCTURE.md) |
 | Tahu arti sebuah gate (R63, S01, H01, ...) dan cara melonggarkannya | [GATES.md](GATES.md) |
@@ -31,7 +32,7 @@ Indeks seluruh dokumentasi. Cari pertanyaan Anda di tabel pertama, lalu buka dok
 ## Bahasa dan pembaca
 
 - **README, panduan, glosarium, indeks ini, dan STRUCTURE** ditulis dalam bahasa Indonesia untuk tim.
-- **Dokumen referensi teknis** (CLI, ENVIRONMENT, TIMELINE, PROFILES, GATES, BUILD, DELIVERY, AI, TESTING, LIMITS,
+- **Dokumen referensi teknis** (ARCHITECTURE, CLI, ENVIRONMENT, TIMELINE, PROFILES, GATES, BUILD, DELIVERY, AI, TESTING, LIMITS,
   SPEC, RUST, SOUND, RATIONALE) ditulis dalam bahasa Inggris yang ringkas dan deklaratif. Pembacanya manusia dan agent
   AI. Istilah teknis tidak diterjemahkan; artinya ada di [GLOSSARY.md](GLOSSARY.md).
 - Setiap fakta punya satu rumah. Dokumen lain menautkan ke rumah itu dan tidak mengulanginya.

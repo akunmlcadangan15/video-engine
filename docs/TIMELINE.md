@@ -154,7 +154,7 @@ The rules of `master_timeline.json` and of captions.
   White bold Inter, outline 5, soft offset shadow layer.
   Default font size 84 at 1920 px height (portrait); landscape: 58 at 1080 px height, and every length key scales with the frame (docs/PROFILES.md, Orientation).
 - `caption_style` keys passed to Rust: `slot` (`lower` 0.70H, `mid` 0.50H, `upper` 0.24H), `font`, `size`, `bold`, `outline`, `soft_shadow`, `max_words`, `max_chars`, `active_word_highlight`, `margin_x`, and the other keys of the Rust `Style`.
-  Unknown keys fail gate L22.
+  An unknown key, a value of the wrong type or an unknown `slot` is an error when the timeline loads (`engine validate`), naming the key and the closest known one; gate L22 still fails a style the caption compiler refuses.
 - Effective style = profile `caption_style` with the project `caption_style` keys on top.
 - Python-only keys: `auto_place` (default profile: true), `clearance` (px at the reference canvas height between a caption box and an element box; default profile: 160; 0 = must not intersect), `y_overrides` (`[[start_frame, end_frame, y_px], ...]`; a caption whose start frame is in `[start, end)` is centred at `y_px`), `fixed_y` (px at the reference canvas height, scaled to the output height; centre y of every caption no `y_overrides` entry or placement override matches; absent = the slot y), `max_bottom_y` (px at the reference canvas height, scaled to the output height; lowest allowed caption box bottom, gate Z01; default profile: none).
 - Caption box: centre y +/- 0.75 x font size, the caption width wide;

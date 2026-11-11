@@ -11,7 +11,7 @@ Every `engine` command with its options and exit codes.
 All commands take the project directory.
 Exit code 0 = success, 1 = gate failure or engine error, 2 = usage error, 3 = waiting for an agent response (agent provider wrote a request bundle).
 
-AI options (`draft`, `director`, `preflight --ai-qa`, `build --ai-qa`): `--provider NAME` (`gemini`, `agent` or a `[providers.NAME]` entry), `--resume` (agent provider: read the pending bundle's `response.json`).
+AI options (`draft`, `director`, `preflight --ai-qa`, `build --ai-qa`): `--provider NAME` (`agent`, `gemini` or a `[providers.NAME]` entry; none selected = `agent`, the model that runs the engine answers the request bundle), `--resume` (agent provider: read the pending bundle's `response.json`).
 
 ## `engine validate P`
 
@@ -137,6 +137,19 @@ Prints the channel taste store (`profiles/taste/<channel>.json`, or `$VIDEO_ENGI
 `--lint` compares the checks of all entries with the profile named like the channel (or `--profile NAME`) and exits 1 on a mismatch, a missing key or a malformed check.
 Entries without a check and the free-text `rules` cannot be checked by a program; `--lint` only counts them.
 
+
+## `engine profile [NAME] [--origin] [--table T]`
+
+Read-only. Without a name: every profile with the first 16 characters of its hash and its description.
+With a name: the profile as the engine resolves it (model defaults < `default.toml` < `extends` chain < `include` files < the profile's file), as JSON; the full hash goes to stderr.
+`--origin` prints one line per key instead: the value and the profiles-relative file that set it, `[type] <size> (<file>)` for a size that reached the surface through the type scale, or `(engine default)` for a key no file writes.
+`--table T` limits the output to one top-level table (`theme`, `caption_style`, `gates`, ...).
+Exit 1 for an unknown profile or table, or a profile that does not validate (the error names the file and key).
+
+## `engine schema timeline|profile [--out F]`
+
+Prints the JSON Schema of `master_timeline.json` or of a profile, generated from the Pydantic models that validate them (`timeline.Timeline`, `profiles.ProfileData`), so it is always the contract the engine enforces.
+`--out F` writes it to a file.
 
 ## `engine gates [ID ...] [--profile NAME] [--layer L] [--kind technical|style] [--format table|json|md] [--stats PATH ...]`
 

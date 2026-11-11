@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 
 from . import base
 from .base import AIResult, Image, Media, Part, Text
-from ..util import EngineError
+from ..util import EngineError, wav_16k_mono
 
 
 @dataclass
@@ -76,16 +76,7 @@ def _audio_payload(path: Path) -> tuple[bytes, str]:
         return path.read_bytes(), "wav"
     if ext == ".mp3":
         return path.read_bytes(), "mp3"
-    import subprocess
-    from .. import config
-    r = subprocess.run(
-        [config.FFMPEG, "-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", "-"],
-        capture_output=True,
-    )
-    if r.returncode != 0 or not r.stdout:
-        tail = (r.stderr or b"").decode(errors="replace").strip()[-300:]
-        raise EngineError(f"audio transcode failed for '{path}': {tail or f'exit {r.returncode}'}")
-    return r.stdout, "wav"
+    return wav_16k_mono(path, "audio transcode"), "wav"
 
 
 class OpenAICompatProvider:

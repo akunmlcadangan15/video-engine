@@ -4,17 +4,12 @@
 [layout.grid]
 x0 = 116                      # 12 columns of 104 px with 40 px gutters (1688 px) centred: 116 .. 1804
 columns = 12
-col_w = 104
-gutter = 40
-unit = 8
 
 [layout.zones]
 safe = [96, 54, 1824, 1026]   # landscape safe area (96 px sides, 54 px top / bottom)
 z1 = [116, 72, 1100, 200]     # title band at the top left
 z2 = [116, 216, 1804, 880]    # map focus: the wide middle of the frame
-z2_pad = 48
 z3 = [116, 880, 1804, 1026]   # optional reference zone (lower third); not read by the planner or gates
-group_gap = 48
 
 [layout.sizes]
 title = 88                    # 8 % of H (portrait 112 = 5.8 % of 1920)

@@ -162,6 +162,44 @@ def blake3_json(obj) -> str:
     return core.blake3_bytes(json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str).encode())
 
 
+def atomic_write_text(path: Path, text: str) -> None:
+    """Write `text` to `path` so a reader sees one whole version, never a half-written file: a temp file in the same
+    directory, then os.replace. The mode of an existing file is kept (0644 for a new one)."""
+    import os
+    import tempfile
+    p = Path(path)
+    fd, name = tempfile.mkstemp(dir=p.parent, prefix=f".{p.name}.", suffix=".part")   # unique per writer
+    tmp = Path(name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.chmod(tmp, p.stat().st_mode & 0o777 if p.exists() else 0o644)
+        os.replace(tmp, p)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def frame_jpeg(path: str | Path, t_s: float, px: int, quality: int = 5) -> bytes | None:
+    """One JPEG frame of a video at `t_s` seconds, at most `px` wide (never upscaled); None when ffmpeg cannot
+    decode one there. The one frame grab for model thumbnails and sampled frames."""
+    r = subprocess.run([config.FFMPEG, "-v", "error", "-ss", f"{t_s:.3f}", "-i", str(path), "-frames:v", "1", "-vf",
+                        f"scale='min({px},iw)':-2", "-f", "image2", "-c:v", "mjpeg", "-q:v", str(quality), "-"],
+                       capture_output=True)
+    return r.stdout if r.returncode == 0 and r.stdout else None
+
+
+def wav_16k_mono(path: str | Path, what: str = "audio decode") -> bytes:
+    """16 kHz mono WAV bytes of any audio file via ffmpeg (speech-to-text uploads, model audio input).
+    EngineError `<what> failed for '<path>': <ffmpeg message>` when it cannot be decoded."""
+    r = subprocess.run([config.FFMPEG, "-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", "16000",
+                        "-f", "wav", "-"], capture_output=True)
+    if r.returncode != 0 or not r.stdout:
+        tail = (r.stderr or b"").decode(errors="replace").strip()[-600:]
+        raise EngineError(f"{what} failed for '{path}': {tail or f'exit {r.returncode}'}")
+    return r.stdout
+
+
 def have(cmd: str) -> bool:
     return shutil.which(cmd) is not None
 

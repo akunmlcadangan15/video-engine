@@ -34,6 +34,7 @@ These cover local intent (including reason validation and segment isolation), ha
 Tests that need the DOM probe or a HyperFrames render need `vendor/node` and `vendor/chrome` from `engine doctor --install`.
 While the toolchain is missing they skip with that hint.
 `VIDEO_ENGINE_REQUIRE_TOOLCHAIN=1` makes them fail instead, as in the nightly CI job.
+The same holds for a test that needs the open-assets flag library (`VIDEO_ENGINE_OPEN_ASSETS`, a shared folder outside the repository): it skips with that reason when the folder is absent and the engine reported it (`conftest.missing_open_assets`), and for a build test that stops at the engine's own "HyperFrames missing" error (`conftest.missing_hyperframes`).
 A build test that fails because Node is missing only skips when the error reaches pytest; a CLI test that calls `cli.main` turns the error into exit code 1 and fails.
 The two pixel-exact colour-grade checks (`test_golden_colour_grade`, `test_good_grade_intermediate_is_lossless`) need ffmpeg 7 or newer
 (the `engine doctor` minimum) both on `PATH` and as `VIDEO_ENGINE_FFMPEG`, because ffmpeg 6 swscale rounds the grade's colour conversions

@@ -159,7 +159,10 @@ def test_L22_good(project, W):
 
 
 def test_L22_bad_slot(project):
-    _, tl = project(lambda d: d.update(caption_style={"slot": "middle-ish"}))
+    with pytest.raises(Exception, match="caption_style.slot must be one of lower, mid, upper"):
+        project(lambda d: d.update(caption_style={"slot": "middle-ish"}))   # rejected when the timeline loads
+    _, tl = project()
+    tl.caption_style = {"slot": "middle-ish"}                              # set past the loader: L22 still catches it
     assert any("slot" in f.message for f in layer1.l22_captions(tl, []))
 
 

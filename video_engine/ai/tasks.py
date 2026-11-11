@@ -10,7 +10,7 @@ from pathlib import Path
 from .. import config
 from ..gates.core import Finding
 from ..util import EngineError
-from .base import AIResult, Image, Media, Provider, Text
+from .base import AIResult, Image, Media, Provider, Text, schema_errors
 
 PROXY_HEIGHT = 360
 PROXY_FPS = 5
@@ -43,7 +43,7 @@ SHOTS_SCHEMA = {
 }
 
 ANALYZE_PROMPT = (
-    "Analyse this footage proxy for a 1080x1920 vertical documentary edit. Return JSON: summary (one sentence) and shots "
+    "Analyse this footage proxy for a {W}x{H} {orientation} documentary edit. Return JSON: summary (one sentence) and shots "
     "(one per visually distinct shot) with start_s, end_s, description, focus_box [ymin,xmin,ymax,xmax] on a 0-1000 grid "
     "for the main subject, suggested_camera, has_watermark_or_text.")
 
@@ -58,7 +58,7 @@ QA_SCHEMA = {
 }
 
 QA_PROMPT = (
-    "Each image is one frame of a vertical video segment; its segment number is given before it. For every image report "
+    "Each image is one frame of a {orientation} video segment; its segment number is given before it. For every image report "
     "overlap=true if any text label, card or pin overlaps another text element, cut_off_text=true if any text is cut by "
     "the frame edge, and list concrete issues (empty list if none). Return JSON.")
 
@@ -67,15 +67,20 @@ def director_request_id(src: Path, start_s: float) -> str:
     return f"director/{src.stem}_{start_s:g}s"
 
 
-def analyze_footage(src: Path, workdir: Path, provider: Provider, start_s: float = 0.0, seconds: float = 5.0
-                    ) -> AIResult:
-    """Proxy -> planning model JSON (SHOTS_SCHEMA). Provider uploads are deleted and verified afterwards; the
-    deletion records are in `result.usage["file_deletions"]`."""
+def _orientation(W: int, H: int) -> str:
+    return "landscape (16:9)" if W > H else "vertical (9:16)"
+
+
+def analyze_footage(src: Path, workdir: Path, provider: Provider, start_s: float = 0.0, seconds: float = 5.0,
+                    frame: tuple[int, int] = (1080, 1920)) -> AIResult:
+    """Proxy -> planning model JSON (SHOTS_SCHEMA). `frame`: output width and height the footage is cut for (the
+    prompt names it). Provider uploads are deleted and verified afterwards; the deletion records are in
+    `result.usage["file_deletions"]`."""
     proxy = make_proxy(src, workdir / "proxy" / (src.stem + "_360p.mp4"), start_s, seconds)
     deletions: list[dict] = []
     try:
         parts = [Media(proxy, "video", "video/mp4", f"proxy {src.name} from {start_s:g}s", frames=DIRECTOR_FRAMES),
-                 Text(ANALYZE_PROMPT)]
+                 Text(ANALYZE_PROMPT.format(W=frame[0], H=frame[1], orientation=_orientation(*frame)))]
         r = provider.generate_json("planning", parts, SHOTS_SCHEMA, director_request_id(src, start_s))
     finally:
         deletions = provider.cleanup()
@@ -84,11 +89,13 @@ def analyze_footage(src: Path, workdir: Path, provider: Provider, start_s: float
     return r
 
 
-def qa_snapshots(paths: dict[int, str], provider: Provider, request_id: str = "aiqa/0", meta: dict | None = None
-                 ) -> list[Finding]:
-    """Layer 3 AI QA: snapshots inline to the provider's QA models. A provider error becomes an AIQA warn; an
-    invalid agent response is an EngineError. `meta` receives provider, model, retries, fallback."""
-    parts: list = [Text(QA_PROMPT)]
+def qa_snapshots(paths: dict[int, str], provider: Provider, request_id: str = "aiqa/0", meta: dict | None = None,
+                 frame: tuple[int, int] = (1080, 1920)) -> list[Finding]:
+    """Layer 3 AI QA: snapshots inline to the provider's QA models. A provider error or an answer that does not match
+    QA_SCHEMA becomes an AIQA warn; an invalid agent response is an EngineError. An answer about a segment that was
+    not sent is ignored, and a snapshot the answer leaves out is a warn: only a segment the model reported on can
+    pass. `meta` receives provider, model, retries, fallback."""
+    parts: list = [Text(QA_PROMPT.format(orientation=_orientation(*frame)))]
     for seg, p in sorted(paths.items()):
         parts += [Text(f"segment {seg}:"), Image(Path(p).read_bytes(), "image/png", f"segment {seg}")]
     try:
@@ -104,10 +111,21 @@ def qa_snapshots(paths: dict[int, str], provider: Provider, request_id: str = "a
     out = []
     if r.warning:
         out.append(Finding("AIQA", "warn", r.warning))
-    for item in r.data.get("segments", []):
-        if item.get("overlap") or item.get("cut_off_text"):
-            out.append(Finding("AIQA", "fail", f"{r.model}: {'; '.join(item.get('issues') or ['overlap/cut-off text'])}",
-                               item.get("seg")))
-    if not any(f.level == "fail" for f in out):
+    bad = schema_errors(r.data, QA_SCHEMA)
+    if bad:
+        return out + [Finding("AIQA", "warn", f"AI QA answer from {r.model} does not match the schema: {'; '.join(bad[:5])}")]
+    seen: set[int] = set()
+    for item in r.data["segments"]:
+        seg = int(item["seg"])
+        if seg not in paths:
+            continue
+        seen.add(seg)
+        if item["overlap"] or item["cut_off_text"]:
+            out.append(Finding("AIQA", "fail", f"{r.model}: {'; '.join(item['issues'] or ['overlap/cut-off text'])}", seg))
+    missing = sorted(set(paths) - seen)
+    if missing:
+        out.append(Finding("AIQA", "warn", f"{r.model} did not report on segment(s) {', '.join(map(str, missing))}; "
+                                           f"they are not checked"))
+    if not missing and not any(f.level == "fail" for f in out):
         out.append(Finding("AIQA", "pass", f"{r.model} (retries {r.retries}): no overlap or cut-off text in {len(paths)} snapshots"))
     return out

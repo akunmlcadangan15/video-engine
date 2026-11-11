@@ -1,18 +1,22 @@
 # AI providers for `engine draft`, `engine director`, `--ai-qa`, and STT.
-# Override the default provider with `--provider NAME` or env VIDEO_ENGINE_AI_PROVIDER.
+#
+# The engine names no vendor default. Selection: `--provider NAME` > env VIDEO_ENGINE_AI_PROVIDER > `default` below
+# > `agent`. With nothing selected the request goes to the `agent` provider: the AI model (or person) that is running
+# the engine answers it from the request bundle under <project>/ai_request/, so the model in use is the model that
+# drafts. Set `default = "NAME"` here only to send requests to an API instead.
 # Override this file path with env VIDEO_ENGINE_AI_CONFIG.
 # API keys are read from the named environment variable at call time and are never written to reports or logs.
 
-default = "gemini"
+[agent]
+# Model name written to draft_report.json for agent answers. The running model can name itself with env
+# VIDEO_ENGINE_AI_MODEL (it wins over this label).
+model_label = "agent"
 
 [gemini]
+# Used only with `--provider gemini` (key: GEMINI_API_KEY). No fallback unless `fallback_provider = "NAME"` names a
+# [providers.NAME] entry below: a request never leaves for another service on its own.
 models = ["gemini-3.8-flash"]
 qa_models = ["gemini-3.8-flash"]
-fallback_provider = "deepseek"
-
-[agent]
-# Label written to draft_report.json when --provider agent is used (no HTTP call is made).
-model_label = "grok-bot"
 
 [stt]
 provider = "xai"
@@ -21,12 +25,11 @@ model = "grok-voice-transcribe-2.0"
 api_key_env = "XAI_API_KEY"
 timeout_s = 300
 
-# Automatic fallback for `gemini` when GEMINI_API_KEY is missing or Gemini fails all retries, and selectable via
-# `--provider deepseek`. Key: OPENGATEWAY_API_KEY.
-[providers.deepseek]
-base_url = "https://opengateway.trycloudflare.com/v1"
-models = ["deepseek/deepseek-v4.1-flash-ultrafast"]
-qa_models = ["deepseek/deepseek-v4.1-flash-ultrafast"]
-api_key_env = "OPENGATEWAY_API_KEY"
-capabilities = ["image"]
-json_mode = "json_object"
+# Any OpenAI-compatible chat-completions endpoint, selectable with `--provider NAME`:
+# [providers.NAME]
+# base_url = "https://api.example.com/v1"     # an endpoint you own or the provider's documented API host
+# models = ["model-id"]                       # tried in order
+# qa_models = ["model-id"]                    # default: models
+# api_key_env = "EXAMPLE_API_KEY"
+# capabilities = ["image"]                    # of image, audio, video; missing inputs are degraded to text / frames
+# json_mode = "json_schema"                   # or "json_object"

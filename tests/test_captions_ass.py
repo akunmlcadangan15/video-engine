@@ -40,7 +40,10 @@ def test_good_y_override_only_in_range(project, W):
 
 
 def test_bad_unknown_style_key_raises(project, W):
-    _, tl = project(lambda d: d.update(caption_style={"box": True}))
+    with pytest.raises(Exception, match=r"caption_style\.box: unknown key \(did you mean box_bg\?\)"):
+        project(lambda d: d.update(caption_style={"box": True}))          # rejected when the timeline loads
+    _, tl = project()
+    tl.caption_style = {"box": True}                                     # set past the loader: Rust still refuses
     with pytest.raises(Exception, match="box"):
         captions.compile_ass(W(("a", 0, 10)), tl)
 
