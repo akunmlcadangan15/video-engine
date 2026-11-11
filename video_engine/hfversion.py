@@ -1,17 +1,19 @@
-"""Which HyperFrames CLI the engine renders with (the HyperFrames version is selectable; the rest of the toolchain,
-node, Chrome and puppeteer-core for the probes, stays pinned in vendor/).
+"""Which HyperFrames CLI the engine renders with.
 
 Setting, first one found wins:
   1. env VIDEO_ENGINE_HYPERFRAMES_VERSION (e.g. in engine.env)
   2. vendor/hyperframes.select (one line, written by `engine toolchain use SPEC`)
-  3. "pinned"
+  3. "auto" (the default): use a HyperFrames already on the machine (portable discovery: env, npm globals,
+     PATH, user toolchain, then the vendor tree). `engine doctor --install` installs the latest npm release
+     only when none is found. "pinned" is opt-in.
 Values (SPEC):
-  pinned   npm.hyperframes in vendor/VERSIONS.json, installed from vendor/npm/package-lock.json (`engine doctor
-           --install`); the default
+  auto     machine-first discovery (the default when unset)
+  pinned   npm.hyperframes in vendor/VERSIONS.json, installed from vendor/npm/package-lock.json
   X.Y.Z    exact version; the pinned one resolves to vendor/npm, any other to vendor/hf/X.Y.Z (installed by
            `engine toolchain use X.Y.Z`, not lockfile-pinned)
-  latest   newest version installed (pin or vendor/hf/*); `engine toolchain use latest` installs the newest npm release
-  system   the `hyperframes` CLI on PATH (global npm install), run with the vendored node
+  latest   newest version already installed (machine, pin, or vendor/hf/*); `engine toolchain use latest`
+           also installs the newest npm release
+  system   a HyperFrames found outside vendor (PATH / global npm), never the vendor tree
 Nothing resolves over the network at build time. The resolved version and source go into the segment cache key
 (toolchain.hf_identity) and into build_report.json (manifest.toolchain).
 """
@@ -29,7 +31,7 @@ from .util import EngineError
 
 ENV = "VIDEO_ENGINE_HYPERFRAMES_VERSION"
 SELECT_FILE = "hyperframes.select"
-KEYWORDS = ("pinned", "latest", "system")
+KEYWORDS = ("auto", "pinned", "latest", "system")
 _EXACT = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
 
 
@@ -54,17 +56,17 @@ class Active:
 
 
 def parse_spec(text: str | None) -> str:
-    """Normalise a setting: "" / None -> "pinned"; keywords case-insensitive; "v0.9.13" -> "0.9.13"; anything else
+    """Normalise a setting: "" / None -> "auto"; keywords case-insensitive; "v0.9.13" -> "0.9.13"; anything else
     raises EngineError."""
     s = (text or "").strip()
     if not s:
-        return "pinned"
+        return "auto"
     if s.lower() in KEYWORDS:
         return s.lower()
     s = s.removeprefix("v")
     if _EXACT.match(s):
         return s
-    raise EngineError(f"HyperFrames version {text!r}: want pinned, latest, system or an exact version X.Y.Z")
+    raise EngineError(f"HyperFrames version {text!r}: want auto, pinned, latest, system or an exact version X.Y.Z")
 
 
 def version_key(v: str) -> tuple:
@@ -97,17 +99,20 @@ def installed_versions(vendor: Path | None = None) -> list[str]:
     return sorted(out, key=version_key)
 
 
-def system_root() -> Path | None:
+def system_root(vendor: Path | None = None, environ: dict | None = None) -> Path | None:
     """Package dir of a HyperFrames install found outside vendor: PATH CLI, global npm roots, or env override."""
-    exe = shutil.which("hyperframes")
-    if exe:
-        root = Path(exe).resolve().parent.parent
+    from . import config, discover
+    env = os.environ if environ is None else environ
+    vend = vendor or config.VENDOR
+    exe = discover.which("hyperframes", env)
+    if exe and (exe.resolve().parent.parent / "package.json").is_file():
+        return exe.resolve().parent.parent
+    r = discover.resolve_hyperframes(vendor=vend, environ=env, home=_home_from_environ(environ),
+                                     prefer_vendor=False)
+    if r.found and r.path is not None and r.source not in {"vendor", "pinned"}:
+        root = _package_root(r.path)
         if (root / "package.json").is_file():
             return root
-    from . import config, discover
-    r = discover.resolve_hyperframes(vendor=config.VENDOR, environ=os.environ)
-    if r.found and r.path is not None and r.source != "vendor" and (r.path / "package.json").is_file():
-        return r.path
     return None
 
 
@@ -126,7 +131,41 @@ def setting(vendor: Path | None = None, environ: dict | None = None) -> tuple[st
     f = (vendor or config.VENDOR) / SELECT_FILE
     if f.is_file() and (v := f.read_text().strip()):
         return parse_spec(v), "file"
-    return "pinned", "default"
+    return "auto", "default"
+
+
+def _package_root(path: Path) -> Path:
+    """Directory that contains package.json for a CLI file or a package dir."""
+    if path.is_file():
+        for cand in (path.parent.parent, path.parent):
+            if (cand / "package.json").is_file():
+                return cand
+        return path.parent
+    return path
+
+
+def _home_from_environ(environ: dict | None) -> Path | None:
+    """When an environ dict is passed in, do not fall back to the process home (keeps tests hermetic)."""
+    if environ is None:
+        return None
+    if environ.get("HOME"):
+        return Path(environ["HOME"])
+    if environ.get("USERPROFILE"):
+        return Path(environ["USERPROFILE"])
+    return Path("/nonexistent")
+
+
+def _resolve_auto(spec: str, src: str, vendor: Path, environ: dict | None) -> Active:
+    """Machine-first: whatever discovery finds (globals, PATH, user toolchain, then vendor)."""
+    from . import discover
+    env = os.environ if environ is None else environ
+    r = discover.resolve_hyperframes(vendor=vendor, environ=env, home=_home_from_environ(environ),
+                                     prefer_vendor=False)
+    if r.found and r.path is not None:
+        root = _package_root(r.path)
+        source = "pinned" if root == pinned_root(vendor) else r.source
+        return Active(spec, src, _pkg_version(root), source, root)
+    return Active(spec, src, "missing", "missing", Path("/nonexistent/hyperframes"))
 
 
 def resolve(spec: str | None = None, vendor: Path | None = None, environ: dict | None = None) -> Active:
@@ -137,14 +176,22 @@ def resolve(spec: str | None = None, vendor: Path | None = None, environ: dict |
     else:
         spec, src = parse_spec(spec), "argument"
     pin = pinned_version(vendor)
+    if spec == "auto":
+        return _resolve_auto(spec, src, vendor, environ)
     if spec == "system":
-        root = system_root() or Path("/nonexistent/hyperframes")
+        root = system_root(vendor, environ) or Path("/nonexistent/hyperframes")
         return Active(spec, src, _pkg_version(root), "system", root)
     if spec == "latest":
         cands = installed_versions(vendor)
         if _pkg_version(pinned_root(vendor)) == pin:
             cands.append(pin)
+        machine = system_root(vendor, environ)
+        mv = _pkg_version(machine) if machine else "missing"
+        if mv != "missing":
+            cands.append(mv)
         v = max(cands, key=version_key) if cands else pin
+        if machine and mv == v:
+            return Active(spec, src, mv, "system", machine)
     else:
         v = pin if spec == "pinned" else spec
     if v == pin:
@@ -162,6 +209,7 @@ def require() -> Active:
     a = active()
     if not a.installed:
         fix = "install it globally (npm i -g hyperframes)" if a.source == "system" else \
-            "run `engine doctor --install`" if a.source == "pinned" else f"run `engine toolchain use {a.spec}`"
+            "run `engine doctor --install`" if a.spec in ("auto", "pinned") or a.source == "pinned" else \
+            f"run `engine toolchain use {a.spec}`"
         raise EngineError(f"HyperFrames {a.label()} is not installed at {a.root}; {fix}")
     return a

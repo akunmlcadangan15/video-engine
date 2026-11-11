@@ -143,7 +143,7 @@ def test_good_npm_root_g_callback_is_tried_first(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Search order: env > vendor > npm global > PATH > wellknown
+# Search order: env > npm global / PATH / wellknown > vendor  (prefer_vendor=True restores vendor-first)
 # ---------------------------------------------------------------------------
 
 def test_good_node_search_order_env_beats_vendor(tmp_path):
@@ -155,13 +155,23 @@ def test_good_node_search_order_env_beats_vendor(tmp_path):
     assert r.found and r.path == custom and r.source == "env:VIDEO_ENGINE_NODE"
 
 
-def test_good_node_vendor_beats_path(tmp_path):
+def test_good_node_path_beats_vendor(tmp_path):
+    vendor = tmp_path / "vendor"
+    _touch(vendor / "node" / "bin" / "node", executable=True)
+    pathd = tmp_path / "onpath"
+    exe = _touch(pathd / "node", executable=True)
+    env = {"HOME": str(tmp_path), "PATH": str(pathd)}
+    r = discover.resolve_node(vendor=vendor, environ=env, system="linux", home=tmp_path, confine=tmp_path)
+    assert r.found and r.path == exe and r.source == "PATH"
+
+
+def test_good_node_vendor_beats_path_when_prefer_vendor(tmp_path):
     vendor = tmp_path / "vendor"
     vend = _touch(vendor / "node" / "bin" / "node", executable=True)
     pathd = tmp_path / "onpath"
     _touch(pathd / "node", executable=True)
     env = {"HOME": str(tmp_path), "PATH": str(pathd)}
-    r = discover.resolve_node(vendor=vendor, environ=env, system="linux", home=tmp_path)
+    r = discover.resolve_node(vendor=vendor, environ=env, system="linux", home=tmp_path, prefer_vendor=True)
     assert r.found and r.path == vend and r.source == "vendor"
 
 
@@ -209,13 +219,23 @@ def test_good_hyperframes_path_cli_resolves_to_package_dir(tmp_path):
     assert r.found and r.source == "PATH" and r.path == pkg
 
 
-def test_good_hyperframes_vendor_beats_global_npm(tmp_path):
+def test_good_hyperframes_global_npm_beats_vendor(tmp_path):
+    vendor = tmp_path / "vendor"
+    _pkg(vendor / "npm" / "node_modules", "hyperframes", "0.9.13")
+    g = tmp_path / "g_node_modules"
+    got = _pkg(g, "hyperframes", "9.9.9")
+    env = {"HOME": str(tmp_path), "PATH": "", "NODE_PATH": str(g)}
+    r = discover.resolve_hyperframes(vendor=vendor, environ=env, system="linux", home=tmp_path)
+    assert r.found and r.source == "npm_global" and r.path == got
+
+
+def test_good_hyperframes_vendor_beats_global_npm_when_prefer_vendor(tmp_path):
     vendor = tmp_path / "vendor"
     vend_pkg = _pkg(vendor / "npm" / "node_modules", "hyperframes", "0.9.13")
     g = tmp_path / "g_node_modules"
     _pkg(g, "hyperframes", "9.9.9")
     env = {"HOME": str(tmp_path), "PATH": "", "NODE_PATH": str(g)}
-    r = discover.resolve_hyperframes(vendor=vendor, environ=env, system="linux", home=tmp_path)
+    r = discover.resolve_hyperframes(vendor=vendor, environ=env, system="linux", home=tmp_path, prefer_vendor=True)
     assert r.found and r.source == "vendor" and r.path == vend_pkg
 
 

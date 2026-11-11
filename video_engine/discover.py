@@ -1,22 +1,26 @@
 """Portable resolution of external tools and asset library roots.
 
-Search order for a tool (a step is skipped when it does not apply):
+Search order for a tool (a step is skipped when it does not apply). The default
+prefers anything already on the machine; the repo pin in vendor/ is a fallback, not a lock.
+Pass `prefer_vendor=True` to search vendor immediately after the env override (the
+`pinned` toolchain policy).
 
 1. Explicit override (`VIDEO_ENGINE_<NAME>` or a documented sibling variable).
-2. The engine's vendor directory (`VIDEO_ENGINE_VENDOR`, else `<repo>/vendor`).
-3. Global npm package roots (`NODE_PATH`, `npm root -g` when a callback is given, then
+2. Global npm package roots (`NODE_PATH`, `npm root -g` when a callback is given, then
    platform-typical global npm directories).
-4. `PATH` (`shutil.which`, with `PATHEXT` on Windows).
-5. Platform-standard cache and data directories (XDG on Linux, `~/Library` on macOS,
-   `%LOCALAPPDATA%` / `%APPDATA%` on Windows) and other well-known install locations
-   (Puppeteer's browser cache, common Chrome / ffmpeg / Node paths).
+3. `PATH` (`shutil.which`, with `PATHEXT` on Windows).
+4. Platform-standard cache and data directories (XDG on Linux, `~/Library` on macOS,
+   `%LOCALAPPDATA%` / `%APPDATA%` on Windows), the engine user-toolchain directory
+   (`<user-data>/video-engine/toolchain`), Puppeteer's browser cache, and common
+   install locations.
+5. The engine's vendor directory (`VIDEO_ENGINE_VENDOR`, else `<repo>/vendor`).
 
 Asset roots are a configurable list (`VIDEO_ENGINE_ASSET_ROOTS`, plus the existing
 per-library variables). Generic defaults live under the user data directory, not a
 machine-specific folder. Machine-specific paths belong in a local `engine.env`.
 
 Every public function is side-effect free given `environ`, `system` and `home`:
-tests pass a fake tree and a platform string; they do not read this machine.
+tests pass a fake tree and a platform string; they consult only that tree, not the host home, PATH, or config.
 """
 from __future__ import annotations
 
@@ -122,6 +126,11 @@ def default_workspace(environ: _Env | None = None, system: str | None = None, ho
     if env.get("VIDEO_ENGINE_WORKSPACE"):
         return Path(env["VIDEO_ENGINE_WORKSPACE"])
     return user_data_dir(env, system, home) / "video-engine"
+
+
+def toolchain_home(environ: _Env | None = None, system: str | None = None, home: Path | None = None) -> Path:
+    """Directory `engine doctor --install` writes latest tool builds into (not the repo pin tree)."""
+    return default_workspace(environ, system, home) / "toolchain"
 
 
 # ---------------------------------------------------------------------------
@@ -417,7 +426,12 @@ def wellknown_ffmpeg(environ: _Env, system: str | None, home: Path | None, probe
     if fam == "win32":
         pf = Path(environ.get("ProgramFiles") or environ.get("PROGRAMFILES") or "C:/Program Files")
         return [pf / "ffmpeg" / "bin" / exe]
-    out = [Path(f"/usr/bin/{name}"), Path(f"/usr/local/bin/{name}")]
+    out = [
+        user_bin_dir(environ, system, home) / exe,
+        toolchain_home(environ, system, home) / "ffmpeg" / "bin" / exe,
+        Path(f"/usr/bin/{name}"),
+        Path(f"/usr/local/bin/{name}"),
+    ]
     if fam == "darwin":
         out.extend([Path(f"/opt/homebrew/bin/{name}"), Path(f"/usr/local/opt/ffmpeg/bin/{name}")])
     return out
@@ -428,7 +442,12 @@ def wellknown_node(environ: _Env, system: str | None, home: Path | None) -> list
     if fam == "win32":
         pf = Path(environ.get("ProgramFiles") or environ.get("PROGRAMFILES") or "C:/Program Files")
         return [pf / "nodejs" / "node.exe"]
-    out = [Path("/usr/bin/node"), Path("/usr/local/bin/node")]
+    out = [
+        toolchain_home(environ, system, home) / "node" / "bin" / ("node.exe" if fam == "win32" else "node"),
+        user_bin_dir(environ, system, home) / ("node.exe" if fam == "win32" else "node"),
+        Path("/usr/bin/node"),
+        Path("/usr/local/bin/node"),
+    ]
     if fam == "darwin":
         out.extend([Path("/opt/homebrew/bin/node"), Path("/usr/local/opt/node/bin/node")])
     return out
@@ -449,7 +468,7 @@ def _first_dir(candidates: Iterable[Path], confine: Path | None = None) -> Path 
 
 
 def resolve_node(*, vendor: Path, environ: _Env, system: str | None = None, home: Path | None = None,
-                        confine: Path | None = None) -> Resolution:
+                        confine: Path | None = None, prefer_vendor: bool = False) -> Resolution:
     searched: list[str] = []
     env_var = "VIDEO_ENGINE_NODE"
     searched.append(f"env:{env_var}")
@@ -457,19 +476,35 @@ def resolve_node(*, vendor: Path, environ: _Env, system: str | None = None, home
         p = Path(environ[env_var])
         if is_file(p, confine):
             return _ok("node", p, f"env:{env_var}", searched)
-    vend = _node_bin(vendor, system)
-    searched.append(f"vendor:{vend}")
-    if is_file(vend, confine):
-        return _ok("node", vend, "vendor", searched)
-    for n in _exe_names(_NODE_NAMES, system):
-        searched.append(f"PATH:{n}")
-        hit = which(n, environ, system)
-        if hit is not None and is_file(hit, confine):
-            return _ok("node", hit, "PATH", searched)
-    for p in wellknown_node(environ, system, home):
-        searched.append(f"wellknown:{p}")
-        if is_file(p, confine):
-            return _ok("node", p, "wellknown", searched)
+
+    def _vendor() -> Resolution | None:
+        vend = _node_bin(vendor, system)
+        searched.append(f"vendor:{vend}")
+        if is_file(vend, confine):
+            return _ok("node", vend, "vendor", searched)
+        return None
+
+    def _machine() -> Resolution | None:
+        for n in _exe_names(_NODE_NAMES, system):
+            searched.append(f"PATH:{n}")
+            hit = which(n, environ, system)
+            if hit is not None and is_file(hit, confine):
+                return _ok("node", hit, "PATH", searched)
+        home_node = toolchain_home(environ, system, home)
+        for p in wellknown_node(environ, system, home):
+            searched.append(f"wellknown:{p}")
+            if is_file(p, confine):
+                try:
+                    src = "user_toolchain" if p.resolve().is_relative_to(home_node.resolve()) else "wellknown"
+                except (OSError, ValueError):
+                    src = "wellknown"
+                return _ok("node", p, src, searched)
+        return None
+
+    order = (_vendor, _machine) if prefer_vendor else (_machine, _vendor)
+    for step in order:
+        if (hit := step()) is not None:
+            return hit
     return _miss("node", searched)
 
 
@@ -528,7 +563,7 @@ def resolve_npm_package(name: str, *, vendor: Path, environ: _Env, system: str |
                         home: Path | None = None, env_var: str | None = None,
                         npm_root_g: Path | NpmRootFn | None = None,
                         cli_name: str | None = None,
-                        confine: Path | None = None) -> Resolution:
+                        confine: Path | None = None, prefer_vendor: bool = False) -> Resolution:
     """Locate an npm package directory (package.json present)."""
     var = env_var or f"VIDEO_ENGINE_{name.upper().replace('-', '_')}"
     searched = [f"env:{var}"]
@@ -539,50 +574,68 @@ def resolve_npm_package(name: str, *, vendor: Path, environ: _Env, system: str |
             return _ok(name, got, f"env:{var}", searched)
         if is_file(p, confine) and cli_name:  # a CLI path was given
             return _ok(name, p, f"env:{var}", searched)
-    vend = vendor / "npm" / "node_modules" / name
-    searched.append(f"vendor:{vend}")
-    if is_file(vend / "package.json", confine):
-        return _ok(name, vend, "vendor", searched)
-    for root in npm_global_roots(environ, system, home, npm_root_g):
-        searched.append(f"npm_global:{root}")
-        got = npm_package(root, name, confine)
+
+    def _vendor() -> Resolution | None:
+        vend = vendor / "npm" / "node_modules" / name
+        searched.append(f"vendor:{vend}")
+        if is_file(vend / "package.json", confine):
+            return _ok(name, vend, "vendor", searched)
+        return None
+
+    def _machine() -> Resolution | None:
+        for root in npm_global_roots(environ, system, home, npm_root_g):
+            searched.append(f"npm_global:{root}")
+            got = npm_package(root, name, confine)
+            if got is not None:
+                return _ok(name, got, "npm_global", searched)
+        if cli_name:
+            searched.append(f"PATH:{cli_name}")
+            hit = which(cli_name, environ, system)
+            if hit is not None and is_file(hit, confine):
+                root = hit.resolve().parent.parent if hit.is_file() else None
+                if root is not None and is_file(root / "package.json", confine):
+                    return _ok(name, root, "PATH", searched)
+                return _ok(name, hit, "PATH", searched)
+        home_nm = toolchain_home(environ, system, home) / "npm" / "node_modules"
+        searched.append(f"user_toolchain:{home_nm / name}")
+        got = npm_package(home_nm, name, confine)
         if got is not None:
-            return _ok(name, got, "npm_global", searched)
-    if cli_name:
-        searched.append(f"PATH:{cli_name}")
-        hit = which(cli_name, environ, system)
-        if hit is not None and is_file(hit, confine):
-            root = hit.resolve().parent.parent if hit.is_file() else None
-            if root is not None and is_file(root / "package.json", confine):
-                return _ok(name, root, "PATH", searched)
-            return _ok(name, hit, "PATH", searched)
-    cache = user_cache_dir(environ, system, home) / name
-    searched.append(f"wellknown:{cache}")
-    if is_file(cache / "package.json", confine):
-        return _ok(name, cache, "wellknown", searched)
+            return _ok(name, got, "user_toolchain", searched)
+        cache = user_cache_dir(environ, system, home) / name
+        searched.append(f"wellknown:{cache}")
+        if is_file(cache / "package.json", confine):
+            return _ok(name, cache, "wellknown", searched)
+        return None
+
+    order = (_vendor, _machine) if prefer_vendor else (_machine, _vendor)
+    for step in order:
+        if (hit := step()) is not None:
+            return hit
     return _miss(name, searched)
 
 
 def resolve_hyperframes(*, vendor: Path, environ: _Env, system: str | None = None, home: Path | None = None,
                         npm_root_g: Path | NpmRootFn | None = None,
-                        confine: Path | None = None) -> Resolution:
+                        confine: Path | None = None, prefer_vendor: bool = False) -> Resolution:
     return resolve_npm_package("hyperframes", vendor=vendor, environ=environ, system=system, home=home,
                                env_var="VIDEO_ENGINE_HYPERFRAMES", npm_root_g=npm_root_g, cli_name="hyperframes",
-                               confine=confine)
+                               confine=confine, prefer_vendor=prefer_vendor)
 
 
 def resolve_puppeteer(*, vendor: Path, environ: _Env, system: str | None = None, home: Path | None = None,
                       npm_root_g: Path | NpmRootFn | None = None,
-                        confine: Path | None = None) -> Resolution:
+                        confine: Path | None = None, prefer_vendor: bool = False) -> Resolution:
     return resolve_npm_package("puppeteer-core", vendor=vendor, environ=environ, system=system, home=home,
-                               env_var="VIDEO_ENGINE_PUPPETEER", npm_root_g=npm_root_g, confine=confine)
+                               env_var="VIDEO_ENGINE_PUPPETEER", npm_root_g=npm_root_g, confine=confine,
+                               prefer_vendor=prefer_vendor)
 
 
 def resolve_three(*, vendor: Path, environ: _Env, system: str | None = None, home: Path | None = None,
                   npm_root_g: Path | NpmRootFn | None = None,
-                        confine: Path | None = None) -> Resolution:
+                        confine: Path | None = None, prefer_vendor: bool = False) -> Resolution:
     return resolve_npm_package("three", vendor=vendor, environ=environ, system=system, home=home,
-                               env_var="VIDEO_ENGINE_THREE", npm_root_g=npm_root_g, confine=confine)
+                               env_var="VIDEO_ENGINE_THREE", npm_root_g=npm_root_g, confine=confine,
+                               prefer_vendor=prefer_vendor)
 
 
 def _vendor_chrome(vendor: Path, system: str | None) -> Path | None:
@@ -610,7 +663,7 @@ def _vendor_chrome(vendor: Path, system: str | None) -> Path | None:
 
 
 def resolve_chrome(*, vendor: Path, environ: _Env, system: str | None = None, home: Path | None = None,
-                        confine: Path | None = None) -> Resolution:
+                        confine: Path | None = None, prefer_vendor: bool = False) -> Resolution:
     searched = ["env:VIDEO_ENGINE_CHROME"]
     if environ.get("VIDEO_ENGINE_CHROME"):
         p = Path(environ["VIDEO_ENGINE_CHROME"])
@@ -619,35 +672,61 @@ def resolve_chrome(*, vendor: Path, environ: _Env, system: str | None = None, ho
         hit = which(environ["VIDEO_ENGINE_CHROME"], environ, system)
         if hit is not None and is_file(hit, confine):
             return _ok("chrome", hit, "env:VIDEO_ENGINE_CHROME", searched)
-    vend = _vendor_chrome(vendor, system)
-    if vend is not None:
-        searched.append(f"vendor:{vend}")
-        if is_file(vend, confine):
-            return _ok("chrome", vend, "vendor", searched)
-    else:
+
+    def _under(root: Path, source: str) -> Resolution | None:
+        if not is_dir(root, confine):
+            return None
+        for n in ("chrome-headless-shell", "chrome-headless-shell.exe", "chrome", "chrome.exe"):
+            try:
+                hits = list(root.rglob(n))
+            except OSError:
+                hits = []
+            for h in hits:
+                if is_file(h, confine):
+                    return _ok("chrome", h, source, searched)
+        return None
+
+    def _vendor() -> Resolution | None:
+        vend = _vendor_chrome(vendor, system)
+        if vend is not None:
+            searched.append(f"vendor:{vend}")
+            if is_file(vend, confine):
+                return _ok("chrome", vend, "vendor", searched)
+            return None
         searched.append(f"vendor:{vendor / 'chrome'}")
-        # any executable under vendor/chrome
-        chrome_root = vendor / "chrome"
-        if is_dir(chrome_root, confine):
-            for n in ("chrome-headless-shell", "chrome-headless-shell.exe", "chrome", "chrome.exe"):
-                hits = list(chrome_root.rglob(n))
-                for h in hits:
-                    if is_file(h, confine):
-                        return _ok("chrome", h, "vendor", searched)
-    cache = user_cache_dir(environ, system, home)
-    for label, root in (("puppeteer-cache", cache),):
-        searched.append(f"wellknown:{root / 'puppeteer'}")
-        for bin_path in puppeteer_cache_bins(root):
-            return _ok("chrome", bin_path, "wellknown", searched)
-    for n in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "chrome.exe"):
-        searched.append(f"PATH:{n}")
-        hit = which(n, environ, system)
-        if hit is not None and is_file(hit, confine):
-            return _ok("chrome", hit, "PATH", searched)
-    for p in wellknown_chrome(environ, system, home):
-        searched.append(f"wellknown:{p}")
-        if is_file(p, confine):
-            return _ok("chrome", p, "wellknown", searched)
+        return _under(vendor / "chrome", "vendor")
+
+    def _headless_machine() -> Resolution | None:
+        cache = user_cache_dir(environ, system, home)
+        searched.append(f"wellknown:{cache / 'puppeteer'}")
+        for bin_path in puppeteer_cache_bins(cache):
+            if is_file(bin_path, confine):
+                return _ok("chrome", bin_path, "wellknown", searched)
+        home_ch = toolchain_home(environ, system, home) / "chrome"
+        searched.append(f"user_toolchain:{home_ch}")
+        return _under(home_ch, "user_toolchain")
+
+    def _full_chrome() -> Resolution | None:
+        for n in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "chrome.exe"):
+            searched.append(f"PATH:{n}")
+            hit = which(n, environ, system)
+            if hit is not None and is_file(hit, confine):
+                return _ok("chrome", hit, "PATH", searched)
+        for p in wellknown_chrome(environ, system, home):
+            searched.append(f"wellknown:{p}")
+            if is_file(p, confine):
+                return _ok("chrome", p, "wellknown", searched)
+        return None
+
+    # Prefer chrome-headless-shell (machine cache, user toolchain, then vendor) over a full GUI Chrome,
+    # so a render machine with both does not silently switch to /usr/bin/google-chrome.
+    if prefer_vendor:
+        steps = (_vendor, _headless_machine, _full_chrome)
+    else:
+        steps = (_headless_machine, _vendor, _full_chrome)
+    for step in steps:
+        if (hit := step()) is not None:
+            return hit
     return _miss("chrome", searched)
 
 

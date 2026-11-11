@@ -64,6 +64,8 @@ HF_CLI = Path(_HF_RES.path / "bin" / "hyperframes.mjs") if (_HF_RES.found and _H
     Path(_HF_RES.path) if (_HF_RES.found and _HF_RES.path and _HF_RES.path.suffix) else VENDOR / "npm" / "node_modules" / "hyperframes" / "bin" / "hyperframes.mjs")
 _PPTR_RES = discover.resolve_puppeteer(vendor=VENDOR, environ=os.environ)
 PUPPETEER = Path(_resolved(_PPTR_RES, VENDOR / "npm" / "node_modules" / "puppeteer-core"))
+_THREE_RES = discover.resolve_three(vendor=VENDOR, environ=os.environ)
+THREE = Path(_resolved(_THREE_RES, VENDOR / "npm" / "node_modules" / "three"))
 # Unsupported platform: importing config must still work, so CHROME points at a path that does not exist and
 # `engine doctor` reports the platform (and so the missing chrome) as FAIL.
 _PLATFORM = platform_info.supported_key()
@@ -117,15 +119,28 @@ X264 = x264()                                        # final composite default (
 X264_SEGMENT = x264(SEGMENT_CRF, SEGMENT_PRESET)     # intermediate default (no [render] segment_* values)
 
 
+def _node_module_roots() -> list[str]:
+    """node_modules directories that must be on NODE_PATH so HyperFrames, puppeteer-core and three can live in different trees."""
+    roots: list[str] = []
+    for p in (PUPPETEER, THREE, HF_CLI.parent.parent if HF_CLI else None):
+        if p is None:
+            continue
+        root = p if p.name == "node_modules" else p.parent
+        s = str(root)
+        if s and s not in roots:
+            roots.append(s)
+    return roots
+
+
 def hf_env() -> dict:
     env = dict(os.environ)
     env.update({
         "HYPERFRAMES_BROWSER_PATH": str(CHROME), "PRODUCER_HEADLESS_SHELL_PATH": str(CHROME),
         "HYPERFRAMES_SKIP_SKILLS": "1", "HYPERFRAMES_NO_TELEMETRY": "1", "HYPERFRAMES_NO_UPDATE_CHECK": "1",
         "HYPERFRAMES_FFMPEG_PATH": _SYSTEM_FFMPEG, "HYPERFRAMES_FFPROBE_PATH": _SYSTEM_FFPROBE,
-        "NODE_PATH": str(PUPPETEER.parent),
+        "NODE_PATH": os.pathsep.join(_node_module_roots()),
     })
-    env["PATH"] = f"{NODE.parent}:{env.get('PATH', '')}"
+    env["PATH"] = os.pathsep.join([str(NODE.parent), env.get("PATH", "")])
     return env
 
 

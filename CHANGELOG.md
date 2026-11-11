@@ -13,15 +13,13 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 
 - **Penemuan perkakas dan akar aset yang portabel** (`video_engine/discover.py`): mesin dan `engine doctor`
-  memakai satu resolver. Urutan pencarian perkakas: override lingkungan > `vendor/` > akar npm global
-  (`NODE_PATH`, `npm root -g`, direktori npm khas per platform) > `PATH` > direktori cache/data standar
-  platform (XDG di Linux, `~/Library` di macOS, `%LOCALAPPDATA%` / `%APPDATA%` di Windows), cache browser
-  Puppeteer, dan lokasi pemasangan yang umum. Akar aset (`VIDEO_ENGINE_ASSET_ROOTS` serta variabel
-  per-pustaka yang sudah ada) memakai default di bawah direktori data pengguna (`…/video-engine`), bukan
-  folder khusus satu mesin; path khusus mesin diletakkan di `engine.env` lokal (`VIDEO_ENGINE_ENV_FILE`,
-  `./engine.env`, atau `<user-config>/video-engine/engine.env`). `engine doctor` menampilkan path dan sumber
-  temuan, dan lokasi yang dicari bila tidak ada. `--install` tetap hanya mengisi `vendor/`. Pengujian
-  (lingkungan palsu per platform): `tests/test_discover.py`.
+  memakai satu resolver. Urutan pencarian default: override lingkungan > akar npm global (`NODE_PATH`,
+  `npm root -g`, direktori npm khas per platform) > `PATH` > direktori cache/data standar platform (XDG,
+  `~/Library`, `%LOCALAPPDATA%` / `%APPDATA%`), direktori toolchain pengguna
+  (`<user-data>/video-engine/toolchain`), cache browser Puppeteer, dan lokasi pemasangan yang umum >
+  `vendor/` (cadangan, bukan kunci). `prefer_vendor=True` mengembalikan urutan lama untuk kebijakan `pinned`.
+  Akar aset memakai default di bawah direktori data pengguna; path khusus mesin diletakkan di `engine.env`
+  lokal. Pengujian (lingkungan palsu per platform): `tests/test_discover.py`.
 
 - **`extends` pada profil**: sebuah profil dapat dibangun di atas profil lain (`extends = "geoverum"`). Urutan
   lapisan: default model < `default.toml` < rantai `extends` (tiap profil: file `include`, lalu filenya) <
@@ -192,6 +190,15 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ### Diubah
 
+
+- **Default toolchain tidak lagi terkunci ke pin repositori.** Kebijakan HyperFrames default adalah `auto`:
+  pakai yang sudah terpasang di mesin (penemuan portabel), dan `engine doctor --install` memasang rilis
+  terbaru ke `<user-data>/video-engine/toolchain` hanya bila suatu alat tidak ada. `pinned` (kunci
+  `vendor/VERSIONS.json` + `package-lock.json`) tetap ada sebagai pilihan
+  (`VIDEO_ENGINE_HYPERFRAMES_VERSION=pinned` atau `engine toolchain use pinned`). puppeteer-core dan three
+  dicari secara terpisah (global, vendor, atau toolchain pengguna) agar HyperFrames global yang tidak
+  membawa keduanya tetap dipakai. `build_report.json` mencatat versi dan path yang benar-benar dipakai.
+  Pengujian: `tests/test_hfversion.py`, `tests/test_discover.py`, `tests/test_doctor.py`.
 
 - **Tidak ada provider AI bawaan**: urutan pemilihan menjadi `--provider` > `VIDEO_ENGINE_AI_PROVIDER` > `default`
   di `ai_providers.toml` > `agent`. Tanpa pilihan, permintaan menjadi bundel berkas untuk provider `agent`: model AI

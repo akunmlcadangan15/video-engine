@@ -31,11 +31,11 @@ These cover local intent (including reason validation and segment isolation), ha
 
 ## Toolchain-dependent tests
 
-Tests that need the DOM probe or a HyperFrames render need `vendor/node` and `vendor/chrome` from `engine doctor --install`.
+Tests that need the DOM probe or a HyperFrames render need a working Node and Chrome (found on the machine, or installed by `engine doctor --install`).
 While the toolchain is missing they skip with that hint.
 `VIDEO_ENGINE_REQUIRE_TOOLCHAIN=1` makes them fail instead, as in the nightly CI job.
 The same holds for a test that needs the open-assets flag library (`VIDEO_ENGINE_OPEN_ASSETS`, a shared folder outside the repository): it skips with that reason when the folder is absent and the engine reported it (`conftest.missing_open_assets`), and for a build test that stops at the engine's own "HyperFrames missing" error (`conftest.missing_hyperframes`).
-The default workspace (and so the default open-assets, geo-library, stock and download paths) is the portable user-data directory, not a machine-specific folder. Point the suite at a local library with those variables or `VIDEO_ENGINE_ENV_FILE`. Pytest sets `XDG_CONFIG_HOME` under the test scratch root so an operator `engine.env` in the user config directory is not loaded. Tool and asset discovery (`video_engine.discover`) is covered by `tests/test_discover.py` with mocked per-platform environments.
+The default workspace (and so the default open-assets, geo-library, stock and download paths) is the portable user-data directory, not a machine-specific folder. Point the suite at a local library with those variables or `VIDEO_ENGINE_ENV_FILE`. Pytest sets `XDG_CONFIG_HOME` under the test scratch root so a user-config `engine.env` is not loaded. Tool and asset discovery (`video_engine.discover`) is covered by `tests/test_discover.py` with mocked per-platform environments.
 A build test that fails because Node is missing only skips when the error reaches pytest; a CLI test that calls `cli.main` turns the error into exit code 1 and fails.
 The two pixel-exact colour-grade checks (`test_golden_colour_grade`, `test_good_grade_intermediate_is_lossless`) need ffmpeg 7 or newer
 (the `engine doctor` minimum) both on `PATH` and as `VIDEO_ENGINE_FFMPEG`, because ffmpeg 6 swscale rounds the grade's colour conversions

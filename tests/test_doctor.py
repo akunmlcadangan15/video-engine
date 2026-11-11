@@ -56,7 +56,7 @@ def test_good_complete_vendor_passes(tmp_path):
 @pytest.mark.parametrize("kw,bad", [
     ({"node": False}, "node"),
     ({"hf_dist": False}, "hyperframes"),
-    ({"hf_cli": False}, ("hyperframes-cli", "hyperframes-active")),   # the active (pinned) CLI is missing too
+    ({"hf_cli": False}, ("hyperframes-cli", "hyperframes-active")),   # the active CLI in this vendor tree is missing too
     ({"pptr": False}, "puppeteer-core"),
     ({"chrome": False}, "chrome"),
     ({"three": False}, "three"),
@@ -78,11 +78,16 @@ def test_bad_node_without_npm_fails(tmp_path):
 
 
 def test_good_hyperframes_other_than_the_pin_warns_and_does_not_fail(tmp_path, monkeypatch):
+    """A vendor copy that is not the pin is a WARN on the package check. Under auto, the active
+    CLI is still usable and is not a WARN (pinned policy is the case that warns on a mismatch)."""
     monkeypatch.delenv("VIDEO_ENGINE_HYPERFRAMES_VERSION", raising=False)
     res = {c.name: c for c in doctor.check(_fake_vendor(tmp_path, hf_version="0.8.100"), run_binaries=False, machine=False)}
     assert all(c.ok for c in res.values()), [c.line() for c in res.values()]
     assert res["hyperframes"].warn and res["hyperframes"].line().startswith("[WARN]")
-    assert res["hyperframes-active"].warn and "0.8.100" in res["hyperframes-active"].got
+    assert "0.8.100" in res["hyperframes-active"].got and not res["hyperframes-active"].warn
+    monkeypatch.setenv("VIDEO_ENGINE_HYPERFRAMES_VERSION", "pinned")
+    res = {c.name: c for c in doctor.check(_fake_vendor(tmp_path / "pinned", hf_version="0.8.100"), run_binaries=False, machine=False)}
+    assert res["hyperframes-active"].ok and res["hyperframes-active"].warn
 
 
 def test_good_ffmpeg_with_required_filters_and_encoders_passes(monkeypatch):
@@ -150,7 +155,7 @@ def test_bad_unsupported_platform_fails_check_and_blocks_install(tmp_path, monke
     res = doctor.check(v, run_binaries=False, machine=False)
     assert [c.name for c in res] == ["platform"] and not res[0].ok and "unsupported platform" in res[0].got
     with pytest.raises(EngineError, match="unsupported platform"):
-        doctor.install(v, tmp_path / "tmp")
+        doctor.install(v, tmp_path / "tmp", latest=False)
 
 
 @pytest.mark.parametrize("key,top", [("linux-x64", "linux-x64"), ("darwin-arm64", "darwin-arm64")])
@@ -212,10 +217,12 @@ def test_bad_node_tarball_sha_mismatch_rejected(tmp_path, monkeypatch):
     assert not (v / "node").exists()
 
 
-def test_good_config_paths_come_from_engine_vendor():
-    for p in (config.NODE, config.HF_CLI, config.PUPPETEER, config.CHROME):
-        assert p.is_relative_to(config.VENDOR), p
-    assert PINS["chrome"]["version"] in str(config.CHROME)
+def test_good_config_paths_are_existing_resolved_tools():
+    """Default discovery may pick a machine install; each path is the file (or package dir) actually used."""
+    assert config.NODE.is_file(), config.NODE
+    assert config.HF_CLI.is_file(), config.HF_CLI
+    assert (config.PUPPETEER / "package.json").is_file() or config.PUPPETEER.is_dir(), config.PUPPETEER
+    assert config.CHROME.is_file(), config.CHROME
 
 
 def test_good_pins_are_exact_versions():
@@ -261,7 +268,7 @@ def test_good_install_touches_only_failing_components(tmp_path, monkeypatch):
     monkeypatch.setattr(doctor, "install_node", lambda *a: calls.append("node"))
     monkeypatch.setattr(doctor, "install_npm", lambda *a: calls.append("npm"))
     monkeypatch.setattr(doctor, "install_chrome", lambda *a: calls.append("chrome"))
-    doctor.install(v, tmp_path / "tmp")
+    doctor.install(v, tmp_path / "tmp", latest=False)
     assert calls == ["node", "npm", "chrome"]
 
 
@@ -270,7 +277,7 @@ def test_good_install_does_nothing_when_everything_matches(tmp_path, monkeypatch
     calls = []
     for name in ("install_node", "install_npm", "install_chrome"):
         monkeypatch.setattr(doctor, name, lambda *a, n=name: calls.append(n))
-    doctor.install(v, tmp_path / "tmp")
+    doctor.install(v, tmp_path / "tmp", latest=False)
     assert calls == []
 
 
@@ -285,7 +292,7 @@ def test_good_doctor_reports_machine_path_when_vendor_missing(tmp_path):
     env = {"HOME": str(tmp_path), "PATH": str(bundled.parent), "NODE_PATH": ""}
     res = {c.name: c for c in doctor.check(v, run_binaries=False, machine=True,
                                            environ=env, home=tmp_path, system="linux", confine=tmp_path)}
-    assert res["node"].ok and res["node"].warn
+    assert res["node"].ok and not res["node"].warn
     assert res["node"].source == "PATH"
     assert res["node"].path == str(bundled)
     assert "path:" in res["node"].line()

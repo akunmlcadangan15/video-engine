@@ -1,5 +1,5 @@
-"""Selectable HyperFrames version (hfversion.py): parsing, precedence env > vendor/hyperframes.select > pin,
-resolution of pinned / X.Y.Z / latest / system, doctor's hyperframes-active check, the cache key and build report."""
+"""Selectable HyperFrames version (hfversion.py): parsing, precedence env > vendor/hyperframes.select > auto,
+resolution of auto / pinned / X.Y.Z / latest / system, doctor's hyperframes-active check, the cache key and build report."""
 import json
 from pathlib import Path
 
@@ -32,7 +32,7 @@ def vendor(tmp_path, monkeypatch):
     return v
 
 
-@pytest.mark.parametrize("text,want", [(None, "pinned"), ("", "pinned"), ("  ", "pinned"), ("pinned", "pinned"),
+@pytest.mark.parametrize("text,want", [(None, "auto"), ("", "auto"), ("  ", "auto"), ("auto", "auto"), ("pinned", "pinned"),
                                        ("LATEST", "latest"), ("System", "system"), ("0.9.13", "0.9.13"),
                                        ("v0.8.214", "0.8.214"), (" 1.2.3-beta.4 ", "1.2.3-beta.4")])
 def test_good_parse_spec(text, want):
@@ -50,15 +50,25 @@ def test_good_version_key_orders_numerically_and_pre_releases_first():
     assert sorted(vs, key=hfversion.version_key) == ["0.8.214", "0.9.2", "0.9.13", "0.10.0-rc.1", "0.10.0"]
 
 
-def test_good_default_is_the_pin(vendor):
-    a = hfversion.resolve(vendor=vendor, environ={})
-    assert (a.spec, a.setting_from, a.version, a.source, a.installed) == ("pinned", "default", "0.9.13", "pinned", True)
+def test_good_default_is_auto_and_uses_vendor_when_that_is_what_is_installed(vendor, tmp_path):
+    env = {"PATH": "", "NODE_PATH": "", "HOME": str(tmp_path)}
+    a = hfversion.resolve(vendor=vendor, environ=env)
+    assert (a.spec, a.setting_from, a.version, a.installed) == ("auto", "default", "0.9.13", True)
+    assert a.source in {"pinned", "vendor"}
     assert a.cli == vendor / "npm/node_modules/hyperframes/bin/hyperframes.mjs"
+
+
+def test_good_auto_prefers_a_global_install_over_the_vendor_pin(vendor, tmp_path):
+    root = tmp_path / "global" / "node_modules" / "hyperframes"
+    _pkg(root, "0.9.34")
+    env = {"PATH": "", "NODE_PATH": str(tmp_path / "global" / "node_modules"), "HOME": str(tmp_path)}
+    a = hfversion.resolve(vendor=vendor, environ=env)
+    assert (a.spec, a.setting_from, a.version, a.source, a.installed) == ("auto", "default", "0.9.34", "npm_global", True)
 
 
 def test_good_env_wins_over_the_select_file(vendor):
     (vendor / hfversion.SELECT_FILE).write_text("0.8.214\n")
-    assert hfversion.resolve(vendor=vendor, environ={}).version == "0.8.214"
+    assert hfversion.resolve(vendor=vendor, environ={"PATH": "", "NODE_PATH": ""}).version == "0.8.214"
     a = hfversion.resolve(vendor=vendor, environ={ENV: "pinned"})
     assert (a.setting_from, a.version) == ("env", "0.9.13")
 
@@ -104,11 +114,16 @@ def test_bad_invalid_setting_fails_doctor_check(vendor, monkeypatch):
     assert not doctor.check_active(vendor).ok
 
 
-def test_good_doctor_warns_for_a_non_pinned_active_version(vendor, monkeypatch):
-    assert doctor.check_active(vendor).ok and not doctor.check_active(vendor).warn
+def test_good_doctor_warns_only_when_pinned_policy_does_not_match_the_pin(vendor, monkeypatch):
+    monkeypatch.delenv(ENV, raising=False)
+    c = doctor.check_active(vendor)
+    assert c.ok and not c.warn and "auto" in c.got
     monkeypatch.setenv(ENV, "0.8.214")
     c = doctor.check_active(vendor)
-    assert c.ok and c.warn and c.line().startswith("[WARN] hyperframes-active") and "0.8.214" in c.got
+    assert c.ok and not c.warn and "0.8.214" in c.got
+    monkeypatch.setenv(ENV, "pinned")
+    c = doctor.check_active(vendor)
+    assert c.ok and not c.warn
 
 
 def test_good_switching_version_changes_the_toolchain_identity(vendor, monkeypatch):

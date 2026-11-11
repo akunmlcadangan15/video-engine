@@ -92,17 +92,31 @@ Narration pauses (Rust energy detector on 16 kHz mono PCM) as half-open frame ra
 
 ## `engine doctor [--install]`
 
-Checks the pinned toolchain in `vendor/`; exit 1 when a component is missing or mismatched.
-`--install` downloads and installs only the failing components.
-The `hyperframes-active` line names the HyperFrames the build renders with (see `engine toolchain`); a HyperFrames other than the pin, in `vendor/npm` or selected, is a `[WARN]` line and does not change the exit code.
+Checks the tools a build will use on the host: Node, HyperFrames, puppeteer-core, three, chrome-headless-shell, ffmpeg (major version >= 7, with the `subtitles`, `loudnorm` and `sidechaincompress` filters and the `libx264` and `aac` encoders), and the related asset roots.
+Resolution is machine-first (see [ENVIRONMENT.md](ENVIRONMENT.md)): an environment override, then global npm roots, `PATH`, platform cache/data directories and the user toolchain directory, then the repo `vendor/` tree as a fallback.
+Each line reports found or missing, the resolved path, and the source; a missing tool lists the locations that were searched.
+Exit 1 only when a required tool is missing or ffmpeg fails the filter/encoder or major-version check. Optional roots (downloads, Python, Modal) are `[WARN]` when absent and do not change the exit code.
+
+`--install` installs the latest release of each *missing* tool into `<user-data>/video-engine/toolchain` (not the lockfile in `vendor/`). Node is the current official LTS tarball with a SHA-256 check; HyperFrames, puppeteer-core and three are `npm install <name>@latest`; chrome-headless-shell is the latest build from `@puppeteer/browsers`. ffmpeg is never installed by this command.
+When the HyperFrames policy is `pinned` (`VIDEO_ENGINE_HYPERFRAMES_VERSION=pinned` or `engine toolchain use pinned`), `--install` instead restores the lockfile pins from `vendor/VERSIONS.json` and `vendor/npm/package-lock.json` into `vendor/`.
+
+The `hyperframes-active` line names the HyperFrames the build renders with (see `engine toolchain`). A `[WARN]` appears only when the policy is `pinned` and the installed package is not the pin; it does not change the exit code.
 
 ## `engine toolchain [show | list | use SPEC]`
 
-Shows or switches the HyperFrames version the build renders with (node, Chrome and puppeteer-core stay pinned).
-SPEC: `pinned` (the `vendor/VERSIONS.json` pin, default), an exact `X.Y.Z`, `latest` (newest installed; `use latest` installs the newest npm release first) or `system` (the global `hyperframes` on PATH, run with the vendored node).
-`use` installs a non-pinned version into `vendor/hf/X.Y.Z` (vendored npm, not lockfile-pinned) and writes the choice to `vendor/hyperframes.select`; `VIDEO_ENGINE_HYPERFRAMES_VERSION` overrides that file.
-`list` prints the pinned, vendored and system versions. Exit 1 when the active version is not installed.
-The active version and source are part of every HyperFrames segment cache key, so a switch rerenders HyperFrames segments; `build_report.json` records it under `toolchain.hyperframes` (+ `hyperframes_source`, `hyperframes_setting`, `hyperframes_pinned`).
+Shows or switches the HyperFrames version the build renders with. Node, Chrome, puppeteer-core and three are resolved independently by the same machine-first discovery (they are not locked to the HyperFrames policy unless an environment override says so).
+
+SPEC:
+
+- `auto` (default when unset): use a HyperFrames already on the host (globals, `PATH`, user toolchain, then `vendor/`).
+- `pinned`: the `vendor/VERSIONS.json` pin in `vendor/npm` (opt-in).
+- `latest`: the newest version already installed (machine, pin, or `vendor/hf/*`); `use latest` installs the newest npm release into `vendor/hf/X.Y.Z` first if needed.
+- `system`: a HyperFrames found outside `vendor/` (global npm or `PATH`).
+- an exact `X.Y.Z`: the pin tree when that is the pin, otherwise `vendor/hf/X.Y.Z`.
+
+`use` writes the choice to `vendor/hyperframes.select`. `VIDEO_ENGINE_HYPERFRAMES_VERSION` overrides that file.
+`list` prints the pin, any `vendor/hf` copies, and the system install. Exit 1 when the active version is not installed.
+The active version and source are part of every HyperFrames segment cache key, so a switch rerenders HyperFrames segments. `build_report.json` records the versions and paths actually used under `toolchain` (`hyperframes`, `hyperframes_source`, `hyperframes_setting`, `hyperframes_pinned`, plus `node`, `node_path`, `chrome`, `puppeteer-core`, and the corresponding pin fields).
 
 ## `engine clean [P ...] [--cache]`
 

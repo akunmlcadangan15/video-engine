@@ -11,8 +11,8 @@ under the cache root, `engine:<rel>` under the engine checkout, else absolute):
               Locked: a later build reuses these exact files (sha256 verified) and never asks the sound resolver
               again, until `engine build --relock`. A locked file that changed or vanished is a stage error naming
               --relock.
-  toolchain   ffmpeg version line, x264 args, node / chrome pins (vendor/VERSIONS.json), the HyperFrames version the
-              build rendered with (+ source, setting and pin; hfversion.py), engine version
+  toolchain   ffmpeg version line, x264 args, the Node, Chrome, puppeteer-core and HyperFrames versions and paths the
+              build actually used (plus pin fields from vendor/VERSIONS.json), engine version
   seeds       every random seed the render uses (generated local test tones)
   resources   worker budget of the build (video_engine/resources.py)
   stage_keys  cache keys of the composite and audio stages (filled after they run)
@@ -107,10 +107,26 @@ def toolchain() -> dict:
         ev = version("video-engine")
     except PackageNotFoundError:
         ev = "unknown"
-    return {"ffmpeg": ffmpeg_version(), "x264": list(config.X264), "x264_segment": list(config.X264_SEGMENT), "node": pins["node"]["version"],
-            "chrome": f"{pins['chrome']['product']} {pins['chrome']['version']}",
+    def _pkg_ver(root) -> str:
+        try:
+            return json.loads((Path(root) / "package.json").read_text())["version"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return "missing"
+
+    def _node_ver() -> str:
+        try:
+            return subprocess.run([str(config.NODE), "-v"], capture_output=True, text=True, timeout=30).stdout.strip() or "missing"
+        except (OSError, subprocess.SubprocessError):
+            return pins["node"]["version"]
+
+    chrome = str(config.CHROME)
+    return {"ffmpeg": ffmpeg_version(), "x264": list(config.X264), "x264_segment": list(config.X264_SEGMENT),
+            "node": _node_ver(), "node_path": str(config.NODE),
+            "chrome": chrome, "chrome_pin": f"{pins['chrome']['product']} {pins['chrome']['version']}",
             "hyperframes": hf.version, "hyperframes_source": hf.source, "hyperframes_setting": hf.spec,
-            "hyperframes_pinned": pins["npm"]["hyperframes"], "puppeteer-core": pins["npm"]["puppeteer-core"],
+            "hyperframes_pinned": pins["npm"]["hyperframes"],
+            "puppeteer-core": _pkg_ver(config.PUPPETEER),
+            "puppeteer-core_pin": pins["npm"]["puppeteer-core"],
             "engine": ev}
 
 
