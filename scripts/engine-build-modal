@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+"""Final `engine build` on Modal. Draft builds stay on this machine (`scripts/engine-build`)."""
+from __future__ import annotations
+
+import sys
+
+from video_engine.modal_cli import main
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -7,6 +7,7 @@ What `engine build` does, in order, and how it stays repeatable.
 - The stages from captions to publish, and when a build publishes or fails.
 - What `build_manifest.json` and `build_report.json` contain.
 - How the worker budget, stream copy and concat, and cache leases work.
+- What a final build on Modal changes in the published report, and what stays the same.
 
 1. Captions: pinned timeline words;
      else BLAKE3-cached Grok STT words (`grok-voice-transcribe-2.0`, 16 kHz mono WAV, word timestamps) + `caption_fixes`, pinned into `master_timeline.json` (fresh copy of the file, so in-memory gate fixes are not written).
@@ -107,3 +108,32 @@ Each stage's wall time, CPU time and peak RSS (engine plus children, with per-to
 - LRU eviction also keeps the entry being stored, so an entry larger than `VIDEO_ENGINE_CACHE_MAX_MB` stays in the cache until a later eviction.
 - LRU eviction also keeps sound files pinned by a project lock (`<cache>/sound/pins.json`; [SOUND.md, Pins](SOUND.md#pins)), reported as `skipped_pinned`. A pinned file is not deleted to get under the cap. Pins are released when the manifest no longer names the file, when the manifest is removed (on the next eviction), or by `engine cache unpin --project P`. A copy under `<project>/out/locked-sounds/` is what the lock reads if the cache file is already gone.
 - Outside a session `acquire` does nothing and eviction treats every file as unleased.
+
+## Remote final build
+
+`scripts/engine-build-modal PROJECT` runs this same pipeline (`engine build`, release mode, delivery quality) inside one ephemeral Modal container. Flags, the upload closure, cost controls and troubleshooting are in [Remote final build](ENVIRONMENT.md#remote-final-build). Draft and proxy builds stay on `scripts/engine-build`.
+
+```bash
+scripts/engine-build-modal PROJECT --dry-run
+scripts/engine-build-modal PROJECT --cpu 8 --memory 16384 --timeout 10800
+scripts/engine-build-modal PROJECT --fetch RUN_ID
+```
+
+`--cpu N` and `--memory MB` are the container's `(request, limit)` tuples, both ends equal to the flag. The default is CPU only (`--gpu none`); `--gpu L4` is the only GPU. `min_containers=0`, `scaledown_window=2`, `single_use_containers` and `retries=0` keep the container from lingering or retrying. `--timeout` (default 10800 seconds) is a hard stop. The run directory on the volume is deleted after a successful fetch unless `--keep-volume` is set. Content-addressed input blobs remain so an unchanged file is not uploaded again.
+
+Locally, before the upload: `engine validate`, `engine preflight`, then the closure (timeline files, the sound lock in `out/build_manifest.json` and `out/locked-sounds/`, caption inputs, profile files). The timeline file is not rewritten. Library roots are remapped with `VIDEO_ENGINE_*` inside the container.
+
+The remote process is `engine build /work/project`. It runs the same gates and the same QA as a local final build. After it returns, `out/build_report.json` (or `out/build_report.failed.json`) and `out/build_manifest.json` gain a `remote` object, then the outputs are split into chunks and downloaded. Each chunk and the assembled file are checked with sha256; the destination is replaced with `os.replace`.
+
+`remote` records the container uname (`host`), `image_id` / `image_digest`, the CPU request and limit and the observed CPU count, the memory request and limit and peak cgroup RSS, wall time, the timeout, the toolchain versions `engine doctor` reported in the container, any mismatch against the local doctor snapshot, and the request-based cost products (`cpu_request_core_seconds`, `memory_request_gib_seconds`, `gpu`). `PROJECT/out/modal_fetch.json` is a local receipt written after that verification. It is not an input to the next build.
+
+### Known differences
+
+- The container is Linux x64. A build on macOS is already not byte-identical to a Linux build (see [Platforms](ENVIRONMENT.md#platforms)); a remote build follows that rule. The same gates and the same QA thresholds run either way.
+- FFmpeg in the image is the static GPL build pinned by `vendor/ffmpeg-static.json` (8.1, libx264, the filters the doctor checks). A local FFmpeg 8.x matches the self-test on major number. Patch level and the x264 build can still change frame bytes and `final_sha256`.
+- `final.mp4` is the encoder output. The fetch does not transcode it. `build_report.json` and `build_manifest.json` are not byte-identical to a local report because of the `remote` object.
+- The remote segment cache starts empty. Locked sound files are part of the closure, so a covered lock is reused. A lock whose file is missing locally fails before the upload.
+- A symlink is uploaded as the target's bytes and materialised as a regular file. Relative layout is unchanged.
+- Scratch is `/work/shm` on the container disk, not the caller's tmpfs.
+- The pipeline does not use a GPU. Requesting one does not change the encode.
+- Unpinned captions and unresolved sounds are not fetched in the container. Pin words and resolve sounds locally first.

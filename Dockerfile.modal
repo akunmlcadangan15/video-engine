@@ -1,9 +1,47 @@
 FROM ubuntu:24.04
-ENV DEBIAN_FRONTEND=noninteractive VIDEO_ENGINE_REQUIRE_TOOLCHAIN=1 VIRTUAL_ENV=/opt/venv PATH="/opt/venv/bin:/root/.cargo/bin:${PATH}"
-RUN apt-get update && apt-get install -y --no-install-recommends python3.12 python3.12-venv curl git ca-certificates ffmpeg xz-utils pkg-config libssl-dev build-essential && rm -rf /var/lib/apt/lists/*
-RUN python3.12 -m venv /opt/venv
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+
+# Final-build image. FFmpeg is the pinned 8.1 static GPL build (libx264), not the distro package.
+# Node, HyperFrames, puppeteer-core, three and chrome-headless-shell default to vendor/VERSIONS.json
+# and are overridden by build args when the local doctor resolved different versions.
+# Draft builds are not run here.
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/ffmpeg/bin:/opt/venv/bin:/root/.cargo/bin:${PATH}" \
+    VIDEO_ENGINE_FFMPEG=/opt/ffmpeg/bin/ffmpeg \
+    VIDEO_ENGINE_FFPROBE=/opt/ffmpeg/bin/ffprobe \
+    VIDEO_ENGINE_VENDOR=/src/vendor \
+    VIDEO_ENGINE_PROFILES=/src/profiles \
+    PYTHONUNBUFFERED=1
+
+ARG NODE_VERSION=v22.23.4
+ARG HF_VERSION=0.9.13
+ARG PUPPETEER_VERSION=25.16.0
+ARG THREE_VERSION=0.186.1
+ARG CHROME_VERSION=152.0.7977.30
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3.12 python3.12-venv ca-certificates curl git xz-utils \
+        pkg-config libssl-dev build-essential \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3.12 -m venv /opt/venv \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+
 WORKDIR /src
+COPY vendor/ffmpeg-static.json /src/vendor/ffmpeg-static.json
+COPY vendor/VERSIONS.json /src/vendor/VERSIONS.json
+COPY vendor/npm/package.json vendor/npm/package-lock.json /src/vendor/npm/
+COPY scripts/modal_image_setup.py /src/scripts/modal_image_setup.py
+
+RUN NODE_VERSION="${NODE_VERSION}" HF_VERSION="${HF_VERSION}" \
+    PUPPETEER_VERSION="${PUPPETEER_VERSION}" THREE_VERSION="${THREE_VERSION}" \
+    CHROME_VERSION="${CHROME_VERSION}" \
+    python3 /src/scripts/modal_image_setup.py
+
 COPY . /src
-RUN /opt/venv/bin/pip install --upgrade pip maturin && /opt/venv/bin/pip install -e ".[test]" google-genai && /opt/venv/bin/python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist && /opt/venv/bin/pip install --force-reinstall dist/hypoverum_core_rs-*.whl
-RUN /opt/venv/bin/python -m video_engine.cli doctor --install
+
+RUN /opt/venv/bin/pip install --upgrade pip maturin \
+    && /opt/venv/bin/pip install -e ".[test]" \
+    && /opt/venv/bin/python -m maturin build --release -m rust/hypoverum_core_rs/Cargo.toml --out dist \
+    && /opt/venv/bin/pip install --force-reinstall dist/hypoverum_core_rs-*.whl \
+    && /opt/venv/bin/python -m video_engine.cli doctor
