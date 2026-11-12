@@ -263,6 +263,35 @@ def test_good_chrome_from_puppeteer_cache_on_darwin(tmp_path):
     assert r.found and r.source == "wellknown" and r.path == bin_path
 
 
+def test_good_puppeteer_cache_lists_newest_build_and_headless_shell_first(tmp_path):
+    cache = tmp_path / "cache"
+    root = cache / "puppeteer"
+    old = _touch(root / "chrome-headless-shell" / "linux-131.0.9" / "chrome-headless-shell-linux64" / "chrome-headless-shell", executable=True)
+    new = _touch(root / "chrome-headless-shell" / "linux-131.0.10" / "chrome-headless-shell-linux64" / "chrome-headless-shell", executable=True)
+    full = _touch(root / "chrome" / "linux-131.0.10" / "chrome-linux64" / "chrome", executable=True)
+    _touch(root / "chrome" / "linux-131.0.10" / "chrome-linux64" / "README")          # not an executable name
+    assert discover.puppeteer_cache_bins(cache) == [new, old, full]
+    flat = tmp_path / "pptr_root"                          # a cache dir that is itself the Puppeteer root
+    hs = _touch(flat / "chrome-headless-shell" / "linux-1" / "chrome-headless-shell-linux64" / "chrome-headless-shell", executable=True)
+    assert discover.puppeteer_cache_bins(flat) == [hs]
+
+
+def test_bad_puppeteer_cache_lookup_never_walks_an_unrelated_tree(tmp_path, monkeypatch):
+    """Without <cache>/puppeteer the lookup reads only the Puppeteer product dirs of the cache dir: a browser-named
+    executable deep in another tool's cache is neither found nor even looked at."""
+    cache = tmp_path / "cache"
+    deep = cache / "some-tool" / "a" / "b" / "c" / "chrome-headless-shell-linux64"
+    _touch(deep / "chrome-headless-shell", executable=True)
+    _touch(cache / "uv" / "x" / "y" / "chrome", executable=True)
+    seen: list[Path] = []
+    for name in ("is_file", "is_dir", "iterdir"):
+        real = getattr(Path, name)
+        monkeypatch.setattr(Path, name, lambda self, *a, _real=real, **k: (seen.append(self), _real(self, *a, **k))[1])
+    assert discover.puppeteer_cache_bins(cache) == []
+    unrelated = [cache / "some-tool", cache / "uv"]
+    assert not [p for p in seen if any(p.is_relative_to(u) for u in unrelated)]
+
+
 def test_good_chrome_wellknown_windows_location(tmp_path):
     vendor = tmp_path / "vendor"
     vendor.mkdir()

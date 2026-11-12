@@ -11,12 +11,15 @@ import hypoverum_core_rs as core
 
 from . import cache, config, overlays, profiles, resources, streams, toolchain
 from .timeline import Segment, Timeline
-from .util import EngineError, blake3_files, blake3_json, code_hash, decode_colour, run, video_info
+from .util import EngineError, blake3_files, blake3_json, code_hash, decode_colour, file_identity, memo_put, run, video_info
 
 NATIVE_VERSION = "native-1"
 COPY_FORMAT = "copy-edit-list"   # stream-copy segment layout (render_copy); part of every copy-mode key
 CODE = (Path(__file__), Path(overlays.__file__))   # engine sources of a native segment's pixels (cache key)
 BT709_VF = config.BT709_VF   # raw RGB frames -> BT.709 yuv420p
+# Camera (warped RGB) segments: square pixels like render_encode and the HyperFrames re-encode, so every segment
+# kind writes the same SAR into its SPS and a mixed timeline stays concat-demuxer joinable (streams.joinable).
+CAMERA_VF = f"{BT709_VF},setsar=1"
 
 
 @dataclass
@@ -59,10 +62,21 @@ def _cs(src: Path) -> str:
     return f":{o}" if o else ""
 
 
+_KEYFRAME: dict[tuple, bool] = {}   # (util.file_identity, t, fps) -> keyframe at t
+
+
 def _keyframe_at(src: Path, t: float, fps: float) -> bool:
+    """True when `src` has a keyframe within half a frame of `t` seconds; probed once per process per file identity
+    (native.plan runs for every gate that looks at a native segment and again for the render)."""
+    ident = file_identity(src)
+    if ident is not None and (hit := _KEYFRAME.get((ident, t, fps))) is not None:
+        return hit
     out = run([config.FFPROBE, "-v", "error", "-select_streams", "v:0", "-skip_frame", "nokey", "-show_entries",
                "frame=pts_time", "-of", "csv=p=0", "-read_intervals", f"{max(0.0, t - 2)}%{t + 2}", str(src)])
-    return any(abs(float(x.strip().rstrip(",")) - t) < 0.5 / fps for x in out.split() if x.strip())
+    found = any(abs(float(x.strip().rstrip(",")) - t) < 0.5 / fps for x in out.split() if x.strip())
+    if ident is not None:
+        memo_put(_KEYFRAME, (ident, t, fps), found)
+    return found
 
 
 def seg_x264(tl: Timeline | None) -> list[str]:
@@ -124,8 +138,8 @@ def _overlay_args(seg: Segment, tl: Timeline, base_filter: str, png_dir: Path) -
 
 def _encoder(out: Path, W: int, H: int, fps: int, n: int, threads: int, seg: Segment | None = None,
              tl: Timeline | None = None) -> subprocess.Popen:
-    inputs, filt = (_overlay_args(seg, tl, BT709_VF, out.parent / "ov")
-                    if seg is not None else ([], ["-vf", BT709_VF]))
+    inputs, filt = (_overlay_args(seg, tl, CAMERA_VF, out.parent / "ov")
+                    if seg is not None else ([], ["-vf", CAMERA_VF]))
     cmd = [config.FFMPEG, "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(fps),
            "-i", "-", *inputs, *filt, *seg_x264(tl), "-threads", str(threads), "-frames:v", str(n), "-an",
            "-movflags", "+faststart", str(out)]

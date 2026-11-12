@@ -112,8 +112,50 @@ def count_frames(path: str | Path) -> int:
     return int(out.strip().split(",")[0])
 
 
+RACY_NS = 2_000_000_000   # a file changed this recently may change again inside one timestamp tick
+MEMO_MAX = 4096           # entries of each per-file memo below (oldest dropped first)
+
+
+def file_identity(path: str | Path) -> tuple | None:
+    """(resolved path, size, mtime_ns, ctime_ns, inode, device) of a file: the key of every per-file memo, so a file
+    is read again whenever any of them changes. None when the file is missing or changed within RACY_NS, while its
+    timestamps cannot yet tell two writes apart; a caller then reads the file and memoises nothing."""
+    try:
+        p = Path(path).resolve()
+        st = p.stat()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if time.time_ns() - max(st.st_mtime_ns, st.st_ctime_ns) < RACY_NS:
+        return None
+    return str(p), st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino, st.st_dev
+
+
+def memo_put(memo: dict, key, value) -> None:
+    """Store `value` in a per-file memo bounded to MEMO_MAX entries (the oldest entry goes first)."""
+    if len(memo) >= MEMO_MAX:
+        memo.pop(next(iter(memo)), None)
+    memo[key] = value
+
+
+_BLAKE3: dict[tuple, str] = {}   # file_identity -> BLAKE3 of the content
+
+
 def blake3_files(paths: list) -> list[str]:
-    return core.blake3_files(paths)
+    """BLAKE3 of each file's content (Rust, in parallel). A file is hashed once per process while its file_identity
+    holds, so the cache keys that name the same source several times per build read it once; the values are the
+    plain content hashes."""
+    if isinstance(paths, (str, bytes)) or hasattr(paths, "__fspath__"):
+        return core.blake3_files(paths)          # raises its "expects an iterable of paths" TypeError
+    paths = list(paths)
+    ids = [file_identity(p) for p in paths]
+    out = [_BLAKE3.get(i) if i is not None else None for i in ids]
+    todo = [k for k, h in enumerate(out) if h is None]
+    if todo:
+        for k, h in zip(todo, core.blake3_files([paths[k] for k in todo])):
+            out[k] = h
+            if ids[k] is not None:
+                memo_put(_BLAKE3, ids[k], h)
+    return out
 
 
 AST_DIGEST_TAG = "ast-v1"   # bump if the normalisation in `_ast_digest` changes (every code-derived cache key changes)

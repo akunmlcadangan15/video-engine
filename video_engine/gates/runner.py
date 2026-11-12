@@ -7,10 +7,56 @@ import shutil
 import time
 from pathlib import Path
 
-from .. import config, layout, profiles, props
+from .. import config, gate_registry, gate_tools, layout, profiles, props
 from ..timeline import HYPERFRAMES, CaptionWord, Timeline
 from . import geo, layer1, layer2, layer3, layout_gates, props_gates, severity, style
-from .core import Report
+from .core import Finding, Report, not_run
+
+LATER_LAYERS = ("math", "dom", "place", "layout", "props", "visual", "profile")   # pre-flight layers after layer 1
+FINISHED_FILE = ("S01",)   # a profile-layer gate the build judges on the finished file, never in the pre-flight
+
+
+def _not_run(tl: Timeline, layers: tuple[str, ...], why: str, ai_qa=None) -> list[Finding]:
+    """One `not run` skip finding for every gate of `layers` that the profile switches on (gate_tools.effect;
+    AIQA only when it was requested): the report then names each gate whose stage did not run."""
+    p = profiles.of(tl)
+    has = {"dom": any(s.engine_type == HYPERFRAMES for s in tl.segments),
+           "props": any(props.has_props(s) for s in tl.segments)}
+    out = []
+    for g in gate_registry.GATES:
+        if g.layer not in layers or g.id in FINISHED_FILE or not has.get(g.layer, True):
+            continue
+        eff = gate_tools.effect(g, p)
+        if eff != "off" and (eff != "on request" or ai_qa is not None):
+            out.append(not_run(g.id, why))
+    return out
+
+
+def _dom_gaps(tl: Timeline, project_dir: Path, dom: bool, dom_res: dict) -> list[Finding]:
+    """What the DOM stage did not look at. DOM stage off: every DOM gate, plus the DOM halves of L01 (rendered
+    boxes against the plan) and AS05/AS06 (built HTML). DOM stage on: per HyperFrames segment without a probe result
+    (probe failed, or no toolchain; R63 says why), E01 and R64, which otherwise say nothing for that segment."""
+    hf = [s for s in tl.segments if s.engine_type == HYPERFRAMES]
+    if not hf:
+        return []
+    p = profiles.of(tl)
+    on = {g: gate_tools.effect(gate_registry.BY_ID[g], p) != "off" for g in ("R64", "L01", "AS05", "AS06")}
+    if not dom:
+        why = "DOM stage off: HyperFrames scenes not probed in headless Chrome"
+        out = _not_run(tl, ("dom",), why)
+        if on["L01"] and any(s.gsap_scene_config and s.gsap_scene_config.beats for s in hf):
+            out.append(Finding("L01", "skip", "rendered text boxes not compared with the layout plan: DOM stage off"))
+        out += [Finding(g, "skip", "built HyperFrames HTML not scanned: DOM stage off") for g in ("AS05", "AS06") if on[g]]
+        return out
+    out = []
+    for s in hf:
+        if s.seg_index in dom_res or not (project_dir / s.gsap_scene_config.map_asset).is_file():
+            continue
+        out.append(not_run("E01", "no DOM probe result for this segment (see R63): region fills not checked", s.seg_index))
+        if on["R64"]:
+            out.append(not_run("R64", "no DOM probe result for this segment (see R63): text legibility not checked",
+                               s.seg_index))
+    return out
 
 
 def run_preflight(tl: Timeline, project_dir: Path, words: list[CaptionWord] | None = None, *,
@@ -37,6 +83,7 @@ def _run(tl: Timeline, project_dir: Path, words, workdir: Path, dom: bool, snaps
     with rep.timed("layer1"):
         rep.extend(layer1.run_layer1(tl, project_dir, words))
     if stop_on_layer1 and any(f.gate == "T02" and f.level == "fail" for f in rep.findings):
+        rep.extend(_not_run(tl, LATER_LAYERS, "pre-flight stopped after layer 1 because T02 failed", ai_qa))
         return rep
     with rep.timed("layer2_math"):
         rep.extend(layer2.m01_source_length(tl, project_dir))
@@ -62,6 +109,7 @@ def _run(tl: Timeline, project_dir: Path, words, workdir: Path, dom: bool, snaps
             rep.dom = dom_res
     else:
         dom_res = {}
+    rep.extend(_dom_gaps(tl, project_dir, dom, dom_res))
     with rep.timed("layer2_place"):
         boxes = layer2.element_boxes(tl, project_dir, dom_res)
         clash = layer2.r63_caption_clearance(tl, events, boxes)
@@ -99,6 +147,10 @@ def _run(tl: Timeline, project_dir: Path, words, workdir: Path, dom: bool, snaps
             with rep.timed("layer3_ai"):
                 rep.extend(tasks.qa_snapshots(paths, ai_qa, meta=rep.ai,
                                               frame=(tl.settings.width, tl.settings.height)))
+        elif ai_qa is not None:
+            rep.extend([not_run("AIQA", "requested, but there is no snapshot to judge")])
+    else:
+        rep.extend(_not_run(tl, ("visual",), "layer 3 snapshots off", ai_qa))
     rep.findings = severity.apply(rep.findings, tl, draft=draft)
     rep.timings["total"] = round(sum(v for k, v in rep.timings.items()), 3)
     return rep

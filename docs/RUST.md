@@ -234,7 +234,9 @@ A key must include every input that changes the output:
 - Map derivative key (`hyperframes.map_key`): `MAP_VERSION`, `core.ALGO_VERSION`, source map content hash, output width (after the `MAP_MAX_SIDE` cap), `MAP_MAX_SIDE`, resample filter, `MAP_JPEG_QUALITY`, Pillow version.
 - DOM probe key (`hyperframes.probe_key`, cache kind `dom`, entry name `<segment key>.<probe key>`): `PROBE_VERSION`, `hyperframes.CODE`, `toolchain.hf_identity()`, every file of the built segment dir (relative path, content hash), the probe times (4 dp), viewport, screenshot flag and bg mode.
   It holds measurements only; gates judge them on every run.
-- Toolchain identity (`toolchain.hf_identity()`): content of `vendor/VERSIONS.json`, the node binary, every file of the headless Chrome dir, every file of `vendor/npm/node_modules`, `vendor/js/gsap.min.js`, every file of `video_engine/template/`, `video_engine/hf/dom_probe.mjs`, and the `-version` output of `config.FFMPEG` and of the ffmpeg the HyperFrames CLI encodes with.
+- Toolchain identity (`toolchain.hf_identity()`): content of `vendor/VERSIONS.json`, the node binary, the browser, every file of `vendor/npm/node_modules`, `vendor/js/gsap.min.js`, every file of `video_engine/template/`, `video_engine/hf/dom_probe.mjs`, and the `-version` output of `config.FFMPEG` and of the ffmpeg the HyperFrames CLI encodes with.
+  The browser (`toolchain.browser`) is every file of its own install dir: `config.CHROME` with symlinks resolved, in `vendor/chrome` or next to Chromium `*.pak` files (chrome-headless-shell, Puppeteer and Playwright caches, `/opt/google/chrome`).
+    A browser without one (a launcher or wrapper script in a `bin` dir or another PATH entry) is the content of its resolved file plus its `--version` output, never the shared directory.
   Directory hashes use paths relative to the directory.
   Computed once per process; directory content hashes are memoised in `<cache>/toolchain/`, keyed by every file's path, size, mtime_ns, inode and device.
 

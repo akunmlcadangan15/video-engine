@@ -240,3 +240,54 @@ def test_bad_unrelated_files_do_not_change_the_key(project, tools, tmp_path):
     (tools / "fonts" / "Unused.ttf").write_text("x")              # a font no scene role uses
     (p / "notes.txt").write_text("x")
     assert key(p, tl) == k0
+
+
+# ------------------------------------------------------------------------------------------ browser identity
+def _wrapper(d, version: str):
+    """A PATH-style launcher: a shell script in a bin dir shared with unrelated programs."""
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "unrelated-tool").write_text("tool-1")
+    exe = d / "google-chrome"
+    exe.write_text(f'#!/bin/sh\necho "Google Chrome {version}"\n')
+    exe.chmod(0o755)
+    return exe
+
+
+def test_good_vendored_and_symlinked_browsers_are_hashed_as_their_install_dir(tools, tmp_path, monkeypatch):
+    """The pinned (vendored) install keeps its identity: the chrome part is the tree hash of its directory, as
+    before. A PATH symlink into a dedicated install (resource packs next to the binary) is followed to it."""
+    assert toolchain.hf_paths()[2] == config.CHROME.parent.resolve()
+    a = toolchain.hf_identity()
+    real = tmp_path / "pw" / "chromium-1" / "chrome-linux64"
+    shutil.copytree(config.CHROME.parent, real)
+    link = tmp_path / "bin" / "chromium"
+    link.parent.mkdir()
+    link.symlink_to(real / config.CHROME.name)
+    monkeypatch.setattr(config, "CHROME", link)
+    toolchain._identity.cache_clear()
+    assert toolchain.hf_paths()[2] == real and toolchain.hf_identity() == a       # same browser, same identity
+
+
+def test_good_a_path_browser_is_its_file_and_version_not_its_bin_dir(tools, tmp_path, monkeypatch):
+    """A launcher with no install dir of its own (a wrapper script in a bin dir) is identified by its content and
+    its `--version` answer: an unrelated program changing in that dir keeps every HyperFrames key."""
+    exe = _wrapper(tmp_path / "bin", "153.0.1")
+    monkeypatch.setattr(config, "CHROME", exe)
+    assert toolchain.hf_paths()[2] == ("exe", str(exe))
+    a = toolchain.hf_identity()
+    (tmp_path / "bin" / "unrelated-tool").write_text("tool-22")
+    (tmp_path / "bin" / "new-tool").write_text("x")
+    toolchain._identity.cache_clear()
+    assert toolchain.hf_identity() == a
+
+
+def test_bad_a_path_browser_upgrade_changes_the_identity(tools, tmp_path, monkeypatch):
+    exe = _wrapper(tmp_path / "bin", "153.0.1")
+    monkeypatch.setattr(config, "CHROME", exe)
+    a = toolchain.hf_identity()
+    _wrapper(tmp_path / "bin", "154.0.10")                       # the browser behind the launcher changed
+    toolchain._identity.cache_clear()
+    assert "154.0.10" in toolchain.browser_version(str(exe)) and toolchain.hf_identity() != a
+    exe.unlink()
+    toolchain._identity.cache_clear()
+    assert toolchain.browser_exe(str(exe)) == toolchain.MISSING and toolchain.hf_identity() != a

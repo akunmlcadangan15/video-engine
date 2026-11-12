@@ -2,7 +2,7 @@
 channel requires them, hold:"read" intent and project waivers lower only non-required style/advisory findings."""
 import pytest
 
-from video_engine import config, gate_registry as reg, layout, profiles
+from video_engine import config, gate_registry as reg, gate_tools, layout, profiles
 from video_engine.gates import severity, style
 from video_engine.gates.core import Finding, Report
 from video_engine.util import EngineError
@@ -198,3 +198,43 @@ def test_bad_beat_without_hold_keeps_its_pulses(project, monkeypatch):
 def test_bad_unknown_waived_gate_is_rejected(project):
     with pytest.raises(EngineError, match="gates.waive"):
         project(two_maps(gates={"waive": ["X99"]}))
+
+
+# --------------------------------------------------------------------------------------------- not_checked
+def test_good_not_checked_lists_skips_not_run_gates_and_profile_switches(project):
+    _, tl = project()
+    fs = [Finding("R38", "pass", "fine"), Finding("O01", "skip", "no drawn overlays"),
+          Finding("R63", "skip", "not run: DOM stage off", 2), Finding("M02", "warn", "x", 2, waived="fail: lowered")]
+    nc = severity.not_checked(fs, tl)
+    assert nc[:2] == [{"gate": "O01", "seg": None, "kind": "skipped", "why": "no drawn overlays"},
+                      {"gate": "R63", "seg": 2, "kind": "not_run", "why": "DOM stage off"}]
+    off = {e["gate"] for e in nc if e["kind"] == "off"}                    # the default profile: no channel gates
+    assert off == {g.id for g in reg.GATES if gate_tools.effect(g, profiles.of(tl)) == "off"} and "S01" in off
+    assert "AIQA" not in off and "M02" not in {e["gate"] for e in nc}       # on request / waived stay elsewhere
+
+
+def test_bad_not_checked_keeps_out_what_ran(project):
+    _, tl = project()
+    assert severity.not_checked([Finding("T02", "fail", "gap"), Finding("R38", "pass", "fine")]) == []
+    assert all(e["kind"] == "off" for e in severity.not_checked([Finding("T02", "fail", "gap")], tl))
+
+
+def test_good_preflight_without_the_dom_stage_names_each_gate_that_did_not_run(project):
+    """A pre-flight without the DOM stage and the snapshots names every gate of them the profile switches on."""
+    from video_engine.gates import run_preflight
+    p, tl = project()
+    rep = run_preflight(tl, p, None, dom=False, snapshots=False)
+    nc = severity.not_checked(rep.findings, tl)
+    not_run = {e["gate"] for e in nc if e["kind"] == "not_run"}
+    assert {"R63", "E01", "R38", "R38space"} <= not_run and "R64" not in not_run      # R64 is off in default
+    assert rep.ok
+
+
+def test_bad_preflight_stopped_by_T02_names_the_later_gates(project):
+    from video_engine.gates import run_preflight
+    p, tl = project()
+    tl.segments[1].start_frame = 61                                               # a gap: T02 fails
+    rep = run_preflight(tl, p, None, dom=False, snapshots=False, ai_qa=object())
+    nc = {e["gate"]: e for e in severity.not_checked(rep.findings, tl) if e["kind"] == "not_run"}
+    assert not rep.ok and {"M01", "R56", "R63", "R38", "AIQA"} <= set(nc) and "S01" not in nc
+    assert nc["M01"]["why"] == "pre-flight stopped after layer 1 because T02 failed"

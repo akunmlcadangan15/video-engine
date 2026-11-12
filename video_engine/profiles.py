@@ -31,7 +31,7 @@ from .profile_schema import *  # noqa: F401,F403  (every table model and constan
 from .profile_schema import (CAPTION_PY_KEYS, CAPTION_RUST_KEYS, CAPTION_SLOTS, REVEAL_EASE, AntiSlopGate,
                              CameraProfile, FlagsProfile, FormatProfile, FxProfile, MotionProfile, ProfileData,
                              ReferenceStyle, RenderProfile, TransitionsProfile, TypeScale)
-from .util import EngineError, blake3_json
+from .util import RACY_NS, EngineError, blake3_json
 
 if TYPE_CHECKING:
     from .layout import LayoutProfile
@@ -581,7 +581,7 @@ OVERRIDABLE = ("theme", "camera", "watermark", "motion", "grade", "render", "fla
 _CACHE_MAX = 64
 _OVERRIDDEN: dict[tuple[str, str], Profile] = {}          # (base hash, overrides JSON) -> profile, bounded
 _LOADED: dict[tuple[str, str], tuple[tuple, Profile]] = {}   # (profiles dir, name) -> (file signature, profile)
-_RACY_NS = 2_000_000_000   # a file changed this recently may change again inside one timestamp tick
+_RACY_NS = RACY_NS   # util.RACY_NS: a file changed this recently may change again inside one timestamp tick
 
 
 def _bounded_put(memo: dict, key, value) -> None:

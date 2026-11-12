@@ -122,3 +122,25 @@ def summary(findings: list[Finding], tl: Timeline) -> dict:
             "warns": [row(f) for f in findings if f.level == "warn"],
             "waived": [row(f) for f in findings if f.waived],
             **({"waivers": [{"gate": g, "reason": r} for g, r in sorted(reasons.items())]} if reasons else {})}
+
+
+def unchecked(gate: str | None, kind: str, why: str, seg: int | None = None) -> dict:
+    """One `not_checked` entry (docs/BUILD.md): kind skipped | off | not_run | cached | sampled."""
+    return {"gate": gate, "seg": seg, "kind": kind, "why": why}
+
+
+def not_checked(findings: list[Finding], tl: Timeline | None = None) -> list[dict]:
+    """Report `not_checked`: what the checks behind `findings` did not look at. Every `skip` finding becomes one
+    entry (kind "not_run" when its message starts with core.NOT_RUN, else "skipped"); with `tl`, every gate the
+    effective profile switches off (gate_tools.effect "off") adds one entry of kind "off". The build adds what only
+    it knows (build.py). Waived and lowered findings stay in `summary()`'s `waived` and are not repeated here."""
+    from .. import gate_registry, gate_tools
+    from .core import NOT_RUN
+    out = [unchecked(f.gate, "not_run", f.message[len(NOT_RUN):], f.seg) if f.message.startswith(NOT_RUN)
+           else unchecked(f.gate, "skipped", f.message, f.seg)
+           for f in findings if f.level == "skip"]
+    if tl is not None:
+        p = profiles.of(tl)
+        out += [unchecked(g.id, "off", f"switched off in profile '{p.name}' (switch: {g.switch})")
+                for g in gate_registry.GATES if gate_tools.effect(g, p) == "off"]
+    return out

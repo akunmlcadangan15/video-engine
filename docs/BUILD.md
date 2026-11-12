@@ -5,7 +5,7 @@ What `engine build` does, in order, and how it stays repeatable.
 **What this document answers**
 
 - The stages from captions to publish, and when a build publishes or fails.
-- What `build_manifest.json` and `build_report.json` contain.
+- What `build_manifest.json` and `build_report.json` contain, and how a report says what was not checked.
 - How the worker budget, stream copy and concat, and cache leases work.
 
 1. Captions: pinned timeline words;
@@ -34,16 +34,34 @@ What `engine build` does, in order, and how it stays repeatable.
    The mux writes into a unique staging dir `out/.final.staging-*/` on the output's filesystem; it is removed on every exit path.
 8. Publish, only when no stage raised and no kernel gate (error) reported fail: `os.replace` of the staged file onto `out/final.mp4`, then of `build_report.json` (written through a temp file in `out/`);
      a stale `build_report.failed.json` is removed.
-   Any failure leaves `out/final.mp4` and `out/build_report.json` byte-identical and writes `out/build_report.failed.json`: the full report with `"ok": false`, `"final": null` and `error` after a gate fail, or `ok`, `final`, `error` and `timings` after a stage error.
+   Any failure leaves `out/final.mp4` and `out/build_report.json` byte-identical and writes `out/build_report.failed.json`: the full report with `"ok": false`, `"final": null` and `error` after a gate fail, or `ok`, `final`, `error`, `not_checked` and `timings` after a stage error.
    Library API: `build.build()` raises `build.BuildFailed` (an `EngineError` carrying `result` and `report`) on a kernel fail, or with `raise_on_fail=False` returns a `BuildResult` with `ok=False`, `final=None`, `failed` (the fail lines) and `report`;
      stage errors raise their exception.
-9. `build_report.json`: `ok`, `build_id` (same as the manifest), `final_sha256`, profile (`name`, `blake3` of the merged profile), segments (mode, cache hit, seconds), preflight findings, `preflight_fixes`, QA, loudness (with `measured_lra`), captions (`events`, `per_10s`, `mean_s`), timings, `resources` (`budget` and per stage `wall_s`, `cpu_s`, `peak_rss_mb` with per-tool peaks), `stage_keys`, `preflight_subtimings` (`layer2_dom`: seconds summed over HyperFrames segments of `build`, `browser_load`, `r63_rects`, `snapshots`, `bg_screenshots`, `glyph_masks`, `r64_numpy`; `probes` and `cache_hits` of the DOM probe cache, cache kind `dom`), `gates` (see [GATES.md](GATES.md)), `sound` with a profile `[sound]` (`music` provenance, `music_file`, `ducking`, `sfx` provenance per asset id, `cues`), `cache` (the build's lease session: `leased` file count, `evicted`, `skipped_leased`, `reclaimed_leases`; paths `<cache root>/<path>`), and `sfx_events` when the scenes have sound cues: one `{kind: "counter_tick", frame (absolute), seg, figure}` per frame on which a counter's shown text changes.
+9. `build_report.json`: `ok`, `build_id` (same as the manifest), `final_sha256`, profile (`name`, `blake3` of the merged profile), segments (mode, cache hit, seconds), preflight findings, `preflight_fixes`, QA, loudness (with `measured_lra`), captions (`events`, `per_10s`, `mean_s`), `not_checked` (see [What was not checked](#what-was-not-checked)), timings, `resources` (`budget` and per stage `wall_s`, `cpu_s`, `peak_rss_mb` with per-tool peaks), `stage_keys`, `preflight_subtimings` (`layer2_dom`: seconds summed over HyperFrames segments of `build`, `browser_load`, `r63_rects`, `snapshots`, `bg_screenshots`, `glyph_masks`, `r64_numpy`; `probes` and `cache_hits` of the DOM probe cache, cache kind `dom`), `gates` (see [GATES.md](GATES.md)), `sound` with a profile `[sound]` (`music` provenance, `music_file`, `ducking`, `sfx` provenance per asset id, `cues`), `cache` (the build's lease session: `leased` file count, `evicted`, `skipped_leased`, `reclaimed_leases`; paths `<cache root>/<path>`), and `sfx_events` when the scenes have sound cues: one `{kind: "counter_tick", frame (absolute), seg, figure}` per frame on which a counter's shown text changes.
 
 ## Publish with warnings
 
 Lint gates (see [GATES.md](GATES.md)) do not block a publish. `out/final.mp4` is published during any build that has no kernel fail and no stage error, even when lint findings are present; the warnings stay in the published `build_report.json`.
 `build_report.json` is always full: `gates` records `{required, segment_intents, fails, warns, waived}` (plus `waivers` when active) while auto-repaired findings are listed in top-level `preflight_fixes`.
 A build with a kernel fail or a stage error publishes nothing and leaves the previous `final.mp4` untouched (see step 8).
+
+## What was not checked
+
+Every report lists what its checks did not look at in `not_checked`: one entry `{gate, seg, kind, why}` per fact (`gate` and `seg` are `null` when the fact is not about one gate or segment).
+`gates` says what the checks found; `not_checked` says where they did not look, so a clean `gates` block is read together with it.
+
+| kind | Meaning | Source |
+|---|---|---|
+| `skipped` | the gate ran but had no input for part of its check (no captions yet, no drawn overlay) | every `skip` finding (`severity.not_checked`) |
+| `not_run` | the gate or stage did not run: DOM stage off (each DOM gate, and the DOM halves of L01, AS05, AS06), a HyperFrames segment without a DOM probe result (E01, R64 per segment), snapshots off, the pre-flight stopped after a T02 fail (each later gate), AI QA requested without a snapshot, a stage after a stage error | `skip` findings whose message starts with `not run:` (pre-flight runner); the stage list of the failed report (`build.stages_not_run`) |
+| `off` | the effective profile switches the gate off (`engine gates --profile`), or AI QA was not requested (`--ai-qa`) | `gate_tools.effect`; the build |
+| `cached` | A01 judged the loudness stored with a cached audio pass instead of measuring the file again | the build (audio cache hit) |
+| `sampled` | post-render pixel QA looked at every `qa.SAMPLE_STEP`-th frame only | the build |
+
+A fully checked build lists only the `sampled` entry.
+Waived, advisory and draft-lowered findings are not repeated here: they stay in `gates` (`waived`, `waivers`).
+`build_report.failed.json` after a stage error lists the pre-flight's entries (when it finished) and one `not_run` entry per stage that did not start.
+`out/draft/preview_report.json` (`engine draft-preview`) has a fixed list: no pre-flight and no post-render gate runs on a preview.
 
 ## Proxy render quality
 

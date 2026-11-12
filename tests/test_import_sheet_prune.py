@@ -112,6 +112,34 @@ def test_good_sheet_tiles(project, tmp_path):
     assert Image.open(out).size == (2 * (w + 6) + 6, rows * (h + 26 + 6) + 6)
 
 
+def _sheet_clip(path, fps, audio=False, start=None):
+    src = ["-f", "lavfi", "-i", f"testsrc2=size=180x320:rate={fps}"]
+    if audio:
+        src += ["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000"]
+    ff(*src, "-frames:v", 2 * fps, "-t", 2, "-c:v", "libx264", "-preset", "veryfast", "-g", 20, "-pix_fmt", "yuv420p",
+       *(["-c:a", "aac", "-shortest"] if audio else []), *(["-output_ts_offset", start] if start else []), path)
+    return path
+
+
+@pytest.mark.parametrize("fps, audio", [(30, True), (25, False), (24, False)])
+def test_good_one_decode_tiles_are_the_per_tile_seek_frames(tmp_path, fps, audio):
+    """The sheet decodes once; every tile is byte for byte the frame the per-tile seek gives, the frames whose time
+    string rounds past their own timestamp (30 fps frame 47 -> 1.5667 s -> frame 48) and repeated picks included."""
+    v = _sheet_clip(tmp_path / "v.mp4", fps, audio)
+    frames = list(range(0, 2 * fps - 1, 3)) + [fps + 17, fps + 17]
+    assert sheet.frames_rgb(v, frames, fps, 36, 64) == [sheet.frame_rgb(v, f, fps, 36, 64) for f in frames]
+
+
+def test_bad_a_file_not_starting_at_zero_takes_the_per_tile_seek(tmp_path, monkeypatch):
+    """The one-decode rule matches the seek only for a file that starts at 0; any other file seeks per tile."""
+    v = _sheet_clip(tmp_path / "late.mp4", 30, start=0.5)
+    real, calls = sheet.frame_rgb, []
+    monkeypatch.setattr(sheet, "frame_rgb", lambda *a: calls.append(a[1]) or real(*a))
+    assert len(sheet.frames_rgb(v, [20, 40], 30, 36, 64)) == 2 and calls == [20, 40]
+    with pytest.raises(EngineError, match="cannot read frame 9999"):
+        sheet.frames_rgb(_sheet_clip(tmp_path / "v.mp4", 30), [10, 9999], 30, 36, 64)
+
+
 def test_bad_sheet_missing_video(project, tmp_path):
     _, tl = project()
     with pytest.raises(EngineError, match="build first"):

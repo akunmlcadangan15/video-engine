@@ -192,6 +192,34 @@ def render_segments(tl: Timeline, project_dir: Path, workdir: Path, use_cache: b
 
 MODES = ("release", "draft")
 DRAFT_DIR = "draft"
+STAGES = ("captions", "preflight", "manifest", "segments", "ass", "composite", "audio", "mux", "qa")   # timer stages
+POST_GATES = "frame count, pixel QA (R38, R38space, R56px), A01 loudness, S01 silence, A02 audio source"
+
+
+def not_checked(findings: list, tl: Timeline, ai_qa, *, audio_cached: bool | None = None,
+                sampled: bool = False) -> list[dict]:
+    """build_report.json `not_checked` (docs/BUILD.md): severity.not_checked plus what only the build knows: AI QA
+    not requested, A01 judging the measurement stored with a cached audio pass, and pixel QA on sampled frames."""
+    out = severity.not_checked(findings, tl)
+    if ai_qa is None:
+        out.append(severity.unchecked("AIQA", "off", "AI visual QA not requested (--ai-qa)"))
+    if audio_cached:
+        out.append(severity.unchecked("A01", "cached", "audio cache hit: loudness judged on the measurement stored "
+                                                       "with the cached audio pass, not measured again"))
+    if sampled:
+        out.append(severity.unchecked(None, "sampled", f"pixel QA (R38, R38space, R56px) looked at every "
+                                                       f"{qa.SAMPLE_STEP}th frame of the final file, at 1/"
+                                                       f"{qa.SNAP_DIV} size"))
+    return out
+
+
+def stages_not_run(rows: list, error: BaseException) -> list[dict]:
+    """`not_checked` entries of a stage error: every build stage that did not start (timer rows name the ones that
+    did), with the post-render gates the qa stage would have judged."""
+    ran = {r[1] for r in rows}
+    return [severity.unchecked(None, "not_run", f"stage {s} did not run: the build stopped with {type(error).__name__}"
+                               + (f" ({POST_GATES} not judged)" if s == "qa" else ""))
+            for s in STAGES if s not in ran]
 
 
 def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build", ai_qa=None,
@@ -237,6 +265,7 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
     lease = cache.session()
     held = lease.__enter__()
     gate_rows: dict | None = None
+    pre_findings: list | None = None
     credit_token = None
     report_tmp: Path | None = None
     try:
@@ -257,7 +286,7 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             pf_kwargs: dict[str, Any] = {"draft": True} if draft else {}   # release calls stay exactly as they were
             rep = run_preflight(tl, project_dir, words, workdir=workdir, ai_qa=ai_qa, **pf_kwargs)
             st["note"] = " ".join(f"{k}={v}" for k, v in rep.timings.items())
-        gate_rows = severity.summary(rep.findings, tl)
+        gate_rows, pre_findings = severity.summary(rep.findings, tl), rep.findings
         if not rep.ok:
             raise EngineError("preflight failed:\n" + rep.summary())
         lock = None
@@ -358,6 +387,7 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             "captions": captions.metrics(events, tl), "segments": [r.__dict__ for r in segs], "join": join,
             "preflight": rep.summary().splitlines(), "preflight_fixes": rep.fixes, "ai_qa": rep.ai, "qa": res.qa, "qa_motion": info["motion"],
             "gates": severity.summary(rep.findings + findings, tl),
+            "not_checked": not_checked(rep.findings + findings, tl, ai_qa, audio_cached=a_hit, sampled=True),
             "timings": [list(r) for r in timer.rows], "preflight_subtimings": rep.subtimings,
             "resources": {"budget": budget.report(), "stages": timer.resources},
             "stage_keys": man["stage_keys"],
@@ -396,6 +426,9 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
                                           "mode": mode, "quality": quality, "render_quality": render_quality,
                                           "source_profile": source_profile, "profile": profiles.of(tl).report(),
                                           **({"gates": gate_rows} if gate_rows else {}),
+                                          "not_checked": ((not_checked(pre_findings, tl, ai_qa)
+                                                           if pre_findings is not None else [])
+                                                          + stages_not_run(timer.rows, e)),
                                           "timings": [list(r) for r in timer.rows]})
         raise
     finally:

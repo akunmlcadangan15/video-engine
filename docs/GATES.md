@@ -19,6 +19,7 @@ Most gates run before any segment is rendered, because a failed render costs sev
   - **fix** — the finding was repaired automatically (camera intensity, caption slot). The fix is recorded in `build_report.json` (`preflight_fixes`) and the build continues.
   - **lint** — a non-kernel gate failed. The finding is reported as a warning; the build publishes with warnings. A lint gate blocks only when it is explicitly listed in `[gates] require` (profile) or `gates.require` (project).
 - Per-finding statuses `pass`, `info`, `warn`, `skip` and `fail` are still recorded; `build_report.json` groups them under `gates: {required, segment_intents, fails, warns, waived}` (plus `waivers` when active) alongside top-level `preflight_fixes`.
+  `skip` findings, gates the profile switches off and stages that did not run are listed in `not_checked` ([What was not checked](BUILD.md#what-was-not-checked)).
 - Layers, in the order the pre-flight runs them: 1 static checks of the timeline and project files, 2 calculations and the DOM probe of HyperFrames scenes, caption placement, layout and props, then 3 visual snapshots.
   Checks of the finished file (post-render QA, loudness, silence, audio source) come after the render.
 - Classes `technical` / `style` are kept in the registry for description, but blocking is now decided by kernel vs lint, not by class alone.

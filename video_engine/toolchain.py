@@ -3,7 +3,9 @@
 `hf_identity()` = BLAKE3 over the content of every toolchain file a segment's pixels depend on:
   pins      vendor/VERSIONS.json
   node      the node binary (config.NODE)
-  chrome    every file of the headless Chrome install dir (config.CHROME's directory)
+  chrome    every file of the browser's own install dir (browser_dir: config.CHROME resolved, in vendor/chrome or
+            next to Chromium `*.pak` files); a browser without one (a PATH launcher or wrapper script) is its
+            resolved executable plus its `--version` output (browser_exe), never the shared directory it sits in
   npm       every file of vendor/npm/node_modules (hyperframes, puppeteer-core and their resolved dependencies)
   hf        the active HyperFrames (hfversion.active): "<source>:<version>" and every file of its package dir, so
             switching VIDEO_ENGINE_HYPERFRAMES_VERSION (pinned / X.Y.Z / latest / system) never reuses a segment
@@ -25,6 +27,7 @@ import functools
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from . import cache, config
@@ -88,11 +91,78 @@ def _ffmpeg_version(path: str, size: int, mtime_ns: int) -> str:
         return MISSING
 
 
+def _shared_dirs() -> set[Path]:
+    """Directories that hold many unrelated programs: every PATH entry, resolved."""
+    out = set()
+    for d in filter(None, os.environ.get("PATH", "").split(os.pathsep)):
+        try:
+            out.add(Path(d).resolve())
+        except (OSError, RuntimeError):
+            continue
+    return out
+
+
+def browser_dir(exe: Path) -> Path | None:
+    """The browser's own install directory, or None. `exe` is resolved through symlinks. Its directory is the
+    browser's own when it lies in the engine's vendor/chrome, or when Chromium resource packs (`*.pak`) sit next to
+    the binary, as in chrome-headless-shell and Chrome for Testing archives (user toolchain, Puppeteer's and
+    Playwright's browser caches), /opt/google/chrome and distribution Chromium dirs. A `bin`/`sbin` directory or a
+    PATH entry never is: what sits there is a launcher or wrapper script next to unrelated programs."""
+    try:
+        real = Path(exe).resolve()
+    except (OSError, RuntimeError):
+        return None
+    d = real.parent
+    if not real.is_file() or d.name in ("bin", "sbin") or d in _shared_dirs():
+        return None
+    try:
+        if d.is_relative_to((config.VENDOR / "chrome").resolve()) or next(d.glob("*.pak"), None) is not None:
+            return d
+    except (OSError, RuntimeError):
+        pass
+    return None
+
+
+def browser(exe: Path) -> Path | tuple[str, str]:
+    """The browser part of the HyperFrames identity: its install directory (hashed as a tree), else
+    ("exe", the executable as configured), hashed as the resolved file plus its `--version` output (browser_exe)."""
+    return browser_dir(exe) or ("exe", str(exe))
+
+
+def browser_version(exe: str) -> str:
+    """`--version` output of a browser executable, memoised per (resolved path, size, mtime_ns). A wrapper script
+    answers for the browser it starts. Not run on Windows, where chrome.exe opens a window instead of printing."""
+    if sys.platform == "win32":
+        return ""
+    try:
+        st = os.stat(exe)
+    except OSError:
+        return MISSING
+    return _browser_version(str(Path(exe).resolve()), str(exe), st.st_size, st.st_mtime_ns)
+
+
+@functools.lru_cache(maxsize=16)
+def _browser_version(_real: str, exe: str, size: int, mtime_ns: int) -> str:
+    try:
+        return subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=30, check=True).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return MISSING
+
+
+def browser_exe(exe: str) -> str:
+    """Identity of a browser without an install directory of its own (a PATH entry, a wrapper script, an app
+    launcher): content of the resolved executable and its `--version` output; MISSING when it does not exist."""
+    real = Path(exe).resolve()
+    if not real.is_file():
+        return MISSING
+    return blake3_json({"exe": tree_hash(real), "version": browser_version(exe)})
+
+
 def hf_paths() -> tuple:
     """Toolchain locations the HyperFrames render uses (config paths and the active HyperFrames, read at call time)."""
     from . import hfversion
     hf = hfversion.active()
-    return (config.VENDOR / "VERSIONS.json", config.NODE, config.CHROME.parent, config.PUPPETEER.parent,
+    return (config.VENDOR / "VERSIONS.json", config.NODE, browser(config.CHROME), config.PUPPETEER.parent,
             config.GSAP_JS, config.TEMPLATE_DIR, config.PKG / "hf" / "dom_probe.mjs", hf.root,
             f"{hf.source}:{hf.version}",
             tuple(dict.fromkeys([str(config.FFMPEG), config.hf_env()["HYPERFRAMES_FFMPEG_PATH"]])))
@@ -106,5 +176,5 @@ def hf_identity() -> str:
 def _identity(paths: tuple) -> str:
     *trees, hf_tag, ffmpegs = paths
     names = ("pins", "node", "chrome", "npm", "gsap", "template", "probe", "hf_tree")
-    return blake3_json({**{n: tree_hash(p) for n, p in zip(names, trees)}, "hf": hf_tag,
-                        "ffmpeg": [ffmpeg_version(x) for x in ffmpegs]})
+    return blake3_json({**{n: browser_exe(p[1]) if isinstance(p, tuple) else tree_hash(p) for n, p in zip(names, trees)},
+                        "hf": hf_tag, "ffmpeg": [ffmpeg_version(x) for x in ffmpegs]})

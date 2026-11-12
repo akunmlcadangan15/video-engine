@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 @dataclass
 class Finding:
     gate: str            # e.g. "R07"
-    level: str           # fail | fix | warn | info | skip | pass
+    level: str           # fail | fix | warn | info | skip | pass (skip: no input, or `not run: ...`)
     message: str
     seg: int | None = None
     frames: tuple[int, int] | None = None   # absolute half-open frame range the finding is about (style holds, gaps)
@@ -17,6 +17,15 @@ class Finding:
     def line(self) -> str:
         where = f" seg {self.seg}" if self.seg is not None else ""
         return f"[{self.level.upper():4}] {self.gate}{where}: {self.message}"
+
+
+NOT_RUN = "not run: "   # message prefix of a `skip` finding whose check did not run at all (severity.not_checked)
+
+
+def not_run(gate: str, why: str, seg: int | None = None) -> Finding:
+    """A `skip` finding saying that the gate's check did not run (its stage was off or stopped early); reports list
+    it under `not_checked` with kind "not_run"."""
+    return Finding(gate, "skip", NOT_RUN + why, seg)
 
 
 @dataclass

@@ -97,3 +97,47 @@ def test_good_copy_fallback_is_cached_under_the_encode_key(project, wd, tmp_path
     assert cache.get_file("segments", job.encode_key) is not None
     out2, hit2, mode2 = native.render(job, tl, wd, threads=2)
     assert hit2 and mode2 == "encode" and out2 == out
+
+
+def test_good_camera_and_encode_segments_share_the_sar_and_join_by_concat_demuxer(project, wd):
+    """A Ken Burns still (camera) and footage re-encoded to the frame (encode) write the same square-pixel SAR into
+    their SPS, so a timeline mixing them stays concat-demuxer joinable (the draft preview requires it)."""
+    from video_engine import streams
+    p, tl = project()
+    files = [native.render(native.plan(s, tl, p), tl, wd, threads=2, use_cache=False) for s in tl.segments[:2]]
+    assert [f[2] for f in files] == ["camera", "encode"]
+    assert [streams.params(f[0], "v:0")[0]["sample_aspect_ratio"] for f in files] == ["1:1", "1:1"]
+    assert streams.joinable([f[0] for f in files]) == (True, [])
+
+
+def test_bad_camera_segments_without_setsar_break_the_concat_join(project, wd, monkeypatch):
+    """The camera encoder without setsar (before the fix) leaves the SAR unset: the pair differs in SAR and SPS."""
+    from video_engine import streams
+    p, tl = project()
+    monkeypatch.setattr(native, "CAMERA_VF", native.BT709_VF)
+    files = [native.render(native.plan(s, tl, p), tl, wd, threads=2, use_cache=False)[0] for s in tl.segments[:2]]
+    ok, diffs = streams.joinable(files)
+    assert not ok and any("sample_aspect_ratio" in d for d in diffs)
+
+
+def test_good_keyframe_probe_runs_once_per_settled_source(tmp_path, monkeypatch):
+    from video_engine import util
+    clip = engine_clip(tmp_path / "engine.mp4", 60)
+    monkeypatch.setattr(util, "RACY_NS", 0)
+    monkeypatch.setattr(native, "_KEYFRAME", {})
+    calls = []
+    real = native.run
+    monkeypatch.setattr(native, "run", lambda cmd, **k: calls.append(cmd) or real(cmd, **k))
+    assert native._keyframe_at(clip, 0.0, 30) and native._keyframe_at(clip, 0.0, 30) and len(calls) == 1
+    assert not native._keyframe_at(clip, 10 / 30, 30) and len(calls) == 2      # another time: probed
+
+
+def test_bad_keyframe_probe_reads_a_rewritten_source_again(tmp_path, monkeypatch):
+    from video_engine import util
+    clip = engine_clip(tmp_path / "engine.mp4", 60)
+    monkeypatch.setattr(util, "RACY_NS", 0)
+    monkeypatch.setattr(native, "_KEYFRAME", {})
+    assert not native._keyframe_at(clip, 10 / 30, 30)
+    engine_clip(tmp_path / "rewritten.mp4", 60, extra=("-g", "10", "-keyint_min", "10", "-sc_threshold", "0"))
+    (tmp_path / "rewritten.mp4").replace(clip)
+    assert native._keyframe_at(clip, 10 / 30, 30)

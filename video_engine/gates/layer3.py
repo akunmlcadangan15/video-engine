@@ -10,7 +10,7 @@ import hypoverum_core_rs as core
 
 from .. import native
 from ..timeline import NATIVE, SegmentIntent, Timeline
-from ..util import EngineError
+from ..util import EngineError, file_identity, memo_put
 from .core import Finding
 
 SNAP_DIV = 4                  # snapshot size = output size / SNAP_DIV
@@ -76,11 +76,31 @@ def snapshots(tl: Timeline, project_dir: Path, dom_snaps: dict[int, str]) -> dic
         return {i: b for i, b in ex.map(one, tl.segments) if b}
 
 
+_LUMA: dict[tuple, float | None] = {}   # util.file_identity -> mean luma (None: unreadable)
+
+
+def _mean_luma(p: Path) -> float | None:
+    """Mean luma of an image file (64x64 grey thumbnail), None when it cannot be read. Decoded once per process per
+    file identity: the pre-flight and the post-render QA judge the same sources, often one map for many segments."""
+    from PIL import Image
+    ident = file_identity(p)
+    if ident is not None and ident in _LUMA:
+        return _LUMA[ident]
+    try:
+        with Image.open(p) as im:
+            px = list(im.convert("L").resize((64, 64)).tobytes())
+        v = sum(px) / len(px) if px else None
+    except (OSError, ValueError, AttributeError):
+        v = None
+    if ident is not None:
+        memo_put(_LUMA, ident, v)
+    return v
+
+
 def _source_mean_lumas(tl: Timeline, project_dir: Path | None) -> dict[int, float]:
     """Mean luma of each segment's source asset, computed BEFORE the snapshot is judged: a native segment's
     `source` image, or a HyperFrames segment's `map_asset`. Missing/unreadable/non-image sources are skipped
     (None -> r38_check keeps its plain threshold behaviour)."""
-    from PIL import Image
     out: dict[int, float] = {}
     if project_dir is None:
         return out
@@ -94,13 +114,8 @@ def _source_mean_lumas(tl: Timeline, project_dir: Path | None) -> dict[int, floa
         p = Path(project_dir) / path
         if not p.is_file() or p.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
             continue
-        try:
-            with Image.open(p) as im:
-                px = list(im.convert("L").resize((64, 64)).tobytes())
-            if px:
-                out[s.seg_index] = sum(px) / len(px)
-        except (OSError, ValueError, AttributeError):
-            continue
+        if (v := _mean_luma(p)) is not None:
+            out[s.seg_index] = v
     return out
 
 

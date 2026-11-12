@@ -40,6 +40,17 @@ def test_good_default_is_five_segments_concat_demuxer_no_final_encode(project):
     streams.verify(r.preview, 150, FPS, "draft preview")
 
 
+def test_good_still_and_footage_preview_joins_and_says_no_gate_ran(project):
+    """A Ken Burns still next to re-encoded footage (the base project's first two segments) joins with the concat
+    demuxer; the preview report says that no gate looked at it."""
+    p, _ = project()
+    r = draft_build.build_draft_preview(p, max_segments=2, use_cache=False)
+    assert r.ok and [s.mode for s in r.segments] == ["camera", "encode"] and r.join == "concat demuxer"
+    rep = json.loads(r.report.read_text())
+    assert [e["kind"] for e in rep["not_checked"]] == ["not_run", "not_run"]
+    assert all(e["gate"] is None and e["seg"] is None and "draft preview" in e["why"] for e in rep["not_checked"])
+
+
 def test_good_concat_command_is_stream_copy_without_reencode(project, monkeypatch):
     p, _ = project(_many_native(3))
     seen = []

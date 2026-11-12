@@ -20,11 +20,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import build, config, resources, streams, timeline
+from .gates.severity import unchecked
 from .util import EngineError, run
 
 DEFAULT_MAX_SEGMENTS = 5
 PREVIEW_NAME = "preview.mp4"
 PREVIEW_REPORT = "preview_report.json"
+# preview_report.json `not_checked` (docs/BUILD.md): a preview runs no gate at all.
+NOT_CHECKED = [unchecked(None, "not_run", "no pre-flight gate runs on a draft preview (run `engine preflight` or a "
+                                           "build)"),
+               unchecked(None, "not_run", "no post-render gate runs on a draft preview: no pixel QA, no loudness "
+                                          "(the preview has no audio), no silence or audio source check")]
 
 
 @dataclass
@@ -95,7 +101,7 @@ def build_draft_preview(project_dir: Path, *, max_segments: int = DEFAULT_MAX_SE
             "ok": True, "mode": "draft-preview", "final_encode": False, "join": "concat demuxer",
             "preview": str(out), "frames": frames, "expected_frames": expected,
             "segments": [r.__dict__ for r in segs],
-            "project": str(project_dir), "project_id": tl.project_id,
+            "project": str(project_dir), "project_id": tl.project_id, "not_checked": NOT_CHECKED,
         }
         report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
         return DraftPreviewResult(out, segs, frames, expected, "concat demuxer", report_path, True)

@@ -198,3 +198,36 @@ def test_R38_snapshots_dark_map_source_is_lenient(project, tmp_path, monkeypatch
     qa_fs, _ = qa.pixel_gates(None, tl, project_dir=p)
     assert not [f for f in qa_fs if f.gate == "R38" and f.level == "fail"], qa_fs
     assert any(f.gate == "R38" and f.level == "warn" and "dark source" in f.message for f in qa_fs)
+
+
+def test_good_source_luma_is_decoded_once_per_file_for_preflight_and_qa(project, monkeypatch):
+    """Every segment that shows one source, in the pre-flight and again after the render, reuses one decode of it;
+    the value is the 64x64 grey mean as before."""
+    from PIL import Image
+
+    from video_engine import util
+    p, tl = project()
+    monkeypatch.setattr(util, "RACY_NS", 0)
+    monkeypatch.setattr(layer3, "_LUMA", {})
+    opened = []
+    real_open = Image.open
+    monkeypatch.setattr(Image, "open", lambda f, *a, **k: opened.append(str(f)) or real_open(f, *a, **k))
+    first = layer3._source_mean_lumas(tl, p)
+    assert layer3._source_mean_lumas(tl, p) == first and sorted(first) == [0, 2]
+    with real_open(p / "assets" / "still.jpg") as im:
+        px = im.convert("L").resize((64, 64)).tobytes()
+    assert first[0] == sum(px) / len(px) and len(opened) == 2           # still.jpg and map.jpg, once each
+
+
+def test_bad_a_replaced_source_is_decoded_again(project, monkeypatch):
+    from PIL import Image
+
+    from video_engine import util
+    p, tl = project()
+    monkeypatch.setattr(util, "RACY_NS", 0)
+    monkeypatch.setattr(layer3, "_LUMA", {})
+    before = layer3._source_mean_lumas(tl, p)[0]
+    (p / "assets" / "still.jpg").unlink()                              # a symlink into the shared assets
+    Image.new("RGB", (64, 64), (250, 250, 250)).save(p / "assets" / "still.jpg")
+    after = layer3._source_mean_lumas(tl, p)[0]
+    assert after > 240 and after != before

@@ -7,7 +7,8 @@ Layers and gates:
   layer 3 (visual):  R38 empty thirds and black frames on one snapshot per segment
 
 Result levels: "fail" blocks the build, "fix" is an automatic timeline change (applied in memory; persisted by
-`engine preflight --write-fixes`), "warn" does not block, "skip" means the gate had no input.
+`engine preflight --write-fixes`), "warn" does not block, "skip" means the gate had no input, or did not run when its
+message starts with "not run: " (core.not_run); reports list every skip in `not_checked` (severity.not_checked).
 """
 from .core import Finding, Report
 from .runner import run_preflight

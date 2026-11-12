@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from video_engine import build, cli
+from video_engine import build, cli, gate_tools
 from video_engine.gates.core import Finding
 from video_engine.util import EngineError
 
@@ -151,3 +151,43 @@ def test_bad_report_write_failure_keeps_the_previous_output_byte_identical(proj,
     assert _published(proj) == good and _leftovers(proj) == []
     rep = json.loads((proj / "out" / FAILED).read_text())
     assert rep["ok"] is False and rep["final"] is None and "No space left" in rep["error"]
+
+
+# --------------------------------------------------------------------------------------------- not_checked
+SAMPLED = {"gate": None, "seg": None, "kind": "sampled",
+           "why": f"pixel QA (R38, R38space, R56px) looked at every {build.qa.SAMPLE_STEP}th frame of the final file, "
+                  f"at 1/{build.qa.SNAP_DIV} size"}
+
+
+@pytest.fixture
+def native_proj(project, monkeypatch):
+    """The stubbed-pre-flight project without its HyperFrames segment (renders without the HyperFrames toolchain)."""
+    monkeypatch.setattr(build, "run_preflight", lambda *a, **k: _Rep())
+    p, _ = project(lambda d: (d["segments"].pop(),
+                              d.update(audio_chain={"voiceover_path": "assets/tone.wav", "auto_captions": False})))
+    return p
+
+
+def test_good_fully_checked_build_reports_only_the_sampling(native_proj, monkeypatch):
+    """Every gate switched on, AI QA requested, the audio measured afresh and no skip: the one thing the report
+    still names as not checked is that pixel QA looks at sampled frames."""
+    monkeypatch.setattr(gate_tools, "is_active", lambda g, p: True)
+    r = build.build(native_proj, ai_qa=object(), use_cache=False)
+    assert json.loads(r.report.read_text())["not_checked"] == [SAMPLED]
+
+
+def test_good_audio_cache_hit_says_the_loudness_was_not_measured_again(native_proj):
+    build.build(native_proj)
+    nc = json.loads(build.build(native_proj).report.read_text())["not_checked"]
+    assert [e["gate"] for e in nc if e["kind"] == "cached"] == ["A01"] and nc[-1] == SAMPLED
+    assert {"gate": "AIQA", "seg": None, "kind": "off", "why": "AI visual QA not requested (--ai-qa)"} in nc
+
+
+def test_bad_stage_error_report_lists_the_stages_that_did_not_run(native_proj, monkeypatch):
+    _mux_error(monkeypatch)
+    with pytest.raises(EngineError, match="injected mux error"):
+        build.build(native_proj)
+    nc = json.loads((native_proj / "out" / FAILED).read_text())["not_checked"]
+    assert [e["why"] for e in nc if e["kind"] == "not_run" and e["gate"] is None] == [
+        f"stage qa did not run: the build stopped with EngineError ({build.POST_GATES} not judged)"]
+    assert any(e["gate"] == "AIQA" and e["kind"] == "off" for e in nc) and SAMPLED not in nc

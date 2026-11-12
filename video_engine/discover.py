@@ -399,23 +399,39 @@ def wellknown_chrome(environ: _Env, system: str | None, home: Path | None) -> li
     ]
 
 
+def _build_order(d: Path) -> tuple:
+    """Sort key of a Puppeteer build dir `<platform>-<build id>`: numeric build id parts, so 131.0.10 > 131.0.9."""
+    tail = d.name.rsplit("-", 1)[-1]
+    return tuple(int(x) if x.isdigit() else -1 for x in tail.split(".")), d.name
+
+
 def puppeteer_cache_bins(cache: Path, product: str = "chrome-headless-shell") -> list[Path]:
-    """Executables under a Puppeteer browser cache (any installed revision)."""
+    """Executables in a Puppeteer browser cache (any installed build, newest first, `product` first). Puppeteer's
+    layout is `<root>/<product>/<platform>-<build id>/<archive dir>/<executable>`, with root `<cache>/puppeteer`, or
+    `cache` itself when that has no `puppeteer` dir (a cache dir that is the Puppeteer root). Only that pattern is
+    listed, so an unrelated tree in the user cache dir is never walked."""
     found: list[Path] = []
     root = cache / "puppeteer"
     if not root.is_dir():
-        # some versions use the cache dir itself
         root = cache
     if not root.is_dir():
         return found
-    names = {product, "chrome-headless-shell", "chrome", "chrome.exe", "chrome-headless-shell.exe"}
-    try:
-        for p in root.rglob("*"):
-            if p.is_file() and p.name in names and os.access(p, os.X_OK) or (p.is_file() and p.suffix.lower() == ".exe" and p.stem in {"chrome", "chrome-headless-shell"}):
-                if p.name in names:
-                    found.append(p)
-    except OSError:
-        return found
+    names = (product, "chrome-headless-shell", "chrome", "chrome-headless-shell.exe", "chrome.exe")
+    for prod in dict.fromkeys((product, "chrome-headless-shell", "chrome")):
+        try:
+            builds = sorted((d for d in (root / prod).iterdir() if d.is_dir()), key=_build_order, reverse=True)
+        except OSError:            # no such product dir (or unreadable)
+            continue
+        for build in builds:
+            try:
+                archives = sorted(d for d in build.iterdir() if d.is_dir())
+            except OSError:
+                continue
+            for arch in archives:
+                for n in dict.fromkeys(names):
+                    p = arch / n
+                    if p not in found and p.is_file() and (os.access(p, os.X_OK) or p.suffix.lower() == ".exe"):
+                        found.append(p)
     return found
 
 

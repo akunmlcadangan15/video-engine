@@ -1,5 +1,8 @@
 """util.code_hash / util.source_digest: Python sources count by behaviour (syntax tree without docstrings), so editing
 comments, docstrings or formatting of a keyed module keeps cached renders; any change of behaviour changes the key."""
+import os
+
+import hypoverum_core_rs as core
 import pytest
 
 from video_engine import hyperframes, legibility, native, util
@@ -115,3 +118,50 @@ def test_bad_a_statement_in_a_keyed_module_changes_the_keys(project, monkeypatch
 
 def test_good_the_legibility_digest_is_the_source_digest_of_the_module():
     assert legibility.code_hash() == util.source_digest(legibility.__file__)
+
+
+# ------------------------------------------------------------------------------- per-file content hash memo
+class _CountingCore:
+    """util.core stand-in that counts the files hashed by the Rust extension."""
+
+    def __init__(self):
+        self.files = []
+
+    def __getattr__(self, name):
+        return getattr(core, name)
+
+    def blake3_files(self, paths):
+        paths = list(paths)
+        self.files += paths
+        return core.blake3_files(paths)
+
+
+def test_good_blake3_files_hashes_a_settled_file_once_with_the_plain_values(tmp_path, monkeypatch):
+    a, b = tmp_path / "a.bin", tmp_path / "b.bin"
+    a.write_bytes(b"a" * 1000)
+    b.write_bytes(b"b" * 10)
+    monkeypatch.setattr(util, "RACY_NS", 0)                 # treat the new files as settled
+    monkeypatch.setattr(util, "_BLAKE3", {})
+    counting = _CountingCore()
+    monkeypatch.setattr(util, "core", counting)
+    want = core.blake3_files([a, b])
+    assert util.blake3_files([a, b]) == want and util.blake3_files([b, a]) == want[::-1]
+    assert util.blake3_files([str(a)]) == want[:1] and len(counting.files) == 2      # each file read once
+
+
+def test_bad_blake3_files_reads_a_changed_or_fresh_file_again(tmp_path, monkeypatch):
+    f = tmp_path / "f.bin"
+    f.write_bytes(b"one")
+    first = util.blake3_files([f])[0]
+    f.write_bytes(b"two")                                   # same size, inside the racy window: never memoised
+    assert util.blake3_files([f])[0] == core.blake3_files([f])[0] != first
+    monkeypatch.setattr(util, "RACY_NS", 0)
+    settled = util.blake3_files([f])[0]
+    st = f.stat()
+    tmp = tmp_path / "g.bin"
+    tmp.write_bytes(b"six")                                 # same size and mtime, another inode
+    os.utime(tmp, ns=(st.st_atime_ns, st.st_mtime_ns))
+    os.replace(tmp, f)
+    assert util.blake3_files([f])[0] == core.blake3_files([f])[0] != settled
+    with pytest.raises(TypeError, match="iterable of paths"):
+        util.blake3_files(f)
