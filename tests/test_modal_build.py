@@ -591,3 +591,58 @@ def test_script_reports_missing_closure_and_missing_env_file(tmp_path: Path):
                          env=env, cwd=tmp_path, capture_output=True, text=True, timeout=60)
     assert bad.returncode == 2
     assert "does not exist" in bad.stderr or "does not exist" in bad.stdout
+
+
+def _block_modal_import(monkeypatch):
+    """Make `import modal` fail even when the package is installed."""
+    import builtins
+    real = builtins.__import__
+
+    def blocked(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "modal" or name.startswith("modal."):
+            raise ModuleNotFoundError("No module named 'modal'")
+        return real(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", blocked)
+
+
+def test_selftest_without_modal_exits_127(monkeypatch, capsys):
+    from video_engine import modal_cli
+    monkeypatch.setattr(modal_cli, "toolchain_snapshot", lambda: {"components": {
+        "ffmpeg": "8.1.3", "node": "v22.23.4", "hyperframes": "0.9.13",
+        "puppeteer-core": "25.16.0", "three": "0.186.1", "chrome": "152.0.7977.30",
+    }})
+    _block_modal_import(monkeypatch)
+    assert modal_cli.main(["--selftest"]) == 127
+    captured = capsys.readouterr()
+    assert "not installed" in captured.out
+    assert "TransferError" not in captured.out and "TransferError" not in captured.err
+
+
+def test_build_without_modal_exits_127(tmp_path, monkeypatch, capsys):
+    from video_engine import modal_cli
+    for key in list(os.environ):
+        if key.startswith("VIDEO_ENGINE_"):
+            monkeypatch.delenv(key, raising=False)
+    profiles = tmp_path / "profiles"
+    profiles.mkdir()
+    (profiles / "default.toml").write_text('description = "t"\n', encoding="utf-8")
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "master_timeline.json").write_text(json.dumps({"profile": "default"}), encoding="utf-8")
+    monkeypatch.setenv("VIDEO_ENGINE_WORKSPACE", str(tmp_path / "ws"))
+    monkeypatch.setenv("VIDEO_ENGINE_GEO_LIBRARY", str(tmp_path / "geo"))
+    monkeypatch.setenv("VIDEO_ENGINE_OPEN_ASSETS", str(tmp_path / "open"))
+    monkeypatch.setenv("VIDEO_ENGINE_STOCK_DIRS", str(tmp_path / "stock"))
+    monkeypatch.setenv("VIDEO_ENGINE_DOWNLOAD_DIR", str(tmp_path / "dl"))
+    monkeypatch.setenv("VIDEO_ENGINE_CACHE", str(tmp_path / "cache"))
+    monkeypatch.setenv("VIDEO_ENGINE_PROFILES", str(profiles))
+    monkeypatch.setenv("VIDEO_ENGINE_VENDOR", str(tmp_path / "vendor"))
+    monkeypatch.setenv("VIDEO_ENGINE_MIN_FREE_GB", "0")
+    monkeypatch.setenv("VIDEO_ENGINE_RENDER_LOCK", str(tmp_path / "render.lock"))
+    monkeypatch.setattr(modal_cli, "run_local_checks", lambda project: 0)
+    _block_modal_import(monkeypatch)
+    assert modal_cli.main([str(proj)]) == 127
+    captured = capsys.readouterr()
+    assert "not installed" in captured.out
+    assert "TransferError" not in captured.out and "TransferError" not in captured.err

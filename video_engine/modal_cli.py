@@ -451,8 +451,12 @@ def _selftest(args: Args) -> int:
         print(f"engine-build-modal: local engine doctor is not available ({local.get('error') or 'no components'})",
               flush=True)
         return 1
-    from .modal_launch import run_selftest
-    remote = run_selftest(args)
+    from .modal_launch import ModalMissing, run_selftest
+    try:
+        remote = run_selftest(args)
+    except ModalMissing as exc:
+        print(f"engine-build-modal: {exc}", flush=True)
+        return 127
     mismatches = compare_components(local.get("components") or {}, remote.get("components") or {})
     floor = int(ffmpeg_pin().get("major") or 8)
     got = ffmpeg_major((remote.get("components") or {}).get("ffmpeg", ""))

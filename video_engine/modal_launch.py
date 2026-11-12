@@ -23,6 +23,19 @@ from .modal_transfer import (
 )
 
 
+class ModalMissing(Exception):
+    """The modal client library is not installed."""
+
+
+def _import_modal():
+    """Import the modal client. ModalMissing when the package is not installed."""
+    try:
+        import modal
+    except ImportError as exc:
+        raise ModalMissing("the modal package is not installed (pip install modal)") from exc
+    return modal
+
+
 def new_run_id(digest: str) -> str:
     return check_run_id(f"{uuid.uuid4().hex[:16]}-{digest[:12]}")
 
@@ -93,7 +106,7 @@ class _Volume:
 
 
 def _open_volume(name: str):
-    import modal
+    modal = _import_modal()
     return _Volume(modal.Volume.from_name(name, create_if_missing=True, version=2), name)
 
 
@@ -129,7 +142,7 @@ def _prepare_env(args: Args) -> None:
 
 
 def _call(module, *payload):
-    import modal
+    modal = _import_modal()
     with modal.enable_output():
         with module.app.run():
             return module.build_remote.remote(*payload)
@@ -158,9 +171,9 @@ def run_build(args: Args, project: Path, closure: Closure) -> int:
     print(f"engine-build-modal: run {run_id} digest {closure.digest} "
           f"files {len(closure.files)} upload_bytes {closure.upload_bytes}", flush=True)
     try:
-        import modal  # noqa: F401
-    except ImportError:
-        print("engine-build-modal: the modal package is not installed (pip install modal)", flush=True)
+        _import_modal()
+    except ModalMissing as exc:
+        print(f"engine-build-modal: {exc}", flush=True)
         return 127
     try:
         _prepare_env(args)
@@ -171,6 +184,9 @@ def run_build(args: Args, project: Path, closure: Closure) -> int:
               f"{stats['skipped']} already on the volume", flush=True)
         module = _load_app()
         result = _call(module, run_id, False, _resources(args))
+    except ModalMissing as exc:
+        print(f"engine-build-modal: {exc}", flush=True)
+        return 127
     except DiskLow as exc:
         print(f"engine-build-modal: {exc}", flush=True)
         print(f"engine-build-modal: run {run_id} kept on the volume; resume with --fetch {run_id}", flush=True)
@@ -212,9 +228,9 @@ def resume_fetch(args: Args, project: Path, run_id: str) -> int:
         print(f"engine-build-modal: {exc}", flush=True)
         return 2
     try:
-        import modal  # noqa: F401
-    except ImportError:
-        print("engine-build-modal: the modal package is not installed (pip install modal)", flush=True)
+        _import_modal()
+    except ModalMissing as exc:
+        print(f"engine-build-modal: {exc}", flush=True)
         return 127
     try:
         volume = _open_volume(args.volume)
@@ -235,10 +251,7 @@ def resume_fetch(args: Args, project: Path, run_id: str) -> int:
 
 
 def run_selftest(args: Args) -> dict:
-    try:
-        import modal  # noqa: F401
-    except ImportError as exc:
-        raise TransferError("the modal package is not installed (pip install modal)") from exc
+    _import_modal()
     _prepare_env(args)
     module = _load_app()
     result = _call(module, "", True, _resources(args))
