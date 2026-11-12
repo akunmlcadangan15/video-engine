@@ -77,7 +77,44 @@ def test_R07_good_own_licence_needs_no_url(project):
 
 def test_R07_bad_bgm_uncredited(project):
     p, tl = project(lambda d: d.update(audio_chain={"bgm_path": "assets/tone.wav"}))
-    assert any("bgm" in f.message for f in layer1.r07_credits(tl, p))
+    assert any("bgm" in f.message and "no credits_manifest entry" in f.message for f in layer1.r07_credits(tl, p))
+
+
+def test_R07_good_bgm_with_epidemic_sidecar_needs_no_manifest_row(project):
+    """A path whose sidecar proves source, id and sha256 is credited like cache-sourced Epidemic music."""
+    import json
+
+    from video_engine import manifest
+    from video_engine.sound import cache
+
+    def mut(d):
+        d["audio_chain"] = {"bgm_path": "assets/tone.wav"}
+    p, tl = project(mut)
+    audio = p / "assets" / "tone.wav"
+    sha = manifest.sha256(audio)
+    (audio.with_suffix(".json")).write_text(json.dumps({
+        "source": "epidemic", "id": "track-1", "title": "Copper", "artist": "A", "sha256": sha}))
+    assert levels(layer1.r07_credits(tl, p), "R07") == {"pass"}
+    from video_engine import build
+    rows = build._sound_provenances(tl, p, None)
+    assert rows and rows[0]["source"] == "epidemic"
+    added = cache.append_credits(p, rows)
+    assert added and added[0].endswith("Epidemic Sound licence")
+    assert cache.append_credits(p, rows) == []
+
+
+def test_R07_bad_bgm_sidecar_hash_mismatch(project):
+    import json
+
+    from video_engine.util import EngineError
+
+    def mut(d):
+        d["audio_chain"] = {"bgm_path": "assets/tone.wav"}
+    p, tl = project(mut)
+    (p / "assets" / "tone.json").write_text(json.dumps({
+        "source": "epidemic", "id": "track-1", "sha256": "0" * 64}))
+    with pytest.raises(EngineError, match="sha256"):
+        layer1.r07_credits(tl, p)
 
 
 # R14 ---------------------------------------------------------------------------------------------------------------
@@ -101,6 +138,28 @@ def test_R14_bad_restricted_cc_variants(project, lic):
 def test_R14_good_free_cc_spelling_variants(project, lic):
     _, tl = project(lambda d: d["credits_manifest"][0].update(license=lic))
     assert levels(layer1.r14_licence(tl), "R14") == {"pass"}
+
+
+@pytest.mark.parametrize("lic", ["Epidemic Sound licence", "Epidemic Sound license"])
+def test_R14_good_epidemic_licence_with_its_url(project, lic):
+    from video_engine.licence import EPIDEMIC_URL
+
+    def mut(d):
+        d["credits_manifest"][0].update(license=lic, source_url=EPIDEMIC_URL)
+    _, tl = project(mut)
+    assert levels(layer1.r14_licence(tl), "R14") == {"pass"}
+
+
+def test_R14_bad_epidemic_licence_with_another_url(project):
+    def mut(d):
+        d["credits_manifest"][0].update(license="Epidemic Sound licence", source_url="https://example.org/track")
+    _, tl = project(mut)
+    assert any("requires source_url" in f.message for f in layer1.r14_licence(tl))
+
+
+def test_R14_bad_epidemic_lookalike_is_not_allowlisted(project):
+    _, tl = project(lambda d: d["credits_manifest"][0].update(license="Epidemic Sound NC"))
+    assert any("not in allowlist" in f.message for f in layer1.r14_licence(tl))
 
 
 def test_R14_bad_watermark_not_declared(project):

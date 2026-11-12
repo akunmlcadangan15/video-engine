@@ -281,15 +281,17 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 - Sound resolver adapter (`mixer._sound_cache`, `mixer.resolve_sfx`, `mixer.resolve_music`, called by
   `mixer.plan`): with the `video_engine.sound` package installed it calls `video_engine.sound.cache.resolve(kind,
   profile)` per cue kind and `resolve_music(brief.model_dump(), profile)`, each returning `ResolvedSound` with
-  `.path` and `.provenance` `{source, id, title, artist, credit}`; `resolve` falls back to the local-test tone of the
-  kind, `resolve_music` returns None when no file is cached (None fails the build). Without the package it uses local
+  `.path` and `.provenance` `{source, id, title, artist, credit}`; `resolve` uses a generated local-test tone only when
+  `VIDEO_ENGINE_LOCAL_TONES=1` (or `allow_generated=True`) and otherwise raises for every kind, `resolve_music` returns
+  None when no licensed file is cached (None fails the build). Without the package it uses local
   test audio marked provenance source `local-test`: generated tones per SFX kind and `audio_chain.bgm_path` as music.
 - Sound sourcing (`video_engine/sound/`, docs/SOUND.md): content-addressed cache `<cache>/sound/` with provenance
   sidecars; the build calls `sound.request.ensure_sounds` before `mixer.plan`. Missing files (with `[audio]
-  require_source`: every SFX kind and the music brief not cached from that source; without it: an uncached music
-  brief) = request bundle `<project>/out/sound_request/` (`request.json`, `request.md`, `schema.json`, `files/`),
+  require_source`: every SFX kind and the music brief not cached from that source; without it, when generated tones
+  are off: every SFX kind with no cached epidemic file, plus an uncached music brief; with tones allowed: an uncached
+  music brief only) = request bundle `<project>/out/sound_request/` (`request.json`, `request.md`, `schema.json`, `files/`),
   exit code 3; the agent answers through the Epidemic Sound connector and writes `response.json`; `engine build
-  --resume` validates and imports it, removes the bundle and continues. After the plan the build appends one credit
+  --resume` validates and imports it, removes the bundle and continues. After the plan, proxy and delivery append one credit
   line per Epidemic Sound file to `credits.txt` under `Audio (Epidemic Sound)`:
   `- <id> — <artist> — "<title>" — https://www.epidemicsound.com — Epidemic Sound licence`.
 - A02 (delivery, `[audio] require_source`): when set, checks that every music and SFX file of the final mix has the
@@ -401,7 +403,9 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   unpinned colours (teal, umber, wine, mauve, jade, olive, in that order) go to every other entity.
 - Camera drift: a constant ln zoom rate `camera_drift_per_s` (geoverum 0.06 ln / s, above the P01 `still_zoom_ln_s`
   0.05) for the whole wait, zooming about `pulse_anchor` (frame centre without pulses). Camera key `drift_max` (ln
-  zoom, 0.01-2) bounds a wait's drift: it turns at 0 and the bound. The layout planner sets it on each wait whose
+  zoom, 0.01-2) bounds a wait's drift: it turns at 0 and the bound. Camera key `fit` (alias `keep_in_frame`, pin
+  labels or indexes) scales that wait's push-in and pulses down so each named pin stays inside the safe area, inset
+  by 24 px at the reference canvas, for every frame of the wait. The layout planner sets `drift_max` on each wait whose
   drift frames break a per-frame layout rule that the camera held on the wait's first view does not (0.7 of the
   offending offset, floor 0.03). Whip and pulse legs carry the drift rate at both ends and never reverse inside a leg.
 - R64 (pre-flight DOM layer, every probed sample time in each element's interval at opacity >= 0.9): measures the

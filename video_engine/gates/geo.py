@@ -1,10 +1,13 @@
 """G02 geo/fact gate: region polygons are sane and closed, beat pins lie inside their beat's region, a pin label
 never names a different region than the one it sits in, and (when the geo library is present) a geographic pin is on
 land. The land check needs the Natural Earth `land` GeoJSON of the geo library (config.GEO_LIBRARY, default
-<workspace>/geo-library); without it that part skips."""
+<workspace>/geo-library); without it that part skips. The finest file present is used (10m, then 50m, then 110m).
+A pin within `[gates.geo] coast_km` of a land edge counts as on land, so a coastal city on a coarse outline passes
+while a point clearly offshore still fails."""
 from __future__ import annotations
 
 import json
+import math
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -112,30 +115,83 @@ def _land(path: str, mtime: float) -> tuple:
     return tuple(rings)
 
 
+# Finest outline first. 10m keeps small coastal islands (Sabang / Weh) that 110m drops and follows the shore
+# closely enough that a city such as Kupang or Darwin sits on land or within coast_km of it.
+_LAND_FILES = ("ne_10m_land.geojson", "ne_50m_land.geojson", "ne_110m_land.geojson")
+_EARTH_KM = 6371.0088
+
+
 def _land_file() -> Path | None:
     root = Path(os.environ.get("VIDEO_ENGINE_GEO_LIBRARY", config.GEO_LIBRARY))
     base = root / "natural-earth" / "natural-earth-vector" / "geojson"
-    for name in ("ne_50m_land.geojson", "ne_10m_land.geojson", "ne_110m_land.geojson"):
+    for name in _LAND_FILES:
         if (base / name).is_file():
             return base / name
     return None
 
 
-def on_land(lat: float, lng: float) -> bool | None:
-    """True/False for a lat/lng against the geo library land polygons; None when the library is absent."""
+def _km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = math.radians(lat2 - lat1), math.radians(lng2 - lng1)
+    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * _EARTH_KM * math.asin(min(1.0, math.sqrt(h)))
+
+
+def _seg_km(lat: float, lng: float, a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Distance in km from (lat, lng) to the segment a-b. a and b are (lng, lat)."""
+    lat0 = math.radians(lat)
+    scale = math.cos(lat0) or 1e-6
+
+    def xy(lng_, lat_):
+        return lng_ * scale, lat_
+
+    px, py = xy(lng, lat)
+    ax, ay = xy(a[0], a[1])
+    bx, by = xy(b[0], b[1])
+    dx, dy = bx - ax, by - ay
+    span = dx * dx + dy * dy
+    t = 0.0 if span <= 0 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / span))
+    return _km(lat, lng, ay + t * dy, (ax + t * dx) / scale)
+
+
+def _near_land(lat: float, lng: float, rings, coast_km: float) -> bool:
+    """True when some land edge is within coast_km. Rings whose bbox cannot reach the point are skipped."""
+    if coast_km <= 0:
+        return False
+    pad = coast_km / 111.0 + 1e-4
+    for ring, (x0, y0, x1, y1) in rings:
+        if lng < x0 - pad or lng > x1 + pad or lat < y0 - pad or lat > y1 + pad:
+            continue
+        n = len(ring)
+        closed = n > 1 and ring[0] == ring[-1]
+        steps = n - 1 if closed else n
+        for i in range(steps):
+            if _seg_km(lat, lng, ring[i], ring[(i + 1) % n]) <= coast_km:
+                return True
+    return False
+
+
+def on_land(lat: float, lng: float, coast_km: float = 0.0) -> bool | None:
+    """True/False for a lat/lng against the geo library land polygons; None when the library is absent.
+
+    `coast_km` > 0 also accepts a point that far from the nearest land edge (a coastal city on a generalised
+    shoreline). 0 is the polygon interior only."""
     p = _land_file()
     if p is None:
         return None
     rings = _land(str(p), p.stat().st_mtime)
-    return any(b[0] <= lng <= b[2] and b[1] <= lat <= b[3] and point_in_poly(lng, lat, r) for r, b in rings)
+    inside = any(b[0] <= lng <= b[2] and b[1] <= lat <= b[3] and point_in_poly(lng, lat, r) for r, b in rings)
+    return True if inside else _near_land(lat, lng, rings, coast_km)
 
 
 def run(tl: Timeline, require_land: bool | None = None) -> list[Finding]:
     """G02 findings for every map scene (polygon sanity, pins in their beat region, labels not naming another region,
     geographic pins on land). `require_land` None = profile [gates.geo] value, default warn-only."""
     from .. import profiles
+    from ..profile_schema import COAST_KM
     g = profiles.of(tl).gates.geo
     need_land = bool(g.require_land) if (g is not None and require_land is None) else bool(require_land)
+    coast = float(g.coast_km) if g is not None else COAST_KM
     out: list[Finding] = []
     for s in tl.segments:
         sc = s.gsap_scene_config
@@ -172,7 +228,7 @@ def run(tl: Timeline, require_land: bool | None = None) -> list[Finding]:
                                                       f"it", s.seg_index))
             if ll is None or _water(pin.label):
                 continue
-            land = on_land(*ll)
+            land = on_land(*ll, coast)
             if land is False:
                 lv = "fail" if need_land else "warn"
                 out.append(Finding("G02", lv, f"pin '{pin.label}' at {ll[0]:.3f}, {ll[1]:.3f} is not on land "

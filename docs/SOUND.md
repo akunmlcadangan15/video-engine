@@ -16,11 +16,16 @@ no network calls and holds no keys; an agent fills the cache through a file hand
 
 | Value | Resolver | Gate A02 |
 |---|---|---|
-| absent | SFX: cached Epidemic Sound file, else cached local-test file, else the generated local-test tone. Music for a brief: cached Epidemic Sound file, else cached local-test file | skip |
-| `"epidemic"` | SFX: cached Epidemic Sound file, else the generated local-test tone. Music for a brief: cached Epidemic Sound file | fail on any non-Epidemic file |
+| absent | SFX: cached Epidemic Sound file, else (only when `VIDEO_ENGINE_LOCAL_TONES=1`) a cached local-test file or the generated local-test tone. Music for a brief: cached Epidemic Sound file, else a cached local-test file when tones are allowed | skip |
+| `"epidemic"` | SFX: cached Epidemic Sound file, else a generated tone only when `VIDEO_ENGINE_LOCAL_TONES=1`. Music for a brief: cached Epidemic Sound file | fail on any non-Epidemic file |
 
 Music without `audio_chain.music_brief` comes from `audio_chain.bgm_path`. A brief with no cached file is an
 `EngineError` in the mixer; `ensure_sounds` runs first.
+
+A generated local-test tone is not a licensed file. `cache.resolve` raises `EngineError` for every SFX kind
+(`riser` and `rumble` included) when nothing licensed is cached, unless `VIDEO_ENGINE_LOCAL_TONES=1` or the caller
+passes `allow_generated=True`. In that real-build path `cache.missing` lists each such kind so `ensure_sounds` can
+request it from the configured source (`require_source`, otherwise `epidemic`) before the mix is planned.
 
 A `bgm_path` file is Epidemic Sound when a sidecar or a sound lock says so and the hash matches. See
 [Path-supplied Epidemic music](#path-supplied-epidemic-music). Otherwise the mix marks it `local-test`.
@@ -91,17 +96,21 @@ ResolvedSound | None`, `ResolvedSound(path, provenance)`, `missing(tl, profile)`
 `video_engine.sound.request.ensure_sounds(tl, project_dir, resume=False, resume_cmd=None)`:
 
 - Missing items (`cache.missing`), only with a profile `[sound]`: with `require_source`, every SFX kind of the
-  timeline and the music brief without a cached file from that source; without it, the music brief when no source
-  has a file for it. Requested source: `require_source`, else `epidemic`.
+  timeline and the music brief without a cached file from that source. Without `require_source`, and with generated
+  tones allowed, the music brief when no source has a file for it (SFX use a local-test tone). Without generated
+  tones, every SFX kind with no cached file from `epidemic` (riser and rumble included) plus that music brief.
+  Requested source: `require_source`, else `epidemic`.
 - Nothing missing: returns `[]`.
 - Missing items and no answer: writes `<project>/out/sound_request/` and raises `AwaitingAgent` (exit code 3).
 - `resume=True` without `response.json`: `EngineError`.
 - Valid `response.json` for the current request: imports every file into the cache, removes the bundle, returns
   the imported `ResolvedSound`s.
 
-Build: `engine build P` calls `ensure_sounds` after pre-flight and before the mix plan (exit 3 with the bundle);
-`engine build P --resume` (no `--ai-qa` needed) imports the answer and continues. After the mix plan the build
-appends the credit lines of every mixed Epidemic Sound file to `credits.txt`; A02 runs on the final mix.
+Build: `engine build P` calls `ensure_sounds` after pre-flight and before the mix plan (exit 3 with the bundle).
+A proxy build does not import a sound handoff; it still requires the files to be cached already. `engine build P
+--resume` (no `--ai-qa` needed) imports the answer and continues. After the mix plan, both proxy and delivery append
+the credit lines of every Epidemic Sound file in the mix to `credits.txt`. A path-supplied bed with no mix is
+included when its sidecar or sound lock proves the same licence. A02 runs on the final mix.
 
 Sound-only CLI: `python -m video_engine.sound PROJECT [--resume] [--credits]` runs `ensure_sounds`, prints the resolved files,
 and with `--credits` appends credit lines to `<project>/credits.txt`. Exit codes: 0 done, 1 error, 3 waiting.
@@ -150,6 +159,10 @@ Epidemic Sound files are credited in `credits.txt` under the header `Audio (Epid
 ```
 
 `append_credits` adds the header once and skips lines already present. Local-test files have no credit line.
+Proxy and delivery both call it. A `bgm_path` whose sidecar or sound lock proves `source=epidemic`, a track id and
+the file sha256 satisfies gate R07 without a `credits_manifest` row; the build writes this same line. A row that
+names the licence must use it exactly (`Epidemic Sound licence` or `Epidemic Sound license`) and
+`source_url` `https://www.epidemicsound.com`, with `watermark_free` true, or R14 fails.
 
 ## Path-supplied Epidemic music
 
@@ -179,13 +192,16 @@ absent the credit line is the same one `append_credits` writes. Example beside `
 A claim whose `sha256` does not match the file is an error. When the sidecar and the lock both name a track
 and the ids differ, that is an error. No claim leaves the file as project audio (`local-test` in a `[sound]`
 mix, `project-file` when A02 looks at `bgm_path` directly). A verified epidemic file passes A02 when
-`require_source` is `epidemic`, the same as a cache hit.
+`require_source` is `epidemic`, the same as a cache hit. Gate R07 treats that proof as the credit (no
+`credits_manifest` row required). The build appends the credit line. A manifest row may still name
+`Epidemic Sound licence` with `source_url` `https://www.epidemicsound.com`.
 
 ## Manual cues and rumble
 
 `audio_chain.sfx` places extra cues (docs/TIMELINE.md). Kinds are `pop`, `tick`, `whoosh`, `click`, `beep`,
-`counter_tick`, `impact`, `riser`, `rumble`. `rumble` is a low tone (local test: 45 Hz, low-passed, 1.4 s;
-Epidemic search term `deep rumble`, at most 4 s). It has no default render-event mapping. A profile that maps
+`counter_tick`, `impact`, `riser`, `rumble`. The generated `rumble` test tone (45 Hz, low-passed, 1.4 s) is used
+only when `VIDEO_ENGINE_LOCAL_TONES=1`. The Epidemic search term is `deep rumble`, at most 4 s. It has no default
+render-event mapping. A profile that maps
 an event to `rumble` needs `[sound.kinds.rumble]`.
 
 ## Gate A02 (audio source)
