@@ -195,14 +195,14 @@ def _scaled_pulse(pulse: dict | None, t: float) -> dict | None:
         return None
     zoom = pulse["zoom"]
     if isinstance(zoom, list):
-        scaled = [round(v * t, 4) for v in zoom]
-        if not scaled or max(scaled) <= 1e-4:
+        sizes = [round(float(v) * t, 4) for v in zoom]
+        if not sizes or max(sizes) <= 1e-4:
             return None
-    else:
-        scaled = round(float(zoom) * t, 4)
-        if scaled <= 1e-4:
-            return None
-    return {**pulse, "zoom": scaled}
+        return {**pulse, "zoom": sizes}
+    size = round(float(zoom) * t, 4)
+    if size <= 1e-4:
+        return None
+    return {**pulse, "zoom": size}
 
 
 def fit_hold(view, points, pulse, bound, f0: int, f1: int, drift: float, W: int, H: int, mw: float, mh: float,
