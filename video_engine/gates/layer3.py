@@ -42,8 +42,7 @@ def r38_check(stats: tuple, seg: int | None, what: str, intent: SegmentIntent | 
         return out
     for k in range(3):
         if std[k] < EMPTY_STD and det[k] < EMPTY_DETAIL:
-            intentional = intent is not None and intent.negative_space
-            if intentional:
+            if intent is not None and intent.negative_space:
                 level, reason = "info", f"; intentional negative space: {intent.reason}"
             elif dark_source:
                 level, reason = "info", f"; dark source (source mean luma {source_mean:.0f})"

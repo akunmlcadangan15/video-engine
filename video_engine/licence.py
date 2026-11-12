@@ -4,9 +4,15 @@ import re
 LICENCE_ALLOW = {
     "publicdomain", "pd", "cc0", "cc010", "ccby", "ccby20", "ccby25", "ccby30", "ccby40", "ccbysa", "ccbysa20",
     "ccbysa25", "ccbysa30", "ccbysa40", "pexelslicense", "pexels", "pixabaylicense", "pixabay", "unsplashlicense",
-    "unsplash", "mixkitlicense", "mixkit", "mit", "own", "generated",
+    "unsplash", "mixkitlicense", "mixkit", "mit", "own", "generated", "epidemicsoundlicence", "epidemicsoundlicense",
 }
 OWN_LICENCES = {"own", "generated"}
+# The credit line written for an Epidemic Sound file ends with this phrase and this URL. British and American
+# spellings of "licence" both normalise onto the allowlist; any other wording does not.
+EPIDEMIC_LICENCE = "Epidemic Sound licence"
+EPIDEMIC_URL = "https://www.epidemicsound.com"
+_EPIDEMIC_NORMS = {"epidemicsoundlicence", "epidemicsoundlicense"}
+_EPIDEMIC_URLS = {EPIDEMIC_URL, "https://epidemicsound.com"}
 
 # Spelling variants of the allowed Creative Commons licences after norm_licence: CC BY / CC BY-SA with a version and
 # an optional edition or jurisdiction port ("CC BY 4.0 International", "CC BY-SA 3.0 IGO", "CC BY 3.0 DE") and CC0
@@ -20,9 +26,19 @@ def norm_licence(value: str) -> str:
     return re.sub(r"[\s_.\-]", "", value.lower())
 
 
+def epidemic_licence(value: str) -> bool:
+    """True only for the Epidemic Sound credit phrase (licence or license)."""
+    return norm_licence(value) in _EPIDEMIC_NORMS
+
+
+def epidemic_url(value: str) -> bool:
+    """True when `value` is the Epidemic Sound site URL, with or without a trailing slash."""
+    return value.strip().rstrip("/") in _EPIDEMIC_URLS
+
+
 def licence_allowed(value: str) -> bool:
     """True for an allow-listed licence or a spelling variant of CC0, CC BY or CC BY-SA; false for every CC
-    NonCommercial / NoDerivatives licence and anything unknown."""
+    NonCommercial / NoDerivatives licence and anything unknown. Epidemic Sound is the credit phrase only."""
     n = norm_licence(value)
     if n in LICENCE_ALLOW or _CC_ZERO.match(n):
         return True

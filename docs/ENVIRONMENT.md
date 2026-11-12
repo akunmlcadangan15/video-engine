@@ -93,7 +93,7 @@ Tests: `pytest -q tests/test_wrapper_scripts.py` (uses a stub `engine`).
 | `VIDEO_ENGINE_RUST_THREADS` | THREADS-2 | Rust rayon pool size (`core.set_threads`, set once at import) |
 | `VIDEO_ENGINE_SHM` | Linux: `/dev/shm/video_engine`; macOS: `$TMPDIR/video_engine` | scratch root; every build, preflight, preview, draft and director run uses its own dir `<project_id>-<pid>-<random>` under it (strictly inside, symlinks resolved) and deletes only that dir |
 | `VIDEO_ENGINE_CACHE` | `<repo>/.cache` | BLAKE3 content-addressed cache (words, segments, map renders) |
-| `VIDEO_ENGINE_CACHE_MAX_MB` | 4096 | cache size limit (LRU prune) |
+| `VIDEO_ENGINE_CACHE_MAX_MB` | 4096 | cache size limit (LRU prune). Sound files pinned by a project lock are not deleted to meet it (docs/SOUND.md). |
 | `VIDEO_ENGINE_HF_WORKERS` | `workers // 4` | HyperFrames capture workers (overrides the budget's `hf_workers`) |
 | `VIDEO_ENGINE_WORKERS` | unset | build worker budget (overrides profile `[resources] workers`; see [Resources](BUILD.md#resources)) |
 | `VIDEO_ENGINE_TASTE_DIR` | `<profiles>/taste` | director taste store directory |
@@ -104,7 +104,8 @@ Tests: `pytest -q tests/test_wrapper_scripts.py` (uses a stub `engine`).
 | `VIDEO_ENGINE_AI_CONFIG` | `<repo>/ai_providers.toml` | AI provider registry file |
 | `VIDEO_ENGINE_PROFILES` | `<repo>/profiles` | channel profile directory |
 | `VIDEO_ENGINE_WORKSPACE` | `<user-data>/video-engine` (Linux: `$XDG_DATA_HOME` or `~/.local/share`; macOS: `~/Library/Application Support`; Windows: `%LOCALAPPDATA%`) | folder that holds the shared libraries; the defaults of the four variables below sit in it. Machine-specific paths go in a local `engine.env`, not in the default. |
-| `VIDEO_ENGINE_GEO_LIBRARY` | `<workspace>/geo-library` | Natural Earth `land` GeoJSON for gate G02 (absent: the land check skips) |
+| `VIDEO_ENGINE_GEO_LIBRARY` | `<workspace>/geo-library` | Natural Earth `land` GeoJSON for gate G02 (absent: the land check skips). The finest file present is used: `ne_10m_land.geojson`, then `ne_50m`, then `ne_110m` |
+| `VIDEO_ENGINE_LOCAL_TONES` | unset | `1` allows generated local-test SFX tones when the sound cache has no licensed file. Unset: that kind is an error (the build requests the file instead) |
 | `VIDEO_ENGINE_OPEN_ASSETS` | `<workspace>/open-assets` | `open-assets/catalog.csv` and the files it lists |
 | `VIDEO_ENGINE_STOCK_DIRS` | `<workspace>/asset-cache` | stock and B-roll roots, separated by the platform path separator (`:` on Unix, `;` on Windows) |
 | `VIDEO_ENGINE_DOWNLOAD_DIR` | `<workspace>/downloads` | folder searched for assets downloaded earlier (asset resolver) |

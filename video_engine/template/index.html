@@ -11,7 +11,7 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:__W__px;height:__H__px;overflow:hidden;background:#0b1118}
 #root{position:relative;width:__W__px;height:__H__px;overflow:hidden;background:#0b1118;font-family:EngInter,sans-serif;--pin:#ffd84a}
-#cam{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+#cam{position:absolute;left:0;top:0;transform-origin:0 0}
 #cam>img,#base>img{position:absolute;left:0;top:0;display:block}
 #shade{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,rgba(5,10,16,0) 45%,rgba(5,10,16,.55) 100%),linear-gradient(180deg,rgba(5,10,16,.45) 0%,rgba(5,10,16,0) 22%,rgba(5,10,16,0) 78%,rgba(5,10,16,.4) 100%)}
 .pin{position:absolute;width:0;height:0;visibility:hidden}
@@ -150,11 +150,12 @@ if(S.morph){const M=S.morph, mo=mapBox(), tone=mapBox(), im=document.createEleme
   if(M.at_frame)fade(0,1,M.at_frame);if(M.back_at_frame!==null)fade(1,0,M.back_at_frame);}
 // camera: legs of transforms computed by the engine (same math as the R56 gate); each leg tweens from the previous one
 const C=S.camera;
-// tilted camera: #cam, the map and its deep tiles must not be composited layers of their own. Under #tilt's perspective
-// Chrome cannot read a 2D scale off a layer's screen transform and rasterizes it at scale 1, so a layer zoomed 5x
-// showed map, regions, flags and labels 5x upscaled (blocky edges). Painted into #tilt's layer instead (no
-// will-change, no translate3d: force3D false), they are drawn at the camera scale and only #tilt's own magnification
-// (camera3d.max_mag, at most about 1.4) is left to the compositor.
+// #cam is not a composited layer. A promoted transform is resampled differently when the CPU is busy, so two
+// captures of the same camera are not the same pixels. Tilted camera: the map and its deep tiles must not be
+// composited layers either. Under #tilt's perspective Chrome cannot read a 2D scale off a layer's screen transform
+// and rasterizes it at scale 1, so a layer zoomed 5x showed map, regions, flags and labels 5x upscaled (blocky
+// edges). Painted into #tilt's layer instead (no will-change, no translate3d: force3D false), they are drawn at the
+// camera scale and only #tilt's own magnification (camera3d.max_mag, at most about 1.4) is left to the compositor.
 const F3=C.tilt?{force3D:false}:{};
 if(C.tilt){cam.style.willChange='auto';cam.setAttribute('data-flat-raster','');
   document.querySelectorAll('#map,#map>img,[data-deep]').forEach(e=>{e.style.willChange='auto';});}
@@ -671,8 +672,9 @@ const figText=(F,v)=>{
   if(c.box){boxify(el,c.box);el.style.transform='none';gsap.set(el,{xPercent:-50});pop(el,t0);}
   else tl.fromTo(el,{opacity:0,y:-30},{opacity:1,y:0,duration:0.45,ease:'power3.out'},t0);
 });
-// thermometers (components.py): one value v tweened from min to value drives the fill height, the fill colour
-// (linear RGB mix low -> high) and the number together
+// thermometers (components.py): one value v tweened from T.from (min when the timeline sets neither `from`
+// nor a previous value) to value drives the fill height, the fill colour (linear RGB mix low -> high) and the
+// number together. T.from is computed in Python, so the frames do not depend on render order.
 const mix=(a,b,k)=>'#'+[1,3,5].map(i=>Math.round(parseInt(a.slice(i,i+2),16)+(parseInt(b.slice(i,i+2),16)-parseInt(a.slice(i,i+2),16))*k).toString(16).padStart(2,'0')).join('');
 (S.thermometers||[]).forEach((T,i)=>{
   const el=document.createElement('div');el.className='thermo';el.setAttribute('data-qa','thermo:'+i);
@@ -696,13 +698,13 @@ const mix=(a,b,k)=>'#'+[1,3,5].map(i=>Math.round(parseInt(a.slice(i,i+2),16)+(pa
   if(T.label){const l=document.createElement('div');l.textContent=T.label;l.style.cssText='font-weight:700;font-size:'+(0.085*T.h)+'px';cap.appendChild(l);}
   if(T.note){const n=document.createElement('div');n.textContent=T.note;n.style.cssText='font-size:'+(0.06*T.h)+'px;opacity:.85';cap.appendChild(n);}
   el.appendChild(cap);ui.appendChild(el);
-  const F={kind:'number',prefix:'',suffix:T.unit,decimals:T.decimals}, pr={v:T.min},
+  const F={kind:'number',prefix:'',suffix:T.unit,decimals:T.decimals}, v0=(T.from===undefined||T.from===null)?T.min:T.from, pr={v:v0},
     show=()=>{const k=(pr.v-T.min)/(T.max-T.min), c=mix(T.low,T.high,k);
       fill.style.height=(k*100)+'%';fill.style.background=c;bulb.style.background=c;num.textContent=figText(F,pr.v);};
   show();const t0=f2t(T.at_frame);
   tl.set(el,{visibility:'visible'},t0);
   tl.fromTo(el,{opacity:0},{opacity:1,duration:0.3,ease:'none',immediateRender:true},t0);
-  tl.fromTo(pr,{v:T.min},{v:T.value,duration:T.fill_s,ease:MO.entrance,onUpdate:show,immediateRender:true},t0+0.2);
+  tl.fromTo(pr,{v:v0},{v:T.value,duration:T.fill_s,ease:MO.entrance,onUpdate:show,immediateRender:true},t0+0.2);
   if(T.out_frame!==null)tl.to(el,{opacity:0,duration:0.4,ease:MO.exit},f2t(T.out_frame));
 });
 // flows (components.py): dashed streams moving toward each path's end at speed_px screen px per second of render
@@ -964,6 +966,7 @@ const ghosts=[];
   if(A){A.el(el,'heading:'+h.key,LG.halo_width_em);if(!paper)A.shadow(el,[2,6,P.heading_shadow_alpha]);}
   const sp=LY.els['heading:'+h.key]||[], d=P.diamond_px, g=P.rule_gap;
   fades(el,sp);if(paper)BLEND.push([el,el]);
+  if(h.ornaments===false||!(h.rules&&h.rules.length))return;
   h.rules.forEach(([x0,x1],j)=>{const ln=document.createElement('div'), inner=j===0?x1:x0;
     ln.style.cssText='position:absolute;left:'+x0+'px;top:'+(h.rule_y-P.rule_px/2)+'px;width:'+(x1-x0)+'px;height:'+P.rule_px+
       'px;transform-origin:'+(j===0?'100%':'0%')+' 50%';

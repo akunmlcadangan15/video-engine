@@ -35,6 +35,7 @@ def element_events(s: Segment, fps: int) -> list[tuple[int, str]]:
     out = []
     if s.engine_type == HYPERFRAMES:
         sc = s.gsap_scene_config
+        assert sc is not None
         out += [(s.start_frame + hyperframes.pin_frame(p, i, s.n_frames, fps), p.label) for i, p in enumerate(sc.pins)]
         out += [(s.start_frame + hyperframes.card_frame(c, s.n_frames, fps), " ".join(filter(None, [c.title, c.subtitle])))
                 for c in sc.cards]
@@ -94,12 +95,15 @@ def h01_hook(tl: Timeline, project_dir: Path, words: list[CaptionWord] | None, g
     else:
         out.append(Finding("H01", "skip", "no captions yet: first caption not checked"))
     s0 = tl.segments[0]
-    if g.open_on_moving_map and (s0.engine_type != HYPERFRAMES or (not s0.gsap_scene_config.camera_path
-                                                                     and not s0.gsap_scene_config.globe
-                                                                     and not s0.gsap_scene_config.camera3d
-                                                                     and s0.gsap_scene_config.camera_preset == "static")):
-        out.append(Finding("H01", "fail", "frame 0 must be a moving map (HyperFrames segment with a camera_path, "
-                                          "globe, camera3d, or a camera preset other than static)", 0))
+    if g.open_on_moving_map:
+        sc0 = s0.gsap_scene_config
+        static = s0.engine_type != HYPERFRAMES
+        if not static:
+            assert sc0 is not None
+            static = (not sc0.camera_path and not sc0.globe and not sc0.camera3d and sc0.camera_preset == "static")
+        if static:
+            out.append(Finding("H01", "fail", "frame 0 must be a moving map (HyperFrames segment with a camera_path, "
+                                              "globe, camera3d, or a camera preset other than static)", 0))
     ev = [f for s in tl.segments for f, _ in element_events(s, fps)]
     if ev:
         grade("first graphic", min(ev) / fps, g.graphic_warn_s, g.graphic_fail_s)
@@ -136,6 +140,11 @@ def transition_findings(tl: Timeline) -> list[Finding]:
     return [Finding("C01", "fail", f"transition into segment {i}: {m}", i) for i, m in transitions.fit_problems(tl)]
 
 
+def _is_file(root: Path, name: str | None) -> bool:
+    assert name is not None
+    return (root / name).is_file()
+
+
 def motion_frames(tl: Timeline, project_dir: Path) -> list[tuple[float, float] | None]:
     """Per output frame: (|zoom speed| ln scale / s, 2D frame-centre speed in frame widths / s) of the planned camera,
     or None where the camera is not planned (native footage without camera_move). Transition frames are (inf, inf)."""
@@ -149,19 +158,21 @@ def motion_frames(tl: Timeline, project_dir: Path) -> list[tuple[float, float] |
     for s in tl.segments:
         n = s.n_frames
         if s.engine_type == HYPERFRAMES:
-            if not (project_dir / s.gsap_scene_config.map_asset).is_file():
+            sc = s.gsap_scene_config
+            assert sc is not None
+            if not (project_dir / sc.map_asset).is_file():
                 continue
-            if s.gsap_scene_config.globe:
+            if sc.globe:
                 from .. import globe
                 G = hyperframes.scene_data(s, tl, project_dir)["globe"]
                 for f, m in enumerate(globe.motion(G, n, fps, W, H)):
                     out[s.start_frame + f] = m
                 continue
-            if s.gsap_scene_config.camera3d:
+            if sc.camera3d:
                 from .. import camera_full3d, maps
-                iw, ih = maps.map_image_size(project_dir / s.gsap_scene_config.map_asset)
+                iw, ih = maps.map_image_size(project_dir / sc.map_asset)
                 cover = max(W / iw, H / ih)
-                states = camera_full3d.frames(s.gsap_scene_config.camera3d, n, iw * cover, ih * cover)
+                states = camera_full3d.frames(sc.camera3d, n, iw * cover, ih * cover)
                 for f, m in enumerate(camera_full3d.motion(states, W, H, fps)):
                     out[s.start_frame + f] = m
                 continue
@@ -174,7 +185,7 @@ def motion_frames(tl: Timeline, project_dir: Path) -> list[tuple[float, float] |
                 pan = math.hypot(xb - xa, yb - ya) * (sa + sb) / 2 * fps / W
                 out[s.start_frame + f] = (abs(math.log(sb / sa)) * fps,
                                           max(pan, abs(math.radians(tb - ta)) * fps * H / 2 / W))
-        elif s.camera_move is not None and (project_dir / s.source).is_file():
+        elif s.camera_move is not None and _is_file(project_dir, s.source):
             job = native.plan(s, tl, project_dir)
             wins = list(core.camera_windows(job.start_win, job.end_win, n))
             wins.append(wins[-1])
@@ -289,11 +300,16 @@ def v01_visual_type(tl: Timeline) -> list[Finding]:
     for a, b in zip(tl.segments, tl.segments[1:]):
         if a.kind != b.kind:
             continue
-        same_map = (a.engine_type == HYPERFRAMES and b.engine_type == HYPERFRAMES
-                    and a.gsap_scene_config.map_asset == b.gsap_scene_config.map_asset)
+        sca, scb = a.gsap_scene_config, b.gsap_scene_config
+        if a.engine_type == HYPERFRAMES and b.engine_type == HYPERFRAMES:
+            assert sca is not None and scb is not None
+            same_map = sca.map_asset == scb.map_asset
+        else:
+            same_map = False
         if same_map:
+            assert sca is not None
             out.append(Finding("V01", "fail", f"{_change(tl, b)} between two segments of the same map "
-                                              f"{a.gsap_scene_config.map_asset}: one map segment moves the camera", b.seg_index))
+                                              f"{sca.map_asset}: one map segment moves the camera", b.seg_index))
         else:
             out.append(Finding("V01", "warn", f"{_change(tl, b)} joins two '{a.kind}' segments; change shots only "
                                               "where the visual type changes (set visual_type when the inference is "

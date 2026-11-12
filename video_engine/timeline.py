@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 import hypoverum_core_rs as core
 
@@ -67,8 +67,8 @@ class CaptionFix(Strict):
         return self
 
 
-SFX_KINDS = ("pop", "tick", "whoosh", "click", "beep", "counter_tick", "impact", "riser")
-SfxKind = Literal["pop", "tick", "whoosh", "click", "beep", "counter_tick", "impact", "riser"]
+SFX_KINDS = ("pop", "tick", "whoosh", "click", "beep", "counter_tick", "impact", "riser", "rumble")
+SfxKind = Literal["pop", "tick", "whoosh", "click", "beep", "counter_tick", "impact", "riser", "rumble"]
 
 
 class SfxCue(Strict):
@@ -76,13 +76,52 @@ class SfxCue(Strict):
     at `time_s` (absolute seconds) at `gain_db`. `trim_s` is cut from the file start (cue placed before 0 s);
     the cue stops at `max_s` with a short fade."""
     time_s: float = Field(ge=0)
-    kind: SfxKind
+    kind: str = Field(min_length=1, max_length=32)   # an SFX_KINDS id, or "file" for a path cue
     gain_db: float = Field(ge=-60, le=0)
     asset_id: str = Field(min_length=1)   # source asset id of the resolved file (provenance `id`)
     event: str                            # render event: pin, region, route, whip, label, title, figure, counter_tick
     frame: int = Field(ge=0)              # absolute frame of the render event
     trim_s: float = Field(0.0, ge=0)
     max_s: float = Field(2.0, gt=0, le=10)
+
+    @model_validator(mode="after")
+    def _kind(self):
+        if self.kind not in (*SFX_KINDS, "file"):
+            raise ValueError(f"sfx kind '{self.kind}' unknown (known: {', '.join(SFX_KINDS)}, file)")
+        return self
+
+
+class ManualSfx(Strict):
+    """A cue placed by the timeline, not by a render event.
+
+    Exactly one of `kind` (an SFX taxonomy id, resolved like an automatic cue) or `asset` (a project-relative
+    audio file). Exactly one of `at_frame` (absolute frame) or `time_s` (absolute seconds). `gain_db` is the
+    cue's own level. `id` is the mix asset id (default: the kind, or the file stem). `max_s` caps the cue
+    (default: the profile kind cap when `kind` is set and the profile defines it, else 2 s)."""
+    kind: Optional[SfxKind] = None
+    asset: Optional[str] = None
+    id: Optional[str] = Field(None, min_length=1, max_length=80)
+    at_frame: Optional[int] = Field(None, ge=0)
+    time_s: Optional[float] = Field(None, ge=0)
+    gain_db: float = Field(-12.0, ge=-60, le=0)
+    max_s: Optional[float] = Field(None, gt=0, le=10)
+
+    @model_validator(mode="after")
+    def _one(self):
+        if (self.kind is None) == (self.asset is None):
+            raise ValueError("sfx cue needs exactly one of kind or asset")
+        if (self.at_frame is None) == (self.time_s is None):
+            raise ValueError("sfx cue needs exactly one of at_frame or time_s")
+        return self
+
+    def frame(self, fps: int) -> int:
+        if self.at_frame is not None:
+            return self.at_frame
+        assert self.time_s is not None
+        return sec_to_frame(self.time_s, fps)
+
+    def seconds(self, fps: int) -> float:
+        return round(self.time_s if self.time_s is not None else self.frame(fps) / fps, 4)
 
 
 class MusicBrief(Strict):
@@ -102,7 +141,7 @@ class MusicBrief(Strict):
 
 class Stt(Strict):
     """xAI Grok Voice Transcribe settings: model id and optional keyterms (at most 100, each at most 50 chars)."""
-    model: str = STT_DEFAULTS["model"]
+    model: str = str(STT_DEFAULTS["model"])
     keyterms: list[str] = []
 
     @model_validator(mode="after")
@@ -129,6 +168,7 @@ class AudioChain(Strict):
     stt: Stt = Stt()
     auto_captions: bool = True
     caption_fixes: list[CaptionFix] = []
+    sfx: list[ManualSfx] = []   # timeline-placed cues (kind or asset, time, gain); mixed with automatic cues
 
     @model_validator(mode="before")
     @classmethod
@@ -407,6 +447,11 @@ class CameraKey(Strict):
     drift_max: Optional[float] = Field(None, ge=0.01, le=2.0)   # ln zoom bound of the drift while the camera waits
                                                                 # on this view: it turns at 0 and drift_max (None =
                                                                 # pushes in for the whole wait)
+    fit: Optional[list] = Field(None, validation_alias=AliasChoices("fit", "keep_in_frame"))
+                                                  # pin labels or indexes that must stay inside the safe area (with
+                                                  # margin) for the whole hold on this view; the push-in and pulses
+                                                  # of that hold are limited so they do. `keep_in_frame` is the same
+                                                  # field. Empty is rejected. Does not reframe the key itself.
     tilt: float = Field(0.0, ge=0.0, le=TILT_MAX)   # perspective tilt (deg) of the map plane at this view (camera3d)
     roll: float = Field(0.0, ge=-ROLL_MAX, le=ROLL_MAX, exclude_if=lambda v: v == 0.0)   # 2D roll (deg, clockwise)
                                                     # of the map about the frame centre; the map is scaled by the
@@ -422,6 +467,17 @@ class CameraKey(Strict):
         sizes = self.pulse if isinstance(self.pulse, list) else [] if self.pulse is None else [self.pulse]
         if (isinstance(self.pulse, list) and not sizes) or not all(0.0 <= v <= 1.0 for v in sizes):
             raise ValueError(f"camera key at_frame {self.at_frame}: pulse {self.pulse} must be sizes within 0..1")
+        if self.fit is not None:
+            if not self.fit:
+                raise ValueError(f"camera key at_frame {self.at_frame}: fit needs at least one pin")
+            for item in self.fit:
+                if isinstance(item, bool) or not isinstance(item, (str, int)):
+                    raise ValueError(f"camera key at_frame {self.at_frame}: fit entries are pin labels or indexes, "
+                                     f"not {item!r}")
+                if isinstance(item, str) and not item.strip():
+                    raise ValueError(f"camera key at_frame {self.at_frame}: fit label is blank")
+                if isinstance(item, int) and item < 0:
+                    raise ValueError(f"camera key at_frame {self.at_frame}: fit index {item} is negative")
         return self
 
 
@@ -866,11 +922,16 @@ class Particle(Strict):
 
 class Thermometer(Strict):
     """Screen thermometer (components.py): one source `value` drives the fill height, the fill colour (colour_low at
-    `min` to colour_high at `max`) and the counter text together, rising from `min` over `fill_s` from `at_frame`.
+    `min` to colour_high at `max`) and the counter text together. The fill rises over `fill_s` from `at_frame`,
+    starting at `from` when that is set, otherwise at the previous thermometer's `value` when `continue_from` is
+    set, otherwise at `min`. The start is fixed from the timeline, so the same scene always draws the same frames.
     `note` is shown under the label: give "ilustratif" (or the source) whenever the value is not a sourced reading."""
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
     value: float
     min: float = 0.0
     max: float = 50.0
+    from_value: Optional[float] = Field(None, alias="from", exclude_if=lambda v: v is None)
+    continue_from: bool = Field(False, exclude_if=lambda v: v is False)
     unit: str = Field("°C", max_length=6)
     decimals: int = Field(0, ge=0, le=2)
     label: Optional[str] = Field(None, min_length=1, max_length=24)
@@ -889,6 +950,8 @@ class Thermometer(Strict):
             raise ValueError(f"thermometer: min {self.min} must be < max {self.max}")
         if not self.min <= self.value <= self.max:
             raise ValueError(f"thermometer: value {self.value} must be within {self.min}..{self.max}")
+        if self.from_value is not None and not self.min <= self.from_value <= self.max:
+            raise ValueError(f"thermometer: from {self.from_value} must be within {self.min}..{self.max}")
         if not all(0.0 <= v <= 1.0 for v in self.position):
             raise ValueError(f"thermometer: position {self.position} must be within 0..1")
         if self.out_frame is not None and self.out_frame <= self.at_frame:
@@ -970,6 +1033,7 @@ class GsapScene(Strict):
     geoid: Optional[Geoid] = None                   # exaggerated coloured Earth on a globe scene (P18)
     particles: Optional[list[Particle]] = None      # deterministic fireworks / fire accents (P19)
     thermometers: Optional[list[Thermometer]] = Field(None, max_length=3)   # screen thermometers (components.py)
+    heading_ornaments: Optional[bool] = Field(None, exclude_if=lambda v: v is None)   # None = profile [print]
     flows: Optional[list[Flow]] = Field(None, max_length=8)    # moving dashed streams on the map (components.py)
     flow_legend: Literal["top", "bottom"] = Field("bottom", exclude_if=lambda v: v == "bottom")   # labelled flows
     split: Optional["SplitView"] = None             # two stacked viewports, each its own map and camera (top = this
@@ -1171,6 +1235,7 @@ class Overlay(Strict):
     subtitle: Optional[str] = None
     kind: Literal["reserve", "label", "text_card", "lower_third", "heading"] = "reserve"
     on: Optional[Literal["light", "photo"]] = None           # heading only: the picture tone under it
+    ornaments: Optional[bool] = Field(None, exclude_if=lambda v: v is None)   # heading: None = profile [print]
     start_frame: Optional[int] = Field(None, ge=0)          # relative to segment start; default 0
     end_frame: Optional[int] = Field(None, gt=0)            # relative, exclusive; default segment length
 
@@ -1185,6 +1250,8 @@ class Overlay(Strict):
             raise ValueError(f"overlay '{self.id}': `on` (light | photo) is required for kind 'heading' and only for it")
         if self.kind == "heading" and (self.subtitle or len(self.text or "") > 32):
             raise ValueError(f"overlay '{self.id}': a heading is one line of at most 32 characters, no subtitle")
+        if self.ornaments is not None and self.kind != "heading":
+            raise ValueError(f"overlay '{self.id}': ornaments applies to kind 'heading' only")
         if self.start_frame is not None and self.end_frame is not None and self.end_frame <= self.start_frame:
             raise ValueError(f"overlay '{self.id}': end_frame {self.end_frame} must be > start_frame {self.start_frame}")
         return self
@@ -1429,6 +1496,19 @@ class Timeline(Strict):
             framing.apply(self)
         except (EngineError, ValueError) as e:
             raise ValueError(str(e)) from e
+        total = self.segments[-1].end_frame
+        for i, cue in enumerate(self.audio_chain.sfx):
+            frame = cue.frame(self.settings.fps)
+            if frame >= total:
+                raise ValueError(f"audio_chain.sfx[{i}]: frame {frame} is past the timeline ({total} frames)")
+        for s in self.segments:
+            sc = s.gsap_scene_config
+            if sc is not None and sc.thermometers:
+                from . import components
+                try:
+                    components.thermo_starts(sc.thermometers)
+                except ValueError as e:
+                    raise ValueError(f"segment {s.seg_index}: {e}") from e
         for s in self.segments:
             for i, k in enumerate((s.gsap_scene_config.camera_path or []) if s.gsap_scene_config else []):
                 if k.zoom > mz + 1e-9:

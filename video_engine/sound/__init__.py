@@ -12,6 +12,8 @@ network call for sounds and holds no key.
 """
 from __future__ import annotations
 
+import os
+
 from ..timeline import SFX_KINDS
 
 SOURCES = ("epidemic", "local-test")
@@ -28,3 +30,14 @@ __all__ = ["SFX_KINDS", "SOURCES", "EPIDEMIC", "LOCAL_TEST", "BRIEF_KEYS", "PROV
 def required_source(profile) -> str | None:
     """Profile `[audio] require_source` (None = any source)."""
     return profile.audio.require_source
+
+
+def generated_tones_allowed(explicit: bool | None = None) -> bool:
+    """Generated lavfi tones are for tests and an explicit opt-in.
+
+    `explicit` True/False overrides the environment. Otherwise `VIDEO_ENGINE_LOCAL_TONES=1` (also `true`, `yes`,
+    `on`) allows them. Unset means a real build: a kind with no licensed file is an error, or a sound request when
+    the build can ask for one."""
+    if explicit is not None:
+        return explicit
+    return os.environ.get("VIDEO_ENGINE_LOCAL_TONES", "").strip().lower() in {"1", "true", "yes", "on"}

@@ -339,3 +339,21 @@ def test_good_concurrent_credits_appends_keep_every_line(tmp_path):
     lines = [ln for ln in (tmp_path / "credits.txt").read_text().splitlines() if ln.startswith("- ")]
     assert len(lines) == 80 and len(set(lines)) == 80
     assert (tmp_path / "credits.txt").read_text().count(cache.CREDITS_HEADER) == 1
+
+
+def test_bad_real_build_does_not_generate_a_tone(project, monkeypatch):
+    """Without VIDEO_ENGINE_LOCAL_TONES, every kind with no licensed file errors, including riser and rumble."""
+    monkeypatch.delenv("VIDEO_ENGINE_LOCAL_TONES", raising=False)
+    p, tl = project(geo(lambda d: d["audio_chain"].update(sfx=[
+        {"kind": "riser", "at_frame": 0}, {"kind": "rumble", "at_frame": 10}])))
+    prof = profiles.of(tl)
+    slots = {it["slot"] for it in cache.missing(tl, prof)}
+    assert {"sfx-riser", "sfx-rumble"} <= slots
+    for kind in ("riser", "rumble"):
+        with pytest.raises(EngineError, match=f"SFX kind '{kind}'"):
+            cache.resolve(kind, prof)
+    tone_path = cache.resolve("riser", prof, allow_generated=True)
+    assert tone_path.provenance["source"] == "local-test"
+    cache.put("sfx", "rumble", tone(p / "rumble.wav", 0.4, 80), prov("es-rumble"), 400)
+    assert cache.resolve("rumble", prof).provenance["id"] == "es-rumble"
+    assert "sfx-rumble" not in {it["slot"] for it in cache.missing(tl, prof)}

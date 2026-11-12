@@ -25,12 +25,16 @@ def asset_name(src: Path) -> str:
 
 
 def sources(seg: Segment, project_dir: Path) -> dict[str, Path]:
-    return {asset_name(project_dir / L.asset): project_dir / L.asset for L in seg.gsap_scene_config.layers or []}
+    sc = seg.gsap_scene_config
+    assert sc is not None
+    return {asset_name(project_dir / L.asset): project_dir / L.asset for L in sc.layers or []}
 
 
 def scene_layers(seg: Segment, tl: Timeline, project_dir: Path) -> list[dict]:
+    sc = seg.gsap_scene_config
+    assert sc is not None
     out = []
-    for i, L in enumerate(seg.gsap_scene_config.layers or []):
+    for i, L in enumerate(sc.layers or []):
         src = project_dir / L.asset
         if not src.is_file():
             raise EngineError(f"layer '{L.asset}' not found")

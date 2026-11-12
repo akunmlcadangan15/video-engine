@@ -103,10 +103,12 @@ def cmd_build(a) -> int:
         r = build.build(p, use_cache=True, run_label=a.label, ai_qa=_ai_qa(a, p), keep_workdir=a.keep_workdir,
                         resume=a.resume, resume_cmd=shlex.join(["engine", *argv, "--resume"]), raise_on_fail=False,
                         relock=a.relock, mode=a.mode, repin=a.repin, quality=a.quality)
-    for row in r.timer.rows:
+    timer = r.timer
+    assert timer is not None
+    for row in timer.rows:
         print("\t".join(str(x) for x in row))
     if a.timing_tsv:
-        r.timer.write_tsv(Path(a.timing_tsv))
+        timer.write_tsv(Path(a.timing_tsv))
     print(r.preflight)
     print("\n".join(r.qa))
     if not r.ok:
@@ -195,7 +197,7 @@ def cmd_draft_preview(a) -> int:
     with ProjectLock(p):
         r = draft_build.build_draft_preview(p, max_segments=a.segments, out=out, use_cache=not a.no_cache)
     print(f"draft preview: {len(r.segments)} segment(s), {r.frames}/{r.expected_frames} frames, "
-          f"joined via {r.join} (no final encode) -> {r.preview}")
+          f"joined via {r.join} (no final encode, audio {r.audio}) -> {r.preview}")
     print(f"report -> {r.report}")
     return 0
 
@@ -523,8 +525,8 @@ def cmd_assets(a) -> int:
     if a.json:
         print(json.dumps([r.to_dict() for r in rows], indent=2, ensure_ascii=False))
     else:
-        for r in rows:
-            print(f"{r.kind:10s} {r.license or '-':16s} {r.path}")
+        for row in rows:
+            print(f"{row.kind:10s} {row.license or '-':16s} {row.path}")
     return 0
 
 
@@ -555,13 +557,28 @@ def cmd_batch(a) -> int:
 
 def cmd_cache(a) -> int:
     from . import cache_prune
-    projects = [Path(x) for x in a.project] or cache_prune.default_projects()
+    from .sound import pins
+    modes = [name for name in ("prune", "pin", "unpin") if getattr(a, name)]
+    if len(modes) != 1:
+        print("error: cache needs exactly one of --prune, --pin, --unpin", file=sys.stderr)
+        return 2
+    projects = [Path(x).resolve() for x in a.project]
+    if modes[0] == "prune":
+        projects = projects or cache_prune.default_projects()
+        if not projects:
+            print("error: cache --prune needs at least one project (--project P); nothing was deleted", file=sys.stderr)
+            return 1
+        r = cache_prune.prune(projects, dry_run=a.dry_run)
+        print(json.dumps(r, indent=2))
+        return 1 if r["problems"] else 0
     if not projects:
-        print("error: cache --prune needs at least one project (--project P); nothing was deleted", file=sys.stderr)
-        return 1
-    r = cache_prune.prune(projects, dry_run=a.dry_run)
-    print(json.dumps(r, indent=2))
-    return 1 if r["problems"] else 0
+        print(f"error: cache --{modes[0]} needs --project P", file=sys.stderr)
+        return 2
+    rows = []
+    for project in projects:
+        rows.append(pins.pin_project(project) if modes[0] == "pin" else pins.unpin(project))
+    print(json.dumps(rows if len(rows) > 1 else rows[0], indent=2))
+    return 0
 
 
 def cmd_doctor(a) -> int:
@@ -732,7 +749,8 @@ def parser() -> argparse.ArgumentParser:
     x.add_argument("--out")
     x = add("draft-preview", cmd_draft_preview, "Engine draft preview: render the first --segments segments "
                                                 "(default 5) and join them with the concat demuxer in stream-copy "
-                                                "mode. No composite, audio or final encode; output "
+                                                "mode. No composite or final encode. Audio is the sound mix when it "
+                                                "can be planned, otherwise the narration. Output "
                                                 "out/draft/preview.mp4 (never deliverable).")
     x.add_argument("project")
     x.add_argument("--segments", type=int, default=5, help="how many leading segments to preview (default 5)")
@@ -882,11 +900,14 @@ def parser() -> argparse.ArgumentParser:
                    help="proxy: low-cost full-geometry encode; requires --mode draft")
     x = add("cache", cmd_cache, "Cache maintenance. --prune deletes words/segments/maps entries not referenced by "
                                   "the current keys of the projects (default: every project passed via --project) and broken "
-                                  "entries of the sound cache (sound/). Files leased by a running build are kept and "
-                                  "listed under skipped_leased; leases of dead processes are reclaimed.")
-    x.add_argument("--prune", action="store_true", required=True)
-    x.add_argument("--project", action="append", default=[], help="project dir whose keys are kept (repeatable)")
-    x.add_argument("--dry-run", action="store_true", help="list what would be deleted")
+                                  "entries of the sound cache (sound/). Files leased by a running build, and sound files "
+                                  "pinned by a project lock, are kept. --pin records those pins from the projects' sound "
+                                  "locks; --unpin releases them.")
+    x.add_argument("--prune", action="store_true", help="delete unreferenced cache entries")
+    x.add_argument("--pin", action="store_true", help="pin sound-cache files named by each project's sound lock")
+    x.add_argument("--unpin", action="store_true", help="release sound-cache pins owned by each project")
+    x.add_argument("--project", action="append", default=[], help="project dir (repeatable)")
+    x.add_argument("--dry-run", action="store_true", help="with --prune: list what would be deleted; pin records are still refreshed")
     x = add("doctor", cmd_doctor, "Check tools on the current host (node, hyperframes, puppeteer-core, "
                                     "three, chrome-headless-shell, ffmpeg) and the active HyperFrames "
                                     "(`engine toolchain`). Default is whatever is already installed, not the repo pin.")

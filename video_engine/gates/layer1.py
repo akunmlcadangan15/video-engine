@@ -11,7 +11,7 @@ import hypoverum_core_rs as core
 
 from .. import hyperframes, profiles, props
 from ..assets import flag_for
-from ..licence import OWN_LICENCES, licence_allowed, norm_licence
+from ..licence import EPIDEMIC_URL, OWN_LICENCES, epidemic_licence, epidemic_url, licence_allowed, norm_licence
 from ..timeline import HYPERFRAMES, NATIVE, CaptionWord, Timeline
 from ..util import EngineError
 from .core import Finding
@@ -27,7 +27,7 @@ def norm_text(s: str) -> list[str]:
 
 def visual_refs(tl: Timeline) -> list[tuple[int | None, str | None, str | None, str]]:
     """(seg, asset_id, path, role) for every asset that appears on screen or in the mix."""
-    refs = []
+    refs: list[tuple[int | None, str | None, str | None, str]] = []
     for s in tl.segments:
         if s.engine_type == NATIVE:
             refs.append((s.seg_index, s.asset_id, s.source, "source"))
@@ -69,8 +69,10 @@ def t02_integrity(tl: Timeline, project_dir: Path) -> list[Finding]:
             out.append(Finding("T02", "fail", "map morph is off in this profile ([transitions] map_morph = false): "
                                "keep the segment on its base map", s.seg_index))
         if s.engine_type == NATIVE:
-            if not (project_dir / s.source).is_file():
-                out.append(Finding("T02", "fail", f"source file not found: {s.source}", s.seg_index))
+            src = s.source
+            assert src is not None
+            if not (project_dir / src).is_file():
+                out.append(Finding("T02", "fail", f"source file not found: {src}", s.seg_index))
             if s.camera_move and s.camera_move.preset not in core.camera_presets():
                 out.append(Finding("T02", "fail", f"unknown camera preset '{s.camera_move.preset}' (known: {', '.join(core.camera_presets())})", s.seg_index))
             if s.is_still and s.camera_move is None:
@@ -78,6 +80,7 @@ def t02_integrity(tl: Timeline, project_dir: Path) -> list[Finding]:
         elif s.engine_type == HYPERFRAMES:
             from ..hyperframes import HF_PRESETS
             sc = s.gsap_scene_config
+            assert sc is not None
             if not (project_dir / sc.map_asset).is_file():
                 out.append(Finding("T02", "fail", f"map_asset not found: {sc.map_asset}", s.seg_index))
             if sc.globe and sc.globe.detail_tiles:
@@ -157,6 +160,20 @@ def _prop_timing(s, fps: int) -> list[Finding]:
     return out
 
 
+def _proven_epidemic(project_dir: Path, path: str | None) -> dict | None:
+    """Epidemic provenance of a path-supplied audio file, or None when nothing claims it.
+
+    A sidecar or sound lock that claims epidemic but fails the id or sha256 check raises EngineError: the claim
+    is not treated as an ordinary missing credit."""
+    if not path:
+        return None
+    audio = project_dir / path
+    if not audio.is_file():
+        return None
+    from ..sound import provenance
+    return provenance.for_file(audio, project_dir)
+
+
 def r07_credits(tl: Timeline, project_dir: Path) -> list[Finding]:
     out = []
     ctxt_path = project_dir / "credits.txt"
@@ -168,6 +185,11 @@ def r07_credits(tl: Timeline, project_dir: Path) -> list[Finding]:
         c = tl.credit_for(ref=aid, path=path)
         label = f"{role} '{aid or path}'"
         if c is None:
+            # A path whose sidecar or sound lock proves source=epidemic, a track id and the file hash is credited
+            # the same way as cache-sourced Epidemic music: the build writes the credit line, and the proof is the
+            # credit. A file with no such proof still needs a credits_manifest row.
+            if role == "bgm" and _proven_epidemic(project_dir, path):
+                continue
             out.append(Finding("R07", "fail", f"{label} has no credits_manifest entry", seg))
             continue
         if norm_licence(c.license) in OWN_LICENCES:
@@ -187,7 +209,11 @@ def r14_licence(tl: Timeline) -> list[Finding]:
             continue
         if not licence_allowed(c.license):
             out.append(Finding("R14", "fail", f"credit '{c.asset_id}' license '{c.license}' not in allowlist (PD, CC0, "
-                                              "CC BY, CC BY-SA, Pexels, Pixabay, Unsplash, Mixkit, Own; never NC/ND)"))
+                                              "CC BY, CC BY-SA, Pexels, Pixabay, Unsplash, Mixkit, Epidemic Sound, "
+                                              "Own; never NC/ND)"))
+        elif epidemic_licence(c.license) and not epidemic_url(c.source_url):
+            out.append(Finding("R14", "fail", f"credit '{c.asset_id}' Epidemic Sound licence requires source_url "
+                                              f"{EPIDEMIC_URL}"))
         if c.watermark_free is not True:
             state = "not declared" if c.watermark_free is None else "false"
             out.append(Finding("R14", "fail", f"credit '{c.asset_id}' watermark_free is {state}; must be true"))
@@ -208,7 +234,7 @@ def r44_duplicates(tl: Timeline, words: list[CaptionWord]) -> list[Finding]:
             continue
         texts = [("card title", c.title) for c in sc.cards] + [("card subtitle", c.subtitle) for c in sc.cards if c.subtitle] \
             + [("pin", p.label) for p in sc.pins] + ([("title", sc.title)] if sc.title else [])
-        seen = {}
+        seen: dict[str, str] = {}
         for kind, t in texts:
             k = " ".join(norm_text(t))
             if k in seen:

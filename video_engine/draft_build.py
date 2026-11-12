@@ -3,9 +3,13 @@
 `engine draft` drafts a timeline with an AI provider; this module is the other draft: a fast technical preview
 for a real project. It renders at most `max_segments` (default 5) segments with the normal segment renderers
 (`build.render_segments`, cache included), then joins the segment files with ffmpeg's concat demuxer in
-stream-copy mode (`-c copy`). There is deliberately no composite pass (caption burn / watermark / transitions),
-no master-audio pass, no mux with audio and no final x264 encode: the preview is never deliverable and never
-touches `out/final.mp4`.
+stream-copy mode (`-c copy`). There is deliberately no composite pass (caption burn / watermark / transitions)
+and no final x264 encode: the preview is never deliverable and never touches `out/final.mp4`.
+
+After the picture is joined, the preview muxes audio when the timeline has any. A profile `[sound]` mix
+(narration, music and SFX, including manual cues) is used when it can be planned from files already on disk.
+Otherwise the narration is muxed, with `bgm_path` when the simple mix has one. A timeline with neither stays
+silent. The audio is AAC at the profile bitrate, cut to the preview length, and the video packets are copied.
 
 The concat demuxer joins packets only; it requires every segment file to share exactly the same stream
 parameters (`streams.joinable`). When they do not, this fails with an EngineError naming the differing
@@ -19,9 +23,9 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import build, config, resources, streams, timeline
+from . import audio, build, config, resources, streams, timeline
 from .gates.severity import unchecked
-from .util import EngineError, run
+from .util import EngineError, probe, run
 
 DEFAULT_MAX_SEGMENTS = 5
 PREVIEW_NAME = "preview.mp4"
@@ -40,6 +44,7 @@ class DraftPreviewResult:
     frames: int = 0
     expected_frames: int = 0
     join: str = "concat demuxer"
+    audio: str = "none"             # none | narration | mix
     report: Path | None = None
     ok: bool = True
 
@@ -49,6 +54,56 @@ def concat_demuxer_cmd(files: list[Path], list_path: Path, out: Path) -> list[st
     list_path.write_text("".join(f"file '{Path(p).resolve()}'\n" for p in files))
     return [config.FFMPEG, "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(list_path),
             "-c", "copy", "-movflags", "+faststart", str(out)]
+
+
+def _preview_mix(tl, project_dir: Path):
+    """Sound mix for the preview, or None when it cannot be planned from files already on disk."""
+    from . import mixer, profiles, sfx
+    from . import manifest
+    if profiles.of(tl).sound is None and not tl.audio_chain.sfx:
+        return None
+    lock = None
+    if profiles.of(tl).sound is not None:
+        try:
+            lock = manifest.locked_sounds(manifest.load(project_dir / "out"), tl, sfx.kinds_used(tl), project_dir)
+        except EngineError:
+            lock = None
+    try:
+        return mixer.plan(tl, project_dir, list(tl.captions), lock)
+    except EngineError:
+        if lock is not None:
+            try:
+                return mixer.plan(tl, project_dir, list(tl.captions), None)
+            except EngineError:
+                return None
+        return None
+
+
+def _mux_preview_audio(tl, project_dir: Path, video: Path, workdir: Path) -> str:
+    """Attach narration or the sound mix to `video`. Returns `none`, `narration` or `mix`."""
+    ac = tl.audio_chain
+    mix = _preview_mix(tl, project_dir)
+    mode = "mix" if mix is not None else None
+    if mix is None and (ac.voiceover_path or ac.bgm_path):
+        vo = project_dir / ac.voiceover_path if ac.voiceover_path else None
+        bg = project_dir / ac.bgm_path if ac.bgm_path else None
+        if (vo is None or vo.is_file()) and (bg is None or bg.is_file()) and (vo or bg):
+            mode = "narration"
+    if mode is None:
+        return "none"
+    if mode == "mix" and not (ac.voiceover_path or (mix and (mix.music or mix.cues)) or ac.bgm_path):
+        return "none"
+    workdir.mkdir(parents=True, exist_ok=True)
+    m4a = workdir / "preview-audio.m4a"
+    run(audio.audio_cmd(tl, project_dir, m4a, None, mix if mode == "mix" else None))
+    muxed = video.with_name(video.stem + ".audio.mp4")
+    run([config.FFMPEG, "-v", "error", "-y", "-i", video, "-i", m4a, "-map", "0:v:0", "-map", "1:a:0",
+         "-c", "copy", "-movflags", "+faststart", muxed])
+    muxed.replace(video)
+    m4a.unlink(missing_ok=True)
+    if not any(st.get("codec_type") == "audio" for st in probe(video)["streams"]):
+        raise EngineError("draft preview: audio mux produced no audio stream")
+    return mode
 
 
 def build_draft_preview(project_dir: Path, *, max_segments: int = DEFAULT_MAX_SEGMENTS,
@@ -96,15 +151,17 @@ def build_draft_preview(project_dir: Path, *, max_segments: int = DEFAULT_MAX_SE
         finally:
             list_path.unlink(missing_ok=True)
         streams.verify(out, expected, tl.settings.fps, "draft preview")
+        heard = _mux_preview_audio(preview_tl, project_dir, out, workdir)
+        streams.verify(out, expected, tl.settings.fps, "draft preview")
         frames = expected
         report = {
             "ok": True, "mode": "draft-preview", "final_encode": False, "join": "concat demuxer",
-            "preview": str(out), "frames": frames, "expected_frames": expected,
+            "audio": heard, "preview": str(out), "frames": frames, "expected_frames": expected,
             "segments": [r.__dict__ for r in segs],
             "project": str(project_dir), "project_id": tl.project_id, "not_checked": NOT_CHECKED,
         }
         report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
-        return DraftPreviewResult(out, segs, frames, expected, "concat demuxer", report_path, True)
+        return DraftPreviewResult(out, segs, frames, expected, "concat demuxer", heard, report_path, True)
     finally:
         if not keep_workdir:
             shutil.rmtree(workdir, ignore_errors=True)

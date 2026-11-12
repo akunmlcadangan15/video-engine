@@ -186,8 +186,9 @@ def _flow(c, path, r):
 
 def _thermo(c, path, r):
     _keys(path, r, ("value", "min", "max", "unit", "decimals", "label", "note", "at_s", "out_s", "position",
-                    "height_pct"))
-    d = _copy(r, ("value", "min", "max", "unit", "decimals", "label", "note", "position", "height_pct"))
+                    "height_pct", "from", "continue_from"))
+    d = _copy(r, ("value", "min", "max", "unit", "decimals", "label", "note", "position", "height_pct",
+                  "from", "continue_from"))
     if "at_s" in r:
         d["at_frame"] = _frame(c, f"{path}.at_s", r["at_s"])
     if "out_s" in r:
@@ -351,7 +352,7 @@ FIELDS: dict[str, Spec] = {
                                           "at_s": n, "out_s": n, "arrows": b}, ["paths"])), _flow),
     "map_thermometers": Spec("thermometers", _arr(_obj({
         "value": n, "min": n, "max": n, "unit": s, "decimals": i, "label": s, "note": s, "at_s": n, "out_s": n,
-        "position": PT, "height_pct": n}, ["value"])), _thermo),
+        "position": PT, "height_pct": n, "from": n, "continue_from": b}, ["value"])), _thermo),
     "map_texts": Spec("map_texts", _arr(_obj({
         "text": s, "points": PTS, "at_s": n, "out_s": n, "reveal_s": n, "px": n, "colour": s, "depth_px": n},
         ["text", "points"])), _map_text),
@@ -450,7 +451,8 @@ PROMPT = """
    map_flag_characters = flag with eyes {flag, xy of the frame, eyes blink|look_left|look_right|look_at:<pin index>};
    map_flows = moving streams (wind, current) {paths: [[[x, y], ...]] start -> end, colour, label (legend), at_s};
    map_thermometers = {value, min, max, unit, label, note ("ilustratif" unless it is a sourced reading), at_s,
-   position [x, y] of the frame}; map_texts = 3D extruded name along a map curve {text, points, at_s, px, colour, depth_px};
+   position [x, y] of the frame, from (start value; default min), continue_from (start at the previous thermometer's
+   value)}; map_texts = 3D extruded name along a map curve {text, points, at_s, px, colour, depth_px};
    map_bubbles = short comic speech bubble {text, anchor {pin|region|xy}, side, at_s, out_s, style light|dark}."""
 PROMPT_GATED = {
     "beats": "map_beats = what is on screen per beat {at_s (first 0), region, pins, markers, routes (indices), title, "

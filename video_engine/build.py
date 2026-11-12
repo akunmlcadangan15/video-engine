@@ -4,8 +4,8 @@ Stages (wall time of each is recorded):
   captions   timeline captions, else Grok STT words of the voiceover (BLAKE3 cache) + caption_fixes
   preflight  all gates (gates.run_preflight); any "fail" stops the build before rendering
   sounds     sound.request.ensure_sounds: missing music/SFX of a profile [sound] -> request bundle
-             <project>/out/sound_request/ and AwaitingAgent (exit 3); --resume imports the answer; then mixer.plan
-             and the Epidemic Sound credit lines appended to credits.txt
+             <project>/out/sound_request/              and AwaitingAgent (exit 3); --resume imports the answer; then mixer.plan
+             and the Epidemic Sound credit lines appended to credits.txt (proxy and delivery)
              A sound lock in out/build_manifest.json (video_engine/manifest.py) replaces both unless --relock.
   manifest   out/build_manifest.json: build_id, input/font/sound sha256, profile hash, toolchain, seeds, budget
   segments   NATIVE_RUST_FFMPEG segments in a thread pool (budget.native_workers x budget.x264_threads) and
@@ -68,6 +68,26 @@ from .util import EngineError, Timer, count_frames, video_info
 
 REPORT = "build_report.json"
 FAILED_REPORT = "build_report.failed.json"
+
+
+def _sound_provenances(tl: Timeline, project_dir: Path, mix) -> list[dict]:
+    """Provenance rows whose credit lines the build writes. A mix contributes its music and SFX. With no mix, a
+    path-supplied bed whose sidecar or sound lock proves an Epidemic Sound licence contributes that one row, so
+    the credit line is written the same way as cache-sourced music."""
+    if mix:
+        rows = [r.provenance for r in mix.sounds.values()]
+        if mix.music:
+            rows.append(mix.music.provenance)
+        return rows
+    bgm = tl.audio_chain.bgm_path
+    if not bgm:
+        return []
+    path = Path(project_dir) / bgm
+    if not path.is_file():
+        return []
+    from .sound import provenance
+    found = provenance.for_file(path, project_dir)
+    return [found] if found else []
 
 
 @dataclass
@@ -271,6 +291,8 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
     try:
         from . import assets
         from .gates.layer1 import EXTRA_CREDIT_URLS
+        from .sound import pins
+        pins.pin_project(project_dir)   # lock-referenced sounds survive this build's own cache stores
         tl, asset_credits = assets.ensure_credits(tl, project_dir)
         tl = assets.resolve_timeline_paths(tl, project_dir)
         credit_token = EXTRA_CREDIT_URLS.set(tuple(c["source_url"] for c in asset_credits if c["source_url"]))
@@ -299,18 +321,10 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
                                       "PROJECT --credits first (follow its --resume instructions), then retry proxy")
             else:
                 sound_request.ensure_sounds(tl, project_dir, resume=resume, resume_cmd=resume_cmd)
-        mix = mixer.plan(tl, project_dir, words, lock=lock)   # None unless the profile has [sound]
-        if mix:
-            provenances = [r.provenance for r in mix.sounds.values()] + ([mix.music.provenance] if mix.music else [])
-            if quality == "proxy":
-                credits_file = project_dir / "credits.txt"
-                text = credits_file.read_text() if credits_file.is_file() else ""
-                have = {ln.strip()[2:] for ln in text.splitlines() if ln.strip().startswith("- ")}
-                if any(c not in have for c in sound_cache.credit_lines(provenances)):
-                    raise EngineError("proxy quality cannot append missing sound credits to credits.txt; "
-                                      "run python -m video_engine.sound PROJECT --credits first, then retry proxy")
-            else:
-                sound_cache.append_credits(project_dir, provenances)
+        mix = mixer.plan(tl, project_dir, words, lock=lock)   # None without [sound] and without manual cues
+        provenances = _sound_provenances(tl, project_dir, mix)
+        if provenances:
+            sound_cache.append_credits(project_dir, provenances)
         with timer.stage("manifest") as st:
             man = manifest.write(out.parent, tl, project_dir, mix=mix, kinds_of=mix.kinds if mix else {},
                                  budget=budget, relock=relock, quality=quality, source_profile=source_profile)
@@ -321,10 +335,15 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             measured_f = (None if audio_hit is not None
                           else aud.submit(audio.measure_mix, tl, project_dir, mix, budget.mux_threads))
             segs = render_segments(tl, project_dir, workdir, use_cache=use_cache, budget=budget)
-            measured = None if audio_hit is not None else measured_f.result()
+            if audio_hit is not None:
+                measured = None
+            else:
+                assert measured_f is not None
+                measured = measured_f.result()
             st["note"] = " ".join(f"s{r.seg}:{r.mode}{'(hit)' if r.cache_hit else ''}={r.seconds}s" for r in segs)
         with timer.stage("ass") as st:
-            ass, events = None, []
+            ass = None
+            events: list[tuple] = []
             if words:
                 ass, events = captions.write_ass(words, tl, workdir / "captions.ass", rep.caption_y_overrides)
                 st["note"] = f"{len(events)} caption events, {len(rep.caption_y_overrides)} placement overrides"
@@ -361,7 +380,7 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
                 raise EngineError(f"final has {frames} frames, expected {tl.total_frames}")
             findings, info = qa.pixel_gates(staged, tl, threads=budget.mux_threads, project_dir=project_dir)
             s01 = style.silence_findings(staged, tl)
-            a02 = audio_source.build_findings(tl, mix)
+            a02 = audio_source.build_findings(tl, mix, project_dir)
             findings = severity.apply(findings + a01 + s01 + a02, tl, draft=draft)
             loud = loud_hist[-1]
             st["note"] = (f"frames={frames} samples={info['samples']} I={loud['I']} TP={loud['TP']} "

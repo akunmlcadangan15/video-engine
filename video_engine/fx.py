@@ -164,9 +164,11 @@ def flag_characters(seg: Segment, tl: Timeline, project_dir: Path, pins: list[di
     prof = profiles.of(tl)
     cfg = prof.fx.flag_character
     W, H, fps = tl.settings.width, tl.settings.height, tl.settings.fps
+    sc = seg.gsap_scene_config
+    assert sc is not None
     base = _seed(tl, seg)
     out = []
-    for i, c in enumerate(seg.gsap_scene_config.flag_characters or []):
+    for i, c in enumerate(sc.flag_characters or []):
         asset = assets.resolve(assets.flag_for(c.flag.code, c.flag.variant), project=project_dir, kind="flag")
         h = c.height_pct / 100.0 * H
         w = h * (4.0 / 3.0 if c.flag.variant == "4x3" else 1.0)
@@ -199,11 +201,13 @@ def cutaway_block(seg: Segment, tl: Timeline, prof) -> dict:
     """Scene block of a stacked cross-section: absolute box, per-layer bands and beside-labels."""
     cfg = prof.fx.cutaway
     W, H, fps = tl.settings.width, tl.settings.height, tl.settings.fps
-    c = seg.gsap_scene_config.cutaway
+    sc = seg.gsap_scene_config
+    assert sc is not None and sc.cutaway is not None
+    c = sc.cutaway
     k = _k(W, H)
     width = c.width_pct / 100.0 * W
     height = width * cfg.height_ratio
-    total = sum(layer.thickness for layer in c.layers)
+    total = sum((layer.thickness for layer in c.layers), 0.0)
     cx, cy = c.xy[0] * W, c.xy[1] * H
     x0, y0 = cx - width / 2.0, cy - height / 2.0
     gap, label_px = 24.0 * k, cfg.label_px * k
@@ -236,9 +240,11 @@ def inset_blocks(seg: Segment, tl: Timeline, project_dir: Path, pins: list[dict]
     cfg = prof.fx.cutaway
     W, H, fps = tl.settings.width, tl.settings.height, tl.settings.fps
     k = _k(W, H)
+    sc = seg.gsap_scene_config
+    assert sc is not None
     margin, gap = 48.0 * k, cfg.inset_gap_px * k
     out = []
-    for i, ins in enumerate(seg.gsap_scene_config.insets or []):
+    for i, ins in enumerate(sc.insets or []):
         try:
             asset = assets.resolve(ins.asset, project=project_dir, kind="image")
         except EngineError as exc:
@@ -254,6 +260,7 @@ def inset_blocks(seg: Segment, tl: Timeline, project_dir: Path, pins: list[dict]
             p = pins[ins.anchor.pin]
             ax, ay = p["px"], p["py"]
         else:
+            assert ins.anchor.xy is not None
             ax, ay = ins.anchor.xy[0] * W, ins.anchor.xy[1] * H
         side = -1.0 if ax > W / 2.0 else 1.0
         cx = ax + side * (w / 2.0 + gap)
@@ -277,8 +284,10 @@ def inset_blocks(seg: Segment, tl: Timeline, project_dir: Path, pins: list[dict]
 
 def sources(seg: Segment, project_dir: Path) -> dict[str, Path]:
     """Build-dir name -> source image of every inset of a segment."""
+    sc = seg.gsap_scene_config
+    assert sc is not None
     out = {}
-    for ins in seg.gsap_scene_config.insets or []:
+    for ins in sc.insets or []:
         asset = assets.resolve(ins.asset, project=project_dir, kind="image")
         out[inset_name(asset)] = asset.path
     return out
@@ -315,7 +324,9 @@ def geoid_height(harmonics: list[dict], lat: float, lng: float) -> float:
 def geoid_block(seg: Segment, tl: Timeline, prof) -> dict:
     """Scene block of the exaggerated Earth: seeded harmonics, ramp, rotation and fade."""
     cfg = prof.fx.geoid
-    g = seg.gsap_scene_config.geoid
+    sc = seg.gsap_scene_config
+    assert sc is not None and sc.geoid is not None
+    g = sc.geoid
     seed = _seed(tl, seg)
     return {"exaggeration": g.exaggeration if g.exaggeration is not None else cfg.exaggeration,
             "colour_ramp": [c.lower() for c in (g.colour_ramp or cfg.colour_ramp)],
@@ -338,7 +349,9 @@ def _emitter(p, i: int, tl: Timeline, seg: Segment, prof) -> dict:
 
 
 def particle_blocks(seg: Segment, tl: Timeline, prof) -> list[dict]:
-    return [_emitter(p, i, tl, seg, prof) for i, p in enumerate(seg.gsap_scene_config.particles or [])]
+    sc = seg.gsap_scene_config
+    assert sc is not None
+    return [_emitter(p, i, tl, seg, prof) for i, p in enumerate(sc.particles or [])]
 
 
 def _fireworks(e: dict, f: float, fps: int, H: int) -> list[dict]:

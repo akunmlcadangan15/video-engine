@@ -11,6 +11,16 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ### Ditambahkan
 
+- **`fit` pada kunci kamera** (alias `keep_in_frame`): daftar label atau indeks pin. Dorongan dan pulsa selama tunggu pada kunci itu diperkecil sampai setiap pin tetap di dalam area aman (margin 24 px pada kanvas referensi) untuk seluruh tunggu. Contoh: `"fit": ["Kupang", "Darwin"]`. Pengujian: `tests/test_fit_pins.py`.
+- **`[gates.geo] coast_km`** (bawaan 25 km, tidak masuk hash profil pada nilai bawaan). Pin dalam jarak ini dari tepi daratan lolos pemeriksaan darat G02. Masker darat memakai berkas Natural Earth yang paling halus yang ada (`ne_10m`, lalu `ne_50m`, lalu `ne_110m`).
+
+- **Pin berkas suara yang masih dikunci proyek.** LRU (`VIDEO_ENGINE_CACHE_MAX_MB`, bawaan 4096) tidak lagi menghapus musik atau SFX yang disebut `out/build_manifest.json`. Pemilik pin ada di `<cache>/sound/pins.json`. Salinan `<project>/out/locked-sounds/<sha256><ext>` dipakai bila berkas cache sudah hilang dan hash-nya masih cocok. `engine cache pin --project P` mencatat pin; `engine cache unpin --project P` melepas pin (salinan lokal tetap sampai dihapus). Pengujian: `tests/test_sound_pins.py`.
+- **Provenance lisensi untuk `bgm_path`.** Sidecar di samping berkas, atau entri sound lock, dengan `source=epidemic`, id trek, dan `sha256` yang cocok membuat berkas itu lolos gate A02. Pengujian: `tests/test_bgm_provenance.py`.
+- **Bitrate AAC dapat diatur.** `[audio] aac_bitrate` (64-320 kbps, bawaan 192). `[render] aac_bitrate` menimpanya, termasuk `profile_overrides.render`. Pengujian: `tests/test_aac_bitrate.py`.
+- **Isyarat SFX manual dan jenis `rumble`.** `audio_chain.sfx`: satu `kind` atau `asset`, satu `at_frame` atau `time_s`, plus `gain_db`. Pengujian: `tests/test_manual_sfx.py`.
+- **Audio pada `engine draft-preview`.** Narasi, atau campuran musik dan SFX bila dapat direncanakan dari berkas yang sudah ada. Laporan memuat `audio`: `mix`, `narration`, atau `none`.
+- **Ornamen heading opsional.** `[print] heading_ornaments` bawaan false (teks polos). `true`, atau `ornaments` pada overlay, atau `heading_ornaments` pada adegan, mengembalikan garis dan wajik.
+- **Termometer dapat mulai dari nilai sebelumnya.** `from` atau `continue_from` (nilai termometer sebelumnya pada adegan yang sama). Tanpa keduanya, isi tetap naik dari `min`.
 
 - **Laporan menyebut apa yang tidak diperiksa** (`not_checked`): `out/build_report.json`, `out/build_report.failed.json`,
   `preview_report.json` dan `draft_report.json` memuat daftar `{gate, seg, kind, why}` dengan `kind` salah satu dari
@@ -309,6 +319,9 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ### Diperbaiki
 
+- **Kredit musik Epidemic Sound dari `bgm_path`.** Sidecar atau sound lock yang membuktikan `source=epidemic`, id trek, dan `sha256` memenuhi R07 tanpa baris `credits_manifest`; build (proxy dan delivery) menulis baris kredit yang sama dengan musik dari cache. Lisensi `Epidemic Sound licence` masuk allowlist R14 bila `source_url` adalah `https://www.epidemicsound.com`.
+- **Kredit suara pada build proxy.** Proxy tidak lagi berhenti dan meminta `python -m video_engine.sound P --credits`. Baris kredit yang belum ada ditulis sendiri, sama seperti build delivery. Berkas suara yang belum ada di cache tetap harus disiapkan terlebih dahulu.
+- **Nada uji SFX tidak lagi dipakai pada build sungguhan.** `riser`, `rumble`, dan setiap kind lain tanpa berkas berlisensi di cache menghasilkan error (atau permintaan sound bila build dapat memintanya). Nada lavfi hanya bila `VIDEO_ENGINE_LOCAL_TONES=1` atau `allow_generated=True`.
 
 - **SAR segmen kamera** (`video_engine/native.py`): segmen kamera (Ken Burns) kini ditulis dengan `setsar=1` seperti
   segmen encode dan HyperFrames, sehingga timeline yang mencampur still dan footage bisa digabung concat demuxer dan

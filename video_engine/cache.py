@@ -261,7 +261,7 @@ def clear(root: Path | None = None) -> dict:
     """Delete the files of the entry directories (KINDS) under the cache root, except leased ones; other directories
     under it are kept. Returns {"deleted", "skipped_leased", "reclaimed_leases"} (paths relative to the root)."""
     root = Path(root or config.CACHE_DIR)
-    out = {"deleted": [], "skipped_leased": [], "reclaimed_leases": []}
+    out: dict[str, list[str]] = {"deleted": [], "skipped_leased": [], "reclaimed_leases": []}
     if not root.is_dir():
         return out
     with locked(root, exclusive=True):
@@ -342,11 +342,22 @@ class Pruned:
     deleted: list[str] = field(default_factory=list)          # paths relative to the cache root
     skipped_leased: list[str] = field(default_factory=list)
     reclaimed_leases: list[str] = field(default_factory=list)
+    skipped_pinned: list[str] = field(default_factory=list)   # sound files a project lock still names
+
+
+def _pinned(root: Path) -> set[str]:
+    """Sound-cache paths a project lock still names (video_engine.sound.pins). Empty when the registry is absent."""
+    try:
+        from .sound import pins
+    except ModuleNotFoundError:
+        return set()
+    return pins.protected_rels(root)
 
 
 def prune(max_bytes: int | None = None, protect=(), root: Path | None = None) -> Pruned:
-    """Drop least-recently-used files until the cache fits, skipping leased files and `protect` (the entry being
-    stored). Returns what was deleted, skipped and reclaimed."""
+    """Drop least-recently-used files until the cache fits, skipping leased files, pinned sound files and
+    `protect` (the entry being stored). A pinned file stays even when the cache is over `max_bytes`; only
+    unreferenced files are removed. Returns what was deleted, skipped and reclaimed."""
     max_bytes = config.CACHE_MAX_BYTES if max_bytes is None else max_bytes
     root = Path(root or config.CACHE_DIR)
     res = Pruned()
@@ -355,7 +366,8 @@ def prune(max_bytes: int | None = None, protect=(), root: Path | None = None) ->
     with locked(root, exclusive=True):
         keep, res.reclaimed_leases = leased(root)
         keep |= {str(Path(p).relative_to(root)) for p in protect}
-        files = []
+        pinned = _pinned(root)
+        files: list[tuple[float, int, Path, str]] = []
         for p in root.rglob("*"):
             try:  # concurrent writers rename/remove temp files while we scan
                 rel = p.relative_to(root)
@@ -365,15 +377,18 @@ def prune(max_bytes: int | None = None, protect=(), root: Path | None = None) ->
             except FileNotFoundError:
                 continue
         total = sum(f[1] for f in files)
-        for _, s, p, rel in sorted(files, key=lambda f: f[0]):
+        for _, size, path, name in sorted(files, key=lambda f: f[0]):
             if total <= max_bytes:
                 break
-            if rel in keep:
-                res.skipped_leased.append(rel)
+            if name in pinned:
+                res.skipped_pinned.append(name)
                 continue
-            p.unlink(missing_ok=True)
-            total -= s
-            res.bytes += s
-            res.deleted.append(rel)
+            if name in keep:
+                res.skipped_leased.append(name)
+                continue
+            path.unlink(missing_ok=True)
+            total -= size
+            res.bytes += size
+            res.deleted.append(name)
     _note(root, res.deleted, res.skipped_leased, res.reclaimed_leases)
     return res

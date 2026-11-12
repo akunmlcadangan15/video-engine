@@ -70,8 +70,8 @@ def check_segment(s: Segment, tl: Timeline, project_dir: Path, events: list[tupl
             why = f01_asset(img)
             if why and props.is_model(p):
                 why = f"rendered sprite: {why}"
-        except EngineError as e:
-            why = str(e)
+        except EngineError as err:
+            why = str(err)
         if why:
             out.append(Finding("F01", "fail", f"{where} '{p.asset}': {why}", s.seg_index))
             bad = True
@@ -82,18 +82,18 @@ def check_segment(s: Segment, tl: Timeline, project_dir: Path, events: list[tupl
                        + (f" ({nm} rendered from 3D models)" if nm else ""), s.seg_index))
     try:
         scene = hyperframes.scene_data(s, tl, project_dir)
-    except EngineError as e:
-        return out + [Finding("F01", "fail", str(e), s.seg_index)]
+    except EngineError as err:
+        return out + [Finding("F01", "fail", str(err), s.seg_index)]
     W, H, cam, fps = scene["width"], scene["height"], scene["camera"], scene["fps"]
     sx, st, sb = Units.of(W, H).safe()
     plan = lay.plan(s, tl, project_dir) if lay.is_beats(s, tl) else None
-    dom_at = {}
+    dom_at: dict[int, list] = {}
     dom_ok = plan is not None or bool(dom and dom.get("times"))
     for item in (dom or {}).get("times", []):
         dom_at.setdefault(round(item["t"] * fps), []).extend(
             r for r in layer2.visible(item["rects"]) if not r["id"].startswith("anchor:"))
     seg_ev = layer2.seg_events(events, s)
-    lines = {"F02": [], "F03": [], "F04": []}
+    lines: dict[str, list[str]] = {"F02": [], "F03": [], "F04": []}
     warn = []
     for (where, p, _, _), e in zip(entries, scene["props"]):
         tag = f"{where} '{p.asset}'"
@@ -150,7 +150,9 @@ def run(tl: Timeline, project_dir: Path, events: list[tuple], dom: dict[int, dic
     for s in tl.segments:
         if s.engine_type != HYPERFRAMES or not props.has_props(s):
             continue
-        if not (project_dir / s.gsap_scene_config.map_asset).is_file():
+        sc = s.gsap_scene_config
+        assert sc is not None
+        if not (project_dir / sc.map_asset).is_file():
             continue
         out += check_segment(s, tl, project_dir, events, dom.get(s.seg_index))
     return out

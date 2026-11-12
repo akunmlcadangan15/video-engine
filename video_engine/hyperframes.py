@@ -16,15 +16,16 @@ from urllib.parse import quote
 
 import hypoverum_core_rs as core
 
-from . import assets, cache, camera3d, camera_full3d, config, entities, fx, globe, hfversion, legibility, parallax, printstyle, profiles, projection, props, streams, toolchain
+from . import assets, cache, camera3d, camera_full3d, config, entities, fx, globe, hfversion, legibility, parallax, printstyle, profiles, projection, props, resources, streams, toolchain
 from . import components
 from .maps import (MAP_JPEG_QUALITY, _map_copy, _need_w, _q, deep_entries, deep_plan, deep_tiles, map_image_size,
                    map_key, morph_data, texture_dim, textures)
-from .timeline import HYPERFRAMES, Segment, Timeline
+from .timeline import HYPERFRAMES, GsapScene, Segment, SplitView, Timeline
 from .util import EngineError, blake3_files, blake3_json, code_hash, run
 from .units import units
 
-CODE = (Path(__file__), Path(components.__file__), Path(fx.__file__), Path(globe.__file__),
+CODE = (Path(__file__), Path(components.__file__), Path(__file__).parent / "hf" / "ffmpeg_repeatable.py",
+        Path(fx.__file__), Path(globe.__file__),
         Path(parallax.__file__), Path(props.__file__), Path(camera3d.__file__), Path(camera_full3d.__file__),
         Path(entities.__file__), Path(printstyle.__file__), Path(projection.__file__))   # writes the build dir (html, scene.js); legibility.py is keyed in the scene (legibility.code_hash)
 HF_VERSION = "hf-2"   # hf-2: capture/encode profile HF_QUALITY + HF_CRF
@@ -149,6 +150,111 @@ def camera_states(sc, W: int, H: int, mw: float, mh: float) -> tuple[dict, dict,
     return a, b, motion_px(a, b, W, H)
 
 
+FIT_PAD_REF = 24   # px at the reference canvas, inside the R63 safe area, that a fitted pin must clear
+_FIT_SLACK = 0.6    # px; _state rounds x/y to 0.001, so the hold check allows half a pixel of that rounding
+
+
+def fit_points(sc, refs, mw: float, mh: float) -> list[tuple[float, float]]:
+    """Map-pixel positions of the pins named by a camera key's `fit` (labels or indexes)."""
+    out = []
+    for ref in refs:
+        if isinstance(ref, int) and not isinstance(ref, bool):
+            if not 0 <= ref < len(sc.pins):
+                raise EngineError(f"camera fit index {ref} is outside the scene's {len(sc.pins)} pins")
+            pin = sc.pins[ref]
+        else:
+            hits = [p for p in sc.pins if p.label == ref]
+            if len(hits) != 1:
+                raise EngineError(f"camera fit {ref!r} matches {len(hits)} pins; use one label or a pin index")
+            pin = hits[0]
+        out.append(_pin_xy(pin, sc, mw, mh))
+    return out
+
+
+def _fit_box(W: int, H: int) -> tuple[float, float, float, float]:
+    u = units((W, H))
+    sx, top, bottom = u.safe()
+    pad = FIT_PAD_REF * u.k
+    return sx + pad, top + pad, W - sx - pad, bottom - pad
+
+
+def _pins_inside(cam: dict, f0: int, f1: int, points, box) -> bool:
+    from .layout import camera_at
+    x0, y0, x1, y1 = box
+    for f in range(f0, f1 + 1):
+        st = camera_at(cam, f)
+        for px, py in points:
+            x, y = st["x"] + st["s"] * px, st["y"] + st["s"] * py
+            if not (x0 - _FIT_SLACK <= x <= x1 + _FIT_SLACK and y0 - _FIT_SLACK <= y <= y1 + _FIT_SLACK):
+                return False
+    return True
+
+
+def _scaled_pulse(pulse: dict | None, t: float) -> dict | None:
+    if not pulse or t <= 1e-4:
+        return None
+    zoom = pulse["zoom"]
+    if isinstance(zoom, list):
+        sizes = [round(float(v) * t, 4) for v in zoom]
+        if not sizes or max(sizes) <= 1e-4:
+            return None
+        return {**pulse, "zoom": sizes}
+    size = round(float(zoom) * t, 4)
+    if size <= 1e-4:
+        return None
+    return {**pulse, "zoom": size}
+
+
+def fit_hold(view, points, pulse, bound, f0: int, f1: int, drift: float, W: int, H: int, mw: float, mh: float,
+             fps: int, anchor, base_zoom):
+    """(pulse, drift bound) for the wait on `view` over [f0, f1) so every fitted pin stays in the safe area.
+
+    The opening view is kept. Push-in and pulses are scaled down together, deterministically, until the whole
+    hold fits, or to a still drift when nothing smaller would. A hold that already fits is returned unchanged."""
+    if f1 <= f0 or not points:
+        return pulse, bound
+    box = _fit_box(W, H)
+    centre, scale = view
+    start = _state(centre, scale, W, H, mw, mh)
+
+    def ok(pk, b) -> bool:
+        z = pk and (pk["zoom"] if isinstance(pk["zoom"], list) else [pk["zoom"]])
+        use = pk if z and max(z) > 0 else None
+        legs = drift_legs(view, f0, f1, drift, use, W, H, mw, mh, fps, base_zoom=base_zoom, anchor=anchor, bound=b)
+        return _pins_inside({"start": start, "legs": legs}, f0, f1, points, box)
+
+    if ok(pulse, bound):
+        return pulse, bound
+    # How far an unbounded push of this wait actually goes, so the search has a finite top.
+    if bound is None:
+        free = drift_legs(view, f0, f1, drift, None, W, H, mw, mh, fps, anchor=anchor, bound=None)
+        peak = max((L["to"]["s"] for L in free), default=view[1])
+        limit = math.log(peak / view[1]) if peak > view[1] else 0.0
+    else:
+        limit = float(bound)
+
+    def at(t: float):
+        if t >= 1.0:
+            return pulse, bound
+        pk = _scaled_pulse(pulse, t)
+        b = 0.0 if limit <= 0 else math.floor(limit * t * 10000) / 10000
+        return pk, b
+
+    lo, hi = 0.0, 1.0
+    for _ in range(24):
+        mid = (lo + hi) / 2
+        pk, b = at(mid)
+        if ok(pk, b):
+            lo = mid
+        else:
+            hi = mid
+    pk, b = at(lo)
+    while lo > 0 and not ok(pk, b):
+        lo = max(0.0, round(lo - 0.0001, 4))
+        pk, b = at(lo)
+    return pk, b
+
+
 def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, theme: dict) -> dict:
     """Camera of one HyperFrames segment: {start, end, legs, leg_motion}. A leg {f0, f1, to, ease[, bez, lr, blur]}
     tweens the container from the previous transform to `to` over frames [f0, f1) under the leg ease (leg_ease).
@@ -160,7 +266,9 @@ def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, them
     `reveal_ease` (fast early, long settle onto the key). leg_motion = the visible motion of each key's move (checked by R56). After the last key
     a drift runs to the segment end so the camera never stops. With theme `camera_pulse` (profile [camera]) every
     drift is split by `drift_legs` into drifts and pulses; a key's `pulse` sets the pulse sizes of the wait on its view
-    (0 = drift only) and its `drift_max` bounds the drift of that wait. A key's `hold` adds a still leg on its view
+    (0 = drift only) and its `drift_max` bounds the drift of that wait. A key's `fit` (or `keep_in_frame`) lists pins
+    that must stay inside the safe area, with a margin, for the whole wait: the push-in and the pulses of that wait
+    are scaled down until they do. A key's `hold` adds a still leg on its view
     after it. Glide legs carry endpoint speeds `v` (glide_speeds)."""
     if not sc.camera_path:
         a, b, _ = camera_states(sc, W, H, mw, mh)
@@ -175,8 +283,16 @@ def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, them
     def drifts(i, f0, f1):     # the wait on key i's view; key `pulse` overrides the pulse sizes of this wait
         pk = pulse and keys[i].pulse is not None and {**pulse, "zoom": keys[i].pulse} or pulse
         z = pk and (pk["zoom"] if isinstance(pk["zoom"], list) else [pk["zoom"]])
-        return drift_legs(views[i], f0, f1, drift, pk if z and max(z) > 0 else None, W, H, mw, mh, fps,
-                          base_zoom=pulse and pulse["zoom"], anchor=anchor, bound=keys[i].drift_max)
+        use = pk if z and max(z) > 0 else None
+        bound = keys[i].drift_max
+        if keys[i].fit:
+            pts = fit_points(sc, keys[i].fit, mw, mh)
+            use, bound = fit_hold(views[i], pts, use, bound, f0, f1, drift, W, H, mw, mh, fps, anchor,
+                                  pulse and pulse["zoom"])
+            z = use and (use["zoom"] if isinstance(use["zoom"], list) else [use["zoom"]])
+            use = use if z and max(z) > 0 else None
+        return drift_legs(views[i], f0, f1, drift, use, W, H, mw, mh, fps,
+                          base_zoom=pulse and pulse["zoom"], anchor=anchor, bound=bound)
 
     start = _state(*views[0], W, H, mw, mh)
     legs, motion, prev = [], [], start
@@ -192,8 +308,8 @@ def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, them
             while j + 1 < len(keys) and keys[j + 1].move == "flow":
                 j += 1
             legs += flow_legs(keys[i:j + 1], views[i:j + 1], f0, W, H, mw, mh, fps, theme.get("camera_bank"))
-            for a, b in zip(views[i:j], views[i + 1:j + 1]):
-                motion.append(round(motion_px(_state(*a, W, H, mw, mh), _state(*b, W, H, mw, mh), W, H), 2))
+            for left, right in zip(views[i:j], views[i + 1:j + 1]):
+                motion.append(round(motion_px(_state(*left, W, H, mw, mh), _state(*right, W, H, mw, mh), W, H), 2))
             prev = legs[-1]["to"]
             if keys[j].hold:
                 legs.append({"f0": keys[j].at_frame, "f1": min(n, keys[j].at_frame + keys[j].hold),
@@ -295,9 +411,9 @@ def flow_legs(keys: list, views: list, f0: int, W: int, H: int, mw: float, mh: f
         w = round(bank["smooth_s"] * fps / 2)
         sx, sp = _smooth(sx, w), _smooth(sp, w)
         lim = lambda x, m: max(-m, min(m, x))
-        for row, x, g in zip(v, sx, sp):
-            row[3] = min(60.0, row[3] + min(bank["max_tilt"], bank["tilt"] * g))
-            row[4] = lim(row[4] - lim(bank["roll"] * x, bank["max_roll"]), 45.0)
+        for sample, x, g in zip(v, sx, sp):
+            sample[3] = min(60.0, sample[3] + min(bank["max_tilt"], bank["tilt"] * g))
+            sample[4] = lim(sample[4] - lim(bank["roll"] * x, bank["max_roll"]), 45.0)
     out = []
     for f in range(a, b):
         q = v[f + 1 - a]
@@ -398,7 +514,13 @@ def drift_legs(view, f0: int, f1: int, drift: float, pulse: dict | None, W: int,
     `zoom`); a pulse of size 0 and its way back are drift legs. Legs off the base (an away pulse, the way back and the
     drift between) carry `away` = the away pulse index."""
     c0, s0 = view
-    zs = pulse and (pulse["zoom"] if isinstance(pulse["zoom"], list) else [pulse["zoom"]])
+    zs: list
+    if not pulse:
+        zs = []
+    elif isinstance(pulse["zoom"], list):
+        zs = pulse["zoom"]
+    else:
+        zs = [pulse["zoom"]]
     an = anchor or (tuple(pulse["anchor"]) if pulse else (0.5, 0.5))
     ax, ay = an[0] * W - W / 2, an[1] * H - H / 2   # anchor offset from the frame centre
     rate = drift / fps
@@ -523,7 +645,8 @@ def _scene_key(seg: Segment, tl: Timeline, project_dir: Path) -> str:
     excluded; every other scene keeps them, and the project directory is part of the key because relative assets
     (morph, cards, props) live there even when two projects share one symlinked map."""
     from . import layout
-    scfg = seg.gsap_scene_config
+    assert seg.gsap_scene_config is not None
+    scfg: GsapScene = seg.gsap_scene_config
     if layout.is_beats(seg, tl):
         sc = scfg.model_dump(mode="json", exclude={"camera_path", "title_at_frame"})
         for k in ("pins", "regions", "routes", "figures", "cards"):
@@ -624,7 +747,8 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     from . import layout
     lay = layout.apply_segment(seg, tl, project_dir)   # beats scenes: derived camera_path and frames first
     S = tl.settings
-    sc = seg.gsap_scene_config
+    assert seg.gsap_scene_config is not None
+    sc: GsapScene = seg.gsap_scene_config
     n = seg.n_frames
     prof = profiles.of(tl)
     theme = prof.render_values("hf")
@@ -633,6 +757,7 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
         theme = landscape_theme(theme, U.k)
     card_top, title_top = (CARD_TOP_LANDSCAPE, TITLE_TOP_LANDSCAPE) if U.landscape else (CARD_TOP, TITLE_TOP)
     G = C3 = None
+    cam: dict
     if sc.globe:   # the 2D camera stays at identity over a frame-sized #cam; hf/globe.js draws the globe and moves pins
         G = globe.scene_block(seg, tl, project_dir, theme)
         if sc.globe.halo:
@@ -666,7 +791,10 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     for i, p in enumerate(sc.pins):
         f = pin_frame(p, i, n, S.fps)
         if G:
-            xy = globe.project(globe.camera_at(G, f, S.fps), p.lat, p.lng, S.width, S.height) or (-1000.0, -1000.0)
+            assert p.lat is not None and p.lng is not None
+            lat: float = p.lat
+            lng: float = p.lng
+            xy = globe.project(globe.camera_at(G, f, S.fps), lat, lng, S.width, S.height) or (-1000.0, -1000.0)
             px, py = xy
         elif C3:
             x0, y0 = _pin_xy(p, sc, mw, mh)
@@ -695,7 +823,7 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     if theme["label_style"] == "box":
         for c, cd in zip(sc.cards, cards):
             cd["box"] = entities.box_colour(ecol[c.entity], theme) if c.entity else theme["label_box_colour"]
-    out = {"fps": S.fps, "n_frames": n, "width": S.width, "height": S.height, "map": sc.map_asset,
+    out: dict = {"fps": S.fps, "n_frames": n, "width": S.width, "height": S.height, "map": sc.map_asset,
            "map_size": [round(mw, 2), round(mh, 2)], "camera": {"start": cam["start"], "end": cam["end"], "legs": cam["legs"],
                                                                **({"tilt": {"p": camera3d.perspective_px(S.height)}}
                                                                   if "t" in cam["start"] else {})},
@@ -730,7 +858,7 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     col = ecol
     if sc.title:
         out["title"] = {"text": sc.title, "entity": sc.title_entity,
-                        "colour": tint(col.get(sc.title_entity, "#ffffff"), theme["title_tint"]),
+                        "colour": tint(col.get(sc.title_entity or "", "#ffffff"), theme["title_tint"]),
                         "at_frame": sc.title_at_frame or 0, "top": round(title_top * S.height)}
         if prof.theme.title_anchor == "region" and lay is None and not G and not C3:
             if (at := title_place(sc, cam, mw, mh, tl, theme["title_px"])) is not None:
@@ -742,11 +870,13 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
                            "x": round(f.position[0] * (mw if f.anchor == "map" else S.width), 2),
                            "y": round(f.position[1] * (mh if f.anchor == "map" else S.height), 2),
                            **({"px": f.px} if f.px else {}), **({"map": True} if f.anchor == "map" else {}),
-                           "entity": f.entity, "colour": col.get(f.entity) or _accent(f, prof.theme) or "#ffffff",
+                           "entity": f.entity, "colour": col.get(f.entity or "") or _accent(f, prof.theme) or "#ffffff",
                            **({"accent": _accent(f, prof.theme)} if not f.entity and _accent(f, prof.theme) else {})}
                           for f in sc.figures]
     if sc.thermometers:
-        out["thermometers"] = [components.thermo_data(t, S.width, S.height) for t in sc.thermometers]
+        starts = components.thermo_starts(sc.thermometers)
+        out["thermometers"] = [components.thermo_data(t, S.width, S.height, start)
+                               for t, start in zip(sc.thermometers, starts)]
     if sc.flows:
         out["flows"] = [components.flow_data(f, mw, mh, fx._seed(tl, seg)) for f in sc.flows]
         out["flow_legend"] = sc.flow_legend
@@ -969,7 +1099,9 @@ def sfx_events(tl: Timeline) -> list[dict]:
     for s in tl.segments:
         if s.engine_type != HYPERFRAMES:
             continue
-        for i, f in enumerate(s.gsap_scene_config.figures or []):
+        assert s.gsap_scene_config is not None
+        cfg: GsapScene = s.gsap_scene_config
+        for i, f in enumerate(cfg.figures or []):
             if f.motion != "counter":
                 continue
             cs, ease = f.count_s or th["counter_s"], th["motion"]["entrance"]   # the template's MO.entrance
@@ -1014,22 +1146,25 @@ def _card_name(src: Path) -> str:
 def split_panels(seg: Segment, tl: Timeline) -> list[tuple[Segment, Timeline]]:
     """A split segment as two (segment, timeline) panels at the panel size: the top panel is the scene without its
     split, the bottom one split.second; both keep the segment's frames. A plain segment is one panel: itself."""
-    sp = seg.gsap_scene_config.split if seg.gsap_scene_config else None
-    if sp is None:
+    sc = seg.gsap_scene_config
+    if sc is None or sc.split is None:
         return [(seg, tl)]
+    sp: SplitView = sc.split
     ph = (tl.settings.height - sp.divider_px) // 2
     if ph % 2:
         raise EngineError(f"split: frame height {tl.settings.height} minus divider {sp.divider_px} must give even panels")
     tlp = tl.model_copy(update={"settings": tl.settings.model_copy(update={"height": ph})})
-    top = seg.model_copy(update={"gsap_scene_config": seg.gsap_scene_config.model_copy(update={"split": None})})
+    top = seg.model_copy(update={"gsap_scene_config": sc.model_copy(update={"split": None})})
     return [(top, tlp), (seg.model_copy(update={"gsap_scene_config": sp.second}), tlp)]
 
 
 def keys(seg: Segment, tl: Timeline, project_dir: Path) -> tuple[str, str]:
     """(segment cache key, map cache key) without writing files; equal to the keys `render` uses. A split segment's
     key covers both panels, the divider and the frame size."""
-    if seg.gsap_scene_config.split is not None:
-        sp = seg.gsap_scene_config.split
+    assert seg.gsap_scene_config is not None
+    sc: GsapScene = seg.gsap_scene_config
+    if sc.split is not None:
+        sp: SplitView = sc.split
         ks = [keys(s, t, project_dir) for s, t in split_panels(seg, tl)]
         return blake3_json({"split": [k[0] for k in ks], "divider": [sp.divider_px, sp.divider_colour],
                             "size": [tl.settings.width, tl.settings.height]}), ks[0][1]
@@ -1048,7 +1183,8 @@ def build_dir(seg: Segment, tl: Timeline, project_dir: Path, out_dir: Path) -> t
     if out_dir.exists():
         shutil.rmtree(out_dir)
     (out_dir / "assets").mkdir(parents=True)
-    sc = seg.gsap_scene_config
+    assert seg.gsap_scene_config is not None
+    sc: GsapScene = seg.gsap_scene_config
     flags = [p.flag for p in sc.pins]
     flags += [f for r in sc.regions or [] for f in [r.flag, *(c.flag for c in r.changes)]]
     flags += [c.flag for c in sc.flag_characters or []]
@@ -1087,10 +1223,10 @@ def build_dir(seg: Segment, tl: Timeline, project_dir: Path, out_dir: Path) -> t
     for name, src in (fx.sources(seg, project_dir).items() if scene.get("insets") else ()):
         shutil.copyfile(src, out_dir / "assets" / name)
     shutil.copyfile(config.GSAP_JS, out_dir / "assets" / "gsap.min.js")
-    for f in textures(scene):
-        shutil.copyfile(config.TEXTURES_DIR / f, out_dir / "assets" / f)
-    for f in font_files(scene):
-        shutil.copyfile(config.FONTS_DIR / f, out_dir / "assets" / f)
+    for name in textures(scene):
+        shutil.copyfile(config.TEXTURES_DIR / name, out_dir / "assets" / name)
+    for name in font_files(scene):
+        shutil.copyfile(config.FONTS_DIR / name, out_dir / "assets" / name)
     dur = seg.n_frames / S.fps
     html = (config.TEMPLATE_DIR / "index.html").read_text()
     for k, v in {"__W__": S.width, "__H__": S.height, "__DUR__": f"{dur:.6f}",
@@ -1151,10 +1287,12 @@ def encode_settings(tl: Timeline) -> tuple[str, int, list[str]]:
 def _key(scene: dict, files: list[Path], mk: str, tl: Timeline) -> str:
     """Segment key: engine render version, capture/encode settings, the scene (every profile value that reaches the
     template, card and prop images by content-hash name), the map derivative key, content hashes of the textures,
-    the scripts the scene adds (script_files) and the fonts copied into the build dir, and the toolchain identity
-    (toolchain.hf_identity), and the engine source that writes the build dir (CODE)."""
+    the scripts the scene adds (script_files) and the fonts copied into the build dir, the normalising x264 thread
+    arguments (config.x264_threads), the toolchain identity (toolchain.hf_identity), and the engine source that
+    writes the build dir (CODE)."""
     q, crf, x264 = encode_settings(tl)
-    return blake3_json({"v": HF_VERSION, "code": code_hash(CODE), "enc": [q, crf], "x264": x264, "algo": core.ALGO_VERSION,
+    return blake3_json({"v": HF_VERSION, "code": code_hash(CODE), "enc": [q, crf], "x264": x264,
+                        "x264_threads": config.x264_threads(resources.X264_THREADS), "algo": core.ALGO_VERSION,
                         "scene": scene, "map": mk, "files": blake3_files(files),
                         "fonts": blake3_files([config.FONTS_DIR / f for f in font_files(scene)]),
                         "toolchain": toolchain.hf_identity()})
@@ -1165,6 +1303,7 @@ def render(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, workers
     key = keys(seg, tl, project_dir)[0]
     if use_cache and (hit := cache.get_file("segments", key)):
         return hit, True
+    assert seg.gsap_scene_config is not None
     if seg.gsap_scene_config.split is not None:
         return _render_split(seg, tl, project_dir, workdir, workers, use_cache, key), False
     hf_dir = workdir / "hf" / f"seg{seg.seg_index:03d}"
@@ -1179,7 +1318,7 @@ def render(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, workers
     raw = out.with_suffix(".raw.mp4")
     q, crf, x264 = encode_settings(tl)
     run([config.NODE, hfversion.require().cli, "render", d, "--fps", str(tl.settings.fps), "--sdr", "-q", q, "--crf", str(crf),
-         "--workers", str(workers), "-o", raw], env=config.hf_env(), timeout=900)
+         "--no-browser-gpu", "--workers", str(workers), "-o", raw], env=config.hf_env(), timeout=900)
     n = seg.n_frames
     if _is_engine_format(raw, tl, n):
         raw.replace(out)
@@ -1187,7 +1326,7 @@ def render(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, workers
         # normalise to the engine's exact BT.709 stream format and frame count so concat demuxer joins Native + HF seamlessly
         run([config.FFMPEG, "-v", "error", "-y", "-i", raw, "-an", "-vf",
              f"fps={tl.settings.fps},tpad=stop_mode=clone:stop=-1,setsar=1,{config.BT709_VF}", *x264,
-             "-frames:v", str(n), "-movflags", "+faststart", out])
+             *config.x264_threads(resources.X264_THREADS), "-frames:v", str(n), "-movflags", "+faststart", out])
         raw.unlink(missing_ok=True)
     streams.verify(out, n, tl.settings.fps, f"segment {seg.seg_index} (HyperFrames)")
     return (cache.put_file("segments", key, out) if use_cache else out), False
@@ -1197,7 +1336,10 @@ def _render_split(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, 
                   key: str) -> Path:
     """Both panels rendered by HyperFrames (each its own scene, map and camera, same frames), stacked top / divider /
     bottom into the segment file; nothing animated outside HyperFrames."""
-    sp, n, S = seg.gsap_scene_config.split, seg.n_frames, tl.settings
+    assert seg.gsap_scene_config is not None
+    assert seg.gsap_scene_config.split is not None
+    sp: SplitView = seg.gsap_scene_config.split
+    n, S = seg.n_frames, tl.settings
     files = []
     for k, (s, t) in enumerate(split_panels(seg, tl)):
         sub = workdir / "split" / f"seg{seg.seg_index:03d}_{k}"
@@ -1208,7 +1350,8 @@ def _render_split(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, 
     _, _, x264 = encode_settings(tl)
     run([config.FFMPEG, "-v", "error", "-y", "-i", files[0], "-i", files[1], "-f", "lavfi", "-i",
          f"color=c={sp.divider_colour}:s={S.width}x{sp.divider_px}:r={S.fps}", "-filter_complex",
-         "[0:v][2:v][1:v]vstack=inputs=3,setsar=1[v]", "-map", "[v]", "-an", *x264, "-frames:v", str(n), out])
+         "[0:v][2:v][1:v]vstack=inputs=3,setsar=1[v]", "-map", "[v]", "-an", *x264,
+         *config.x264_threads(resources.X264_THREADS), "-frames:v", str(n), out])
     streams.verify(out, n, S.fps, f"segment {seg.seg_index} (split screen)")
     return cache.put_file("segments", key, out) if use_cache else out
 

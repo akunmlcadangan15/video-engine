@@ -124,7 +124,7 @@ Tiers (historical registry classification; runtime blocking uses `KERNEL_GATE_ID
 | M03 | technical (mandatory) | mandatory | Tilt cover | Every screen corner of every frame of a tilted or 3D camera shows map, not the map edge or the horizon. | always |
 | M04 | technical | flexible | Globe resolution | Globe texels per degree at the view centre: warn below 1.0x, fail below 0.5x of the screen density. | always |
 | G01 | technical (mandatory) | mandatory | Grade LUTs | Every grade LUT exists and parses as a 3D .cube file. | always |
-| G02 | technical | flexible | Geographic facts | Region polygons are valid, beat pins lie inside their region, pin labels name their own region; with `require_land` a pin over water fails. | `[gates.geo]` |
+| G02 | technical | flexible | Geographic facts | Region polygons are valid, beat pins lie inside their region, pin labels name their own region; with `require_land` a pin over water fails. A pin within `[gates.geo] coast_km` of land counts as on land. | `[gates.geo]` |
 | R56 | technical | flexible | Camera motion | Camera motion under 100 px at a 1080p-class diagonal (1080x1920 or 1920x1080) warns unless local intent expects motion; static intent is informational. Intensity changes require segment.creative_autofix or explicit camera_move.auto_intensity. | always |
 | R62 | technical | flexible | Caption margins | The caption font stays at least 0.6 of the configured size after fitting, and the caption is inside the safe area. | always |
 
@@ -220,8 +220,8 @@ Tiers (historical registry classification; runtime blocking uses `KERNEL_GATE_ID
 The full rule of each gate, with its thresholds. Where this list and the index differ, this list is the rule.
 
 - **T02** (layer 1): Segments contiguous from 0, valid engine fields, sources exist, known presets
-- **R07** (layer 1): Every visual / BGM asset credited; source URL is http(s) and listed in `credits.txt`
-- **R14** (layer 1): Licence in allowlist (no NC/ND); `watermark_free` declared true
+- **R07** (layer 1): Every visual / BGM asset credited; source URL is http(s) and listed in `credits.txt`. A `bgm_path` whose sidecar or sound lock proves an Epidemic Sound licence (source, id, sha256) is credited by that proof; the build writes the credit line.
+- **R14** (layer 1): Licence in allowlist (no NC/ND), including `Epidemic Sound licence` when `source_url` is `https://www.epidemicsound.com`; `watermark_free` declared true
 - **R44** (layer 1): No repeated adjacent caption word; card text does not repeat the spoken line in its segment; no duplicate overlay text
 - **O01** (layer 1): Drawn overlays: text fits the box at >= 26 px (1920 height), box inside the safe area (60 px sides, 100 px top/bottom), frame range inside the segment, no two drawn overlays overlap on screen while both are visible, native segments only.
 - **W01** (layer 1): Pinned captions match the current voiceover bytes, `caption_fixes`, `stt.model`, `stt.keyterms`, `language` and `fps`;
@@ -303,8 +303,9 @@ The full rule of each gate, with its thresholds. Where this list and the index d
   `build_report.json` -> `ai_qa` holds `provider`, `model`, `retries`, `fallback`
 - **QA** (layer post-render): Every 5th frame at 1/4 size: R38/R38space per sample; R56px mean luma difference below 0.5 per segment warns by default, is info for static/read intent, and fails for explicit moving intent even in draft mode. Too few samples to estimate motion are informational for static/read/unspecified shots; explicit moving intent fails with "cannot verify expected motion" instead of a false freeze claim. No decoded samples is an integrity failure. Exact frame counts and stream timing are independently verified by the build and remain hard errors regardless of intent.
 - **S01** (layer delivery): Profile silence gate on the final file (see [Style gate configuration](#style-gate-configuration))
-- **A02** (layer delivery): Profile `[audio] require_source` only: every music and SFX file of the final mix (without `[sound]`: `audio_chain.bgm_path`) has provenance `source` equal to `require_source` = pass;
-    any other source (`local-test`, `project-file`) = warn by default (blocks when `A02` is in `gates.require`).
+- **A02** (layer delivery): Profile `[audio] require_source` only: every music and SFX file of the final mix (without `[sound]`: `audio_chain.bgm_path`) has provenance `source` equal to `require_source` = pass.
+    A `bgm_path` or manual SFX file whose sidecar or sound lock verifies `source=epidemic`, a track id and the file hash counts as `epidemic` (docs/SOUND.md).
+    Any other source (`local-test`, `project-file`) = warn by default (blocks when `A02` is in `gates.require`).
   No finding without the key.
   Gate code: `video_engine/gates/audio_source.py`.
 - **A01** (layer delivery): Final file at `target_lufs` +/- `tolerance_lu` and true peak <= `true_peak` (default profile: -14.0 LUFS +/- 0.2 LU, -1.5 dBTP).
@@ -365,12 +366,13 @@ Profile format and precedence: PROFILES.md.
   - Keys: `target_s`, `tolerance_s`
   - Rule: Total length outside `target_s` +/- `tolerance_s` = fail.
 - **G02** (`[gates.geo]`)
-  - Keys: `require_land`
+  - Keys: `require_land`, `coast_km` (default 25; the default adds nothing to the profile hash)
   - Rule: Region polygons must have area and not cross themselves;
       a beat pin must lie inside its beat region;
       a pin label naming a region must sit inside it;
       with `require_land`, a geographic pin over water = fail (warn without it).
-    Uses `/workspace/geo-library` Natural Earth land when present; absent library skips the land part.
+      A pin within `coast_km` kilometres of a land edge counts as on land.
+    Uses the Natural Earth land file in the geo library when present, finest first (`ne_10m`, `ne_50m`, `ne_110m`); absent library skips the land part.
 - **S01** (`[gates.silence]`)
   - Keys: `max_gap_s`, `threshold_db`
   - Rule: Final file: a gap below `threshold_db` (ffmpeg `silencedetect`) longer than `max_gap_s` = fail.

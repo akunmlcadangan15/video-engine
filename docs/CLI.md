@@ -37,7 +37,7 @@ When the build's cache evictions deleted or skipped files, the command prints `c
 Other directories under the cache root are kept.
 `--timing-tsv` appends per-stage wall times.
 `--mode draft` is a trial build: technical gates that a profile may make advisory only warn, and the output goes to `out/draft/final.draft.mp4` with its own `build_report.json` (marked `"mode": "draft"`) and `build_manifest.json`; `out/final.mp4` and its report stay untouched and `engine deliver` refuses a draft (see [Draft builds](GATES.md#draft-builds)).
-Proxy does not create/import sound handoffs or append source credits; prepare missing sounds/credits explicitly with `python -m video_engine.sound P --credits` (resume that command after supplying the agent response).
+Proxy does not create or import a sound handoff; cache the files first with `python -m video_engine.sound P` (resume that command after supplying the response). Proxy and delivery both append missing Epidemic Sound credit lines to `credits.txt`.
 `--quality delivery` is the default and preserves the profile render settings. `--quality proxy` requires `--mode draft`: cheaper capture/encoding at unchanged dimensions and fps, output confined to `out/draft/`, separate visual cache keys, and effective settings recorded in report/manifest. It cannot be delivered or combined with `--repin`; it does not pin words back into the source timeline. See [Proxy render quality](BUILD.md#proxy-render-quality).
 `--repin` pins the caption words again before the pre-flight when they are stale (gate W01); it runs the same step as `engine words`. Without the flag a stale pin fails the build.
 `--relock` drops the sound lock of `out/build_manifest.json` and resolves music and SFX again (see [Build manifest](BUILD.md#build-manifest)).
@@ -53,7 +53,7 @@ The middle frame of every segment as PNGs (default dir `$VIDEO_ENGINE_SHM/previe
 
 ## `engine draft-preview P [--segments N] [--out F] [--no-cache]`
 
-Engine draft preview: renders the first N segments (default 5) with the normal segment renderers and joins them with the concat demuxer in stream-copy mode (`-c copy`). No composite, audio or final encode; the output goes to `out/draft/preview.mp4` with `preview_report.json` beside it and is never deliverable (`out/final.mp4` stays untouched). Segments whose stream parameters differ are rejected instead of re-encoded. Wrapper: `scripts/engine-draft` (same lock/disk/env guards as `engine-build`).
+Engine draft preview: renders the first N segments (default 5) with the normal segment renderers and joins them with the concat demuxer in stream-copy mode (`-c copy`). No composite and no final encode. After the picture is joined, audio is muxed when the timeline has any: the `[sound]` mix (narration, music and SFX, including `audio_chain.sfx`) when that mix can be planned from files already on disk, otherwise the narration (and `bgm_path`, through the simple voiceover/bed graph). A timeline with neither stays silent. The audio is AAC at the profile bitrate, cut to the preview length; the video packets are copied. `preview_report.json` records `audio` as `mix`, `narration` or `none`. The file goes to `out/draft/preview.mp4` and is never deliverable (`out/final.mp4` stays untouched). Segments whose stream parameters differ are rejected instead of re-encoded. Wrapper: `scripts/engine-draft` (same lock/disk/env guards as `engine-build`).
 
 ## `engine audio P [--no-cache]`
 
@@ -129,7 +129,16 @@ Deletes `words/`, `segments/`, `maps/`, `models/`, `dom/` entries of the cache t
 Also deletes broken sound cache entries (`video_engine.sound.cache.prune`; reported as `sound/...`, rewritten index files in `sound_rewritten`).
 Other directories under the cache root are not touched.
 Files leased by a running build are kept and listed in `skipped_leased`; lease files of dead processes are deleted and listed in `reclaimed_leases`.
+Sound files pinned by a project lock are kept (`skipped_pinned`). `--prune` refreshes those pins from each project's manifests before it deletes. `--dry-run` lists deletions and still refreshes pins and the `out/locked-sounds/` copies; it does not delete cache files.
 A project that fails to load stops the prune (exit 1, nothing deleted).
+
+## `engine cache --pin --project P [--project P ...]`
+
+Reads `P/out/build_manifest.json` and `P/out/draft/build_manifest.json` and pins every sound-cache file those locks name. Copies each file to `P/out/locked-sounds/<sha256><ext>`. Exit 2 without `--project`. See [SOUND.md, Pins](SOUND.md#pins).
+
+## `engine cache --unpin --project P [--project P ...]`
+
+Drops every sound-cache pin owned by P. The next LRU eviction may delete those cache files. Copies under `P/out/locked-sounds/` stay until deleted; the lock still accepts them by hash. Exit 2 without `--project`.
 
 ## `engine import-shots CSV DST --search DIR [--search DIR ...] --credits F --voiceover F [--manifest F] [--substitute OLD=NEW ...] [--exclude SHOT ...] [--watermark-checked] [--project-number N] [--topic T] [--date D] [--format F] [--force]`
 

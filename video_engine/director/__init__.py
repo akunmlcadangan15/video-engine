@@ -437,7 +437,7 @@ def plan(provider, inp, media: list, files: dict, taste: dict) -> dict:
                            Text("THE ENGINE REJECTED EVERY CONCEPT:\n" + errs + "\nReturn 3 corrected concepts.")]
         files = {**files, "previous_response.json": r.data, "storyboard_errors.txt": errs}
     chosen = next((x for x in ranked if x["valid"]), None)
-    out = {"rounds": rounds, "ranked": ranked, "chosen": chosen}
+    out: dict[str, Any] = {"rounds": rounds, "ranked": ranked, "chosen": chosen}
     if chosen is None:
         out["warning"] = "no valid storyboard concept after repair; drafting without a storyboard"
     return out

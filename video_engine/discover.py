@@ -436,7 +436,7 @@ def puppeteer_cache_bins(cache: Path, product: str = "chrome-headless-shell") ->
 
 
 def wellknown_ffmpeg(environ: _Env, system: str | None, home: Path | None, probe: bool = False) -> list[Path]:
-    fam, h = platform_family(system), _home(environ, home)
+    fam = platform_family(system)
     name = "ffprobe" if probe else "ffmpeg"
     exe = f"{name}.exe" if fam == "win32" else name
     if fam == "win32":
@@ -454,7 +454,7 @@ def wellknown_ffmpeg(environ: _Env, system: str | None, home: Path | None, probe
 
 
 def wellknown_node(environ: _Env, system: str | None, home: Path | None) -> list[Path]:
-    fam, h = platform_family(system), _home(environ, home)
+    fam = platform_family(system)
     if fam == "win32":
         pf = Path(environ.get("ProgramFiles") or environ.get("PROGRAMFILES") or "C:/Program Files")
         return [pf / "nodejs" / "node.exe"]
@@ -608,9 +608,9 @@ def resolve_npm_package(name: str, *, vendor: Path, environ: _Env, system: str |
             searched.append(f"PATH:{cli_name}")
             hit = which(cli_name, environ, system)
             if hit is not None and is_file(hit, confine):
-                root = hit.resolve().parent.parent if hit.is_file() else None
-                if root is not None and is_file(root / "package.json", confine):
-                    return _ok(name, root, "PATH", searched)
+                pkg = hit.resolve().parent.parent if hit.is_file() else None
+                if pkg is not None and is_file(pkg / "package.json", confine):
+                    return _ok(name, pkg, "PATH", searched)
                 return _ok(name, hit, "PATH", searched)
         home_nm = toolchain_home(environ, system, home) / "npm" / "node_modules"
         searched.append(f"user_toolchain:{home_nm / name}")
@@ -741,8 +741,8 @@ def resolve_chrome(*, vendor: Path, environ: _Env, system: str | None = None, ho
     else:
         steps = (_headless_machine, _vendor, _full_chrome)
     for step in steps:
-        if (hit := step()) is not None:
-            return hit
+        if (found := step()) is not None:
+            return found
     return _miss("chrome", searched)
 
 
@@ -836,7 +836,6 @@ def asset_search_roots(*, environ: _Env, system: str | None = None, home: Path |
                         confine: Path | None = None) -> list[Resolution]:
     """Ordered asset search roots: optional project dir, VIDEO_ENGINE_ASSET_ROOTS, then standard libraries."""
     out: list[Resolution] = []
-    searched_prefix: list[str] = []
     if project is not None:
         out.append(Resolution("project", exists(project, confine), project, "project", ("project",), kind="asset"))
     if environ.get("VIDEO_ENGINE_ASSET_ROOTS"):
