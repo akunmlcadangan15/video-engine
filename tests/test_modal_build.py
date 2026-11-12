@@ -646,6 +646,81 @@ def test_disk_flag_and_env_are_validated_before_modal(tmp_path, monkeypatch, cap
     assert "524288" in build_out and "uploaded" not in build_out and "not installed" not in build_out
 
 
+def test_ldd_and_chrome_launch_checks(tmp_path: Path):
+    from video_engine.chrome_probe import (
+        CHROME_LINUX_SONAMES,
+        CHROME_RUNTIME_PACKAGES,
+        chrome_launch_command,
+        chrome_launch_problem,
+        launch_chrome,
+        ldd_missing,
+        parse_ldd,
+    )
+    transcript = "\n".join(
+        f"\t{name} => not found" for name in CHROME_LINUX_SONAMES
+    ) + "\n\tlibc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x1)\n"
+    assert parse_ldd(transcript) == list(CHROME_LINUX_SONAMES)
+    assert parse_ldd("\tlibnss3.so => not found\n\tlibnss3.so => not found\n") == ["libnss3.so"]
+    plain = tmp_path / "not-elf"
+    plain.write_bytes(b"#!/bin/sh\n")
+    assert ldd_missing(plain, run=lambda cmd: (0, transcript, "")) is None
+    elf = tmp_path / "chrome-headless-shell"
+    elf.write_bytes(b"\x7fELF" + b"\x00" * 8)
+    assert ldd_missing(elf, run=lambda cmd: (1, "\tlibnss3.so => not found\n", "")) == ["libnss3.so"]
+    assert ldd_missing(elf, run=lambda cmd: (0, "\tlibc.so.6 => /lib/libc.so.6\n", "")) == []
+    command = chrome_launch_command(elf)
+    assert command[0] == str(elf)
+    assert "--no-sandbox" in command and "--dump-dom" in command and command[-1] == "about:blank"
+
+    def failed(cmd):
+        assert "--dump-dom" in cmd
+        return 127, "", "error while loading shared libraries: libnss3.so: cannot open shared object file"
+
+    launch = launch_chrome(elf, run=failed)
+    assert launch["ok"] is False and "libnss3.so" in launch["detail"]
+    assert launch_chrome(elf, run=lambda cmd: (0, "<html></html>", "") )["ok"] is True
+    assert chrome_launch_problem({"chrome_launch": {"ok": True, "detail": "about:blank"}}) is None
+    assert "did not run" in chrome_launch_problem({})
+    image = (ROOT / "Dockerfile.modal").read_text(encoding="utf-8")
+    for package in CHROME_RUNTIME_PACKAGES:
+        assert package in image
+
+
+def test_selftest_fails_when_chrome_cannot_launch(monkeypatch, capsys):
+    from video_engine import modal_cli
+    components = {
+        "ffmpeg": "8.1.3", "node": "v22.23.4", "hyperframes": "0.9.13",
+        "puppeteer-core": "25.16.0", "three": "0.186.1", "chrome": "152.0.7977.30",
+    }
+    monkeypatch.setattr(modal_cli, "toolchain_snapshot", lambda: {"components": components})
+
+    def remote(_args):
+        return {
+            "components": components,
+            "lines": ["[FAIL] chrome-libs: want ldd clean, got missing libnss3.so"],
+            "checks": [{"name": "chrome-libs", "ok": False, "got": "missing libnss3.so"}],
+            "chrome_launch": {"ok": False, "detail": "exit 127: libnss3.so: cannot open shared object file"},
+        }
+
+    monkeypatch.setattr("video_engine.modal_launch.run_selftest", remote)
+    assert modal_cli.main(["--selftest"]) == 1
+    text = capsys.readouterr().out
+    assert "chrome libs:" in text and "libnss3.so" in text
+    assert "chrome launch:" in text
+
+    def launched(_args):
+        return {
+            "components": components,
+            "lines": ["[OK] chrome-libs: want ldd clean, got present"],
+            "checks": [{"name": "chrome-libs", "ok": True, "got": "present"}],
+            "chrome_launch": {"ok": True, "detail": "about:blank"},
+        }
+
+    monkeypatch.setattr("video_engine.modal_launch.run_selftest", launched)
+    assert modal_cli.main(["--selftest"]) == 0
+    assert "major components match" in capsys.readouterr().out
+
+
 def test_selftest_without_modal_exits_127(monkeypatch, capsys):
     from video_engine import modal_cli
     monkeypatch.setattr(modal_cli, "toolchain_snapshot", lambda: {"components": {

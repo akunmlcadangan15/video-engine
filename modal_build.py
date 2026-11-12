@@ -91,17 +91,23 @@ def main(selftest: bool = False, run_id: str = "") -> None:
 
 def _selftest() -> dict:
     import json
+    from video_engine import config, doctor
+    from video_engine.chrome_probe import launch_chrome
     from video_engine.modal_cli import components_from_checks
-    from video_engine import doctor
     checks = doctor.check()
     serialized = [{"name": item.name, "ok": item.ok, "want": item.want, "got": item.got, "path": item.path}
                   for item in checks]
+    chrome = next((Path(item.path) for item in checks if item.name == "chrome" and item.path), None)
+    launch = launch_chrome(chrome or Path(config.CHROME))
     pin = Path("/opt/video-engine/toolchain.json")
     recorded = json.loads(pin.read_text(encoding="utf-8")) if pin.is_file() else {}
     print("\n".join(item.line() for item in checks), flush=True)
+    print(f"[chrome launch] {'OK' if launch['ok'] else 'FAIL'}: {launch['detail']}", flush=True)
     return {
         "lines": [item.line() for item in checks],
+        "checks": serialized,
         "components": components_from_checks(serialized),
+        "chrome_launch": launch,
         "toolchain_file": recorded,
         "image_id": os.environ.get("MODAL_IMAGE_ID", ""),
     }

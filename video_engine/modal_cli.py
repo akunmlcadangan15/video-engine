@@ -493,6 +493,13 @@ def _selftest(args: Args) -> int:
         print(f"engine-build-modal: {exc}", flush=True)
         return 127
     mismatches = compare_components(local.get("components") or {}, remote.get("components") or {})
+    from .chrome_probe import chrome_launch_problem
+    libs = next((item for item in remote.get("checks") or [] if item.get("name") == "chrome-libs"), None)
+    if isinstance(libs, dict) and not libs.get("ok"):
+        mismatches.append(f"chrome libs: {libs.get('got')}")
+    launch_problem = chrome_launch_problem(remote)
+    if launch_problem:
+        mismatches.append(launch_problem)
     floor = int(ffmpeg_pin().get("major") or 8)
     got = ffmpeg_major((remote.get("components") or {}).get("ffmpeg", ""))
     if got is None or got < floor:
