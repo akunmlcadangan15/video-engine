@@ -420,7 +420,7 @@ def puppeteer_cache_bins(cache: Path, product: str = "chrome-headless-shell") ->
 
 
 def wellknown_ffmpeg(environ: _Env, system: str | None, home: Path | None, probe: bool = False) -> list[Path]:
-    fam, h = platform_family(system), _home(environ, home)
+    fam = platform_family(system)
     name = "ffprobe" if probe else "ffmpeg"
     exe = f"{name}.exe" if fam == "win32" else name
     if fam == "win32":
@@ -438,7 +438,7 @@ def wellknown_ffmpeg(environ: _Env, system: str | None, home: Path | None, probe
 
 
 def wellknown_node(environ: _Env, system: str | None, home: Path | None) -> list[Path]:
-    fam, h = platform_family(system), _home(environ, home)
+    fam = platform_family(system)
     if fam == "win32":
         pf = Path(environ.get("ProgramFiles") or environ.get("PROGRAMFILES") or "C:/Program Files")
         return [pf / "nodejs" / "node.exe"]
@@ -820,7 +820,6 @@ def asset_search_roots(*, environ: _Env, system: str | None = None, home: Path |
                         confine: Path | None = None) -> list[Resolution]:
     """Ordered asset search roots: optional project dir, VIDEO_ENGINE_ASSET_ROOTS, then standard libraries."""
     out: list[Resolution] = []
-    searched_prefix: list[str] = []
     if project is not None:
         out.append(Resolution("project", exists(project, confine), project, "project", ("project",), kind="asset"))
     if environ.get("VIDEO_ENGINE_ASSET_ROOTS"):
