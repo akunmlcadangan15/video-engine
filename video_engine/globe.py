@@ -334,6 +334,7 @@ def _patch_sources(pp: dict, src: Path, tiles_dir: Path | None) -> list[tuple[Pa
     """(file, its lng/lat box west, east, south, north) of every source image the patch box reads."""
     if pp["src"] == "map":
         return [(src, (-180.0, 180.0, -90.0, 90.0))]
+    assert tiles_dir is not None
     files, out = tile_files(tiles_dir), []
     for (c, r), name in TILES.items():
         w = -180.0 + "ABCD".index(c) * TILE_DEG
@@ -374,6 +375,7 @@ def scene_block(seg: Segment, tl: Timeline, project_dir: Path, theme: dict) -> d
     from PIL import Image
     Image.MAX_IMAGE_PIXELS = None
     sc, S = seg.gsap_scene_config, tl.settings
+    assert sc is not None and sc.globe is not None
     g = sc.globe
     src = project_dir / sc.map_asset
     with Image.open(src) as im:
@@ -398,6 +400,7 @@ def scene_block(seg: Segment, tl: Timeline, project_dir: Path, theme: dict) -> d
 def files(seg: Segment, project_dir: Path, G: dict) -> dict[str, Path]:
     """Build-dir name -> cached file of the globe texture and patch (rendered when missing)."""
     sc = seg.gsap_scene_config
+    assert sc is not None and sc.globe is not None
     src = project_dir / sc.map_asset
     out = {Path(G["tex"]).name: texture(src)}
     tiles = project_dir / sc.globe.detail_tiles if sc.globe.detail_tiles else None
@@ -409,6 +412,7 @@ def files(seg: Segment, project_dir: Path, G: dict) -> dict[str, Path]:
 def cache_names(seg: Segment, tl: Timeline, project_dir: Path, G: dict) -> set[str]:
     """Cache file names (maps/) the scene uses: for cache prune."""
     sc = seg.gsap_scene_config
+    assert sc is not None and sc.globe is not None
     names = {tex_key(project_dir / sc.map_asset) + ".jpg"}
     tiles = project_dir / sc.globe.detail_tiles if sc.globe.detail_tiles else None
     for pp in G.get("patches", []):

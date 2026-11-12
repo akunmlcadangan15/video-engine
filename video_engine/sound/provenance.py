@@ -129,7 +129,7 @@ def from_lock(audio: Path, project_dir: Path | None) -> dict | None:
         return None
     ids = {h.get("id") for h in hits}
     if len(ids) != 1:
-        raise EngineError(f"{audio}: sound locks name more than one epidemic track id for these bytes ({sorted(ids)})")
+        raise EngineError(f"{audio}: sound locks name more than one epidemic track id for these bytes ({sorted(ids, key=str)})")
     prov = hits[0]
     title = _str(prov, "title") or _str(prov, "id")
     artist = _str(prov, "artist") or "Epidemic Sound"

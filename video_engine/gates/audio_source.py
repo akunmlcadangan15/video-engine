@@ -30,7 +30,7 @@ def sources(tl, mix, project_dir=None) -> list[tuple[str, dict]]:
                     prov = found
         return [("music " + bgm, prov)]
     out = [("music", mix.music.provenance)] if mix.music else []
-    kind = {}
+    kind: dict[str, str] = {}
     for c in mix.cues:
         kind.setdefault(c.asset_id, c.kind)
     return out + [(f"sfx {k}", mix.sounds[a].provenance) for a, k in kind.items()]

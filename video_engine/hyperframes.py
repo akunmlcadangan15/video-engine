@@ -20,7 +20,7 @@ from . import assets, cache, camera3d, camera_full3d, config, entities, fx, glob
 from . import components
 from .maps import (MAP_JPEG_QUALITY, _map_copy, _need_w, _q, deep_entries, deep_plan, deep_tiles, map_image_size,
                    map_key, morph_data, texture_dim, textures)
-from .timeline import HYPERFRAMES, Segment, Timeline
+from .timeline import HYPERFRAMES, GsapScene, Segment, SplitView, Timeline
 from .util import EngineError, blake3_files, blake3_json, code_hash, run
 from .units import units
 
@@ -296,9 +296,9 @@ def flow_legs(keys: list, views: list, f0: int, W: int, H: int, mw: float, mh: f
         w = round(bank["smooth_s"] * fps / 2)
         sx, sp = _smooth(sx, w), _smooth(sp, w)
         lim = lambda x, m: max(-m, min(m, x))
-        for row, x, g in zip(v, sx, sp):
-            row[3] = min(60.0, row[3] + min(bank["max_tilt"], bank["tilt"] * g))
-            row[4] = lim(row[4] - lim(bank["roll"] * x, bank["max_roll"]), 45.0)
+        for sample, x, g in zip(v, sx, sp):
+            sample[3] = min(60.0, sample[3] + min(bank["max_tilt"], bank["tilt"] * g))
+            sample[4] = lim(sample[4] - lim(bank["roll"] * x, bank["max_roll"]), 45.0)
     out = []
     for f in range(a, b):
         q = v[f + 1 - a]
@@ -399,7 +399,13 @@ def drift_legs(view, f0: int, f1: int, drift: float, pulse: dict | None, W: int,
     `zoom`); a pulse of size 0 and its way back are drift legs. Legs off the base (an away pulse, the way back and the
     drift between) carry `away` = the away pulse index."""
     c0, s0 = view
-    zs = pulse and (pulse["zoom"] if isinstance(pulse["zoom"], list) else [pulse["zoom"]])
+    zs: list
+    if not pulse:
+        zs = []
+    elif isinstance(pulse["zoom"], list):
+        zs = pulse["zoom"]
+    else:
+        zs = [pulse["zoom"]]
     an = anchor or (tuple(pulse["anchor"]) if pulse else (0.5, 0.5))
     ax, ay = an[0] * W - W / 2, an[1] * H - H / 2   # anchor offset from the frame centre
     rate = drift / fps
@@ -524,7 +530,8 @@ def _scene_key(seg: Segment, tl: Timeline, project_dir: Path) -> str:
     excluded; every other scene keeps them, and the project directory is part of the key because relative assets
     (morph, cards, props) live there even when two projects share one symlinked map."""
     from . import layout
-    scfg = seg.gsap_scene_config
+    assert seg.gsap_scene_config is not None
+    scfg: GsapScene = seg.gsap_scene_config
     if layout.is_beats(seg, tl):
         sc = scfg.model_dump(mode="json", exclude={"camera_path", "title_at_frame"})
         for k in ("pins", "regions", "routes", "figures", "cards"):
@@ -625,7 +632,8 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     from . import layout
     lay = layout.apply_segment(seg, tl, project_dir)   # beats scenes: derived camera_path and frames first
     S = tl.settings
-    sc = seg.gsap_scene_config
+    assert seg.gsap_scene_config is not None
+    sc: GsapScene = seg.gsap_scene_config
     n = seg.n_frames
     prof = profiles.of(tl)
     theme = prof.render_values("hf")
@@ -634,6 +642,7 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
         theme = landscape_theme(theme, U.k)
     card_top, title_top = (CARD_TOP_LANDSCAPE, TITLE_TOP_LANDSCAPE) if U.landscape else (CARD_TOP, TITLE_TOP)
     G = C3 = None
+    cam: dict
     if sc.globe:   # the 2D camera stays at identity over a frame-sized #cam; hf/globe.js draws the globe and moves pins
         G = globe.scene_block(seg, tl, project_dir, theme)
         if sc.globe.halo:
@@ -667,7 +676,10 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     for i, p in enumerate(sc.pins):
         f = pin_frame(p, i, n, S.fps)
         if G:
-            xy = globe.project(globe.camera_at(G, f, S.fps), p.lat, p.lng, S.width, S.height) or (-1000.0, -1000.0)
+            assert p.lat is not None and p.lng is not None
+            lat: float = p.lat
+            lng: float = p.lng
+            xy = globe.project(globe.camera_at(G, f, S.fps), lat, lng, S.width, S.height) or (-1000.0, -1000.0)
             px, py = xy
         elif C3:
             x0, y0 = _pin_xy(p, sc, mw, mh)
@@ -696,7 +708,7 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     if theme["label_style"] == "box":
         for c, cd in zip(sc.cards, cards):
             cd["box"] = entities.box_colour(ecol[c.entity], theme) if c.entity else theme["label_box_colour"]
-    out = {"fps": S.fps, "n_frames": n, "width": S.width, "height": S.height, "map": sc.map_asset,
+    out: dict = {"fps": S.fps, "n_frames": n, "width": S.width, "height": S.height, "map": sc.map_asset,
            "map_size": [round(mw, 2), round(mh, 2)], "camera": {"start": cam["start"], "end": cam["end"], "legs": cam["legs"],
                                                                **({"tilt": {"p": camera3d.perspective_px(S.height)}}
                                                                   if "t" in cam["start"] else {})},
@@ -731,7 +743,7 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
     col = ecol
     if sc.title:
         out["title"] = {"text": sc.title, "entity": sc.title_entity,
-                        "colour": tint(col.get(sc.title_entity, "#ffffff"), theme["title_tint"]),
+                        "colour": tint(col.get(sc.title_entity or "", "#ffffff"), theme["title_tint"]),
                         "at_frame": sc.title_at_frame or 0, "top": round(title_top * S.height)}
         if prof.theme.title_anchor == "region" and lay is None and not G and not C3:
             if (at := title_place(sc, cam, mw, mh, tl, theme["title_px"])) is not None:
@@ -743,7 +755,7 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
                            "x": round(f.position[0] * (mw if f.anchor == "map" else S.width), 2),
                            "y": round(f.position[1] * (mh if f.anchor == "map" else S.height), 2),
                            **({"px": f.px} if f.px else {}), **({"map": True} if f.anchor == "map" else {}),
-                           "entity": f.entity, "colour": col.get(f.entity) or _accent(f, prof.theme) or "#ffffff",
+                           "entity": f.entity, "colour": col.get(f.entity or "") or _accent(f, prof.theme) or "#ffffff",
                            **({"accent": _accent(f, prof.theme)} if not f.entity and _accent(f, prof.theme) else {})}
                           for f in sc.figures]
     if sc.thermometers:
@@ -972,7 +984,9 @@ def sfx_events(tl: Timeline) -> list[dict]:
     for s in tl.segments:
         if s.engine_type != HYPERFRAMES:
             continue
-        for i, f in enumerate(s.gsap_scene_config.figures or []):
+        assert s.gsap_scene_config is not None
+        cfg: GsapScene = s.gsap_scene_config
+        for i, f in enumerate(cfg.figures or []):
             if f.motion != "counter":
                 continue
             cs, ease = f.count_s or th["counter_s"], th["motion"]["entrance"]   # the template's MO.entrance
@@ -1017,22 +1031,25 @@ def _card_name(src: Path) -> str:
 def split_panels(seg: Segment, tl: Timeline) -> list[tuple[Segment, Timeline]]:
     """A split segment as two (segment, timeline) panels at the panel size: the top panel is the scene without its
     split, the bottom one split.second; both keep the segment's frames. A plain segment is one panel: itself."""
-    sp = seg.gsap_scene_config.split if seg.gsap_scene_config else None
-    if sp is None:
+    sc = seg.gsap_scene_config
+    if sc is None or sc.split is None:
         return [(seg, tl)]
+    sp: SplitView = sc.split
     ph = (tl.settings.height - sp.divider_px) // 2
     if ph % 2:
         raise EngineError(f"split: frame height {tl.settings.height} minus divider {sp.divider_px} must give even panels")
     tlp = tl.model_copy(update={"settings": tl.settings.model_copy(update={"height": ph})})
-    top = seg.model_copy(update={"gsap_scene_config": seg.gsap_scene_config.model_copy(update={"split": None})})
+    top = seg.model_copy(update={"gsap_scene_config": sc.model_copy(update={"split": None})})
     return [(top, tlp), (seg.model_copy(update={"gsap_scene_config": sp.second}), tlp)]
 
 
 def keys(seg: Segment, tl: Timeline, project_dir: Path) -> tuple[str, str]:
     """(segment cache key, map cache key) without writing files; equal to the keys `render` uses. A split segment's
     key covers both panels, the divider and the frame size."""
-    if seg.gsap_scene_config.split is not None:
-        sp = seg.gsap_scene_config.split
+    assert seg.gsap_scene_config is not None
+    sc: GsapScene = seg.gsap_scene_config
+    if sc.split is not None:
+        sp: SplitView = sc.split
         ks = [keys(s, t, project_dir) for s, t in split_panels(seg, tl)]
         return blake3_json({"split": [k[0] for k in ks], "divider": [sp.divider_px, sp.divider_colour],
                             "size": [tl.settings.width, tl.settings.height]}), ks[0][1]
@@ -1051,7 +1068,8 @@ def build_dir(seg: Segment, tl: Timeline, project_dir: Path, out_dir: Path) -> t
     if out_dir.exists():
         shutil.rmtree(out_dir)
     (out_dir / "assets").mkdir(parents=True)
-    sc = seg.gsap_scene_config
+    assert seg.gsap_scene_config is not None
+    sc: GsapScene = seg.gsap_scene_config
     flags = [p.flag for p in sc.pins]
     flags += [f for r in sc.regions or [] for f in [r.flag, *(c.flag for c in r.changes)]]
     flags += [c.flag for c in sc.flag_characters or []]
@@ -1090,10 +1108,10 @@ def build_dir(seg: Segment, tl: Timeline, project_dir: Path, out_dir: Path) -> t
     for name, src in (fx.sources(seg, project_dir).items() if scene.get("insets") else ()):
         shutil.copyfile(src, out_dir / "assets" / name)
     shutil.copyfile(config.GSAP_JS, out_dir / "assets" / "gsap.min.js")
-    for f in textures(scene):
-        shutil.copyfile(config.TEXTURES_DIR / f, out_dir / "assets" / f)
-    for f in font_files(scene):
-        shutil.copyfile(config.FONTS_DIR / f, out_dir / "assets" / f)
+    for name in textures(scene):
+        shutil.copyfile(config.TEXTURES_DIR / name, out_dir / "assets" / name)
+    for name in font_files(scene):
+        shutil.copyfile(config.FONTS_DIR / name, out_dir / "assets" / name)
     dur = seg.n_frames / S.fps
     html = (config.TEMPLATE_DIR / "index.html").read_text()
     for k, v in {"__W__": S.width, "__H__": S.height, "__DUR__": f"{dur:.6f}",
@@ -1170,6 +1188,7 @@ def render(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, workers
     key = keys(seg, tl, project_dir)[0]
     if use_cache and (hit := cache.get_file("segments", key)):
         return hit, True
+    assert seg.gsap_scene_config is not None
     if seg.gsap_scene_config.split is not None:
         return _render_split(seg, tl, project_dir, workdir, workers, use_cache, key), False
     hf_dir = workdir / "hf" / f"seg{seg.seg_index:03d}"
@@ -1202,7 +1221,10 @@ def _render_split(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, 
                   key: str) -> Path:
     """Both panels rendered by HyperFrames (each its own scene, map and camera, same frames), stacked top / divider /
     bottom into the segment file; nothing animated outside HyperFrames."""
-    sp, n, S = seg.gsap_scene_config.split, seg.n_frames, tl.settings
+    assert seg.gsap_scene_config is not None
+    assert seg.gsap_scene_config.split is not None
+    sp: SplitView = seg.gsap_scene_config.split
+    n, S = seg.n_frames, tl.settings
     files = []
     for k, (s, t) in enumerate(split_panels(seg, tl)):
         sub = workdir / "split" / f"seg{seg.seg_index:03d}_{k}"

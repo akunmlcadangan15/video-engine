@@ -3,6 +3,7 @@ R38 (black/decode integrity), R38space (negative-space advice) on each sample; R
 between consecutive samples). Samples: every SAMPLE_STEP-th frame at 1/4 size."""
 from __future__ import annotations
 
+import io
 import subprocess
 from pathlib import Path
 
@@ -29,13 +30,15 @@ def iter_sample_frames(video: Path, W: int, H: int, step: int = SAMPLE_STEP,
            "-f", "rawvideo", "-"]
     sz = ow * oh * 3
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout = proc.stdout
+    assert isinstance(stdout, io.BufferedIOBase)
     try:
         while True:
             buf = bytearray(sz)
             view = memoryview(buf)
             got = 0
             while got < sz:
-                n = proc.stdout.readinto(view[got:])
+                n = stdout.readinto(view[got:])
                 if not n:
                     break
                 got += n
@@ -63,7 +66,8 @@ def pixel_gates(video: Path, tl: Timeline, step: int = SAMPLE_STEP,
                 threads: int = 4, project_dir: Path | None = None) -> tuple[list[Finding], dict]:
     W, H = tl.settings.width, tl.settings.height
     ow, oh = W // SNAP_DIV, H // SNAP_DIV
-    stats, motion, batch, prev = [], [], [], None
+    stats, motion, prev = [], [], None
+    batch: list[bytes] = []
 
     def flush():
         nonlocal batch, prev
@@ -85,7 +89,8 @@ def pixel_gates(video: Path, tl: Timeline, step: int = SAMPLE_STEP,
             out.append(Finding("R38", "fail", f"no sampled frames in segment {s.start_frame}-{s.end_frame}; "
                                               "cannot verify decoded frames", s.seg_index))
             continue
-        bad, space_runs, last_space = [], [], {}
+        bad, space_runs = [], []
+        last_space: dict[str, list] = {}
         for i in idx:
             fs = r38_check(stats[i], s.seg_index, f"frame {i * step}", s.intent,
                            source_mean=sources.get(s.seg_index), landscape=(W > H))
@@ -114,6 +119,7 @@ def pixel_gates(video: Path, tl: Timeline, step: int = SAMPLE_STEP,
             expected = s.motion_expectation
             message = f"{len(idx)} sampled frame(s) in the segment: too few to measure motion between consecutive samples"
             if expected == "moving":
+                assert s.intent is not None
                 message += f"; cannot verify expected motion; intent motion=moving: {s.intent.reason}"
             out.append(Finding("R56px", "fail" if expected == "moving" else "info", message,
                                s.seg_index, frames=(s.start_frame, s.end_frame)))

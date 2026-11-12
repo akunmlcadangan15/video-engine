@@ -57,6 +57,7 @@ def names(tl: Timeline) -> dict:
     missing = [k for k in ("project_number", "topic", "date") if not getattr(S, k)]
     if missing:
         raise EngineError(f"settings.{', settings.'.join(missing)} required for delivery naming")
+    assert S.project_number is not None and S.topic is not None
     nn, topic = S.project_number, clean(S.topic)
     root = f"{nn} - {S.date} - {topic}"
     return {"root": root, "final_dir": f"{root}/05 Final", "assets_dir": f"{root}/03 Aset",
@@ -155,7 +156,8 @@ def metadata(tl: Timeline) -> dict:
     if credit_lines:
         desc += ("\n\n" if desc else "") + "Sumber & lisensi:\n" + "\n".join(credit_lines)
     words = re.findall(r"[\w-]{3,}", f"{S.topic or ''} {script}", flags=re.UNICODE)
-    seen, tags = set(), []
+    seen: set[str] = set()
+    tags: list[str] = []
     for w in words:
         k = w.casefold()
         if k not in seen and len(tags) < 15:

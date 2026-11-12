@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from . import config
 from .timeline import Overlay, Segment, Timeline
@@ -100,7 +101,9 @@ def heading_layout(ov: Overlay, pr, H: int = 1920, ss: int = 1) -> dict:
     k = _scale(H) * ss
     px = round(pr.heading_px * k)
     ft = _cinzel(px, pr.heading_weight)
-    T = ov.text.strip().upper()
+    text = ov.text
+    assert text is not None
+    T = text.strip().upper()
     trk = pr.heading_tracking * px
     xs, x = [], 0.0
     for ch in T:
@@ -116,12 +119,12 @@ def heading_layout(ov: Overlay, pr, H: int = 1920, ss: int = 1) -> dict:
     asc = -ft.getbbox("H", anchor="ls")[1]
     tx = (bw - tw) / 2
     rule_y = base - asc / 2
+    rules: tuple[tuple[float, float], ...] = ()
+    diamonds: tuple[float, ...] = ()
     if ornaments:
         left = (tx - g - d - g - ln, tx - g - d - g)
         right = (tx + tw + g + d + g, tx + tw + g + d + g + ln)
         rules, diamonds = (left, right), (tx - g - d / 2, tx + tw + g + d / 2)
-    else:
-        rules, diamonds = (), ()
     return {"px": px, "font": ft, "text": T, "xs": [tx + v for v in xs], "base": base, "asc": asc, "rule_y": rule_y,
             "rules": rules, "diamonds": diamonds, "d": d, "w": w, "tw": tw, "ornaments": ornaments}
 
@@ -146,15 +149,16 @@ def fit(ov: Overlay, H: int = 1920, pr=None, max_px: float | None = None) -> Lay
     top = round(MAX_FONT_PX[ov.kind] * k) if max_px is None else max(lo, round(min(max_px, MAX_FONT_PX[ov.kind] * k)))
     for px in range(top, lo - 1, -2):
         ft = _font(FONT_BOLD if ov.kind != "label" else FONT_SEMI, px)
-        tl = _wrap(ov.text.strip(), ft, inner_w)
+        text = ov.text
+        assert text is not None
+        tl = _wrap(text.strip(), ft, inner_w)
         if tl is None:
             continue
         sp = max(lo, round(px * SUB_RATIO))
-        sl: list[str] = []
-        if ov.subtitle:
-            sl = _wrap(ov.subtitle.strip(), _font(FONT_SEMI, sp), inner_w)
-            if sl is None:
-                continue
+        wrapped = _wrap(ov.subtitle.strip(), _font(FONT_SEMI, sp), inner_w) if ov.subtitle else []
+        if wrapped is None:
+            continue
+        sl = wrapped
         th = round(len(tl) * px * 1.18 + (len(sl) * sp * 1.22 + px * 0.25 if sl else 0))
         if th <= inner_h:
             return Layout(px, tuple(tl), sp, tuple(sl), th)
@@ -165,7 +169,7 @@ def _hex(c: str, a: float = 1.0) -> tuple:
     return hex_to_rgb(c) + (round(255 * a),)
 
 
-def render_heading(ov: Overlay, out: Path, pr, H: int = 1920) -> Path:
+def render_heading(ov: Overlay, out: Path | None, pr, H: int = 1920) -> Path | Any:
     """Heading PNG: caps in one ink, plus rules and diamonds when ornaments are on, drawn at HEADING_SS x and
     downsampled; on a photo light ink over a soft shadow (0, 2 px, blur 6 px, print.heading_shadow_alpha black)."""
     from PIL import Image, ImageDraw, ImageFilter
@@ -223,7 +227,8 @@ def _render_label(ov: Overlay, H: int, th=None):
     d = ImageDraw.Draw(im)
     ft = _font(FONT_BOLD, lay.title_px)
     fs = _font(FONT_SEMI, lay.sub_px) if lay.sub_lines else None
-    tw = max([ft.getlength(ln) for ln in lay.title_lines] + [fs.getlength(ln) for ln in lay.sub_lines])
+    sub_w = [fs.getlength(ln) for ln in lay.sub_lines] if fs is not None else []
+    tw = max([ft.getlength(ln) for ln in lay.title_lines] + sub_w)
     px = lay.title_px
     padx, padt, padb = (v * px for v in LABEL_PAD)
     bw, bh = min(w, tw + 2 * padx), min(h, lay.text_h + padt + padb)

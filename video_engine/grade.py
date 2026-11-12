@@ -117,7 +117,7 @@ def sample(lut: np.ndarray, x: np.ndarray) -> np.ndarray:
     f = p - i
     r, g, b = i[..., 0], i[..., 1], i[..., 2]
     fr, fg, fb = f[..., 0:1], f[..., 1:2], f[..., 2:3]
-    out = 0
+    out = np.zeros_like(lut[b, g, r], dtype=float)
     for db, wb in ((0, 1 - fb), (1, fb)):
         for dg, wg in ((0, 1 - fg), (1, fg)):
             for dr, wr in ((0, 1 - fr), (1, fr)):
@@ -166,7 +166,7 @@ def ranges(seg: "Segment", tl: "Timeline", project_dir: Path) -> list[tuple[int,
             parts.append((b.at_frame, min(end, n), *((b.grade, Path(project_dir)) if b.grade is not None else base)))
     else:
         parts.append((0, n, *base))
-    out = []
+    out: list[tuple[int, int, Grade, Path]] = []
     for a, e, g, root in parts:
         if a >= e or g is None or g.identity:
             continue

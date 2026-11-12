@@ -115,7 +115,10 @@ class ManualSfx(Strict):
         return self
 
     def frame(self, fps: int) -> int:
-        return self.at_frame if self.at_frame is not None else sec_to_frame(self.time_s, fps)
+        if self.at_frame is not None:
+            return self.at_frame
+        assert self.time_s is not None
+        return sec_to_frame(self.time_s, fps)
 
     def seconds(self, fps: int) -> float:
         return round(self.time_s if self.time_s is not None else self.frame(fps) / fps, 4)
@@ -138,7 +141,7 @@ class MusicBrief(Strict):
 
 class Stt(Strict):
     """xAI Grok Voice Transcribe settings: model id and optional keyterms (at most 100, each at most 50 chars)."""
-    model: str = STT_DEFAULTS["model"]
+    model: str = str(STT_DEFAULTS["model"])
     keyterms: list[str] = []
 
     @model_validator(mode="after")

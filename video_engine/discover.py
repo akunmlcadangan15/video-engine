@@ -592,9 +592,9 @@ def resolve_npm_package(name: str, *, vendor: Path, environ: _Env, system: str |
             searched.append(f"PATH:{cli_name}")
             hit = which(cli_name, environ, system)
             if hit is not None and is_file(hit, confine):
-                root = hit.resolve().parent.parent if hit.is_file() else None
-                if root is not None and is_file(root / "package.json", confine):
-                    return _ok(name, root, "PATH", searched)
+                pkg = hit.resolve().parent.parent if hit.is_file() else None
+                if pkg is not None and is_file(pkg / "package.json", confine):
+                    return _ok(name, pkg, "PATH", searched)
                 return _ok(name, hit, "PATH", searched)
         home_nm = toolchain_home(environ, system, home) / "npm" / "node_modules"
         searched.append(f"user_toolchain:{home_nm / name}")
@@ -725,8 +725,8 @@ def resolve_chrome(*, vendor: Path, environ: _Env, system: str | None = None, ho
     else:
         steps = (_headless_machine, _vendor, _full_chrome)
     for step in steps:
-        if (hit := step()) is not None:
-            return hit
+        if (found := step()) is not None:
+            return found
     return _miss("chrome", searched)
 
 

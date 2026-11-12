@@ -70,6 +70,7 @@ def render(tl: Timeline, path: Path) -> Placement | None:
     if pl is None:
         return None
     wm = profiles.of(tl).watermark
+    assert wm is not None
     font = _font(wm, scale_height(tl.settings.width, tl.settings.height))
     l, t, _, _ = font.getbbox(wm.text)
     org = (pl.pad - l, pl.pad - t)

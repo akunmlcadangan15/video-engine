@@ -27,7 +27,7 @@ def norm_text(s: str) -> list[str]:
 
 def visual_refs(tl: Timeline) -> list[tuple[int | None, str | None, str | None, str]]:
     """(seg, asset_id, path, role) for every asset that appears on screen or in the mix."""
-    refs = []
+    refs: list[tuple[int | None, str | None, str | None, str]] = []
     for s in tl.segments:
         if s.engine_type == NATIVE:
             refs.append((s.seg_index, s.asset_id, s.source, "source"))
@@ -69,8 +69,10 @@ def t02_integrity(tl: Timeline, project_dir: Path) -> list[Finding]:
             out.append(Finding("T02", "fail", "map morph is off in this profile ([transitions] map_morph = false): "
                                "keep the segment on its base map", s.seg_index))
         if s.engine_type == NATIVE:
-            if not (project_dir / s.source).is_file():
-                out.append(Finding("T02", "fail", f"source file not found: {s.source}", s.seg_index))
+            src = s.source
+            assert src is not None
+            if not (project_dir / src).is_file():
+                out.append(Finding("T02", "fail", f"source file not found: {src}", s.seg_index))
             if s.camera_move and s.camera_move.preset not in core.camera_presets():
                 out.append(Finding("T02", "fail", f"unknown camera preset '{s.camera_move.preset}' (known: {', '.join(core.camera_presets())})", s.seg_index))
             if s.is_still and s.camera_move is None:
@@ -78,6 +80,7 @@ def t02_integrity(tl: Timeline, project_dir: Path) -> list[Finding]:
         elif s.engine_type == HYPERFRAMES:
             from ..hyperframes import HF_PRESETS
             sc = s.gsap_scene_config
+            assert sc is not None
             if not (project_dir / sc.map_asset).is_file():
                 out.append(Finding("T02", "fail", f"map_asset not found: {sc.map_asset}", s.seg_index))
             if sc.globe and sc.globe.detail_tiles:
@@ -208,7 +211,7 @@ def r44_duplicates(tl: Timeline, words: list[CaptionWord]) -> list[Finding]:
             continue
         texts = [("card title", c.title) for c in sc.cards] + [("card subtitle", c.subtitle) for c in sc.cards if c.subtitle] \
             + [("pin", p.label) for p in sc.pins] + ([("title", sc.title)] if sc.title else [])
-        seen = {}
+        seen: dict[str, str] = {}
         for kind, t in texts:
             k = " ".join(norm_text(t))
             if k in seen:

@@ -42,6 +42,7 @@ def unproject(sx: float, sy: float, t: float, W: int, H: int) -> tuple[float, fl
 def max_mag(t: float, W: int, H: int) -> float:
     """Largest magnification on screen under tilt t: at the bottom edge."""
     q = unproject(W / 2, H, t, W, H)
+    assert q is not None
     return project(q[0], q[1], t, W, H)[2]
 
 

@@ -29,7 +29,7 @@ def _all_text(tl: Timeline, words: list[CaptionWord] | None) -> str:
     return " ".join(t for t in texts if t)
 
 
-def _findings(tl: Timeline, gate: str, level: str, message: str, seg: int | None = None) -> Finding:
+def _findings(tl: Timeline | None, gate: str, level: str, message: str, seg: int | None = None) -> Finding:
     return Finding(gate, level, message, seg)
 
 
@@ -151,10 +151,13 @@ def _source_entries(project_dir: Path) -> list[tuple[Path, str]]:
 
 
 def _built_entries(built_dirs: list[Path] | Path | str) -> list[tuple[Path, str]]:
+    dirs: list[Path | str] = []
     if isinstance(built_dirs, (str, Path)):
-        built_dirs = [built_dirs]
+        dirs.append(built_dirs)
+    else:
+        dirs.extend(built_dirs)
     out, seen = [], set()
-    for d in built_dirs:
+    for d in dirs:
         d = Path(d)
         if d.is_file():
             p = d

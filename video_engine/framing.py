@@ -27,6 +27,7 @@ A profile may override single values per orientation and shot (profile `[framing
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from typing import NotRequired, TypedDict
 
 from .units import LANDSCAPE, PORTRAIT, orientation_of
 
@@ -55,16 +56,26 @@ class Framing:
     caption_slot: str = "bottom"
 
 
+class _FramingKw(TypedDict):
+    subject: tuple[float, float]
+    read: str
+    title_slot: str
+    caption_slot: str
+    subjects: NotRequired[tuple[tuple[float, float], ...]]
+
+
 _P_CENTRE, _L_THIRD = (0.5, 0.45), (1 / 3, 0.5)
-_P = dict(subject=_P_CENTRE, read="top_down", title_slot="top", caption_slot="bottom")
-_L = dict(subject=_L_THIRD, read="left_right", title_slot="top_left", caption_slot="lower_third")
+_P: _FramingKw = {"subject": _P_CENTRE, "read": "top_down", "title_slot": "top", "caption_slot": "bottom"}
+_L: _FramingKw = {"subject": _L_THIRD, "read": "left_right", "title_slot": "top_left", "caption_slot": "lower_third"}
+_P_COMPARE: _FramingKw = {**_P, "subjects": ((0.5, 0.3), (0.5, 0.62))}
+_L_COMPARE: _FramingKw = {**_L, "subject": (0.5, 0.5), "subjects": ((1 / 3, 0.5), (2 / 3, 0.5))}
 
 DEFAULTS: dict[str, dict[str, Framing]] = {
     PORTRAIT: {   # push (z) dominant, tight
         "establish": Framing("ken_burns_zoom_out", "zoom_out", 1.0, **_P),
         "track": Framing("pan_up", "pan_north", 1.0, **_P),
         "reveal": Framing("ken_burns_zoom_out", "zoom_out", 1.2, **_P),
-        "compare": Framing("pan_down", "pan_south", 0.8, **{**_P, "subjects": ((0.5, 0.3), (0.5, 0.62))}),
+        "compare": Framing("pan_down", "pan_south", 0.8, **_P_COMPARE),
         "journey": Framing("pan_up", "pan_north", 1.0, **_P),
         "hold": Framing("ken_burns_zoom_in", "static", 0.4, **_P),
         "reaction": Framing("ken_burns_zoom_in", "zoom_in", 1.2, **_P),
@@ -74,8 +85,7 @@ DEFAULTS: dict[str, dict[str, Framing]] = {
         "establish": Framing("pan_right", "pan_east", 0.75, **_L),
         "track": Framing("pan_right", "pan_east", 0.8, **_L),
         "reveal": Framing("pan_up", "pan_north", 0.9, **_L),       # crane up onto the subject
-        "compare": Framing("pan_right", "pan_east", 0.6, **{**_L, "subject": (0.5, 0.5),
-                                                              "subjects": ((1 / 3, 0.5), (2 / 3, 0.5))}),
+        "compare": Framing("pan_right", "pan_east", 0.6, **_L_COMPARE),
         "journey": Framing("pan_right", "pan_east", 0.8, **_L),
         "hold": Framing("ken_burns_zoom_in", "static", 0.3, **_L),
         "reaction": Framing("ken_burns_zoom_in", "zoom_in", 0.9, **_L),
@@ -92,7 +102,16 @@ def framing(shot: str, orientation: str, overrides: dict | None = None) -> Frami
     f = DEFAULTS[orientation][shot]
     over = ((overrides or {}).get(orientation) or {}).get(shot) or {}
     if over:
-        f = replace(f, **{k: (tuple(v) if k == "subject" else v) for k, v in over.items()})
+        subject: tuple[float, float] = f.subject
+        if "subject" in over:
+            raw = over["subject"]
+            subject = (raw[0], raw[1])
+        f = replace(f, native=over["native"] if "native" in over else f.native,
+                    hf=over["hf"] if "hf" in over else f.hf,
+                    intensity=over["intensity"] if "intensity" in over else f.intensity,
+                    subject=subject, read=over["read"] if "read" in over else f.read,
+                    title_slot=over["title_slot"] if "title_slot" in over else f.title_slot,
+                    caption_slot=over["caption_slot"] if "caption_slot" in over else f.caption_slot)
     return f
 
 

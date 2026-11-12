@@ -116,6 +116,8 @@ def system_root(vendor: Path | None = None, environ: dict | None = None) -> Path
 
 
 def _pkg_version(root: Path | None) -> str:
+    if root is None:
+        return "missing"
     try:
         return json.loads((root / "package.json").read_text())["version"]
     except (OSError, ValueError, KeyError, TypeError):

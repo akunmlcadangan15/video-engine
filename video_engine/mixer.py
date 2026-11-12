@@ -206,6 +206,7 @@ def plan(tl: Timeline, project_dir: Path, words: list[CaptionWord], lock: dict |
         if cue.kind:
             aid, _peak = by_kind[cue.kind]
         else:
+            assert cue.asset is not None
             path = project_dir / cue.asset
             if not path.is_file():
                 raise EngineError(f"audio_chain.sfx[{i}]: asset {cue.asset} is not a file")

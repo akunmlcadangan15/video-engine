@@ -44,7 +44,9 @@ def norm_licence_text(s: str) -> str:
 
 
 def read_shots(csv_path: Path) -> tuple[list[Shot], dict[str, dict]]:
-    shots, credits, seen = [], {}, set()
+    shots: list[Shot] = []
+    credits: dict[str, dict] = {}
+    seen: set[str] = set()
     with csv_path.open(newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         missing = {"shot", "file", "on_screen_s"} - set(reader.fieldnames or [])
@@ -135,7 +137,8 @@ def import_shots(csv_path: Path, dst: Path, search: list[Path], *, credits_txt: 
             raise EngineError(f"shot {s.shot}: on_screen_s ends at {s.t1:g} s, after the {duration:g} s voiceover")
     vo_rel = "assets/" + voiceover.name
     shutil.copyfile(voiceover, dst / vo_rel)
-    credits, segs, log, used = {}, [], [], {}
+    credits, segs, log = {}, [], []
+    used: dict[str, str] = {}
     still_i = 0
     for i, s in enumerate(kept):
         f = substitute.get(s.file, s.file)

@@ -51,7 +51,7 @@ def _title(draw, title, w, h, scale):
         _text(draw, (w * 0.06, h * 0.06), title, _font("bold", int(64 * scale)), INK)
 
 
-def chart(data: dict, out: Path, width: int = 1080, height: int = 720, *, colour: str = "#4B4D8B",
+def chart(data: dict | list, out: Path, width: int = 1080, height: int = 720, *, colour: str = "#4B4D8B",
           background: str | None = None) -> Path:
     from PIL import Image, ImageDraw
     bars, title = _items(data, "bars")
@@ -86,7 +86,7 @@ def chart(data: dict, out: Path, width: int = 1080, height: int = 720, *, colour
     return out
 
 
-def timeline(data: dict, out: Path, width: int = 1080, height: int = 720, *, colour: str = "#9C443B",
+def timeline(data: dict | list, out: Path, width: int = 1080, height: int = 720, *, colour: str = "#9C443B",
              background: str | None = None) -> Path:
     from PIL import Image, ImageDraw
     events, title = _items(data, "events")
@@ -97,7 +97,7 @@ def timeline(data: dict, out: Path, width: int = 1080, height: int = 720, *, col
     try:
         for e in events:
             e["at"] = float(e["at"])
-    except (KeyError, TypeError, ValueError) as e:
+    except (KeyError, TypeError, ValueError):
         raise EngineError("each timeline event needs a label and a numeric at") from None
     scale = min(width, height) / 720
     im = Image.new("RGBA", (width, height), background or (0, 0, 0, 0))
@@ -128,7 +128,7 @@ def timeline(data: dict, out: Path, width: int = 1080, height: int = 720, *, col
     return out
 
 
-def infographic(data: dict, out: Path, width: int = 1080, height: int = 720, *, colour: str = "#136868",
+def infographic(data: dict | list, out: Path, width: int = 1080, height: int = 720, *, colour: str = "#136868",
                 background: str | None = None) -> Path:
     from PIL import Image, ImageDraw
     items, title = _items(data, "items")

@@ -113,7 +113,8 @@ def cached(k: str) -> list[Path] | None:
     if not m:
         return None
     out = [cache.get_file("models", f"{k}_{i:04d}", ".png") for i in range(m["frames"])]
-    return None if any(f is None for f in out) else out
+    paths = [f for f in out if f is not None]
+    return None if len(paths) != len(out) else paths
 
 
 def render(src: Path, **kw) -> list[Path]:

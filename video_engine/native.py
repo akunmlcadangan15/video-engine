@@ -49,6 +49,8 @@ def source_size(path: Path, still: bool) -> tuple[int, int]:
 
 def camera_endpoints(seg: Segment, tl: Timeline, sw: int, sh: int):
     cm = seg.camera_move
+    if cm is None:
+        raise EngineError(f"segment {seg.seg_index}: camera endpoints need a camera_move")
     W, H = tl.settings.width, tl.settings.height
     return core.camera_plan(cm.preset, cm.intensity, float(sw), float(sh), float(W), float(H), cm.focus_box)
 
@@ -77,7 +79,10 @@ def copy_eligible(src: Path, W: int, H: int, fps: int, x264: list[str] | None = 
 
 
 def plan(seg: Segment, tl: Timeline, project_dir: Path) -> NativeJob:
-    src = (project_dir / seg.source).resolve()
+    src_name = seg.source
+    if not src_name:
+        raise EngineError(f"segment {seg.seg_index}: native segment has no source")
+    src = (project_dir / src_name).resolve()
     if not src.exists():
         raise EngineError(f"segment {seg.seg_index}: source {seg.source} not found")
     S = tl.settings
@@ -125,8 +130,12 @@ def _overlay_args(seg: Segment, tl: Timeline, base_filter: str, png_dir: Path) -
 
 def _encoder(out: Path, W: int, H: int, fps: int, n: int, threads: int, seg: Segment | None = None,
              tl: Timeline | None = None) -> subprocess.Popen:
-    inputs, filt = (_overlay_args(seg, tl, BT709_VF, out.parent / "ov")
-                    if seg is not None else ([], ["-vf", BT709_VF]))
+    if seg is not None:
+        if tl is None:
+            raise EngineError("native encoder overlays need a timeline")
+        inputs, filt = _overlay_args(seg, tl, BT709_VF, out.parent / "ov")
+    else:
+        inputs, filt = [], ["-vf", BT709_VF]
     cmd = [config.FFMPEG, "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(fps),
            "-i", "-", *inputs, *filt, *seg_x264(tl), *config.x264_threads(threads), "-frames:v", str(n), "-an",
            "-movflags", "+faststart", str(out)]
@@ -135,6 +144,8 @@ def _encoder(out: Path, W: int, H: int, fps: int, n: int, threads: int, seg: Seg
 
 def _work_scale(job: NativeJob, W: int) -> float:
     """Decode scale so the most zoomed-in window still has >= output resolution (never upscale at decode)."""
+    if job.start_win is None or job.end_win is None:
+        raise EngineError(f"segment {job.seg.seg_index}: camera render has no window")
     min_w = min(job.start_win[2], job.end_win[2])
     return min(1.0, max(W / min_w, 1e-3) * 1.02)
 
@@ -171,6 +182,8 @@ def render_camera(job: NativeJob, tl: Timeline, out: Path, threads: int) -> None
     fsz = ws * hs * 3
     dec = subprocess.Popen(_decode_cmd(job, ws, hs, S.fps), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     enc = _encoder(out, W, H, S.fps, n, threads, job.seg, tl)
+    if dec.stdout is None or enc.stdin is None or enc.stderr is None:
+        raise EngineError(f"segment {job.seg.seg_index}: encoder pipes were not created")
     try:
         frame = None
         for i in range(n):

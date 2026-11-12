@@ -356,7 +356,8 @@ def _layers(name: str) -> tuple[Layer, ...]:
     if name == DEFAULT:
         return tuple(layers)
     chain: list[tuple[str, str, list[str]]] = []
-    cur, child = name, None
+    cur: str | None = name
+    child: str | None = None
     while cur is not None:
         if cur in [c[0] for c in chain]:
             raise EngineError(f"profile '{name}': `{EXTENDS_KEY}` loops back to '{cur}' "
@@ -410,7 +411,8 @@ def _type_cascade(raw: dict, channel: dict) -> dict:
     """`raw` (all layers merged) with the channel's [type] sizes written to the surfaces the channel left open.
     `channel` = the layers above default.toml merged: only a size a channel file writes cascades, and a surface key a
     channel file writes wins."""
-    sizes = channel.get("type") if isinstance(channel.get("type"), dict) else {}
+    raw_type = channel.get("type")
+    sizes: dict = raw_type if isinstance(raw_type, dict) else {}
     out = raw
     for key, targets in TYPE_CASCADE.items():
         if key not in sizes:
