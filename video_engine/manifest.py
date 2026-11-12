@@ -33,6 +33,7 @@ import uuid
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from . import config
 from .util import EngineError, blake3_json
@@ -155,7 +156,7 @@ def timeline_files(tl, project_dir: Path) -> list[Path]:
     walk(json.loads(tl.model_dump_json()))
     from . import profiles
     g = profiles.of(tl).data.grade
-    if g is not None and getattr(g, "lut", None):
+    if g is not None and g.lut:
         lut = config.PROFILES_DIR / g.lut
         if lut.is_file():
             seen.setdefault(str(lut.resolve()), lut.resolve())
@@ -226,10 +227,11 @@ def locked_sounds(lock: dict | None, tl, kinds: list[str], project_dir: Path | N
         return None
     if any(k not in s.get("sfx", {}) for k in kinds):
         return None
-    out = {"music": None if m is None else (_check(m, "music", project_dir), m["provenance"]), "sfx": {}}
+    sfx: dict[str, Any] = {}
+    out: dict[str, Any] = {"music": None if m is None else (_check(m, "music", project_dir), m["provenance"]), "sfx": sfx}
     for k in kinds:
         e = s["sfx"][k]
-        out["sfx"][k] = (_check(e, f"SFX '{k}'", project_dir), e["provenance"])
+        sfx[k] = (_check(e, f"SFX '{k}'", project_dir), e["provenance"])
     return out
 
 

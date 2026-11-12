@@ -103,10 +103,12 @@ def cmd_build(a) -> int:
         r = build.build(p, use_cache=True, run_label=a.label, ai_qa=_ai_qa(a, p), keep_workdir=a.keep_workdir,
                         resume=a.resume, resume_cmd=shlex.join(["engine", *argv, "--resume"]), raise_on_fail=False,
                         relock=a.relock, mode=a.mode, repin=a.repin, quality=a.quality)
-    for row in r.timer.rows:
+    timer = r.timer
+    assert timer is not None
+    for row in timer.rows:
         print("\t".join(str(x) for x in row))
     if a.timing_tsv:
-        r.timer.write_tsv(Path(a.timing_tsv))
+        timer.write_tsv(Path(a.timing_tsv))
     print(r.preflight)
     print("\n".join(r.qa))
     if not r.ok:
@@ -521,8 +523,8 @@ def cmd_assets(a) -> int:
     if a.json:
         print(json.dumps([r.to_dict() for r in rows], indent=2, ensure_ascii=False))
     else:
-        for r in rows:
-            print(f"{r.kind:10s} {r.license or '-':16s} {r.path}")
+        for row in rows:
+            print(f"{row.kind:10s} {row.license or '-':16s} {row.path}")
     return 0
 
 

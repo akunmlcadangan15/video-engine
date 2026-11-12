@@ -261,7 +261,7 @@ def clear(root: Path | None = None) -> dict:
     """Delete the files of the entry directories (KINDS) under the cache root, except leased ones; other directories
     under it are kept. Returns {"deleted", "skipped_leased", "reclaimed_leases"} (paths relative to the root)."""
     root = Path(root or config.CACHE_DIR)
-    out = {"deleted": [], "skipped_leased": [], "reclaimed_leases": []}
+    out: dict[str, list[str]] = {"deleted": [], "skipped_leased": [], "reclaimed_leases": []}
     if not root.is_dir():
         return out
     with locked(root, exclusive=True):
@@ -367,7 +367,7 @@ def prune(max_bytes: int | None = None, protect=(), root: Path | None = None) ->
         keep, res.reclaimed_leases = leased(root)
         keep |= {str(Path(p).relative_to(root)) for p in protect}
         pinned = _pinned(root)
-        files = []
+        files: list[tuple[float, int, Path, str]] = []
         for p in root.rglob("*"):
             try:  # concurrent writers rename/remove temp files while we scan
                 rel = p.relative_to(root)
@@ -377,18 +377,18 @@ def prune(max_bytes: int | None = None, protect=(), root: Path | None = None) ->
             except FileNotFoundError:
                 continue
         total = sum(f[1] for f in files)
-        for _, s, p, rel in sorted(files, key=lambda f: f[0]):
+        for _, size, path, name in sorted(files, key=lambda f: f[0]):
             if total <= max_bytes:
                 break
-            if rel in pinned:
-                res.skipped_pinned.append(rel)
+            if name in pinned:
+                res.skipped_pinned.append(name)
                 continue
-            if rel in keep:
-                res.skipped_leased.append(rel)
+            if name in keep:
+                res.skipped_leased.append(name)
                 continue
-            p.unlink(missing_ok=True)
-            total -= s
-            res.bytes += s
-            res.deleted.append(rel)
+            path.unlink(missing_ok=True)
+            total -= size
+            res.bytes += size
+            res.deleted.append(name)
     _note(root, res.deleted, res.skipped_leased, res.reclaimed_leases)
     return res

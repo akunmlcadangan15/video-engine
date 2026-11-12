@@ -10,7 +10,7 @@ from pathlib import Path
 from .. import config
 from ..gates.core import Finding
 from ..util import EngineError
-from .base import AIResult, Image, Media, Provider, Text, schema_errors
+from .base import AIResult, Image, Media, Part, Provider, Text, schema_errors
 
 PROXY_HEIGHT = 360
 PROXY_FPS = 5
@@ -79,8 +79,8 @@ def analyze_footage(src: Path, workdir: Path, provider: Provider, start_s: float
     proxy = make_proxy(src, workdir / "proxy" / (src.stem + "_360p.mp4"), start_s, seconds)
     deletions: list[dict] = []
     try:
-        parts = [Media(proxy, "video", "video/mp4", f"proxy {src.name} from {start_s:g}s", frames=DIRECTOR_FRAMES),
-                 Text(ANALYZE_PROMPT.format(W=frame[0], H=frame[1], orientation=_orientation(*frame)))]
+        parts: list[Part] = [Media(proxy, "video", "video/mp4", f"proxy {src.name} from {start_s:g}s", frames=DIRECTOR_FRAMES),
+                         Text(ANALYZE_PROMPT.format(W=frame[0], H=frame[1], orientation=_orientation(*frame)))]
         r = provider.generate_json("planning", parts, SHOTS_SCHEMA, director_request_id(src, start_s))
     finally:
         deletions = provider.cleanup()

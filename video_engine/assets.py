@@ -6,9 +6,14 @@ import fcntl
 import json
 import os
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from . import config, library
+
+if TYPE_CHECKING:
+    from .timeline import Timeline
 
 _MEDIA_EXT = library.VIDEO_EXT | library.IMAGE_EXT
 _COLUMNS = ("file", "source_id", "source_url", "licence_credit", "first_used_project", "sha256")
@@ -339,6 +344,7 @@ def find(query: str, kind: str | None = None, project: Path | None = None, limit
         for tier, root in roots:
             if not root.is_dir():
                 continue
+            paths: Iterable[Path]
             if tier == 'download':
                 paths = [root / r['file'] for r in _rows(root / 'index.csv') if r.get('file')]
             elif tier == 'vendor':
@@ -457,7 +463,7 @@ def _atomic_text(path: Path, text: str) -> None:
     os.replace(temp, path)
 
 
-def ensure_credits(tl, project: Path) -> tuple[object, list[dict]]:
+def ensure_credits(tl: Timeline, project: Path) -> tuple[Timeline, list[dict]]:
     """Return a timeline copy and new credits; never edit the source timeline or credits file."""
     from .gates.layer1 import visual_refs
     from .timeline import Credit

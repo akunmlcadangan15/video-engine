@@ -1,9 +1,10 @@
 """The build budget reaches audio, QA and transitions, with explicit ffmpeg -threads values."""
+import importlib.util
 from types import SimpleNamespace
 
 import numpy as np
 
-from video_engine import audio, qa, transitions
+from video_engine import audio, config, qa, transitions
 
 
 def test_good_audio_command_carries_the_budget_thread_count(project):
@@ -49,3 +50,15 @@ def test_good_transition_clip_and_decode_carry_the_budget_thread_count(monkeypat
     cmds.clear()
     transitions.decode(tmp_path / "none.mp4", 0, 0, 4, 4, threads=3)
     assert cmds[0][cmds[0].index("-threads") + 1] == "3"
+
+
+def test_good_hyperframes_ffmpeg_wrapper_matches_the_repeatable_params():
+    path = config.PKG / "hf" / "ffmpeg_repeatable.py"
+    spec = importlib.util.spec_from_file_location("ffmpeg_repeatable", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.REPEATABLE == config.X264_REPEATABLE
+    out = mod._with_repeatable(["-c:v", "libx264", "-threads", "8", "-x264-params", "aq-mode=3"])
+    assert out[out.index("-threads") + 1] == "1"
+    assert out[out.index("-x264-params") + 1].endswith(":" + config.X264_REPEATABLE)
+    assert mod._with_repeatable(["-version"]) == ["-version"]

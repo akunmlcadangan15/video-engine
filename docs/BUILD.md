@@ -15,14 +15,14 @@ What `engine build` does, in order, and how it stays repeatable.
 3. Sounds (profile `[sound]`), after pre-flight, before the mix plan and the segment render: `sound.request.ensure_sounds` requests missing files (bundle `out/sound_request/`, exit 3; `--resume` imports the answer);
      after the plan the Epidemic Sound credit lines of the mixed files are appended to `credits.txt` (docs/SOUND.md).
 4. Build manifest `out/build_manifest.json` written (see [Build manifest](#build-manifest)).
-   Segments in parallel within the worker budget (see [Resources](#resources)): native pool `native_workers` x 2 x264 threads;
-     HyperFrames segments in a pool of `hf_parallel` (see [Resources](#resources); output order is segment order), `hf_workers` capture workers each (`VIDEO_ENGINE_HF_WORKERS` overrides), default capture profile `-q standard --crf 14` (JPEG q100 screenshots, x264 medium intermediate; profile `[render] hf_quality` / `hf_crf` and `HF_QUALITY` / `HF_CRF` are part of the segment cache key; Geoverum uses `high` at CRF 8);
+   Segments in parallel within the worker budget (see [Resources](#resources)): native pool `native_workers` x 2 x264 threads (`X264_REPEATABLE`, so the bitstream repeats when the CPU is busy);
+     HyperFrames segments in a pool of `hf_parallel` (see [Resources](#resources); output order is segment order), `hf_workers` capture workers each (`VIDEO_ENGINE_HF_WORKERS` overrides), screenshot capture on SwiftShader (`--no-browser-gpu`, one Chrome raster thread), default capture profile `-q standard --crf 14` (JPEG q100 screenshots, x264 medium intermediate; profile `[render] hf_quality` / `hf_crf` and `HF_QUALITY` / `HF_CRF` are part of the segment cache key; Geoverum uses `high` at CRF 8);
      loudnorm pass 1 runs concurrently.
    Every segment is checked for its exact frame count.
    Results cached by a BLAKE3 hash of sources + config.
 5. `.ass` with placement overrides.
 6. Three cached passes:
-   - composite (cache kind `composite`): segment join (Stream-copy and concat rules) + transition clips + caption burn + profile watermark overlay (PNG drawn with Pillow), exact frame count, no audio, `mux_threads` x264 threads;
+   - composite (cache kind `composite`): segment join (Stream-copy and concat rules) + transition clips + caption burn + profile watermark overlay (PNG drawn with Pillow), exact frame count, no audio, `mux_threads` x264 threads with `X264_REPEATABLE`;
    - master audio (cache kind `audio`, AAC m4a): mix (ducking, loudnorm pass 2) and the A01 corrective gain passes, on the audio file alone.
      AAC bitrate is `[render] aac_bitrate` when set, else `[audio] aac_bitrate`, else 192 kbps (allowed 64-320). The same value is used on the corrective gain passes. It is part of the audio cache key.
      The mix is cut to exactly duration x 48000 samples after ducking and before loudnorm, and again after it, so every render of the same inputs has identical PCM.
@@ -71,7 +71,7 @@ The same inputs give the same final file bytes.
 
 ## Resources
 
-One budget `workers` (`VIDEO_ENGINE_WORKERS` > profile `[resources] workers` > auto = clamp(min(CPU count, RAM GB // 1.8), 2, 64)) caps all stages: `native_workers = max(1, workers // 4)` (2 x264 threads each), `hf_workers = max(1, workers // 4)`, `mux_threads = clamp(workers - 2, 1, 6)`.
+One budget `workers` (`VIDEO_ENGINE_WORKERS` > profile `[resources] workers` > auto = clamp(min(CPU count, RAM GB // 1.8), 2, 64)) caps all stages: `native_workers = max(1, workers // 4)` (2 x264 threads each, `X264_REPEATABLE`), `hf_workers = max(1, workers // 4)`, `mux_threads = clamp(workers - 2, 1, 6)`.
 `hf_segments` = 2 when `2 x hf_workers x 2 <= workers`, else 1. A build renders `hf_parallel` HyperFrames segments at once: `hf_segments` when `min(native segments, native_workers) x 2 + hf_segments x hf_workers x 2 <= workers`, else 1. On 8 workers: 2 for a timeline without native segments, 1 otherwise.
 Each stage's wall time, CPU time and peak RSS (engine plus children, with per-tool peaks) go to `build_report.json` -> `resources`.
 

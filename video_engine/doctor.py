@@ -362,6 +362,7 @@ def _any_npm(vendor: Path, tmp: Path) -> tuple[Path, Path, dict]:
     if not Path(npm).exists():
         raise EngineError("npm is missing; install Node first (`engine doctor --install`)")
     env = dict(os.environ)
+    assert node is not None
     env["PATH"] = f"{Path(node).parent}:{env.get('PATH', '')}"
     env["npm_config_cache"] = str(tmp / "npm-cache")
     env["npm_config_update_notifier"] = "false"
@@ -505,12 +506,12 @@ def _merge_machine_discovery(out: list[Check], vendor: Path, *, environ: dict | 
     seen = {c.name for c in merged}
     for res in disc.tools:
         name = aliases.get(res.name, res.name)
-        extra_kw = dict(path=str(res.path) if res.path else "", source=res.source, searched=res.searched)
+        path = str(res.path) if res.path else ""
         if name in by and res.found:
             c = by[name]
             was_ok = c.ok
             c.ok = True
-            c.path = extra_kw["path"]
+            c.path = path
             c.source = res.source
             c.searched = res.searched
             c.got = _resolved_version(name, res.path, res.detail or "")
@@ -524,7 +525,7 @@ def _merge_machine_discovery(out: list[Check], vendor: Path, *, environ: dict | 
             ok = res.found or optional
             merged.append(Check(name, ok, "present", res.detail or ("present" if res.found else "missing"),
                                 warn=optional and not res.found,
-                                path=extra_kw["path"], source=res.source if res.found else "",
+                                path=path, source=res.source if res.found else "",
                                 searched=res.searched))
             seen.add(name)
         elif name in by and not res.found and not by[name].ok and not by[name].searched:

@@ -10,7 +10,7 @@ from . import ai, cache, config, profiles, streams, toolchain
 from .timeline import CaptionsMeta, CaptionWord, Timeline, sec_to_frame
 from .util import EngineError, blake3_files, blake3_json, code_hash, count_frames, probe, run, wav_16k_mono
 
-STT_MODEL = ai.STT_DEFAULTS["model"]     # defaults live in ai.STT_DEFAULTS; [stt] in the AI config overrides them
+STT_MODEL = str(ai.STT_DEFAULTS["model"])     # defaults live in ai.STT_DEFAULTS; [stt] in the AI config overrides them
 STT_URL = ai.STT_DEFAULTS["url"]
 STT_TIMEOUT_S = ai.STT_DEFAULTS["timeout_s"]
 STT_VERSION = "stt-1-grok-2"
@@ -45,7 +45,7 @@ def _wav_16k(path: Path) -> bytes:
 
 def _fields(model: str, language: str, keyterms: list[str], wav: bytes) -> list:
     """Multipart fields in wire order; `file` MUST stay last."""
-    fields = [("model", (None, model)), ("language", (None, language))]
+    fields: list[tuple[str, tuple]] = [("model", (None, model)), ("language", (None, language))]
     fields += [("keyterm", (None, term)) for term in keyterms]
     fields += [("filler_words", (None, "false")), ("file", ("audio.wav", wav, "audio/wav"))]
     return fields
@@ -170,7 +170,9 @@ def keyterms_digest(keyterms) -> str:
 def expected_meta(tl: Timeline, project_dir: Path) -> dict:
     """Fields of CaptionsMeta that must match the current timeline for pinned words to be valid."""
     ac = tl.audio_chain
-    return {"voiceover_blake3": blake3_files([project_dir / ac.voiceover_path])[0], "stt_model": ac.stt.model,
+    vo_name = ac.voiceover_path
+    assert vo_name is not None
+    return {"voiceover_blake3": blake3_files([project_dir / vo_name])[0], "stt_model": ac.stt.model,
             "language": ac.language, "keyterms_blake3": keyterms_digest(ac.stt.keyterms),
             "fixes_blake3": fixes_digest(ac.caption_fixes), "fps": tl.settings.fps}
 
@@ -179,9 +181,10 @@ def transcribe_captions(tl: Timeline, project_dir: Path, use_cache: bool = True
                         ) -> tuple[list[CaptionWord], CaptionsMeta]:
     """Grok STT words (BLAKE3 cache) + caption_fixes -> frame captions and their provenance."""
     ac = tl.audio_chain
-    if not ac.voiceover_path:
+    vo_name = ac.voiceover_path
+    if not vo_name:
         raise EngineError("audio_chain.voiceover_path is empty: nothing to transcribe")
-    vo = project_dir / ac.voiceover_path
+    vo = project_dir / vo_name
     if not vo.is_file():
         raise EngineError(f"voiceover not found: {ac.voiceover_path}")
     words, hit = transcribe_words(vo, ac.language, ac.stt.model, ac.stt.keyterms, use_cache=use_cache)
@@ -403,7 +406,7 @@ def composite_cmd(tl: Timeline, segments: list[Path], ass: Path | None, out: Pat
         for clip, _ in transitions:
             cmd += ["-i", clip.resolve()]
         fv = chain + ";" + lab + fv[len(vsrc):]
-    cmd += ["-filter_complex", vpre + fv, "-map", "[v]", *R.x264("final"), "-threads", str(threads),
+    cmd += ["-filter_complex", vpre + fv, "-map", "[v]", *R.x264("final"), *config.x264_threads(threads),
             "-r", str(S.fps), "-frames:v", str(n), "-an", "-movflags", "+faststart", "-t", f"{dur:.6f}", out]
     return cmd, cwd, extra, [wm_png, concat_list]
 

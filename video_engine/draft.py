@@ -16,6 +16,7 @@ import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote
 
 import hypoverum_core_rs as core
@@ -113,7 +114,7 @@ def _norm_url(u: str) -> str:
 def parse_credits(text: str) -> list[CreditLine]:
     """Every credits.txt line with an http(s) URL. Fields split on ' | ' or ' — '; licence = the allow-listed
     (or CC-*) field; author = the field after the title."""
-    out = []
+    out: list[CreditLine] = []
     for line in text.splitlines():
         m = URL_RE.search(line)
         if not m:
@@ -186,7 +187,8 @@ def inventory(pdir: Path, credit_lines: list[CreditLine], exclude: set[str], exi
     by_url = {_norm_url(c.url): c.n for c in credit_lines}
     rows = _manifest_rows(pdir)
     old_urls = {Path(c.path).name: c.source_url for c in (existing.credits_manifest if existing else []) if c.path}
-    out, taken = [], set()
+    out: list[AssetInfo] = []
+    taken: set[str] = set()
     for p in sorted((pdir / "assets").rglob("*")):
         rel = str(p.relative_to(pdir))
         ext = p.suffix.lower()
@@ -268,10 +270,10 @@ def collect(pdir: Path, voiceover: str | None = None, script: str | None = None,
 def schema(inp: Inputs) -> dict:
     ids = [a.id for a in inp.assets]
     s, n, i, b = {"type": "string"}, {"type": "number"}, {"type": "integer"}, {"type": "boolean"}
-    overlay = {"type": "object", "properties": {
+    overlay: dict[str, Any] = {"type": "object", "properties": {
         "kind": {"type": "string", "enum": list(OVERLAY_SLOTS)}, "position": {"type": "string", "enum": ["top", "bottom"]},
         "text": s, "subtitle": s, "start_s": n, "end_s": n}, "required": ["kind", "position", "text"]}
-    seg = {"type": "object", "properties": {
+    seg: dict[str, Any] = {"type": "object", "properties": {
         "start_frame": i, "end_frame": i, "kind": {"type": "string", "enum": ["image", "video", "map"]},
         "asset": {"type": "string", "enum": ids}, "narration": s, "why": s, "goal": s, "source_in_s": n,
         "camera_preset": {"type": "string", "enum": core.camera_presets()}, "intensity": n,
@@ -399,7 +401,9 @@ AUDIO_MIME = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4", ".
 
 def media_parts(inp: Inputs, video_proxies: int, workdir: Path) -> list:
     """Narration audio, up to `video_proxies` 360p proxies (first PROXY_SECONDS s) and thumbnails of every asset."""
-    vo = inp.pdir / inp.audio_chain.voiceover_path
+    vo_path = inp.audio_chain.voiceover_path
+    assert vo_path is not None
+    vo = inp.pdir / vo_path
     words = [{"word": w.word, "start_frame": w.start_frame, "end_frame": w.end_frame} for w in inp.words]
     parts: list = [Text("NARRATION AUDIO:"), Media(vo, "audio", AUDIO_MIME[vo.suffix.lower()], "narration audio",
                                                    transcript=_words_text(inp), words=words)]
@@ -469,7 +473,7 @@ def normalise(segs: list[dict], total: int) -> tuple[list[dict], list[str]]:
 def _camera_path(keys: list[dict], n: int, fps: int, max_zoom: float = 4.0) -> list[dict]:
     """Model map_path -> camera_path keys: frames from at_s (first key at 0, strictly increasing, < n), x/y and zoom
     clamped to their ranges, move "whip" or "reveal" kept (glide otherwise). Raises ValueError when fewer than 2 distinct key frames remain."""
-    out = []
+    out: list[dict] = []
     for k in sorted(keys, key=lambda k: float(k.get("at_s") or 0.0)):
         f = 0 if not out else min(n - 1, max(0, sec_to_frame(float(k.get("at_s") or 0.0), fps)))
         if out and f <= out[-1]["at_frame"]:
@@ -563,7 +567,8 @@ def assemble(inp: Inputs, data: dict) -> tuple[Timeline, list[str], list[dict]]:
         raise ValueError("no segments")
     out, used = [], []
     for i, s in enumerate(segs):
-        a = by_id.get(s.get("asset"))
+        asset_key = s.get("asset")
+        a = by_id.get(asset_key) if isinstance(asset_key, str) else None
         if a is None:
             raise ValueError(f"segment {i}: unknown asset {s.get('asset')!r}")
         used.append(a.id)
@@ -759,7 +764,7 @@ def draft(pdir: Path, *, out: Path | None = None, provider=None, max_repairs: in
         "assets": [{"id": a.id, "path": a.path, "kind": a.kind, "credit_line": a.credit_line} for a in inp.assets],
         "total_frames": inp.total_frames, "words": len(inp.words), "pauses": len(inp.pause_report.pauses),
         "pause_threshold_db": inp.pause_report.threshold_db, "suggested_segments": inp.pause_report.segments}}
-    error = None
+    error: BaseException | None = None
     files = attachments(inp)
     sb = None
     try:

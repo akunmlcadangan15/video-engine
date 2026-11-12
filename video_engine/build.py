@@ -294,10 +294,15 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             measured_f = (None if audio_hit is not None
                           else aud.submit(audio.measure_mix, tl, project_dir, mix, budget.mux_threads))
             segs = render_segments(tl, project_dir, workdir, use_cache=use_cache, budget=budget)
-            measured = None if audio_hit is not None else measured_f.result()
+            if audio_hit is not None:
+                measured = None
+            else:
+                assert measured_f is not None
+                measured = measured_f.result()
             st["note"] = " ".join(f"s{r.seg}:{r.mode}{'(hit)' if r.cache_hit else ''}={r.seconds}s" for r in segs)
         with timer.stage("ass") as st:
-            ass, events = None, []
+            ass = None
+            events: list[tuple] = []
             if words:
                 ass, events = captions.write_ass(words, tl, workdir / "captions.ass", rep.caption_y_overrides)
                 st["note"] = f"{len(events)} caption events, {len(rep.caption_y_overrides)} placement overrides"

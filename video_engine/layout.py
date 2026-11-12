@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .units import Units
 
 if TYPE_CHECKING:
-    from .timeline import Segment, Timeline
+    from .timeline import GsapScene, Segment, Timeline
 
 
 class _M(BaseModel):
@@ -210,7 +210,7 @@ def halo(theme: dict, glow: bool = False, px: float = 0.0, label: bool = False) 
         sb, sdy, gl = float(lg["shadow_blur_px"]), float(lg["shadow_dy_px"]), float(lg["glow_px"])
         lp = [hw + max(gl, sb), hw + max(gl, sb - sdy), hw + max(gl, sb), hw + max(gl, sb + sdy)]
         pad = [max(a, c) for a, c in zip(pad, lp)]
-    return tuple(pad)
+    return (pad[0], pad[1], pad[2], pad[3])
 
 
 def text_box(m: Metrics, x: float, y: float, pad: tuple[float, float, float, float]) -> Box:
@@ -637,11 +637,13 @@ def _detail(map_path: str, mtime: float):
 
 def _plan_key(seg: "Segment", tl: "Timeline", project_dir: Path) -> str:
     from . import profiles
-    sc = seg.gsap_scene_config.model_dump(mode="json", exclude={"camera_path", "title_at_frame"})
+    scene = seg.gsap_scene_config
+    assert scene is not None
+    sc = scene.model_dump(mode="json", exclude={"camera_path", "title_at_frame"})
     for k in ("pins", "regions", "routes", "figures", "cards"):
         for e in sc.get(k) or []:
             e.pop("at_frame", None)
-    p = project_dir / seg.gsap_scene_config.map_asset
+    p = project_dir / scene.map_asset
     return json.dumps([sc, seg.n_frames, tl.settings.model_dump(mode="json"), profiles.of(tl).blake3,
                        str(Path(project_dir).resolve()), str(p.resolve()), p.stat().st_mtime_ns], sort_keys=True)
 
@@ -659,13 +661,20 @@ def plan(seg: "Segment", tl: "Timeline", project_dir: Path) -> Plan:
 
 
 class _Planner:
+    sc: GsapScene
+    L: LayoutProfile
+
     def __init__(self, seg: "Segment", tl: "Timeline", project_dir: Path):
         from . import hyperframes, maps, profiles
         self.hf = hyperframes
-        self.seg, self.tl, self.sc = seg, tl, seg.gsap_scene_config
+        sc = seg.gsap_scene_config
+        assert sc is not None
+        self.seg, self.tl, self.sc = seg, tl, sc
         S = tl.settings
         self.W, self.H, self.fps, self.n = S.width, S.height, S.fps, seg.n_frames
-        self.L = profiles.of(tl).layout
+        L = profiles.of(tl).layout
+        assert L is not None
+        self.L = L
         prof = profiles.of(tl)
         self.theme = prof.render_values("hf")
         self.max_zoom = prof.camera.max_zoom
@@ -717,7 +726,9 @@ class _Planner:
         s |= {("fig", i) for i in b.card}
         if b.title and self.pr is not None:     # [print]: the title is printed inside the beat's region
             if b.region is not None:
-                s.add(("area", self.area_id(self.sc.title, b.region, False, True)))
+                title = self.sc.title
+                assert title is not None
+                s.add(("area", self.area_id(title, b.region, False, True)))
             elif self.sc.title:
                 self.log.append(f"beat at frame {b.at_frame}: title hidden (a printed title needs the beat's region)")
         elif b.title:
@@ -748,7 +759,9 @@ class _Planner:
 
     def content_beat(self, k: int):
         """The beat whose map content frames beat k: k itself, else the next beat with content (None = none)."""
-        for b in self.sc.beats[k:]:
+        beats = self.sc.beats
+        assert beats is not None
+        for b in beats[k:]:
             if b.region is not None or b.routes or b.pins or b.markers:
                 return b
         return None
@@ -774,7 +787,9 @@ class _Planner:
         the camera frames it; 0 without [print] (labels then sit beside the head)."""
         if self.pr is None:
             return 0.0
-        px = (self.pr.label_px if self.prb["surface"] == "paper" else self.pr.label_dark_px) * self.ky
+        prb = self.prb
+        assert prb is not None
+        px = (self.pr.label_px if prb["surface"] == "paper" else self.pr.label_dark_px) * self.ky
         return 2 * self.pr.leader_gap * self.ky + self.pr.leader_len * self.ky + 1.2 * px
 
     def trimmed_guess(self, r: int):
@@ -836,6 +851,7 @@ class _Planner:
     def run(self) -> Plan:
         sc, fps = self.sc, self.fps
         beats = sc.beats
+        assert beats is not None
         self.area_keys: list[tuple[str, int, bool | None]] = []
         self.area_water: set[int] = set()
         self.area_title: set[int] = set()
@@ -912,7 +928,7 @@ class _Planner:
             p = self.place(keys, route_draw)
             bad = self.pulse_conflicts(p) if pulse else {}
             drift = self.drift_conflicts(p) if rate > 0 else {}
-            shrunk = bool(bad) and shrink_pulses(keys, bad, pulse["zoom"])
+            shrunk = bool(bad) and pulse is not None and shrink_pulses(keys, bad, pulse["zoom"])
             bounded = bool(drift) and bound_drift(keys, drift)
             if not (shrunk or bounded):
                 break
@@ -944,7 +960,9 @@ class _Planner:
         """Entry length of an element kind ([print]: titles and place names, headings, notes have their own)."""
         if self.pr is not None:
             if kind == "area":
-                return self.f_area_in
+                area_in = self.f_area_in
+                assert area_in is not None
+                return area_in
             if kind == "heading":
                 dur = max(self.pr.heading_fade_s, self.pr.rule_draw_s) if self.ornaments else self.pr.heading_fade_s
                 return _frames(dur, self.fps)
@@ -1012,7 +1030,9 @@ class _Planner:
 
     # ------------------------------------------------------------------ routes
     def trim_route(self, i: int, p: Plan):
-        r = self.sc.routes[i]
+        routes = self.sc.routes
+        assert routes is not None
+        r = routes[i]
         pts = list(self.routes_raw[i])
         if r.to_pin is None:
             return pts
@@ -1045,20 +1065,24 @@ class _Planner:
         sc, L = self.sc, self.L
         col = self.L.grid.edges()[0] * self.kx
         top = math.ceil(self.z1[1] / (L.grid.unit * self.ky)) * (L.grid.unit * self.ky)
-        if sc.title and any(b.title for b in sc.beats) and self.pr is None:
+        beats = sc.beats
+        assert beats is not None
+        if sc.title and any(b.title for b in beats) and self.pr is None:
             px = L.sizes.title * self.ky
             m = text_metrics(sc.title, self.title_role, px, 1.04)
             x = col - m.ink[0]
             p.title = {"text": sc.title, "x": round(x, 2), "y": top, "px": px, "box": text_box(m, x, top, halo(self.theme, True, px)),
                        "css": (x, top, x + m.adv, top + m.h),
                        "ink": (x + m.ink[0], top + m.ink[1], x + m.ink[2], top + m.ink[3])}
-        for b in sc.beats:
+        figures = sc.figures
+        for b in beats:
             if not b.card:
                 continue
             if self.pr is not None:
                 self.centre_card(p, b)
                 continue
-            fy = sc.figures[b.card[0]]
+            assert figures is not None
+            fy = figures[b.card[0]]
             ytext = self.hf.figure_text(fy, fy.value, self.theme)
             px = L.sizes.year * self.ky
             my = text_metrics(ytext, "serif", px, 1.0, weight=800, nums=True)
@@ -1069,7 +1093,7 @@ class _Planner:
                                  "css": (x, top, x + my.adv, top + my.h),
                                  "ink": (x + my.ink[0], top + my.ink[1], x + my.ink[2], top + my.ink[3])}
             if len(b.card) > 1:
-                ft = sc.figures[b.card[1]]
+                ft = figures[b.card[1]]
                 ttext = self.hf.figure_text(ft, ft.value, self.theme)
                 pt = L.sizes.time * self.ky
                 mt = text_metrics(ttext, self.title_role, pt, 1.0, nums=True)
@@ -1084,7 +1108,10 @@ class _Planner:
         """[print]: the year alone, centred (ink width year_width x the frame within year_px_min..max), the time
         centred under it in Cinzel caps."""
         pr, sc = self.pr, self.sc
-        fy = sc.figures[b.card[0]]
+        assert pr is not None
+        figures = sc.figures
+        assert figures is not None
+        fy = figures[b.card[0]]
         ytext = self.hf.figure_text(fy, fy.value, self.theme)
         role, w = self.roles["year"][:2]
         ref = text_metrics(ytext, role, 100.0, 1.0, weight=wt(role, w), nums=True)
@@ -1098,7 +1125,7 @@ class _Planner:
                              "box": text_box(my, x, y, halo(self.theme, False, px)), "base": y + my.base,
                              "css": (x, y, x + my.adv, y + my.h), "ink": ink}
         if len(b.card) > 1:
-            ft = sc.figures[b.card[1]]
+            ft = figures[b.card[1]]
             ttext = self.hf.figure_text(ft, ft.value, self.theme).upper()
             role_t, wt_t, trk = self.roles["time"][:3]
             pt = pr.time_px * self.ky
@@ -1115,6 +1142,7 @@ class _Planner:
         gets a gap, a diamond, a gap and a rule (rules drawn from the centre outwards). The plain form, the
         default, is the caps alone."""
         pr = self.pr
+        assert pr is not None
         role, w, trk = self.roles["heading"][:3]
         for k, text in sorted(self.heading_text.items()):
             T = text.upper()
@@ -1127,14 +1155,14 @@ class _Planner:
             ink = (x + m.ink[0], y + m.ink[1], x + m.ink[2], y + m.ink[3])
             rule_y = base - (mh.base - mh.ink[1]) / 2
             tb = text_box(m, x, y, halo(self.theme, False, px))
+            rules: tuple[tuple[float, float], ...] = ()
+            box = tb
             if self.ornaments:
                 g, d, ln = pr.rule_gap * self.kx, pr.diamond_px * self.kx, pr.rule_len * self.kx
                 right = (ink[2] + g + d + g, ink[2] + g + d + g + ln)
                 left = (ink[0] - g - d - g - ln, ink[0] - g - d - g)
                 rules = (left, right)
                 box = (min(tb[0], left[0]), min(tb[1], rule_y - d / 2), max(tb[2], right[1]), max(tb[3], rule_y + d / 2))
-            else:
-                rules, box = (), tb
             p.headings[k] = Heading(T, px, x, y, box, (x, y, x + m.adv, y + m.h), base, rule_y, rules,
                                     self.ornaments)
 
@@ -1142,6 +1170,7 @@ class _Planner:
         """[print] hand annotations: Kalam centred on their map point, rotated; the arrow leaves the rotated text box
         12 px out towards arrow_to and stops 14 px short of it (screen px at the note's entry, then fixed size)."""
         pr = self.pr
+        assert pr is not None
         for n, nt in enumerate(self.note_list):
             px = pr.note_px * self.ky
             m = text_metrics(nt.text, "hand", px, 1.0)
@@ -1294,6 +1323,7 @@ class _Planner:
         +-title_rot_max, nearest the region's pole of inaccessibility; inside with area_inset at the (wider) entry
         tracking, clear of other text, heads and routes."""
         L, pr = self.L, self.pr
+        assert pr is not None
         box = self.area_keys[k][2]
         role, w8, trk = self.roles["area"][:3]
         if k in self.area_water:            # water names in the label face (italic on paper)
@@ -1392,7 +1422,9 @@ class _Planner:
             sizes.append(s)
             s -= L.sizes.pin_label_step
         if self.pr is not None:   # [print]: one size; first choice above the pin on a vertical leader
-            sizes = [self.pr.label_px if self.prb["surface"] == "paper" else self.pr.label_dark_px]
+            prb = self.prb
+            assert prb is not None
+            sizes = [self.pr.label_px if prb["surface"] == "paper" else self.pr.label_dark_px]
             px = sizes[0] * self.ky
             m = text_metrics(text, self.label_role, px, 1.0, weight=self.label_wt)
             gap, ll = self.pr.leader_gap * self.ky, self.pr.leader_len * self.ky
@@ -1652,9 +1684,8 @@ def frame_items(p: Plan, f: float) -> list[Item]:
             out.append(Item(f"note:{n}", "note", corners_box(cs), nt.px, nt.text, o, poly=cs, angle=nt.angle,
                             css=(c[0] - m.adv / 2, c[1] - m.h / 2, c[0] + m.adv / 2, c[1] + m.h / 2), slot="map"))
             if nt.arrow:
-                a = nt.arrow
                 out.append(Item(f"leader:note:{n}", "leader", None, 0, "", o,
-                                seg=((c[0] + a[0], c[1] + a[1]), (c[0] + a[2], c[1] + a[3]))))
+                                seg=((c[0] + nt.arrow[0], c[1] + nt.arrow[1]), (c[0] + nt.arrow[2], c[1] + nt.arrow[3]))))
     for k, a in p.areas.items():
         if (o := p.visible(f"area:{k}", f)) > 0:
             cs = area_corners(p, a, f)
@@ -1697,11 +1728,13 @@ def animating(p: Plan, f: float) -> list[str]:
 def apply_segment(seg: "Segment", tl: "Timeline", project_dir: Path) -> Plan | None:
     """Writes the derived camera_path and element frames into a beats segment (idempotent). None = not a beats
     segment under a layout profile, or its map is missing."""
-    if not is_beats(seg, tl) or not (Path(project_dir) / seg.gsap_scene_config.map_asset).is_file():
+    sc = seg.gsap_scene_config
+    if not is_beats(seg, tl) or sc is None:
+        return None
+    if not (Path(project_dir) / sc.map_asset).is_file():
         return None
     from .timeline import CameraKey
     p = plan(seg, tl, project_dir)
-    sc = seg.gsap_scene_config
     sc.camera_path = [CameraKey(**{k: v for k, v in kk.items() if not (k == "move_s" and kk["move"] != "settle")})
                       for kk in p.keys]
     first = lambda key, default: (p.spans.get(key) or [Span(default, 0)])[0].t_in
@@ -1740,7 +1773,8 @@ def scene_layout(p: Plan) -> dict:
         out["fly"] = p.L.fly.model_dump()
     if p.title:
         out["title"] = {"x": p.title["x"], "y": p.title["y"], "px": p.title["px"]}
-    out["figures"] = {str(i): {"x": fg["x"], "y": fg["y"], "px": fg["px"]} for i, fg in p.figs.items()}
+    figures = {str(i): {"x": fg["x"], "y": fg["y"], "px": fg["px"]} for i, fg in p.figs.items()}
+    out["figures"] = figures
     out["labels"] = {str(i): [[t(f), None if lab is None else
                                {"x": lab.dx, "y": lab.dy, "px": lab.px, "leader": lab.leader}, hard]
                               for (f, lab, hard) in tr] for i, tr in p.tracks.items()}
@@ -1754,7 +1788,7 @@ def scene_layout(p: Plan) -> dict:
                     for k, a in p.areas.items()]
     if p.pr is not None:
         for i, fg in p.figs.items():
-            out["figures"][str(i)].update({k: fg[k] for k in ("slot", "weight", "tracking") if k in fg})
+            figures[str(i)].update({k: fg[k] for k in ("slot", "weight", "tracking") if k in fg})
         out["headings"] = [{"key": k, "text": h.text, "x": h.x, "y": h.y, "px": h.px, "rule_y": round(h.rule_y, 2),
                             "ornaments": h.ornaments,
                             "rules": [[round(v, 2) for v in r] for r in h.rules]} for k, h in p.headings.items()]

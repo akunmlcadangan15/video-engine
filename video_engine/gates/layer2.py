@@ -35,6 +35,17 @@ M02_WARN = 1.2               # map source detail px per on-screen px at the deep
 M02_FAIL = 0.85              # fail below (shown more than ~1.18x upscaled)
 
 
+def _gs(s: Segment):
+    sc = s.gsap_scene_config
+    assert sc is not None
+    return sc
+
+
+def _is_file(root: Path, name: str | None) -> bool:
+    assert name is not None
+    return (root / name).is_file()
+
+
 def r56_min_px(W: int, H: int) -> float:
     return R56_MIN_PX_1080P * math.hypot(W, H) / math.hypot(1080, 1920)
 
@@ -75,9 +86,9 @@ def m02_map_resolution(tl: Timeline, project_dir: Path) -> list[Finding]:
     out = []
     units = [u for s in tl.segments if s.engine_type == HYPERFRAMES for u in hyperframes.split_panels(s, tl)]
     for s, tlu in units:   # a split segment: each panel at its own size
-        if s.gsap_scene_config.globe:
+        sc = _gs(s)
+        if sc.globe:
             continue   # globe scenes: M04
-        sc = s.gsap_scene_config
         try:
             scene = hyperframes.scene_data(s, tlu, project_dir)
             iw, ih = maps.map_image_size(project_dir / sc.map_asset)
@@ -108,7 +119,7 @@ def m03_tilt_cover(tl: Timeline, project_dir: Path) -> list[Finding]:
     from .. import camera_full3d
     out, n = [], 0
     for s in tl.segments:
-        if s.engine_type == HYPERFRAMES and s.gsap_scene_config.camera3d:
+        if s.engine_type == HYPERFRAMES and _gs(s).camera3d:
             n += 1
             try:
                 sc3 = hyperframes.scene_data(s, tl, project_dir)
@@ -123,7 +134,7 @@ def m03_tilt_cover(tl: Timeline, project_dir: Path) -> list[Finding]:
                                    f"{len(bad)} frames (first: frame {f}); lower the eye, aim the target at the map "
                                    "or narrow the fov", s.seg_index))
             continue
-        if s.engine_type != HYPERFRAMES or not any(k.tilt for k in s.gsap_scene_config.camera_path or []):
+        if s.engine_type != HYPERFRAMES or not any(k.tilt for k in _gs(s).camera_path or []):
             continue
         n += 1
         try:
@@ -146,7 +157,7 @@ def m04_globe_resolution(tl: Timeline, project_dir: Path) -> list[Finding]:
     out, n = [], 0
     fps, W, H = tl.settings.fps, tl.settings.width, tl.settings.height
     for s in tl.segments:
-        if s.engine_type != HYPERFRAMES or not s.gsap_scene_config.globe:
+        if s.engine_type != HYPERFRAMES or not _gs(s).globe:
             continue
         n += 1
         try:
@@ -174,12 +185,13 @@ def g01_grade_luts(tl: Timeline, project_dir: Path) -> list[Finding]:
 
 def _native_motion(s: Segment, tl: Timeline, sw: int, sh: int, intensity: float) -> float:
     cm = s.camera_move
+    assert cm is not None
     return core.camera_plan(cm.preset, intensity, float(sw), float(sh), float(tl.settings.width),
                             float(tl.settings.height), cm.focus_box)[2]
 
 
 def _hf_motion(s: Segment, tl: Timeline, project_dir: Path, intensity: float) -> float:
-    sc = s.gsap_scene_config.model_copy(update={"camera_intensity": intensity})
+    sc = _gs(s).model_copy(update={"camera_intensity": intensity})
     W, H = tl.settings.width, tl.settings.height
     iw, ih = maps.map_image_size(project_dir / sc.map_asset)
     cover = max(W / iw, H / ih)
@@ -188,15 +200,17 @@ def _hf_motion(s: Segment, tl: Timeline, project_dir: Path, intensity: float) ->
 
 def _hf_plan(s: Segment, tl: Timeline, project_dir: Path) -> dict:
     W, H = tl.settings.width, tl.settings.height
-    iw, ih = maps.map_image_size(project_dir / s.gsap_scene_config.map_asset)
+    sc = _gs(s)
+    iw, ih = maps.map_image_size(project_dir / sc.map_asset)
     cover = max(W / iw, H / ih)
-    return hyperframes.camera_plan(s.gsap_scene_config, W, H, iw * cover, ih * cover, s.n_frames, tl.settings.fps,
+    return hyperframes.camera_plan(sc, W, H, iw * cover, ih * cover, s.n_frames, tl.settings.fps,
                                    profiles.of(tl).render_values("hf"))
 
 
 def _r56_path(s: Segment, tl: Timeline, project_dir: Path, target: float) -> list[Finding]:
     """R56 on a camera_path: every key-to-key leg moves at least the minimum (no automatic fix)."""
-    keys = s.gsap_scene_config.camera_path
+    keys = _gs(s).camera_path
+    assert keys is not None
     if keys[-1].at_frame >= s.n_frames:
         return []   # T02 reports it
     motion = _hf_plan(s, tl, project_dir)["leg_motion"]
@@ -256,17 +270,24 @@ def r56_camera(tl: Timeline, project_dir: Path) -> tuple[list[Finding], list[dic
             continue
         if s.engine_type == NATIVE:
             cm = s.camera_move
-            if cm is None or not (project_dir / s.source).is_file():
+            src = s.source
+            if cm is None:
                 continue   # footage without a camera move: motion is measured on pixels (qa.py)
+            assert src is not None
+            if not (project_dir / src).is_file():
+                continue
             if cm.preset == "static":
                 if s.is_still:
                     out.append(Finding("R56", "fail", "still image with preset 'static' has no motion", s.seg_index))
                 continue
-            sw, sh = native.source_size(project_dir / s.source, s.is_still)
-            motion_at = lambda i, s=s, sw=sw, sh=sh: _native_motion(s, tl, sw, sh, i)
+            sw, sh = native.source_size(project_dir / src, s.is_still)
+            seg_s, seg_sw, seg_sh = s, sw, sh
+
+            def motion_at(i: float) -> float:
+                return _native_motion(seg_s, tl, seg_sw, seg_sh, i)
             cur, auto, field = cm.intensity, (s.creative_autofix or bool(cm.auto_intensity)), "camera_move.intensity"
         elif s.engine_type == HYPERFRAMES:
-            sc = s.gsap_scene_config
+            sc = _gs(s)
             if not (project_dir / sc.map_asset).is_file() or sc.camera_preset not in hyperframes.HF_PRESETS:
                 continue
             if sc.globe:
@@ -285,7 +306,10 @@ def r56_camera(tl: Timeline, project_dir: Path) -> tuple[list[Finding], list[dic
             if sc.camera_preset == "static":
                 out.append(Finding("R56", "fail", "HyperFrames map with camera_preset 'static' has no motion", s.seg_index))
                 continue
-            motion_at = lambda i, s=s: _hf_motion(s, tl, project_dir, i)
+            seg_s = s
+
+            def motion_at(i: float) -> float:
+                return _hf_motion(seg_s, tl, project_dir, i)
             cur, auto, field = sc.camera_intensity, bool(s.creative_autofix), "gsap_scene_config.camera_intensity"
         else:
             continue
@@ -303,20 +327,24 @@ def r56_camera(tl: Timeline, project_dir: Path) -> tuple[list[Finding], list[dic
             continue
         new_i, new_m = r
         if s.engine_type == NATIVE:
-            s.camera_move.intensity = new_i
+            cm = s.camera_move
+            assert cm is not None
+            cm.intensity = new_i
         else:
-            s.gsap_scene_config.camera_intensity = new_i
+            _gs(s).camera_intensity = new_i
         fixes.append({"seg": s.seg_index, "path": field, "from": cur, "to": new_i})
         out.append(Finding("R56", "fix", f"motion {m:.0f}px < {target:.0f}px: {field} {cur} -> {new_i} ({new_m:.0f}px)", s.seg_index))
     segments = {s.seg_index: s for s in tl.segments}
     for f in out:
-        s = segments.get(f.seg)
-        if f.level == "fail" and s is not None:
-            if s.motion_expectation != "moving":
+        seg = segments.get(f.seg) if f.seg is not None else None
+        if f.level == "fail" and seg is not None:
+            if seg.motion_expectation != "moving":
                 f.level = "warn"
                 f.message += "; no explicit motion expectation"
             else:
-                f.message += f"; intent motion=moving: {s.intent.reason}"
+                intent = seg.intent
+                assert intent is not None
+                f.message += f"; intent motion=moving: {intent.reason}"
     return out, fixes
 
 
@@ -457,7 +485,7 @@ def probe_times(s: Segment, fps: int) -> list[float]:
     n = s.n_frames
     frames = {round(n * 0.3), round(n * 0.6), n - 1}
     if s.engine_type == HYPERFRAMES:
-        sc = s.gsap_scene_config
+        sc = _gs(s)
         frames |= {min(n - 1, k.at_frame) for k in sc.camera_path or []}
         for _, p, f_in, f_out in props.flat(s):
             a = f_in + (max(1, core.sec_to_frame(p.enter.s, fps)) if p.enter else 0)
@@ -565,10 +593,12 @@ def element_windows(dom_res: dict, s: Segment, fps: int) -> list[dict]:
 def focus_rects(s: Segment, tl: Timeline, project_dir: Path) -> list[dict]:
     """camera_move.focus_box projected into output px through the start and end camera windows (clipped to frame)."""
     cm = s.camera_move
-    if s.engine_type != NATIVE or cm is None or not cm.focus_box or not (project_dir / s.source).is_file():
+    if s.engine_type != NATIVE or cm is None or not cm.focus_box or not _is_file(project_dir, s.source):
         return []
     W, H = tl.settings.width, tl.settings.height
-    sw, sh = native.source_size(project_dir / s.source, s.is_still)
+    src = s.source
+    assert src is not None
+    sw, sh = native.source_size(project_dir / src, s.is_still)
     a, b, _ = core.camera_plan(cm.preset, cm.intensity, float(sw), float(sh), float(W), float(H), cm.focus_box)
     y0, x0, y1, x1 = (v / 1000 for v in cm.focus_box)
     out = []
@@ -585,7 +615,7 @@ def focus_rects(s: Segment, tl: Timeline, project_dir: Path) -> list[dict]:
 def prop_rects(s: Segment, tl: Timeline, project_dir: Path, clear: float) -> list[dict]:
     """Caption avoid boxes of a segment's props (props.avoid_boxes: per frame range, `frames` absolute, end exclusive);
     [] when the segment has none or its scene does not build (T02, F01 and R63 report why)."""
-    if s.engine_type != HYPERFRAMES or not props.has_props(s) or not (project_dir / s.gsap_scene_config.map_asset).is_file():
+    if s.engine_type != HYPERFRAMES or not props.has_props(s) or not _is_file(project_dir, _gs(s).map_asset):
         return []
     try:
         return props.avoid_boxes(s, hyperframes.scene_data(s, tl, project_dir), clear)
@@ -695,15 +725,16 @@ def r63_dom(tl: Timeline, project_dir: Path, workdir: Path, snaps: dict) -> tupl
     a probe result also carries "build_s" (build_dir wall seconds, the legibility ink probe included), "cached" and
     the probe phase "timing" (hyperframes.probe_dom)."""
     fps = tl.settings.fps
-    hf_segs = [s for s in tl.segments if s.engine_type == HYPERFRAMES and (project_dir / s.gsap_scene_config.map_asset).is_file()]
+    hf_segs = [s for s in tl.segments if s.engine_type == HYPERFRAMES and _is_file(project_dir, _gs(s).map_asset)]
     if not hf_segs:
         return [Finding("R63", "skip", "no HyperFrames segments")], {}
     dom: dict[int, dict] = {}
 
     def one(s: Segment) -> list[Finding]:
-        if s.gsap_scene_config.split is not None:   # split screen: each panel probed at its own size
+        sc = _gs(s)
+        if sc.split is not None:   # split screen: each panel probed at its own size
             fs = []
-            div = s.gsap_scene_config.split.divider_px
+            div = sc.split.divider_px
             for k, (ps, pt) in enumerate(hyperframes.split_panels(s, tl)):
                 y_off = float(pt.settings.height + div) if k else 0.0
                 fs += panel(ps, pt, f"seg{s.seg_index:03d}_{'tb'[k]}", " (bottom panel)" if k else " (top panel)", y_off)
@@ -839,7 +870,8 @@ def b01_watermark(tl: Timeline, events: list[tuple], boxes: dict[int, list[dict]
     W = tl.settings.width
     r = pl.text_rect()
     pr = profiles.of(tl).data.print
-    gap = units(tl).y(pr.watermark_clear_px) if pr is not None else 0.0
+    clear_px = pr.watermark_clear_px if pr is not None else 0.0
+    gap = units(tl).y(clear_px) if pr is not None else 0.0
     rt = (r["x"], r["y"], r["x"] + r["w"], r["y"] + r["h"])
     out = []
     sx, st, sb = units(tl).safe()
@@ -856,12 +888,12 @@ def b01_watermark(tl: Timeline, events: list[tuple], boxes: dict[int, list[dict]
                                    f"({b['x']:.0f},{b['y']:.0f},{b['w']:.0f}x{b['h']:.0f})", seg))
             elif gap and not b["id"].startswith(("focus:", "prop:")) and (g := _gap(rt, b)) < gap - 0.5:
                 out.append(Finding("B01", "fail", f"{b['id']} '{b.get('text', '')[:30]}' {g:.0f} px from the watermark "
-                                   f"(print.watermark_clear_px {pr.watermark_clear_px:g})", seg))
+                                   f"(print.watermark_clear_px {clear_px:g})", seg))
     for e in events:
         x0, y0, x1, y1 = caption_box(e)
         if _rect_overlap(r, {"x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0}):
             out.append(Finding("B01", "fail", f"watermark overlaps caption '{e[2]}' frames {e[0]}-{e[1]}"))
-    tail = f" (>= {pr.watermark_clear_px:g} px)" if gap else ""
+    tail = f" (>= {clear_px:g} px)" if gap else ""
     return out or [Finding("B01", "pass", f"watermark ({r['x']:.0f},{r['y']:.0f},{r['w']:.0f}x{r['h']:.0f}) clear of "
                                           f"{n} element boxes{tail} and {len(events)} captions")]
 
@@ -911,7 +943,7 @@ def r64_rows(dom: dict[int, dict]) -> list[dict]:
                 rows.append({"seg": seg, "id": r["id"], "text": r.get("text", ""), "kind": el["kind"], "t": item["t"],
                              "polarity": pol, "ink": ink, "halo": legibility.rgb_hex(halo), "halo_alpha": ha,
                              "vignette_alpha": float(st["va"]), "step": int(st["step"]), "flag": bool(st.get("flag")),
-                             "y": [round(float(v), 4) for v in np.percentile(y, [10, 50, 90])],
+                             "y": [round(float(v), 4) for v in np.asarray(np.percentile(y, [10, 50, 90]))],
                              "lc": round(ev.lc, 1), "lc_adjacent": round(ev.lc_adjacent, 1), "wcag": round(ev.wcag, 2),
                              "target": legibility.target(el["kind"], lg), "wcag_target": legibility.wcag_target(el["kind"], lg),
                              "fail_below": legibility.target(el["kind"], lg) - lg["lc_fail_margin"], "floor": lg["lc_floor"],
@@ -951,7 +983,7 @@ def r64_line_rows(dom: dict[int, dict]) -> list[dict]:
             for ln in item.get("lines", []):
                 if ln.get("opacity", 0) < 0.9 or ln["w"] <= 0 or ln["h"] <= 0:
                     continue
-                if bg is None:
+                if bg is None or mk is None:
                     bg = np.asarray(Image.open(item["line_bg"]).convert("RGB"))
                     mk = np.asarray(Image.open(item["line_mask"]).convert("RGB"))
                 cols = json.loads(ln.get("ink") or "[]")
@@ -1067,5 +1099,5 @@ def r64_legibility(tl: Timeline, dom: dict[int, dict]) -> list[Finding]:
                            f"lowest vs target: {worst[1]}" if worst else "no adaptive text") +
                            (f"; {len(lines)} line samples, lowest {lw['id']} Lc {lw['lc']}" if lw else "") +
                            (f"; {len(boxes)} box label samples, lowest {bw['id']} Lc {bw['lc']}" if bw else ""),
-                           worst[2] if worst else bw["seg"]))
+                           worst[2] if worst else bw["seg"] if bw is not None else None))
     return out

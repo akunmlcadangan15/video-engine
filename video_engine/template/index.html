@@ -11,7 +11,7 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:__W__px;height:__H__px;overflow:hidden;background:#0b1118}
 #root{position:relative;width:__W__px;height:__H__px;overflow:hidden;background:#0b1118;font-family:EngInter,sans-serif;--pin:#ffd84a}
-#cam{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+#cam{position:absolute;left:0;top:0;transform-origin:0 0}
 #cam>img,#base>img{position:absolute;left:0;top:0;display:block}
 #shade{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,rgba(5,10,16,0) 45%,rgba(5,10,16,.55) 100%),linear-gradient(180deg,rgba(5,10,16,.45) 0%,rgba(5,10,16,0) 22%,rgba(5,10,16,0) 78%,rgba(5,10,16,.4) 100%)}
 .pin{position:absolute;width:0;height:0;visibility:hidden}
@@ -150,11 +150,12 @@ if(S.morph){const M=S.morph, mo=mapBox(), tone=mapBox(), im=document.createEleme
   if(M.at_frame)fade(0,1,M.at_frame);if(M.back_at_frame!==null)fade(1,0,M.back_at_frame);}
 // camera: legs of transforms computed by the engine (same math as the R56 gate); each leg tweens from the previous one
 const C=S.camera;
-// tilted camera: #cam, the map and its deep tiles must not be composited layers of their own. Under #tilt's perspective
-// Chrome cannot read a 2D scale off a layer's screen transform and rasterizes it at scale 1, so a layer zoomed 5x
-// showed map, regions, flags and labels 5x upscaled (blocky edges). Painted into #tilt's layer instead (no
-// will-change, no translate3d: force3D false), they are drawn at the camera scale and only #tilt's own magnification
-// (camera3d.max_mag, at most about 1.4) is left to the compositor.
+// #cam is not a composited layer. A promoted transform is resampled differently when the CPU is busy, so two
+// captures of the same camera are not the same pixels. Tilted camera: the map and its deep tiles must not be
+// composited layers either. Under #tilt's perspective Chrome cannot read a 2D scale off a layer's screen transform
+// and rasterizes it at scale 1, so a layer zoomed 5x showed map, regions, flags and labels 5x upscaled (blocky
+// edges). Painted into #tilt's layer instead (no will-change, no translate3d: force3D false), they are drawn at the
+// camera scale and only #tilt's own magnification (camera3d.max_mag, at most about 1.4) is left to the compositor.
 const F3=C.tilt?{force3D:false}:{};
 if(C.tilt){cam.style.willChange='auto';cam.setAttribute('data-flat-raster','');
   document.querySelectorAll('#map,#map>img,[data-deep]').forEach(e=>{e.style.willChange='auto';});}
