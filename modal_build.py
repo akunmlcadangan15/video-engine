@@ -36,9 +36,17 @@ def _build_args() -> dict[str, str]:
 _CPU = float(_int_env("VIDEO_ENGINE_MODAL_CPU", 8))
 _MEM = _int_env("VIDEO_ENGINE_MODAL_MEMORY_MB", 16384)
 _TIMEOUT = _int_env("VIDEO_ENGINE_MODAL_TIMEOUT_S", 10800)
-_DISK = _int_env("VIDEO_ENGINE_MODAL_DISK_MB", 102400)
 _GPU = os.environ.get("VIDEO_ENGINE_MODAL_GPU", "none")
 _VOLUME = os.environ.get("VIDEO_ENGINE_MODAL_VOLUME", "video-engine-builds")
+
+
+def _disk_kwargs() -> dict[str, int]:
+    """Pass ephemeral_disk only when VIDEO_ENGINE_MODAL_DISK_MB is set. Otherwise Modal's default disk."""
+    from video_engine.modal_cli import ephemeral_disk_kwargs
+    return ephemeral_disk_kwargs(os.environ.get("VIDEO_ENGINE_MODAL_DISK_MB"))
+
+
+_DISK = _disk_kwargs()
 
 import modal  # noqa: E402  (resource env is read before the app is constructed)
 
@@ -63,8 +71,8 @@ _gpu = {} if _GPU in ("", "none") else {"gpu": _GPU}
     max_containers=1,
     scaledown_window=2,
     single_use_containers=True,
-    ephemeral_disk=_DISK,
     volumes={"/vol": volume},
+    **_DISK,
     **_gpu,
 )
 def build_remote(run_id: str, selftest: bool = False, resources: dict | None = None) -> dict:

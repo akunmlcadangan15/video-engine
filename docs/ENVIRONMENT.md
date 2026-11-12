@@ -144,6 +144,7 @@ Order for a real run:
 | `--cpu N` | 8 | CPU request and CPU limit, the tuple `(N, N)`, in physical cores (1–64) |
 | `--memory MB` | 16384 | memory request and memory limit, the tuple `(MB, MB)` |
 | `--timeout S` | 10800 | hard container timeout in seconds (1–86400) |
+| `--disk MB` | unset | ephemeral disk in MiB. Omit it and the container uses Modal's default disk. A set value must be 524288–3145728. `--disk` wins over `VIDEO_ENGINE_MODAL_DISK_MB` |
 | `--gpu none\|L4` | `none` | no GPU unless this is `L4` |
 | `--keep-volume` | off | leave `/runs/<id>` on the volume after a successful fetch |
 | `--dry-run` | off | local validate, preflight and closure only |
@@ -156,7 +157,7 @@ The container is created with `min_containers=0`, `max_containers=1`, `scaledown
 |---|---|---|
 | `VIDEO_ENGINE_MODAL_VOLUME` | `video-engine-builds` | Volume name. Created as version 2 when missing |
 | `VIDEO_ENGINE_MODAL_CHUNK_MB` | 64 | output chunk size (1–1024) |
-| `VIDEO_ENGINE_MODAL_DISK_MB` | 102400 | container ephemeral disk, in MiB |
+| `VIDEO_ENGINE_MODAL_DISK_MB` | unset | ephemeral disk in MiB when `--disk` is omitted. Allowed only 524288–3145728. Unset leaves Modal's default; the wrapper does not send a disk size |
 | `VIDEO_ENGINE_MIN_FREE_GB` | 8 | reserve on the local filesystem. Chunk writes must leave strictly more than this free. `0` disables the reserve; the chunk itself must still fit |
 | `VIDEO_ENGINE_RENDER_LOCK` | same path as `scripts/engine-build` | held for the remote build and for `--fetch` |
 
@@ -192,10 +193,10 @@ If the download stops, the run stays on the volume and the command prints `--fet
 - Exit 75: another render holds the lock. The message names the file. `flock -n "$VIDEO_ENGINE_RENDER_LOCK" true` sees the same lock.
 - Exit 74: not enough free local disk for the reserve or for the next chunk. Lower `VIDEO_ENGINE_MIN_FREE_GB` only when the filesystem can hold `final.mp4`.
 - Dry-run lists `missing:`: a timeline path, an `open:` / `download:` reference, a profile include, or a locked sound is absent from both the cache and `out/locked-sounds/`. A sha256 that does not match the lock is named the same way. Fix the file or run a local `engine build --relock` before the remote build.
-- Self-test mismatch: the image's FFmpeg is the static GPL build pinned in `vendor/ffmpeg-static.json` (8.1, with libx264). Node, HyperFrames, puppeteer-core, three and chrome-headless-shell come from `vendor/VERSIONS.json` unless `engine doctor` on this machine resolved a parseable version, in which case that version is a Docker build arg. FFmpeg, Node and Chrome are compared by major number. HyperFrames, puppeteer-core and three are compared by full `x.y.z`. The image's FFmpeg major must be at least 8.
+- Self-test mismatch: the image's FFmpeg is the static GPL build pinned in `vendor/ffmpeg-static.json` (8.1, with libx264). Node, HyperFrames, puppeteer-core, three and chrome-headless-shell are installed into `vendor/` from `vendor/VERSIONS.json` unless `engine doctor` on this machine resolved a parseable version, in which case that version is a Docker build arg. The image has no second toolchain, so `engine doctor` in the container reports those vendor copies. A HyperFrames line that says pinned, or that names the vendor tree, is that layout; it is not a change of the `auto` policy. The self-test compares version numbers: FFmpeg, Node and Chrome by major, HyperFrames, puppeteer-core and three by full `x.y.z`. The image's FFmpeg major must be at least 8.
 - Captions that are not pinned, and sounds that are not already on disk, are not fetched inside the container. Pin words locally (`engine words`) and resolve sounds locally first. The container does not receive API keys from this command.
 - A Volume created by an older client at the same name can refuse version 2. Remove it or set `VIDEO_ENGINE_MODAL_VOLUME` to a new name.
-- A plan that rejects the disk request: set `VIDEO_ENGINE_MODAL_DISK_MB` (default 102400).
+- Ephemeral disk: leave `--disk` and `VIDEO_ENGINE_MODAL_DISK_MB` unset to use Modal's default. A value outside 524288–3145728 MiB is a usage error (exit 2) and is rejected before any upload or container start.
 - `modal_render.py` does not build and does not request a GPU. Use this command.
 
 Image definition: `Dockerfile.modal`, `scripts/modal_image_setup.py`, `modal_build.py`. The image installs the static FFmpeg build, the Node tarball, the npm packages, chrome-headless-shell, and the Rust extension (`maturin`), then runs `engine doctor`. Python sources mounted for the run are the client tree; the image supplies the tools and the extension. A Rust change needs a new image build.

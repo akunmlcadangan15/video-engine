@@ -138,7 +138,10 @@ def _prepare_env(args: Args) -> None:
     os.environ["VIDEO_ENGINE_MODAL_TIMEOUT_S"] = str(args.timeout_s)
     os.environ["VIDEO_ENGINE_MODAL_GPU"] = args.gpu
     os.environ["VIDEO_ENGINE_MODAL_VOLUME"] = args.volume
-    os.environ["VIDEO_ENGINE_MODAL_DISK_MB"] = os.environ.get("VIDEO_ENGINE_MODAL_DISK_MB", "102400")
+    if args.disk_mb is None:
+        os.environ.pop("VIDEO_ENGINE_MODAL_DISK_MB", None)
+    else:
+        os.environ["VIDEO_ENGINE_MODAL_DISK_MB"] = str(args.disk_mb)
 
 
 def _call(module, *payload):

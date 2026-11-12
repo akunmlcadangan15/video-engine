@@ -119,7 +119,7 @@ scripts/engine-build-modal PROJECT --cpu 8 --memory 16384 --timeout 10800
 scripts/engine-build-modal PROJECT --fetch RUN_ID
 ```
 
-`--cpu N` and `--memory MB` are the container's `(request, limit)` tuples, both ends equal to the flag. The default is CPU only (`--gpu none`); `--gpu L4` is the only GPU. `min_containers=0`, `scaledown_window=2`, `single_use_containers` and `retries=0` keep the container from lingering or retrying. `--timeout` (default 10800 seconds) is a hard stop. The run directory on the volume is deleted after a successful fetch unless `--keep-volume` is set. Content-addressed input blobs remain so an unchanged file is not uploaded again.
+`--cpu N` and `--memory MB` are the container's `(request, limit)` tuples, both ends equal to the flag. The default is CPU only (`--gpu none`); `--gpu L4` is the only GPU. Disk size is omitted unless `--disk` or `VIDEO_ENGINE_MODAL_DISK_MB` is set (524288–3145728 MiB); otherwise the container uses Modal's default disk. An out-of-range value exits 2 before upload. `min_containers=0`, `scaledown_window=2`, `single_use_containers` and `retries=0` keep the container from lingering or retrying. `--timeout` (default 10800 seconds) is a hard stop. The run directory on the volume is deleted after a successful fetch unless `--keep-volume` is set. Content-addressed input blobs remain so an unchanged file is not uploaded again.
 
 Locally, before the upload: `engine validate`, `engine preflight`, then the closure (timeline files, the sound lock in `out/build_manifest.json` and `out/locked-sounds/`, caption inputs, profile files). The timeline file is not rewritten. Library roots are remapped with `VIDEO_ENGINE_*` inside the container.
 
@@ -131,6 +131,7 @@ The remote process is `engine build /work/project`. It runs the same gates and t
 
 - The container is Linux x64. A build on macOS is already not byte-identical to a Linux build (see [Platforms](ENVIRONMENT.md#platforms)); a remote build follows that rule. The same gates and the same QA thresholds run either way.
 - FFmpeg in the image is the static GPL build pinned by `vendor/ffmpeg-static.json` (8.1, libx264, the filters the doctor checks). A local FFmpeg 8.x matches the self-test on major number. Patch level and the x264 build can still change frame bytes and `final_sha256`.
+- Node, HyperFrames, puppeteer-core, three and chrome-headless-shell in the image are the vendor tree (`vendor/VERSIONS.json`). `engine doctor` reports that copy. A HyperFrames line that says pinned or vendor is the image layout; the container does not carry a second install. The self-test compares versions, not that label.
 - `final.mp4` is the encoder output. The fetch does not transcode it. `build_report.json` and `build_manifest.json` are not byte-identical to a local report because of the `remote` object.
 - The remote segment cache starts empty. Locked sound files are part of the closure, so a covered lock is reused. A lock whose file is missing locally fails before the upload.
 - A symlink is uploaded as the target's bytes and materialised as a regular file. Relative layout is unchanged.

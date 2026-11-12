@@ -23,6 +23,9 @@ DEFAULT_CPU = 8
 DEFAULT_MEMORY_MB = 16384
 DEFAULT_TIMEOUT_S = 10800
 DEFAULT_CHUNK_MB = 64
+# Modal rejects an ephemeral_disk outside this range (MiB). Unset means the platform default.
+DISK_MIN_MB = 524288
+DISK_MAX_MB = 3145728
 VOLUME_NAME = "video-engine-builds"
 GPU_CHOICES = ("none", "L4")
 COMPARE = ("ffmpeg", "node", "hyperframes", "puppeteer-core", "three", "chrome")
@@ -58,6 +61,7 @@ class Args:
     dry_run: bool = False
     selftest: bool = False
     fetch: str | None = None
+    disk_mb: int | None = None
     chunk_bytes: int = DEFAULT_CHUNK_MB * 1024 * 1024
     volume: str = VOLUME_NAME
     min_free_bytes: int = 8 * 1024 ** 3
@@ -88,6 +92,26 @@ def _memory(text: str) -> int:
     return value
 
 
+def require_disk_mb(text: str) -> int:
+    """Ephemeral disk in MiB. UsageError when it is not an integer in Modal's accepted range."""
+    try:
+        value = int(str(text).strip())
+    except ValueError:
+        raise UsageError(f"ephemeral disk must be an integer number of MiB, got {text!r}") from None
+    if not DISK_MIN_MB <= value <= DISK_MAX_MB:
+        raise UsageError(
+            f"ephemeral disk must be between {DISK_MIN_MB} and {DISK_MAX_MB} MiB, got {value}"
+        )
+    return value
+
+
+def ephemeral_disk_kwargs(raw: str | None) -> dict[str, int]:
+    """Decorator kwargs for Modal. Empty when no disk size was requested, so the platform default is used."""
+    if raw is None or not str(raw).strip():
+        return {}
+    return {"ephemeral_disk": int(str(raw).strip())}
+
+
 def _timeout(text: str) -> int:
     try:
         value = int(text)
@@ -110,6 +134,9 @@ def parse_args(argv: list[str]) -> Args:
                         help=f"memory request and limit in MB, as the tuple (MB, MB) (default {DEFAULT_MEMORY_MB})")
     parser.add_argument("--timeout", type=_timeout, default=DEFAULT_TIMEOUT_S, metavar="S", dest="timeout_s",
                         help=f"hard container timeout in seconds (default {DEFAULT_TIMEOUT_S})")
+    parser.add_argument("--disk", type=require_disk_mb, default=None, metavar="MB", dest="disk_mb",
+                        help=f"ephemeral disk in MiB ({DISK_MIN_MB}..{DISK_MAX_MB}). "
+                             "Omit to use Modal's default disk")
     parser.add_argument("--gpu", choices=GPU_CHOICES, default="none",
                         help="GPU type, or none (default). The build is CPU-bound; GPU is off unless this is set")
     parser.add_argument("--keep-volume", action="store_true",
@@ -135,6 +162,7 @@ def parse_args(argv: list[str]) -> Args:
     return Args(
         project=project, cpu=ns.cpu, memory_mb=ns.memory_mb, timeout_s=ns.timeout_s, gpu=ns.gpu,
         keep_volume=ns.keep_volume, dry_run=ns.dry_run, selftest=ns.selftest, fetch=ns.fetch,
+        disk_mb=ns.disk_mb,
     )
 
 
@@ -158,6 +186,12 @@ def apply_runtime_env(args: Args, environ: dict | None = None) -> Args:
     args.chunk_bytes = chunk_mb * 1024 * 1024
     args.volume = env.get("VIDEO_ENGINE_MODAL_VOLUME", VOLUME_NAME) or VOLUME_NAME
     args.min_free_bytes = 0 if free_gb == 0 else int(free_gb * 1024 ** 3)
+    # --disk wins. Otherwise VIDEO_ENGINE_MODAL_DISK_MB, validated here so a bad value
+    # never reaches an upload or a FunctionCreate.
+    if args.disk_mb is None:
+        raw_disk = env.get("VIDEO_ENGINE_MODAL_DISK_MB", "")
+        if str(raw_disk).strip():
+            args.disk_mb = require_disk_mb(raw_disk)
     return args
 
 
@@ -361,8 +395,9 @@ def format_dry_run(closure: Closure, args: Args, *, toolchain: dict | None = Non
         f"digest: {closure.digest}",
         f"missing: {len(closure.missing)}",
         f"resources: cpu=({args.cpu}, {args.cpu}) memory=({args.memory_mb}, {args.memory_mb}) "
-        f"gpu={args.gpu} timeout={args.timeout_s}s retries=0 min_containers=0 "
-        f"scaledown_window=2 single_use_containers=true",
+        f"gpu={args.gpu} timeout={args.timeout_s}s "
+        f"disk={'default' if args.disk_mb is None else str(args.disk_mb) + 'MiB'} "
+        f"retries=0 min_containers=0 scaledown_window=2 single_use_containers=true",
         f"volume: {args.volume}",
         f"keep_volume: {str(args.keep_volume).lower()}",
         "env:",

@@ -392,7 +392,8 @@ def test_publish_and_annotate(tmp_path: Path):
 def test_parse_args_defaults_and_flags():
     args = parse_args([str(ROOT)])
     assert args.cpu == 8 and args.memory_mb == 16384 and args.timeout_s == 10800
-    assert args.gpu == "none" and not args.keep_volume and not args.dry_run and args.fetch is None
+    assert args.gpu == "none" and args.disk_mb is None
+    assert not args.keep_volume and not args.dry_run and args.fetch is None
     flagged = parse_args([
         str(ROOT), "--cpu", "4", "--memory", "8192", "--timeout", "120", "--gpu", "L4",
         "--keep-volume", "--dry-run",
@@ -489,6 +490,7 @@ def test_dry_run_text_lists_uploads_and_resources(tmp_path: Path):
     text = format_dry_run(closure, args, toolchain={"components": {"ffmpeg": "8.1.3"}})
     assert "dry run" in text
     assert "cpu=(4, 4)" in text and "memory=(2048, 2048)" in text and "gpu=none" in text
+    assert "disk=default" in text
     assert "retries=0" in text and "min_containers=0" in text and "single_use_containers=true" in text
     assert "upload\ttimeline\tproject\tassets/clip.mp4" in text
     assert "modal: not called" in text
@@ -604,6 +606,44 @@ def _block_modal_import(monkeypatch):
         return real(name, globals, locals, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", blocked)
+
+
+def test_ephemeral_disk_is_omitted_unless_set():
+    from video_engine.modal_cli import ephemeral_disk_kwargs, require_disk_mb
+    assert ephemeral_disk_kwargs(None) == {}
+    assert ephemeral_disk_kwargs("") == {}
+    assert ephemeral_disk_kwargs("  ") == {}
+    assert ephemeral_disk_kwargs("524288") == {"ephemeral_disk": 524288}
+    assert require_disk_mb("3145728") == 3145728
+    with pytest.raises(UsageError, match="524288"):
+        require_disk_mb("102400")
+    with pytest.raises(UsageError, match="integer"):
+        require_disk_mb("large")
+
+
+def test_disk_flag_and_env_are_validated_before_modal(tmp_path, monkeypatch, capsys):
+    from video_engine import modal_cli
+    with pytest.raises(UsageError, match="524288"):
+        parse_args(["--selftest", "--disk", "102400"])
+    flagged = parse_args([str(ROOT), "--dry-run", "--disk", "524288"])
+    assert flagged.disk_mb == 524288
+    # A flag in range wins over an environment value that would be rejected.
+    kept = apply_runtime_env(flagged, {"VIDEO_ENGINE_MODAL_DISK_MB": "102400", "VIDEO_ENGINE_MIN_FREE_GB": "0"})
+    assert kept.disk_mb == 524288
+    with pytest.raises(UsageError, match="3145728"):
+        apply_runtime_env(parse_args(["--selftest"]), {"VIDEO_ENGINE_MODAL_DISK_MB": "102400"})
+    monkeypatch.delenv("VIDEO_ENGINE_ENV_FILE", raising=False)
+    monkeypatch.setenv("VIDEO_ENGINE_MODAL_DISK_MB", "102400")
+    _block_modal_import(monkeypatch)
+    assert modal_cli.main(["--selftest"]) == 2
+    selftest_out = capsys.readouterr().out
+    assert "524288" in selftest_out and "not installed" not in selftest_out
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "master_timeline.json").write_text("{}", encoding="utf-8")
+    assert modal_cli.main([str(proj)]) == 2
+    build_out = capsys.readouterr().out
+    assert "524288" in build_out and "uploaded" not in build_out and "not installed" not in build_out
 
 
 def test_selftest_without_modal_exits_127(monkeypatch, capsys):
