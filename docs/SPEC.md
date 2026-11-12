@@ -269,7 +269,7 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 - SFX cue model (`video_engine/sfx.py`, `timeline.SfxCue`): profile `[sound]` maps render events (pin, region,
   route, whip, label, title, figure, counter_tick) to SFX kinds; one cue per event:
   `{time_s >= 0, kind, gain_db -60..0, asset_id, event, frame, trim_s >= 0, max_s 0-10}`, where `kind` is one of
-  pop, tick, whoosh, click, beep, counter_tick, impact, riser and `asset_id` is the source asset id of the file the
+  pop, tick, whoosh, click, beep, counter_tick, impact, riser, rumble and `asset_id` is the source asset id of the file the
   sound resolver gives for that kind (provenance `id`).
 - Music brief (`audio_chain.music_brief`, `timeline.MusicBrief`): `{mood: str, energy: low|medium|high,
   bpm_min: int, bpm_max: int, duration_s: float}`.
@@ -444,8 +444,9 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 - Year alone: Playfair Display centred at (`year_cx`, `year_cy`), ink width `year_width` x frame width within
   `year_px_min`-`year_px_max`; optional time under it in Cinzel `time_px` at `time_alpha`.
 - Heading (beat `heading`, native overlay kind `heading` with `on` light | photo): Cinzel caps `heading_px`,
-  baseline `heading_baseline_y`, two `rule_len` rules with diamonds; `heading_ink` on light, `heading_light` with a
-  shadow on photos. A heading and the title never share a beat.
+  baseline `heading_baseline_y`. `heading_ornaments` (default false; a scene `heading_ornaments` or an overlay
+  `ornaments` overrides it) adds two `rule_len` rules with diamonds. Plain is the caps alone. `heading_ink` on
+  light, `heading_light` with a shadow on photos. A heading and the title never share a beat.
 - Pin labels: above the pin on a vertical leader (`leader_gap`, `leader_len`, `leader_gap`), EB Garamond Italic
   `label_px` on paper, Inter Bold `label_dark_px` white on dark imagery. The camera fit (G) frames the label above
   the head (`label_lift` = 2 x `leader_gap` + `leader_len` + 1.2 x label px).

@@ -159,9 +159,11 @@ def elements(scene: dict) -> list[dict]:
                         "colour": None if a.get("water") else r.get("colour"), "water": bool(a.get("water")),
                         "px": a["px"]})
         for h in lay.get("headings") or []:
+            assert pr is not None
             out.append({"id": f"heading:{h['key']}", "kind": "heading", "start": 0.0, "end": end, "entity": None,
                         "px": h["px"], "ink": pr["heading_ink"], "light": pr["heading_light"]})
         for n in lay.get("notes") or []:
+            assert pr is not None
             out.append({"id": f"note:{n['key']}", "kind": "note", "start": 0.0, "end": end, "entity": None,
                         "px": n["px"], "ink": pr["note_ink"], "light": pr["note_light"]})
         key = {"pin": "label", "title": "title", "figure": "fig", "area": "area", "heading": "heading",
@@ -561,8 +563,9 @@ def evaluate(s: Sample, st: Style, lg: dict) -> Eval:
         lca = lc
     lw = wcag_l(eff)
     lwh = float(np.percentile(lw, p))
+    pct = np.asarray(np.percentile(y, [10, 50, 90]), dtype=float)
     return Eval(lc, lca, float(wcag_ratio(float(wcag_l(hex_rgb(st.ink))), lwh)),
-                tuple(float(v) for v in np.percentile(y, [10, 50, 90])))
+                (float(pct[0]), float(pct[1]), float(pct[2])))
 
 
 def passes(e: Eval, kind: str, lg: dict, margin: float = 0.0) -> bool:

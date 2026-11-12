@@ -22,8 +22,9 @@ MAX_RETRIES = 3
 # SFX kind -> (search term, max duration ms)
 SFX_SEARCH = {
     "pop": ("pop", 1500), "tick": ("tick", 600), "whoosh": ("whoosh", 2500), "click": ("click", 500),
-    "beep": ("beep", 1000), "counter_tick": ("counter tick", 400), "impact": ("impact", 3000),
+    "beep": ("beep", 1000), "counter_tick": ("counter tick", 400),     "impact": ("impact", 3000),
     "riser": ("riser", 5000),
+    "rumble": ("deep rumble", 4000),
 }
 ENERGY_WORD = {"low": "calm", "medium": "", "high": "energetic"}
 MUSIC_MAX_MS = 300000

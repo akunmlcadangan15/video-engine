@@ -10,7 +10,7 @@ from . import ai, cache, config, profiles, streams, toolchain
 from .timeline import CaptionsMeta, CaptionWord, Timeline, sec_to_frame
 from .util import EngineError, blake3_files, blake3_json, code_hash, count_frames, probe, run, wav_16k_mono
 
-STT_MODEL = ai.STT_DEFAULTS["model"]     # defaults live in ai.STT_DEFAULTS; [stt] in the AI config overrides them
+STT_MODEL = str(ai.STT_DEFAULTS["model"])     # defaults live in ai.STT_DEFAULTS; [stt] in the AI config overrides them
 STT_URL = ai.STT_DEFAULTS["url"]
 STT_TIMEOUT_S = ai.STT_DEFAULTS["timeout_s"]
 STT_VERSION = "stt-1-grok-2"
@@ -45,7 +45,7 @@ def _wav_16k(path: Path) -> bytes:
 
 def _fields(model: str, language: str, keyterms: list[str], wav: bytes) -> list:
     """Multipart fields in wire order; `file` MUST stay last."""
-    fields = [("model", (None, model)), ("language", (None, language))]
+    fields: list[tuple[str, tuple]] = [("model", (None, model)), ("language", (None, language))]
     fields += [("keyterm", (None, term)) for term in keyterms]
     fields += [("filler_words", (None, "false")), ("file", ("audio.wav", wav, "audio/wav"))]
     return fields
@@ -170,7 +170,9 @@ def keyterms_digest(keyterms) -> str:
 def expected_meta(tl: Timeline, project_dir: Path) -> dict:
     """Fields of CaptionsMeta that must match the current timeline for pinned words to be valid."""
     ac = tl.audio_chain
-    return {"voiceover_blake3": blake3_files([project_dir / ac.voiceover_path])[0], "stt_model": ac.stt.model,
+    vo_name = ac.voiceover_path
+    assert vo_name is not None
+    return {"voiceover_blake3": blake3_files([project_dir / vo_name])[0], "stt_model": ac.stt.model,
             "language": ac.language, "keyterms_blake3": keyterms_digest(ac.stt.keyterms),
             "fixes_blake3": fixes_digest(ac.caption_fixes), "fps": tl.settings.fps}
 
@@ -179,9 +181,10 @@ def transcribe_captions(tl: Timeline, project_dir: Path, use_cache: bool = True
                         ) -> tuple[list[CaptionWord], CaptionsMeta]:
     """Grok STT words (BLAKE3 cache) + caption_fixes -> frame captions and their provenance."""
     ac = tl.audio_chain
-    if not ac.voiceover_path:
+    vo_name = ac.voiceover_path
+    if not vo_name:
         raise EngineError("audio_chain.voiceover_path is empty: nothing to transcribe")
-    vo = project_dir / ac.voiceover_path
+    vo = project_dir / vo_name
     if not vo.is_file():
         raise EngineError(f"voiceover not found: {ac.voiceover_path}")
     words, hit = transcribe_words(vo, ac.language, ac.stt.model, ac.stt.keyterms, use_cache=use_cache)
@@ -403,7 +406,7 @@ def composite_cmd(tl: Timeline, segments: list[Path], ass: Path | None, out: Pat
         for clip, _ in transitions:
             cmd += ["-i", clip.resolve()]
         fv = chain + ";" + lab + fv[len(vsrc):]
-    cmd += ["-filter_complex", vpre + fv, "-map", "[v]", *R.x264("final"), "-threads", str(threads),
+    cmd += ["-filter_complex", vpre + fv, "-map", "[v]", *R.x264("final"), *config.x264_threads(threads),
             "-r", str(S.fps), "-frames:v", str(n), "-an", "-movflags", "+faststart", "-t", f"{dur:.6f}", out]
     return cmd, cwd, extra, [wm_png, concat_list]
 
@@ -463,7 +466,7 @@ def composite(tl: Timeline, segments: list[Path], ass: Path | None, out: Path, t
 def audio_cmd(tl: Timeline, project_dir: Path, out: Path, measured: dict | None, mix=None,
               threads: int | None = None) -> list:
     """ffmpeg argv of the audio pass: ducked BGM under VO (or the [sound] mix), two-pass loudnorm (pass 1 =
-    measure_mix), exact sample count, AAC 192k 48 kHz, cut at the video duration."""
+    measure_mix), exact sample count, AAC at the profile bitrate (default 192k) and 48 kHz, cut at the video duration."""
     n, fps = tl.total_frames, tl.settings.fps
     project_dir = project_dir.resolve()
     args, fa_audio = _mix_inputs(tl, project_dir, mix, 0, norm_filter(tl, measured))
@@ -471,7 +474,7 @@ def audio_cmd(tl: Timeline, project_dir: Path, out: Path, measured: dict | None,
         fa_audio = _audio_graph(tl, None, None, "")
     return [config.FFMPEG, "-v", "error", "-y", *args, "-filter_complex", ";".join(fa_audio), "-map", "[a]",
             *(["-threads", str(threads)] if threads else []),
-            "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-t", f"{n / fps:.6f}", out.resolve()]
+            "-c:a", "aac", "-b:a", profiles.aac_bitrate_arg(tl), "-ar", "48000", "-t", f"{n / fps:.6f}", out.resolve()]
 
 
 def audio_key(tl: Timeline, cmd: list, out: Path, correct: bool) -> str:
@@ -619,19 +622,19 @@ def loudness_findings(m: dict, target_lufs: float, max_tp: float, tol: float) ->
 
 
 def apply_gain(src: Path, dst: Path, gain_db: float, true_peak: float, threads: int | None = None,
-               ceiling: float | None = None) -> Path:
+               ceiling: float | None = None, bitrate: str = "192k") -> Path:
     """Corrective pass: audio gain + true-peak limiter at `ceiling` dBTP (default TP_MARGIN_DB under the true-peak
     limit); video stream copied. The copied stream must keep every streams.VIDEO_KEYS parameter, its frame count
     and its duration."""
     af = f"volume={gain_db:.2f}dB,{tp_limiter(true_peak - TP_MARGIN_DB if ceiling is None else ceiling)}"
     if not any(st.get("codec_type") == "video" for st in probe(src)["streams"]):   # audio-only master
         run([config.FFMPEG, "-v", "error", "-y", "-i", src, "-map", "0:a:0", *(["-threads", str(threads)] if threads else []),
-             "-af", af, "-c:a", "aac", "-b:a", "192k",
+             "-af", af, "-c:a", "aac", "-b:a", bitrate,
              "-ar", "48000", dst])
         return dst
     run([config.FFMPEG, "-v", "error", "-y", "-i", src, "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy",
          *(["-threads", str(threads)] if threads else []),
-         "-af", af, "-c:a", "aac", "-b:a", "192k",
+         "-af", af, "-c:a", "aac", "-b:a", bitrate,
          "-ar", "48000", "-movflags", "+faststart", dst])
     if diff := streams.mismatch(streams.params(dst, "v:0"), streams.params(src, "v:0")):
         raise EngineError(f"gain pass changed the copied video stream: {diff}")
@@ -666,7 +669,7 @@ def enforce_loudness(path: Path, tl: Timeline, threads: int | None = None) -> tu
             ceiling = next_ceiling(ceiling, m, L.true_peak)
         gain = L.target_lufs - m["I"]
         tmp = path.with_suffix(f".gain{k}{path.suffix}")
-        apply_gain(path, tmp, gain, L.true_peak, threads, ceiling=ceiling)
+        apply_gain(path, tmp, gain, L.true_peak, threads, ceiling=ceiling, bitrate=profiles.aac_bitrate_arg(tl))
         tmp.replace(path)
         m = loudness(path, threads)
         hist.append({"pass": f"correct{k + 1}", **m, "gain_db": round(gain, 2), "ceiling": round(ceiling, 2)})

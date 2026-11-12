@@ -12,7 +12,9 @@ parallel consumer of a build at once:
   native_workers * X264_THREADS + hf_workers * 2 <= workers whenever workers >= 4, and with the HF segments a
   build renders at once: min(natives, native_workers) * X264_THREADS + hf_parallel * hf_workers * 2 <= workers.
 The x264 thread counts are part of the encoded bytes: X264_THREADS stays 2 and mux_threads is 6 for every budget
->= 8, so builds at the default budget of an 8-CPU machine keep their bitstreams.
+>= 8, so builds at the default budget of an 8-CPU machine keep their bitstreams. Each libx264 encode also passes
+config.X264_REPEATABLE (config.x264_threads): one lookahead thread, sliced threads off and deterministic frame
+threading, so a busy CPU does not change the bitstream.
 
 Measurement (Monitor): a sampler thread reads /proc every SAMPLE_S for the engine process and all its descendants
 (where /proc is absent, e.g. macOS: one `ps -axo pid=,ppid=,rss=,time=,comm=` snapshot per tick, and `sysctl -n hw.memsize`

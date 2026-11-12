@@ -19,7 +19,7 @@ The format of a channel profile and the profiles that ship with the engine.
 - `description`: free text
 - `[caption_style]`: Python caption keys (`auto_place`, `clearance`, `fixed_y`, `max_bottom_y`, `place_band`, `forbid_box`, `ab_sizes`) and any Rust `Style` field (see [Captions](TIMELINE.md#captions)).
   A key in neither set, a value of the wrong type or an unknown `slot` is an error when the profile (or a timeline that sets `caption_style`) loads, with the closest known key named (`profiles.check_caption_style`).
-- `[audio]`: `target_lufs`, `true_peak`, `lra`, `tolerance_lu` (A01 tolerance), `require_source` (`"epidemic"` or absent: source every music and SFX file must have, gate A02; docs/SOUND.md)
+- `[audio]`: `target_lufs`, `true_peak`, `lra`, `tolerance_lu` (A01 tolerance), `require_source` (`"epidemic"` or absent: source every music and SFX file must have, gate A02; docs/SOUND.md), `aac_bitrate` (AAC kbps of the master audio and of the corrective gain passes; integer 64-320; default 192, and 192 is left out of the profile hash). `[render] aac_bitrate` overrides it, including a project `profile_overrides.render.aac_bitrate`.
 - `[type]`: base of the type scale (`title_px`, `title_px_paper`, `pin_label_px`). A size a channel sets here is written to every surface the channel leaves open: `title_px` -> `[theme] title_px` and `[layout.sizes] title`; `title_px_paper` -> `[print] title_px`; `pin_label_px` -> `[theme] pin_label_px` and `[layout.sizes] pin_label`.
   A surface key a channel file writes wins, and a surface table the profile does not have (`[layout]`, `[print]`) stays absent. See [STRUCTURE](STRUCTURE.md).
 - `[draft]`: `min_seg_s`, `max_seg_s` (pause segmenter and draft prompt segment length), `rules` (prompt rules appended after the engine rules, numbered from 6) or `rules_file` (single-source markdown `profiles/<channel>/creative.md`; mutually exclusive with `rules`), `map_path` (true = the draft schema offers `map_path` camera keys for map segments), `scene` (opt-in draft map scene keys: `globe`, `props`, `morph`, `beats`; beats also need `[layout]`; regions, routes, borders, figures, flag characters and pin flags are always offered; docs/AI.md)
@@ -53,7 +53,8 @@ The format of a channel profile and the profiles that ship with the engine.
   `[sound.events]`: render event -> SFX kind;
     events `pin` (teardrop: when the drop first touches its shadow, 0.22 s after it appears; dot: when it appears), `region` (fade-in start), `route` (mid-draw), `whip` (mid-move), `label` (HyperFrames card, drawn native overlay), `title` (entrance), `figure` (bounce figure entrance), `counter_tick` (each frame on which a counter's shown text changes).
   `[sound.kinds.<kind>]` for every mapped kind: `gain_db` (-60 to 0), `align` (`onset`: the file starts on the event; `peak`: its loudest sample lands on the event, default `onset`), `max_s` (cue length cap, default 2.0).
-  Kinds: `pop`, `tick`, `whoosh`, `click`, `beep`, `counter_tick`, `impact`, `riser`.
+  Kinds: `pop`, `tick`, `whoosh`, `click`, `beep`, `counter_tick`, `impact`, `riser`, `rumble` (`rumble` is a low bed for manual cues; it is not mapped to a render event unless a profile says so).
+  Timeline cues in `audio_chain.sfx` use the same kinds, or a project file (docs/TIMELINE.md, docs/SOUND.md).
   Unknown events or kinds and events mapped to a kind without a table are errors.
 - `[gates]`: `require`: lint and style gate ids (`LINT_GATE_IDS`, including R38space; see `engine gates`) whose findings block a build. R38space is an explicit opt-in strict composition check; when required it overrides local negative-space intent.
   Every other gate in `LINT_GATE_IDS` reports at most warn.
@@ -73,7 +74,7 @@ The format of a channel profile and the profiles that ship with the engine.
   Every key has a default (the engine baseline, calibrated on reference map videos), so a channel table lists only the keys it changes; `profiles/geoverum/legibility.toml` writes the full table on purpose, so the channel does not move when the baseline does.
 - `[reference_style.*]`: the channel's catalogue of creator options (docs/REFERENCE-STYLE.md). The group names are fixed (`transitions`, `fill`, `label`, `data_viz`, `overlay`, `scene_variants`, `style`, `overlap`); `[reference_style.overlap]` (`allowed`, `rule`, `forbid`) is the one group gates read and is typed, so a misspelt key there is an error.
 - `[print]` (optional): printed typography and map grade: the map surface (paper or dark imagery) fixes the text polarity;
-    paper text is ink multiplied into the map (no halo, glow or box), EB Garamond titles inside their region, a centred Playfair year, Cinzel headings with rules, EB Garamond Italic pin labels above the pin on a leader, Kalam hand notes;
+    paper text is ink multiplied into the map (no halo, glow or box), EB Garamond titles inside their region, a centred Playfair year, Cinzel headings (plain by default; `heading_ornaments = true` adds the rules and diamonds), EB Garamond Italic pin labels above the pin on a leader, Kalam hand notes;
     regions with a multiplied fill and solid edge;
     paper texture and grain;
     gates T01 and B01 clearance.

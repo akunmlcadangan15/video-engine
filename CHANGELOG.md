@@ -11,6 +11,13 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ### Ditambahkan
 
+- **Pin berkas suara yang masih dikunci proyek.** LRU (`VIDEO_ENGINE_CACHE_MAX_MB`, bawaan 4096) tidak lagi menghapus musik atau SFX yang disebut `out/build_manifest.json`. Pemilik pin ada di `<cache>/sound/pins.json`. Salinan `<project>/out/locked-sounds/<sha256><ext>` dipakai bila berkas cache sudah hilang dan hash-nya masih cocok. `engine cache pin --project P` mencatat pin; `engine cache unpin --project P` melepas pin (salinan lokal tetap sampai dihapus). Pengujian: `tests/test_sound_pins.py`.
+- **Provenance lisensi untuk `bgm_path`.** Sidecar di samping berkas, atau entri sound lock, dengan `source=epidemic`, id trek, dan `sha256` yang cocok membuat berkas itu lolos gate A02. Pengujian: `tests/test_bgm_provenance.py`.
+- **Bitrate AAC dapat diatur.** `[audio] aac_bitrate` (64-320 kbps, bawaan 192). `[render] aac_bitrate` menimpanya, termasuk `profile_overrides.render`. Pengujian: `tests/test_aac_bitrate.py`.
+- **Isyarat SFX manual dan jenis `rumble`.** `audio_chain.sfx`: satu `kind` atau `asset`, satu `at_frame` atau `time_s`, plus `gain_db`. Pengujian: `tests/test_manual_sfx.py`.
+- **Audio pada `engine draft-preview`.** Narasi, atau campuran musik dan SFX bila dapat direncanakan dari berkas yang sudah ada. Laporan memuat `audio`: `mix`, `narration`, atau `none`.
+- **Ornamen heading opsional.** `[print] heading_ornaments` bawaan false (teks polos). `true`, atau `ornaments` pada overlay, atau `heading_ornaments` pada adegan, mengembalikan garis dan wajik.
+- **Termometer dapat mulai dari nilai sebelumnya.** `from` atau `continue_from` (nilai termometer sebelumnya pada adegan yang sama). Tanpa keduanya, isi tetap naik dari `min`.
 
 - **Penemuan perkakas dan akar aset yang portabel** (`video_engine/discover.py`): mesin dan `engine doctor`
   memakai satu resolver. Urutan pencarian default: override lingkungan > akar npm global (`NODE_PATH`,

@@ -33,6 +33,7 @@ import uuid
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from . import config
 from .util import EngineError, blake3_json
@@ -155,7 +156,7 @@ def timeline_files(tl, project_dir: Path) -> list[Path]:
     walk(json.loads(tl.model_dump_json()))
     from . import profiles
     g = profiles.of(tl).data.grade
-    if g is not None and getattr(g, "lut", None):
+    if g is not None and g.lut:
         lut = config.PROFILES_DIR / g.lut
         if lut.is_file():
             seen.setdefault(str(lut.resolve()), lut.resolve())
@@ -189,12 +190,28 @@ def music_brief_key(tl) -> str | None:
 
 
 def _check(e: dict, what: str, project_dir: Path | None) -> Path:
+    """The locked file, or the project-local copy `<project>/out/locked-sounds/<sha256><ext>` when the cache
+    file is gone and that copy still matches the lock hash."""
     p = resolve(e["path"], project_dir)
+    sha = e.get("sha256")
+    if not p.is_file() and project_dir is not None and isinstance(sha, str):
+        from .sound import pins
+        alt = pins.fallback(project_dir, sha, Path(str(e.get("path", ""))).suffix.lower())
+        if alt is not None:
+            p = alt
     if not p.is_file():
         raise EngineError(f"locked {what} {p} is gone; run `engine build --relock` to resolve sounds again")
-    if sha256(p, fresh=True) != e["sha256"]:
+    if sha256(p, fresh=True) != sha:
         raise EngineError(f"locked {what} {p} changed (sha256 differs from out/{MANIFEST}); "
                           f"run `engine build --relock` to resolve sounds again")
+    if project_dir is not None and isinstance(sha, str) and p.is_file():
+        from .sound import pins
+        try:
+            rel = str(p.resolve().relative_to(Path(config.CACHE_DIR).resolve()))
+        except ValueError:
+            rel = ""
+        if rel.startswith("sound/files/"):
+            pins.copy_local(project_dir, p, sha)
     return p
 
 
@@ -210,10 +227,11 @@ def locked_sounds(lock: dict | None, tl, kinds: list[str], project_dir: Path | N
         return None
     if any(k not in s.get("sfx", {}) for k in kinds):
         return None
-    out = {"music": None if m is None else (_check(m, "music", project_dir), m["provenance"]), "sfx": {}}
+    sfx: dict[str, Any] = {}
+    out: dict[str, Any] = {"music": None if m is None else (_check(m, "music", project_dir), m["provenance"]), "sfx": sfx}
     for k in kinds:
         e = s["sfx"][k]
-        out["sfx"][k] = (_check(e, f"SFX '{k}'", project_dir), e["provenance"])
+        sfx[k] = (_check(e, f"SFX '{k}'", project_dir), e["provenance"])
     return out
 
 
@@ -254,6 +272,9 @@ def write(out_dir: Path, tl, project_dir: Path, *, mix, kinds_of: dict[str, str]
         "stage_keys": {},
     }
     save(out_dir, doc)
+    rel = Path(out_dir).resolve().relative_to(Path(project_dir).resolve()).as_posix() + "/" + MANIFEST
+    from .sound import pins
+    pins.sync_document(project_dir, doc, rel)
     return doc
 
 

@@ -14,15 +14,16 @@ What `engine build` does, in order, and how it stays repeatable.
 3. Sounds (profile `[sound]`), after pre-flight, before the mix plan and the segment render: `sound.request.ensure_sounds` requests missing files (bundle `out/sound_request/`, exit 3; `--resume` imports the answer);
      after the plan the Epidemic Sound credit lines of the mixed files are appended to `credits.txt` (docs/SOUND.md).
 4. Build manifest `out/build_manifest.json` written (see [Build manifest](#build-manifest)).
-   Segments in parallel within the worker budget (see [Resources](#resources)): native pool `native_workers` x 2 x264 threads;
-     HyperFrames segments in a pool of `hf_parallel` (see [Resources](#resources); output order is segment order), `hf_workers` capture workers each (`VIDEO_ENGINE_HF_WORKERS` overrides), default capture profile `-q standard --crf 14` (JPEG q100 screenshots, x264 medium intermediate; profile `[render] hf_quality` / `hf_crf` and `HF_QUALITY` / `HF_CRF` are part of the segment cache key; Geoverum uses `high` at CRF 8);
+   Segments in parallel within the worker budget (see [Resources](#resources)): native pool `native_workers` x 2 x264 threads (`X264_REPEATABLE`, so the bitstream repeats when the CPU is busy);
+     HyperFrames segments in a pool of `hf_parallel` (see [Resources](#resources); output order is segment order), `hf_workers` capture workers each (`VIDEO_ENGINE_HF_WORKERS` overrides), screenshot capture on SwiftShader (`--no-browser-gpu`, one Chrome raster thread), default capture profile `-q standard --crf 14` (JPEG q100 screenshots, x264 medium intermediate; profile `[render] hf_quality` / `hf_crf` and `HF_QUALITY` / `HF_CRF` are part of the segment cache key; Geoverum uses `high` at CRF 8);
      loudnorm pass 1 runs concurrently.
    Every segment is checked for its exact frame count.
    Results cached by a BLAKE3 hash of sources + config.
 5. `.ass` with placement overrides.
 6. Three cached passes:
-   - composite (cache kind `composite`): segment join (Stream-copy and concat rules) + transition clips + caption burn + profile watermark overlay (PNG drawn with Pillow), exact frame count, no audio, `mux_threads` x264 threads;
+   - composite (cache kind `composite`): segment join (Stream-copy and concat rules) + transition clips + caption burn + profile watermark overlay (PNG drawn with Pillow), exact frame count, no audio, `mux_threads` x264 threads with `X264_REPEATABLE`;
    - master audio (cache kind `audio`, AAC m4a): mix (ducking, loudnorm pass 2) and the A01 corrective gain passes, on the audio file alone.
+     AAC bitrate is `[render] aac_bitrate` when set, else `[audio] aac_bitrate`, else 192 kbps (allowed 64-320). The same value is used on the corrective gain passes. It is part of the audio cache key.
      The mix is cut to exactly duration x 48000 samples after ducking and before loudnorm, and again after it, so every render of the same inputs has identical PCM.
      With a profile `[sound]` the mix is voiceover + music (gain, fades, keyframed duck under speech) + each SFX cue (trimmed to `max_s`, at its `gain_db`, delayed to `time_s`) summed without normalisation before the same loudnorm and limiter, so the final file meets the profile loudness target;
    - mux: stream copy of the composite video and the master audio (no re-encode).
@@ -61,14 +62,15 @@ Proxy requires draft mode, confines output to `P/out/draft/`, does not pin capti
 
 `out/build_manifest.json`, written before any segment renders: `build_id` (random hex, also in `build_report.json`), `timeline` (sha256), `profile` (`name`, `blake3`), `inputs` (every referenced file), `fonts`, `sounds` (music with `brief_key` and provenance, SFX per kind), `toolchain` (ffmpeg version, x264 args, vendor pins, engine version), `seeds`, `resources`, `stage_keys` (composite and audio cache keys).
 File entries are `{path, sha256}`; `path` is relative to the project, `cache:<rel>` under the cache root, `engine:<rel>` under the engine checkout, else absolute.
-A later build reuses the locked sound files (sha256 checked) without asking the sound resolver;
-  a locked file that changed or vanished is a stage error naming `--relock`;
+A later build reuses the locked sound files (sha256 checked) without asking the sound resolver.
+  Those cache files are pinned so LRU eviction does not delete them, and a copy is kept at `out/locked-sounds/<sha256><ext>`.
+  A locked file that changed, or that is gone from both the cache and `out/locked-sounds/`, is a stage error naming `--relock`;
   a lock that does not cover the timeline (new SFX kind, changed music brief) is ignored.
 The same inputs give the same final file bytes.
 
 ## Resources
 
-One budget `workers` (`VIDEO_ENGINE_WORKERS` > profile `[resources] workers` > auto = clamp(min(CPU count, RAM GB // 1.8), 2, 64)) caps all stages: `native_workers = max(1, workers // 4)` (2 x264 threads each), `hf_workers = max(1, workers // 4)`, `mux_threads = clamp(workers - 2, 1, 6)`.
+One budget `workers` (`VIDEO_ENGINE_WORKERS` > profile `[resources] workers` > auto = clamp(min(CPU count, RAM GB // 1.8), 2, 64)) caps all stages: `native_workers = max(1, workers // 4)` (2 x264 threads each, `X264_REPEATABLE`), `hf_workers = max(1, workers // 4)`, `mux_threads = clamp(workers - 2, 1, 6)`.
 `hf_segments` = 2 when `2 x hf_workers x 2 <= workers`, else 1. A build renders `hf_parallel` HyperFrames segments at once: `hf_segments` when `min(native segments, native_workers) x 2 + hf_segments x hf_workers x 2 <= workers`, else 1. On 8 workers: 2 for a timeline without native segments, 1 otherwise.
 Each stage's wall time, CPU time and peak RSS (engine plus children, with per-tool peaks) go to `build_report.json` -> `resources`.
 
@@ -103,4 +105,5 @@ Each stage's wall time, CPU time and peak RSS (engine plus children, with per-to
   Each keeps every leased file and reports it (`skipped_leased`).
 - A lease file whose pid is gone or runs a process with another start time is deleted by the next eviction (`reclaimed_leases`); its files become evictable.
 - LRU eviction also keeps the entry being stored, so an entry larger than `VIDEO_ENGINE_CACHE_MAX_MB` stays in the cache until a later eviction.
+- LRU eviction also keeps sound files pinned by a project lock (`<cache>/sound/pins.json`; [SOUND.md, Pins](SOUND.md#pins)), reported as `skipped_pinned`. A pinned file is not deleted to get under the cap. Pins are released when the manifest no longer names the file, when the manifest is removed (on the next eviction), or by `engine cache unpin --project P`. A copy under `<project>/out/locked-sounds/` is what the lock reads if the cache file is already gone.
 - Outside a session `acquire` does nothing and eviction treats every file as unleased.

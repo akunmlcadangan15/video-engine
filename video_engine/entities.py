@@ -16,6 +16,7 @@ def names(tl: Timeline) -> list[str]:
     for s in tl.segments:
         if s.engine_type == HYPERFRAMES:
             sc = s.gsap_scene_config
+            assert sc is not None
             for e in [*(e for r in sc.regions or [] for e in (r.entity, *(c.entity for c in r.changes))),
                       sc.title_entity, *(f.entity for f in sc.figures or []), *(c.entity for c in sc.cards)]:
                 if e and e not in out:

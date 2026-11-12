@@ -242,6 +242,8 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
     try:
         from . import assets
         from .gates.layer1 import EXTRA_CREDIT_URLS
+        from .sound import pins
+        pins.pin_project(project_dir)   # lock-referenced sounds survive this build's own cache stores
         tl, asset_credits = assets.ensure_credits(tl, project_dir)
         tl = assets.resolve_timeline_paths(tl, project_dir)
         credit_token = EXTRA_CREDIT_URLS.set(tuple(c["source_url"] for c in asset_credits if c["source_url"]))
@@ -270,7 +272,7 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
                                       "PROJECT --credits first (follow its --resume instructions), then retry proxy")
             else:
                 sound_request.ensure_sounds(tl, project_dir, resume=resume, resume_cmd=resume_cmd)
-        mix = mixer.plan(tl, project_dir, words, lock=lock)   # None unless the profile has [sound]
+        mix = mixer.plan(tl, project_dir, words, lock=lock)   # None without [sound] and without manual cues
         if mix:
             provenances = [r.provenance for r in mix.sounds.values()] + ([mix.music.provenance] if mix.music else [])
             if quality == "proxy":
@@ -292,10 +294,15 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             measured_f = (None if audio_hit is not None
                           else aud.submit(audio.measure_mix, tl, project_dir, mix, budget.mux_threads))
             segs = render_segments(tl, project_dir, workdir, use_cache=use_cache, budget=budget)
-            measured = None if audio_hit is not None else measured_f.result()
+            if audio_hit is not None:
+                measured = None
+            else:
+                assert measured_f is not None
+                measured = measured_f.result()
             st["note"] = " ".join(f"s{r.seg}:{r.mode}{'(hit)' if r.cache_hit else ''}={r.seconds}s" for r in segs)
         with timer.stage("ass") as st:
-            ass, events = None, []
+            ass = None
+            events: list[tuple] = []
             if words:
                 ass, events = captions.write_ass(words, tl, workdir / "captions.ass", rep.caption_y_overrides)
                 st["note"] = f"{len(events)} caption events, {len(rep.caption_y_overrides)} placement overrides"
@@ -332,7 +339,7 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
                 raise EngineError(f"final has {frames} frames, expected {tl.total_frames}")
             findings, info = qa.pixel_gates(staged, tl, threads=budget.mux_threads, project_dir=project_dir)
             s01 = style.silence_findings(staged, tl)
-            a02 = audio_source.build_findings(tl, mix)
+            a02 = audio_source.build_findings(tl, mix, project_dir)
             findings = severity.apply(findings + a01 + s01 + a02, tl, draft=draft)
             loud = loud_hist[-1]
             st["note"] = (f"frames={frames} samples={info['samples']} I={loud['I']} TP={loud['TP']} "

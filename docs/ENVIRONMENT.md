@@ -93,7 +93,7 @@ Tests: `pytest -q tests/test_wrapper_scripts.py` (uses a stub `engine`).
 | `VIDEO_ENGINE_RUST_THREADS` | THREADS-2 | Rust rayon pool size (`core.set_threads`, set once at import) |
 | `VIDEO_ENGINE_SHM` | Linux: `/dev/shm/video_engine`; macOS: `$TMPDIR/video_engine` | scratch root; every build, preflight, preview, draft and director run uses its own dir `<project_id>-<pid>-<random>` under it (strictly inside, symlinks resolved) and deletes only that dir |
 | `VIDEO_ENGINE_CACHE` | `<repo>/.cache` | BLAKE3 content-addressed cache (words, segments, map renders) |
-| `VIDEO_ENGINE_CACHE_MAX_MB` | 4096 | cache size limit (LRU prune) |
+| `VIDEO_ENGINE_CACHE_MAX_MB` | 4096 | cache size limit (LRU prune). Sound files pinned by a project lock are not deleted to meet it (docs/SOUND.md). |
 | `VIDEO_ENGINE_HF_WORKERS` | `workers // 4` | HyperFrames capture workers (overrides the budget's `hf_workers`) |
 | `VIDEO_ENGINE_WORKERS` | unset | build worker budget (overrides profile `[resources] workers`; see [Resources](BUILD.md#resources)) |
 | `VIDEO_ENGINE_TASTE_DIR` | `<profiles>/taste` | director taste store directory |

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import inspect
 import math
+from typing import Callable
 from dataclasses import dataclass, field
 
 from . import geodata, projection
@@ -181,7 +182,7 @@ def _key(at: int, view: dict, move: str | None = None) -> dict:
 
 def _keys(keys: list[dict], n: int) -> list[dict]:
     """Strictly increasing key frames inside the segment (later duplicates dropped)."""
-    out = []
+    out: list[dict] = []
     for k in sorted(keys, key=lambda k: k["at_frame"]):
         if out and k["at_frame"] <= out[-1]["at_frame"]:
             continue
@@ -446,8 +447,9 @@ def stat_emphasis(m: MapInfo, f: Frame, *, value, unit: str = "", decimals: int 
                  f"figure in the {band} band, away from the place", needs=["a sourced value"])
 
 
-PATTERNS = {"country_reveal": country_reveal, "follow_route": follow_route, "compare_places": compare_places,
-            "explain_flow": explain_flow, "stat_emphasis": stat_emphasis}
+PATTERNS: dict[str, Callable[..., Built]] = {"country_reveal": country_reveal, "follow_route": follow_route,
+                                               "compare_places": compare_places, "explain_flow": explain_flow,
+                                               "stat_emphasis": stat_emphasis}
 GEO_PATTERNS = {"country_reveal"}
 
 

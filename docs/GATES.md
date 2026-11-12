@@ -302,8 +302,9 @@ The full rule of each gate, with its thresholds. Where this list and the index d
   `build_report.json` -> `ai_qa` holds `provider`, `model`, `retries`, `fallback`
 - **QA** (layer post-render): Every 5th frame at 1/4 size: R38/R38space per sample; R56px mean luma difference below 0.5 per segment warns by default, is info for static/read intent, and fails for explicit moving intent even in draft mode. Too few samples to estimate motion are informational for static/read/unspecified shots; explicit moving intent fails with "cannot verify expected motion" instead of a false freeze claim. No decoded samples is an integrity failure. Exact frame counts and stream timing are independently verified by the build and remain hard errors regardless of intent.
 - **S01** (layer delivery): Profile silence gate on the final file (see [Style gate configuration](#style-gate-configuration))
-- **A02** (layer delivery): Profile `[audio] require_source` only: every music and SFX file of the final mix (without `[sound]`: `audio_chain.bgm_path`) has provenance `source` equal to `require_source` = pass;
-    any other source (`local-test`, `project-file`) = warn by default (blocks when `A02` is in `gates.require`).
+- **A02** (layer delivery): Profile `[audio] require_source` only: every music and SFX file of the final mix (without `[sound]`: `audio_chain.bgm_path`) has provenance `source` equal to `require_source` = pass.
+    A `bgm_path` or manual SFX file whose sidecar or sound lock verifies `source=epidemic`, a track id and the file hash counts as `epidemic` (docs/SOUND.md).
+    Any other source (`local-test`, `project-file`) = warn by default (blocks when `A02` is in `gates.require`).
   No finding without the key.
   Gate code: `video_engine/gates/audio_source.py`.
 - **A01** (layer delivery): Final file at `target_lufs` +/- `tolerance_lu` and true peak <= `true_peak` (default profile: -14.0 LUFS +/- 0.2 LU, -1.5 dBTP).

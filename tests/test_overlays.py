@@ -188,7 +188,10 @@ def test_good_heading_O01_T01_pass_and_png_inks(project, tmp_path):
         dark = [p for p in im.getdata() if 0 < p[3] < 255 and sum(p[:3]) < 60]           # the soft black shadow
         assert bool(dark) == (on == "photo")
     hl = overlays.heading_layout(Overlay(**HEAD), pr)
-    assert abs(hl["base"] - (100 - overlays.HEADING_PAD)) < 1e-6 and abs(hl["rules"][1][1] - hl["rules"][1][0] - 120) < 1e-6
+    assert hl["ornaments"] is False and hl["rules"] == () and abs(hl["w"] - hl["tw"]) < 1e-6
+    assert abs(hl["base"] - (100 - overlays.HEADING_PAD)) < 1e-6
+    ornate = overlays.heading_layout(Overlay(**dict(HEAD, ornaments=True)), pr)
+    assert ornate["ornaments"] is True and abs(ornate["rules"][1][1] - ornate["rules"][1][0] - 120) < 1e-6
 
 
 def test_good_heading_drawn_on_native_segment(project, tmp_path):
@@ -205,7 +208,7 @@ def test_good_heading_drawn_on_native_segment(project, tmp_path):
 @pytest.mark.parametrize("ov,msg", [
     (dict(HEAD, box=[140, 360, 800, 100]), "baseline y 444"),
     (dict(HEAD, box=[100, 300, 800, 100]), "not the frame centre"),
-    (dict(HEAD, box=[240, 300, 600, 100]), "does not fit"),
+    (dict(HEAD, box=[240, 300, 40, 100]), "does not fit"),
 ], ids=["baseline", "centre", "fit"])
 def test_bad_heading_O01(project, ov, msg):
     _, tl = project(geo(ov))

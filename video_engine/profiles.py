@@ -356,7 +356,8 @@ def _layers(name: str) -> tuple[Layer, ...]:
     if name == DEFAULT:
         return tuple(layers)
     chain: list[tuple[str, str, list[str]]] = []
-    cur, child = name, None
+    cur: str | None = name
+    child: str | None = None
     while cur is not None:
         if cur in [c[0] for c in chain]:
             raise EngineError(f"profile '{name}': `{EXTENDS_KEY}` loops back to '{cur}' "
@@ -410,7 +411,8 @@ def _type_cascade(raw: dict, channel: dict) -> dict:
     """`raw` (all layers merged) with the channel's [type] sizes written to the surfaces the channel left open.
     `channel` = the layers above default.toml merged: only a size a channel file writes cascades, and a surface key a
     channel file writes wins."""
-    sizes = channel.get("type") if isinstance(channel.get("type"), dict) else {}
+    raw_type = channel.get("type")
+    sizes: dict = raw_type if isinstance(raw_type, dict) else {}
     out = raw
     for key, targets in TYPE_CASCADE.items():
         if key not in sizes:
@@ -847,6 +849,20 @@ def for_quality(tl: "Timeline", quality: str) -> "Timeline":
     return local
 
 
+def aac_bitrate(tl: "Timeline") -> int:
+    """AAC bitrate in kbps of the master audio and of the corrective gain passes.
+
+    `[render] aac_bitrate` wins when it is set (including a project `profile_overrides.render` value). Otherwise
+    `[audio] aac_bitrate`. The default is 192. Allowed range is 64..320."""
+    over = of(tl).render.aac_bitrate
+    return int(of(tl).audio.aac_bitrate if over is None else over)
+
+
+def aac_bitrate_arg(tl: "Timeline") -> str:
+    """ffmpeg `-b:a` value for `aac_bitrate`."""
+    return f"{aac_bitrate(tl)}k"
+
+
 def quality_report(tl: "Timeline") -> dict:
     """Resolved settings actually passed to capture and encode, not nullable profile defaults."""
     from . import hyperframes, maps
@@ -854,7 +870,8 @@ def quality_report(tl: "Timeline") -> dict:
     q, crf, segment = hyperframes.encode_settings(tl)
     return {"width": tl.settings.width, "height": tl.settings.height, "fps": tl.settings.fps,
             "hf_quality": q, "hf_crf": crf, "segment_x264": segment, "final_x264": r.x264("final"),
-            "final_pix_fmt": r.final_pix_fmt(), "map_jpeg_quality": r.map_jpeg_quality or maps.MAP_JPEG_QUALITY}
+            "final_pix_fmt": r.final_pix_fmt(), "map_jpeg_quality": r.map_jpeg_quality or maps.MAP_JPEG_QUALITY,
+            "aac_bitrate": aac_bitrate(tl)}
 
 
 def of(tl: "Timeline") -> Profile:

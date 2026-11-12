@@ -15,6 +15,7 @@ import json
 import os
 from pathlib import Path
 from dataclasses import dataclass, field
+from typing import Any
 
 from . import base
 from .base import AIResult, Image, Media, Part, Text
@@ -94,7 +95,7 @@ class OpenAICompatProvider:
         return k
 
     def content(self, parts: list[Part]) -> list[dict]:
-        out = []
+        out: list[dict[str, Any]] = []
         for p in base.degrade(parts, self.capabilities):
             if isinstance(p, Text):
                 out.append({"type": "text", "text": p.text})
@@ -108,7 +109,7 @@ class OpenAICompatProvider:
         return out
 
     def payload(self, model: str, content: list[dict], schema: dict | None) -> dict:
-        body = {"model": model, "messages": [{"role": "user", "content": content}]}
+        body: dict[str, Any] = {"model": model, "messages": [{"role": "user", "content": content}]}
         if schema and self.entry.json_mode == "json_schema":
             body["response_format"] = {"type": "json_schema",
                                        "json_schema": {"name": "response", "schema": schema, "strict": False}}

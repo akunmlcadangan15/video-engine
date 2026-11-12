@@ -57,24 +57,38 @@ def overlap(items: list[Item], L: LayoutProfile, W: int = 1080, H: int = 1920) -
     out = []
     card = ("year", "time")
     for j, a in enumerate(texts):
+        ab = a.box
+        assert ab is not None
         for b in texts[j + 1:]:
+            bb = b.box
+            assert bb is not None
             mm = 0.0 if a.kind in card and b.kind in card else m   # one group: the data card sets its own gap (L05)
-            if overlap_area(inflate(a.box, mm), b.box) > 1e-6:
+            if overlap_area(inflate(ab, mm), bb) > 1e-6:
                 out.append(f"{a.key} '{a.text}' and {b.key} '{b.text}' closer than {mm:.0f} px")
         for h in heads:
             if a.kind == "label" and a.pin == h.pin:
                 continue                      # own head: the label offset rule (L02 candidates) sets that gap
+            hb = h.box
+            assert hb is not None
             mm = g if a.kind == "area" else m
-            if overlap_area(inflate(a.box, mm), h.box) > 1e-6:
+            if overlap_area(inflate(ab, mm), hb) > 1e-6:
                 out.append(f"{a.key} '{a.text}' closer than {mm:.0f} px to {h.key}")
     for j, a in enumerate(heads):
+        ab = a.box
+        assert ab is not None
         for b in heads[j + 1:]:
-            if overlap_area(a.box, b.box) > 1e-6:
+            bb = b.box
+            assert bb is not None
+            if overlap_area(ab, bb) > 1e-6:
                 out.append(f"{a.key} and {b.key} overlap")
     for ld in (i for i in items if i.kind == "leader"):
         own = f"label:{ld.pin}" if ld.pin is not None else ld.key.replace("leader:", "")
+        seg = ld.seg
+        assert seg is not None
         for t in texts:
-            if t.key != own and lay.seg_box_dist(ld.seg[0], ld.seg[1], inflate(t.box, m / 2)) == 0:
+            tb = t.box
+            assert tb is not None
+            if t.key != own and lay.seg_box_dist(seg[0], seg[1], inflate(tb, m / 2)) == 0:
                 out.append(f"{ld.key} crosses {t.key} '{t.text}'")
     return out
 
@@ -94,7 +108,9 @@ def boundary(items: list[Item], L: LayoutProfile, W: int = 1080, H: int = 1920) 
     out = []
     for t in items:
         if t.kind == "label":
-            b = inflate(t.box, L.labels.edge_clear * kx)
+            tb = t.box
+            assert tb is not None
+            b = inflate(tb, L.labels.edge_clear * kx)
             for r, ri in regs.items():
                 if lay.crosses_edge(b, ri.poly):
                     out.append(f"{t.key} '{t.text}' + {L.labels.edge_clear:g} px crosses region {r} edge")
@@ -145,9 +161,11 @@ def grid(items: list[Item], L: LayoutProfile, W: int = 1080, H: int = 1920) -> l
     out = []
     for i in items:
         if i.kind in ("title", "year") and i.slot == "z1":     # centre slots ([print] year alone) sit off the grid
-            if min(abs(i.ink[0] - e) for e in edges) > G.snap_tol:
-                out.append(f"{i.key} '{i.text}' ink x {i.ink[0]:.1f} off the column edges (tol {G.snap_tol:g})")
-            top = i.css[1]
+            ink, css = i.ink, i.css
+            assert ink is not None and css is not None
+            if min(abs(ink[0] - e) for e in edges) > G.snap_tol:
+                out.append(f"{i.key} '{i.text}' ink x {ink[0]:.1f} off the column edges (tol {G.snap_tol:g})")
+            top = css[1]
             if abs(top - round(top / u) * u) > G.unit_tol:
                 out.append(f"{i.key} '{i.text}' top y {top:.1f} not a multiple of {G.unit}")
     years = [i for i in items if i.kind == "year" and i.slot == "z1"]
@@ -155,9 +173,11 @@ def grid(items: list[Item], L: LayoutProfile, W: int = 1080, H: int = 1920) -> l
         if not years:
             continue                          # the year has already left (exit order)
         y = years[0]
-        if abs(t.base - y.base) > G.unit_tol:
-            out.append(f"{t.key} baseline {t.base:.1f} != year baseline {y.base:.1f}")
-        gap = t.ink[0] - y.ink[2]
+        tb, yb, ti, yi = t.base, y.base, t.ink, y.ink
+        assert tb is not None and yb is not None and ti is not None and yi is not None
+        if abs(tb - yb) > G.unit_tol:
+            out.append(f"{t.key} baseline {tb:.1f} != year baseline {yb:.1f}")
+        gap = ti[0] - yi[2]
         if abs(gap - L.labels.card_gap * kx) > G.snap_tol:
             out.append(f"{t.key} starts {gap:.1f} px after the year ink (want {L.labels.card_gap:g})")
     return out
@@ -169,16 +189,25 @@ def zones(items: list[Item], L: LayoutProfile, W: int = 1080, H: int = 1920) -> 
     out = []
     for i in items:
         if i.kind in ("title", "year", "time") and i.slot == "z1":   # the ink in Z1; the halo may reach the margin
-            if not inside(i.ink, z1, 0.5):
-                out.append(f"{i.key} '{i.text}' ink {tuple(round(v) for v in i.ink)} outside Z1")
+            ink = i.ink
+            assert ink is not None
+            if not inside(ink, z1, 0.5):
+                out.append(f"{i.key} '{i.text}' ink {tuple(round(v) for v in ink)} outside Z1")
         elif i.kind in ("label", "area", "head", "note"):
-            if not inside(i.box, z2, 0.5):
-                out.append(f"{i.key} '{i.text}' box {tuple(round(v) for v in i.box)} outside Z2")
+            box = i.box
+            assert box is not None
+            if not inside(box, z2, 0.5):
+                out.append(f"{i.key} '{i.text}' box {tuple(round(v) for v in box)} outside Z2")
         elif i.kind == "route":
-            if not inside(corners_box(i.poly), z2, 0.5):
+            poly = i.poly
+            assert poly is not None
+            if not inside(corners_box(poly), z2, 0.5):
                 out.append(f"{i.key} outside Z2")
-        if i.kind in TEXT and i.kind != "caption" and not inside(i.box, safe, 0.5):
-            out.append(f"{i.key} '{i.text}' outside the text safe area")
+        if i.kind in TEXT and i.kind != "caption":
+            box = i.box
+            assert box is not None
+            if not inside(box, safe, 0.5):
+                out.append(f"{i.key} '{i.text}' outside the text safe area")
     return out
 
 
@@ -187,12 +216,16 @@ def route_clear(items: list[Item], L: LayoutProfile, W: int = 1080, H: int = 192
     rc = L.labels.route_clear * kx
     out = []
     for r in (i for i in items if i.kind == "route"):
+        poly = r.poly
+        assert poly is not None
         for t in (i for i in items if i.kind in TEXT and i.kind != "caption"):
-            d = lay.polyline_box_dist(r.poly, t.box)
+            box = t.box
+            assert box is not None
+            d = lay.polyline_box_dist(poly, box)
             if d < rc - 1e-6:
                 out.append(f"{r.key} {d:.0f} px from {t.key} '{t.text}' (min {rc:.0f})")
-            for end in (r.poly[0], r.poly[-1]):
-                if t.box[0] <= end[0] <= t.box[2] and t.box[1] <= end[1] <= t.box[3]:
+            for end in (poly[0], poly[-1]):
+                if box[0] <= end[0] <= box[2] and box[1] <= end[1] <= box[3]:
                     out.append(f"{r.key} starts or ends at text {t.key}")
     return out
 
@@ -200,8 +233,15 @@ def route_clear(items: list[Item], L: LayoutProfile, W: int = 1080, H: int = 192
 def caption_ground(items: list[Item], L: LayoutProfile) -> list[str]:
     out = []
     for c in (i for i in items if i.kind == "caption"):
-        area = (c.box[2] - c.box[0]) * (c.box[3] - c.box[1])
-        hit = sum(lay.clip_area(r.poly, c.box) for r in items if r.kind == "region" and r.level > 0.5)
+        box = c.box
+        assert box is not None
+        area = (box[2] - box[0]) * (box[3] - box[1])
+        hit = 0.0
+        for r in items:
+            if r.kind == "region" and r.level > 0.5:
+                poly = r.poly
+                assert poly is not None
+                hit += lay.clip_area(poly, box)
         if area > 0 and hit / area > L.labels.caption_ground + 1e-6:
             out.append(f"caption '{c.text}' box {100 * hit / area:.0f}% over a highlighted fill "
                        f"(max {100 * L.labels.caption_ground:.0f}%)")

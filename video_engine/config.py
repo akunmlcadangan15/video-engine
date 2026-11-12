@@ -4,8 +4,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
-import sys
 import tempfile
 from pathlib import Path
 
@@ -108,6 +106,17 @@ def x264(crf: int = FINAL_CRF, preset: str = FINAL_PRESET, tune: str | None = No
             "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"]
 
 
+# libx264 with several frame threads is not repeatable on a busy CPU: the lookahead, sliced threads and the
+# non-deterministic SMP path can encode the same frames to different bitstreams. These parameters keep a fixed
+# `-threads` value on one bitstream (one lookahead thread, no sliced threads, deterministic frame threading).
+X264_REPEATABLE = "lookahead-threads=1:sliced-threads=0:sync-lookahead=0:non-deterministic=0"
+
+
+def x264_threads(threads: int) -> list[str]:
+    """libx264 frame-thread count plus the repeatable parameter set, for a stable bitstream."""
+    return ["-threads", str(threads), "-x264-params", X264_REPEATABLE]
+
+
 # Colour conversion of every engine encode: RGB frames -> BT.709 limited-range yuv420p (matches the x264 bt709 tags).
 BT709_VF = "scale=out_color_matrix=bt709:out_range=tv:flags=lanczos+accurate_rnd+full_chroma_int,format=yuv420p"
 # An RGBA overlay (native overlays, watermark) converted on its own to BT.709 yuva420p and blended with
@@ -137,7 +146,12 @@ def hf_env() -> dict:
     env.update({
         "HYPERFRAMES_BROWSER_PATH": str(CHROME), "PRODUCER_HEADLESS_SHELL_PATH": str(CHROME),
         "HYPERFRAMES_SKIP_SKILLS": "1", "HYPERFRAMES_NO_TELEMETRY": "1", "HYPERFRAMES_NO_UPDATE_CHECK": "1",
-        "HYPERFRAMES_FFMPEG_PATH": _SYSTEM_FFMPEG, "HYPERFRAMES_FFPROBE_PATH": _SYSTEM_FFPROBE,
+        # Screenshot capture on SwiftShader. BeginFrame is not available on current Chrome
+        # (HeadlessExperimental.enable is missing) and its fallback is this same screenshot path.
+        "PRODUCER_BROWSER_GPU_MODE": "software", "PRODUCER_FORCE_SCREENSHOT": "true",
+        "HYPERFRAMES_FFMPEG_PATH": str(PKG / "hf" / "ffmpeg_repeatable.py"),
+        "VIDEO_ENGINE_FFMPEG_REAL": _SYSTEM_FFMPEG,
+        "HYPERFRAMES_FFPROBE_PATH": _SYSTEM_FFPROBE,
         "NODE_PATH": os.pathsep.join(_node_module_roots()),
     })
     env["PATH"] = os.pathsep.join([str(NODE.parent), env.get("PATH", "")])

@@ -151,6 +151,7 @@ def is_model(p: Prop) -> bool:
 
 def model_frames(p: Prop, fps: int) -> tuple[int, float]:
     """(cells, period in frames) of a model prop; (1, 0) for a still."""
+    assert p.model is not None
     t = p.model.turntable_s
     if t is None:
         return 1, 0.0
@@ -166,6 +167,7 @@ def sprite(p: Prop, project_dir: Path, fps: int) -> tuple[Path, int, int]:
     if not is_model(p):
         return src, 1, 1
     from . import models
+    assert p.model is not None
     m, (n, _) = p.model, model_frames(p, fps)
     if n > 1 and models.sheet_cols(n) * m.size_px > SHEET_MAX:
         raise EngineError(f"prop '{p.asset}': turntable sheet {models.sheet_cols(n)} x {m.size_px} px is wider than "
@@ -180,6 +182,7 @@ def model_cache_names(seg: Segment, project_dir: Path, fps: int) -> set[str]:
     out = set()
     for _, p, _, _ in flat(seg):
         if is_model(p) and (Path(project_dir) / p.asset).is_file():
+            assert p.model is not None
             m, (n, _) = p.model, model_frames(p, fps)
             out |= models.cache_names(Path(project_dir) / p.asset, yaw=m.yaw, pitch=m.pitch, fov=m.fov,
                                       size=m.size_px, frames=n, turn=m.turn_deg if n > 1 else 0.0)
@@ -241,9 +244,11 @@ def map_point(p: Prop, sc, mw: float, mh: float) -> tuple[float, float]:
     if p.path is not None:
         return p.path[0][0] * mw, p.path[0][1] * mh
     if p.x is not None:
+        assert p.y is not None
         return p.x * mw, p.y * mh
     if not sc.map_bounds:
         raise EngineError(f"prop '{p.asset}' uses lat/lng but gsap_scene_config.map_bounds is missing")
+    assert p.lat is not None and p.lng is not None
     x, y = projection.to_map(p.lat, p.lng, sc.map_bounds, projection.of(sc))
     return x * mw, y * mh
 
@@ -266,8 +271,12 @@ def scene_props(seg: Segment, tl: Timeline, project_dir: Path, cam: dict, mw: fl
         if p.anchor == "map":
             mx, my = map_point(p, sc, mw, mh)
             r = layout.camera_at(cam, f_in)
-            e.update(m=[round(mx, 3), round(my, 3)], d=p.depth,
-                     w=round(p.width_px if p.width_px is not None else p.width_map * mw * r["s"], 3))
+            if p.width_px is not None:
+                pw = p.width_px
+            else:
+                assert p.width_map is not None
+                pw = p.width_map * mw * r["s"]
+            e.update(m=[round(mx, 3), round(my, 3)], d=p.depth, w=round(pw, 3))
             if p.path is not None:
                 e["path"] = {"pts": [[round(x * mw, 3), round(y * mh, 3)] for x, y in p.path], "heading": p.heading,
                              "f": max(1, sec_to_frame(p.path_s, fps) if p.path_s else f_out - f_in - 1)}

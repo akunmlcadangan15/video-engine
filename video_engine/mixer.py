@@ -34,6 +34,7 @@ LOCAL_TONES = {
               "afade=t=out:st=0.32:d=0.28",
     "impact": "sine=f=55:d=0.8:r=48000,afade=t=out:st=0.03:d=0.77",
     "riser": "anoisesrc=d=1.2:c=white:seed=5:a=0.6:r=48000,highpass=f=1500,afade=t=in:d=1.15",
+    "rumble": "sine=f=45:d=1.4:r=48000,lowpass=f=90,afade=t=in:d=0.15,afade=t=out:st=0.7:d=0.7",
 }
 
 
@@ -85,19 +86,28 @@ def resolve_sfx(kind: str, profile) -> Resolved:
     return _wrap(r)
 
 
-def resolve_music(tl: Timeline, project_dir: Path, profile) -> Resolved | None:
-    """Music: the resolver's pick for audio_chain.music_brief, else audio_chain.bgm_path (local), else None."""
+def resolve_music(tl: Timeline, project_dir: Path, profile, *, brief: bool = True) -> Resolved | None:
+    """Music: the resolver's pick for audio_chain.music_brief, else audio_chain.bgm_path (local), else None.
+
+    `brief=False` skips the brief (a timeline with manual cues and no profile `[sound]` keeps the project bed)."""
     ac = tl.audio_chain
     cache = _sound_cache()
-    if ac.music_brief is not None and cache is not None:
+    if brief and ac.music_brief is not None and cache is not None:
         r = cache.resolve_music(ac.music_brief.model_dump(), profile)
         if r is None:
             raise EngineError(f"sound resolver has no music for brief {ac.music_brief.model_dump()}")
         return _wrap(r)
     if ac.bgm_path:
-        return Resolved(project_dir / ac.bgm_path, {"source": LOCAL_SOURCE, "id": ac.bgm_asset_id or ac.bgm_path,
-                                                    "title": Path(ac.bgm_path).stem, "artist": "",
-                                                    "credit": "project audio_chain.bgm_path"})
+        path = project_dir / ac.bgm_path
+        prov = None
+        if path.is_file():
+            from .sound import provenance
+            prov = provenance.for_file(path, project_dir)
+        if prov is None:
+            prov = {"source": LOCAL_SOURCE, "id": ac.bgm_asset_id or ac.bgm_path,
+                    "title": Path(ac.bgm_path).stem, "artist": "",
+                    "credit": "project audio_chain.bgm_path"}
+        return Resolved(path, prov)
     return None
 
 
@@ -164,12 +174,22 @@ def duck_expr(spans: list[tuple[float, float]], duck_db: float, attack_s: float,
     return f"1-{1 - g:.6f}*{m}"
 
 
+def _manual_max(cue, sp) -> float:
+    if cue.max_s is not None:
+        return cue.max_s
+    if cue.kind and sp is not None and cue.kind in sp.kinds:
+        return sp.kinds[cue.kind].max_s
+    return 2.0
+
+
 def plan(tl: Timeline, project_dir: Path, words: list[CaptionWord], lock: dict | None = None) -> Mix | None:
-    """Mix plan of a profile with [sound]; None for other profiles (audio.final_mux keeps its BGM sidechain mix).
+    """Mix plan of a profile with [sound], or of a timeline that places manual SFX cues. None otherwise
+    (audio.final_mux keeps its BGM sidechain mix).
     lock: manifest.locked_sounds(...) -> those exact files, the sound resolver is not asked."""
     prof = profiles.of(tl)
     sp = prof.sound
-    if sp is None:
+    manual = list(tl.audio_chain.sfx)
+    if sp is None and not manual:
         return None
     ac = tl.audio_chain
     sounds: dict[str, Resolved] = {}
@@ -181,14 +201,39 @@ def plan(tl: Timeline, project_dir: Path, words: list[CaptionWord], lock: dict |
         sounds[aid] = r
         kinds[aid] = kind
         by_kind[kind] = (aid, peak_s(r.path))
-    spans = speech_spans(words, tl.settings.fps, sp.duck_merge_s) if ac.voiceover_path and ac.auto_ducking else []
-    if lock:
+    cues = sfx.cues(tl, by_kind.__getitem__) if sp is not None else []
+    for i, cue in enumerate(manual):
+        if cue.kind:
+            aid, _peak = by_kind[cue.kind]
+        else:
+            assert cue.asset is not None
+            path = project_dir / cue.asset
+            if not path.is_file():
+                raise EngineError(f"audio_chain.sfx[{i}]: asset {cue.asset} is not a file")
+            from .sound import provenance
+            prov = provenance.for_file(path, project_dir) if path.is_file() else None
+            if prov is None:
+                prov = {"source": "project-file", "id": cue.id or Path(cue.asset).stem,
+                        "title": Path(cue.asset).stem, "artist": "", "credit": "project sfx asset"}
+            aid = cue.id or str(prov.get("id") or Path(cue.asset).stem)
+            if aid in sounds and sounds[aid].path.resolve() != path.resolve():
+                raise EngineError(f"audio_chain.sfx[{i}]: asset id {aid!r} is already another file")
+            sounds[aid] = Resolved(path, prov)
+            kinds.setdefault(aid, "file")
+        fps = tl.settings.fps
+        cues.append(SfxCue(time_s=cue.seconds(fps), kind=cue.kind or "file", gain_db=cue.gain_db, asset_id=aid,
+                           event="manual", frame=cue.frame(fps), trim_s=0.0, max_s=_manual_max(cue, sp)))
+    if sp is not None and ac.voiceover_path and ac.auto_ducking:
+        spans = speech_spans(words, tl.settings.fps, sp.duck_merge_s)
+        duck = duck_expr(spans, sp.duck_db, sp.duck_attack_s, sp.duck_release_s)
+        fade_in, fade_out = sp.fade_in_s, sp.fade_out_s
+    else:
+        duck, fade_in, fade_out = None, 0.0, 0.0
+    if lock and sp is not None:
         music = Resolved(*lock["music"]) if lock["music"] else None
     else:
-        music = resolve_music(tl, project_dir, prof)
-    return Mix(music, ac.bgm_gain_db,
-               duck_expr(spans, sp.duck_db, sp.duck_attack_s, sp.duck_release_s), sp.fade_in_s, sp.fade_out_s,
-               sfx.cues(tl, by_kind.__getitem__), sounds, kinds, bool(lock))
+        music = resolve_music(tl, project_dir, prof, brief=sp is not None)
+    return Mix(music, ac.bgm_gain_db, duck, fade_in, fade_out, cues, sounds, kinds, bool(lock))
 
 
 # ---------------------------------------------------------------------------------------------------- graph

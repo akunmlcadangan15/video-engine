@@ -26,6 +26,7 @@ def events(tl: Timeline) -> list[dict]:
         n = s.n_frames
         if s.engine_type == HYPERFRAMES:
             sc = s.gsap_scene_config
+            assert sc is not None
             land = PIN_LAND_S * fps if th["pin_style"] == "teardrop" else 0
             for i, p in enumerate(sc.pins):
                 add("pin", s, hyperframes.pin_frame(p, i, n, fps) + land)
@@ -57,10 +58,14 @@ def events(tl: Timeline) -> list[dict]:
 
 
 def kinds_used(tl: Timeline) -> list[str]:
+    """SFX kinds the mix will resolve: mapped render events, plus manual cues that name a kind."""
     sp = profiles.of(tl).sound
+    kinds: set[str] = set()
+    kinds.update(c.kind for c in tl.audio_chain.sfx if c.kind)
     if sp is None:
-        return []
-    return sorted({sp.events[e["event"]] for e in events(tl) if e["event"] in sp.events})
+        return sorted(kinds)
+    kinds.update(sp.events[e["event"]] for e in events(tl) if e["event"] in sp.events)
+    return sorted(kinds)
 
 
 def cues(tl: Timeline, asset: Callable[[str], tuple[str, float]]) -> list[SfxCue]:

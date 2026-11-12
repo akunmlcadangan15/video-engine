@@ -48,9 +48,13 @@ def test_good_chrome_relpath_layouts():
 
 
 def test_good_config_chrome_matches_helper():
-    key = platform_info.supported_key()
-    c = config._CH
-    assert config.CHROME == config.VENDOR / "chrome" / c["product"] / platform_info.chrome_relpath(c["product"], c["version"], key)
+    """config.CHROME is the path discover.resolve_chrome returns on this host, or the fallback when discovery misses."""
+    from video_engine import discover
+    if platform_info.supported_key() is None:
+        assert config.CHROME == config._CHROME_FALLBACK
+        return
+    found = discover.resolve_chrome(vendor=config.VENDOR, environ=os.environ)
+    assert config.CHROME == Path(config._resolved(found, config._CHROME_FALLBACK))
 
 
 def test_good_default_shm_root_per_platform(monkeypatch):

@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+from typing import Protocol
 
 import hypoverum_core_rs as core
 
@@ -18,12 +19,17 @@ from . import config
 
 
 class EngineError(RuntimeError):
-    pass
+    tried: list[tuple[str, str]]
+
+
+class _StageMonitor(Protocol):
+    def begin(self, name: str) -> None: ...
+    def end(self, name: str) -> object: ...
 
 
 def hex_to_rgb(h: str) -> tuple[int, int, int]:
     """'#rrggbb' -> (r, g, b) each 0-255. The one place that parses hex colours."""
-    return tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
+    return int(h[1:3], 16), int(h[3:5], 16), int(h[5:7], 16)
 
 
 def rgb_to_hex(rgb) -> str:
@@ -210,7 +216,7 @@ class Timer:
     resource row (wall, CPU, peak RSS by kind) in `resources`."""
     run_label: str = ""
     rows: list = field(default_factory=list)
-    monitor: object = None
+    monitor: _StageMonitor | None = None
     resources: list = field(default_factory=list)
 
     @contextmanager
