@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 import hypoverum_core_rs as core
 
-from . import assets, cache, camera3d, camera_full3d, config, entities, fx, globe, hfversion, legibility, parallax, printstyle, profiles, projection, props, streams, toolchain
+from . import assets, cache, camera3d, camera_full3d, config, entities, fx, globe, hfversion, legibility, parallax, printstyle, profiles, projection, props, resources, streams, toolchain
 from . import components
 from .maps import (MAP_JPEG_QUALITY, _map_copy, _need_w, _q, deep_entries, deep_plan, deep_tiles, map_image_size,
                    map_key, morph_data, texture_dim, textures)
@@ -24,7 +24,8 @@ from .timeline import HYPERFRAMES, Segment, Timeline
 from .util import EngineError, blake3_files, blake3_json, code_hash, run
 from .units import units
 
-CODE = (Path(__file__), Path(components.__file__), Path(fx.__file__), Path(globe.__file__),
+CODE = (Path(__file__), Path(components.__file__), Path(__file__).parent / "hf" / "ffmpeg_repeatable.py",
+        Path(fx.__file__), Path(globe.__file__),
         Path(parallax.__file__), Path(props.__file__), Path(camera3d.__file__), Path(camera_full3d.__file__),
         Path(entities.__file__), Path(printstyle.__file__), Path(projection.__file__))   # writes the build dir (html, scene.js); legibility.py is keyed in the scene (legibility.code_hash)
 HF_VERSION = "hf-2"   # hf-2: capture/encode profile HF_QUALITY + HF_CRF
@@ -192,8 +193,8 @@ def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, them
             while j + 1 < len(keys) and keys[j + 1].move == "flow":
                 j += 1
             legs += flow_legs(keys[i:j + 1], views[i:j + 1], f0, W, H, mw, mh, fps, theme.get("camera_bank"))
-            for a, b in zip(views[i:j], views[i + 1:j + 1]):
-                motion.append(round(motion_px(_state(*a, W, H, mw, mh), _state(*b, W, H, mw, mh), W, H), 2))
+            for left, right in zip(views[i:j], views[i + 1:j + 1]):
+                motion.append(round(motion_px(_state(*left, W, H, mw, mh), _state(*right, W, H, mw, mh), W, H), 2))
             prev = legs[-1]["to"]
             if keys[j].hold:
                 legs.append({"f0": keys[j].at_frame, "f1": min(n, keys[j].at_frame + keys[j].hold),
@@ -1153,10 +1154,12 @@ def encode_settings(tl: Timeline) -> tuple[str, int, list[str]]:
 def _key(scene: dict, files: list[Path], mk: str, tl: Timeline) -> str:
     """Segment key: engine render version, capture/encode settings, the scene (every profile value that reaches the
     template, card and prop images by content-hash name), the map derivative key, content hashes of the textures,
-    the scripts the scene adds (script_files) and the fonts copied into the build dir, and the toolchain identity
-    (toolchain.hf_identity), and the engine source that writes the build dir (CODE)."""
+    the scripts the scene adds (script_files) and the fonts copied into the build dir, the normalising x264 thread
+    arguments (config.x264_threads), the toolchain identity (toolchain.hf_identity), and the engine source that
+    writes the build dir (CODE)."""
     q, crf, x264 = encode_settings(tl)
-    return blake3_json({"v": HF_VERSION, "code": code_hash(CODE), "enc": [q, crf], "x264": x264, "algo": core.ALGO_VERSION,
+    return blake3_json({"v": HF_VERSION, "code": code_hash(CODE), "enc": [q, crf], "x264": x264,
+                        "x264_threads": config.x264_threads(resources.X264_THREADS), "algo": core.ALGO_VERSION,
                         "scene": scene, "map": mk, "files": blake3_files(files),
                         "fonts": blake3_files([config.FONTS_DIR / f for f in font_files(scene)]),
                         "toolchain": toolchain.hf_identity()})
@@ -1181,7 +1184,7 @@ def render(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, workers
     raw = out.with_suffix(".raw.mp4")
     q, crf, x264 = encode_settings(tl)
     run([config.NODE, hfversion.require().cli, "render", d, "--fps", str(tl.settings.fps), "--sdr", "-q", q, "--crf", str(crf),
-         "--workers", str(workers), "-o", raw], env=config.hf_env(), timeout=900)
+         "--no-browser-gpu", "--workers", str(workers), "-o", raw], env=config.hf_env(), timeout=900)
     n = seg.n_frames
     if _is_engine_format(raw, tl, n):
         raw.replace(out)
@@ -1189,7 +1192,7 @@ def render(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, workers
         # normalise to the engine's exact BT.709 stream format and frame count so concat demuxer joins Native + HF seamlessly
         run([config.FFMPEG, "-v", "error", "-y", "-i", raw, "-an", "-vf",
              f"fps={tl.settings.fps},tpad=stop_mode=clone:stop=-1,setsar=1,{config.BT709_VF}", *x264,
-             "-frames:v", str(n), "-movflags", "+faststart", out])
+             *config.x264_threads(resources.X264_THREADS), "-frames:v", str(n), "-movflags", "+faststart", out])
         raw.unlink(missing_ok=True)
     streams.verify(out, n, tl.settings.fps, f"segment {seg.seg_index} (HyperFrames)")
     return (cache.put_file("segments", key, out) if use_cache else out), False
@@ -1210,7 +1213,8 @@ def _render_split(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, 
     _, _, x264 = encode_settings(tl)
     run([config.FFMPEG, "-v", "error", "-y", "-i", files[0], "-i", files[1], "-f", "lavfi", "-i",
          f"color=c={sp.divider_colour}:s={S.width}x{sp.divider_px}:r={S.fps}", "-filter_complex",
-         "[0:v][2:v][1:v]vstack=inputs=3,setsar=1[v]", "-map", "[v]", "-an", *x264, "-frames:v", str(n), out])
+         "[0:v][2:v][1:v]vstack=inputs=3,setsar=1[v]", "-map", "[v]", "-an", *x264,
+         *config.x264_threads(resources.X264_THREADS), "-frames:v", str(n), out])
     streams.verify(out, n, S.fps, f"segment {seg.seg_index} (split screen)")
     return cache.put_file("segments", key, out) if use_cache else out
 

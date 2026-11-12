@@ -126,7 +126,7 @@ def _compare_split_and_single(proj, tmp_path):
     for k in range(9, -1, -1):
         agraph = agraph.replace(f"[{k}:a]", f"[{k + shift}:a]")
     cmd = [*v[:4], *vin, *ain, "-filter_complex", v[vi + 1] + ";" + agraph, "-map", "[v]", "-map", "[a]",
-           *config.X264, "-threads", "6", "-r", "30", "-frames:v", str(tl.total_frames), "-c:a", "aac", "-b:a",
+           *config.X264, *config.x264_threads(6), "-r", "30", "-frames:v", str(tl.total_frames), "-c:a", "aac", "-b:a",
            "192k", "-ar", "48000", "-movflags", "+faststart", "-t", f"{tl.total_frames / 30:.6f}", one]
     subprocess.run([str(c) for c in cmd], check=True)
     assert stream_md5(out, "v:0") == stream_md5(one, "v:0")

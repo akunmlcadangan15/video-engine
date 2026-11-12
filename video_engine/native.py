@@ -106,7 +106,8 @@ def _key(job: NativeJob, tl: Timeline, mode: str, src_hash: str) -> str:
     return blake3_json({
         "v": NATIVE_VERSION, "src": src_hash, "mode": mode, "in": seg.source_in_frame, "n": seg.n_frames,
         "cam": seg.camera_move.model_dump() if seg.camera_move else None, "W": S.width, "H": S.height, "fps": S.fps,
-        "x264": seg_x264(tl), "threads": resources.X264_THREADS, "ffmpeg": toolchain.ffmpeg_version(config.FFMPEG),
+        "x264": seg_x264(tl), "threads": resources.X264_THREADS,
+        "x264_params": config.X264_REPEATABLE, "ffmpeg": toolchain.ffmpeg_version(config.FFMPEG),
         "code": code_hash(CODE), "algo": core.ALGO_VERSION, **({"copy": COPY_FORMAT} if mode == "copy" else {}),
         **({"ov": ov} if (ov := overlays.key_part(seg, profiles.of(tl).print, profiles.of(tl).theme,
                                                            profiles.of(tl).motion)) else {}),
@@ -127,7 +128,7 @@ def _encoder(out: Path, W: int, H: int, fps: int, n: int, threads: int, seg: Seg
     inputs, filt = (_overlay_args(seg, tl, BT709_VF, out.parent / "ov")
                     if seg is not None else ([], ["-vf", BT709_VF]))
     cmd = [config.FFMPEG, "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(fps),
-           "-i", "-", *inputs, *filt, *seg_x264(tl), "-threads", str(threads), "-frames:v", str(n), "-an",
+           "-i", "-", *inputs, *filt, *seg_x264(tl), *config.x264_threads(threads), "-frames:v", str(n), "-an",
            "-movflags", "+faststart", str(out)]
     return subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -200,7 +201,7 @@ def render_encode(job: NativeJob, tl: Timeline, out: Path, threads: int) -> None
           f"crop={S.width}:{S.height},setsar=1,tpad=stop_mode=clone:stop=-1")
     inputs, filt = _overlay_args(job.seg, tl, vf, out.parent / "ov")
     run([config.FFMPEG, "-v", "error", "-y", "-ss", f"{t_in:.6f}", "-i", job.src, *inputs, "-an", *filt,
-         *seg_x264(tl), "-threads", str(threads), "-frames:v", str(job.seg.n_frames), "-movflags", "+faststart", out])
+         *seg_x264(tl), *config.x264_threads(threads), "-frames:v", str(job.seg.n_frames), "-movflags", "+faststart", out])
 
 
 def render_copy(job: NativeJob, tl: Timeline, out: Path) -> None:

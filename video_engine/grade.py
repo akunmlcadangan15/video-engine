@@ -211,7 +211,8 @@ def _x264(tl: "Timeline", lossless: bool = False) -> list[str]:
 def _key(seg: "Segment", rs: list, cubes: list[str], src: Path, x264: list[str] | None = None) -> str:
     return blake3_json({"v": GRADE_VERSION, "code": code_hash([__file__]), "src": blake3_files([src])[0], "n": seg.n_frames,
                         "ranges": [[a, e, blake3_json(c)] for (a, e, _, _), c in zip(rs, cubes)],
-                        "x264": x264 or config.X264_SEGMENT, "threads": X264_THREADS, "ffmpeg": toolchain.ffmpeg_version(config.FFMPEG)})
+                        "x264": x264 or config.X264_SEGMENT, "threads": X264_THREADS,
+                        "x264_params": config.X264_REPEATABLE, "ffmpeg": toolchain.ffmpeg_version(config.FFMPEG)})
 
 
 def key(seg: "Segment", tl: "Timeline", project_dir: Path, src: Path) -> str | None:
@@ -243,8 +244,8 @@ def apply(seg: "Segment", tl: "Timeline", project_dir: Path, src: Path, workdir:
         vf = ("scale=in_color_matrix=bt709:in_range=tv:flags=neighbor+accurate_rnd,format=gbrp16le,"
               + ",".join(chain) + ",scale=out_color_matrix=bt709:out_range=tv:flags=area+accurate_rnd,format=yuv420p")
         out = wd / "graded.mp4"
-        run([config.FFMPEG, "-v", "error", "-y", "-i", src, "-an", "-vf", vf, *_x264(tl, True), "-threads",
-             str(X264_THREADS), "-frames:v", str(seg.n_frames), "-movflags", "+faststart", out])
+        run([config.FFMPEG, "-v", "error", "-y", "-i", src, "-an", "-vf", vf, *_x264(tl, True),
+             *config.x264_threads(X264_THREADS), "-frames:v", str(seg.n_frames), "-movflags", "+faststart", out])
         if use_cache:
             return cache.put_file("segments", key, out), False
         keep = Path(workdir) / f"graded_{seg.seg_index}.mp4"
