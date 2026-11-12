@@ -4,8 +4,8 @@ Stages (wall time of each is recorded):
   captions   timeline captions, else Grok STT words of the voiceover (BLAKE3 cache) + caption_fixes
   preflight  all gates (gates.run_preflight); any "fail" stops the build before rendering
   sounds     sound.request.ensure_sounds: missing music/SFX of a profile [sound] -> request bundle
-             <project>/out/sound_request/ and AwaitingAgent (exit 3); --resume imports the answer; then mixer.plan
-             and the Epidemic Sound credit lines appended to credits.txt
+             <project>/out/sound_request/              and AwaitingAgent (exit 3); --resume imports the answer; then mixer.plan
+             and the Epidemic Sound credit lines appended to credits.txt (proxy and delivery)
              A sound lock in out/build_manifest.json (video_engine/manifest.py) replaces both unless --relock.
   manifest   out/build_manifest.json: build_id, input/font/sound sha256, profile hash, toolchain, seeds, budget
   segments   NATIVE_RUST_FFMPEG segments in a thread pool (budget.native_workers x budget.x264_threads) and
@@ -68,6 +68,26 @@ from .util import EngineError, Timer, count_frames, video_info
 
 REPORT = "build_report.json"
 FAILED_REPORT = "build_report.failed.json"
+
+
+def _sound_provenances(tl: Timeline, project_dir: Path, mix) -> list[dict]:
+    """Provenance rows whose credit lines the build writes. A mix contributes its music and SFX. With no mix, a
+    path-supplied bed whose sidecar or sound lock proves an Epidemic Sound licence contributes that one row, so
+    the credit line is written the same way as cache-sourced music."""
+    if mix:
+        rows = [r.provenance for r in mix.sounds.values()]
+        if mix.music:
+            rows.append(mix.music.provenance)
+        return rows
+    bgm = tl.audio_chain.bgm_path
+    if not bgm:
+        return []
+    path = Path(project_dir) / bgm
+    if not path.is_file():
+        return []
+    from .sound import provenance
+    found = provenance.for_file(path, project_dir)
+    return [found] if found else []
 
 
 @dataclass
@@ -273,17 +293,9 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             else:
                 sound_request.ensure_sounds(tl, project_dir, resume=resume, resume_cmd=resume_cmd)
         mix = mixer.plan(tl, project_dir, words, lock=lock)   # None without [sound] and without manual cues
-        if mix:
-            provenances = [r.provenance for r in mix.sounds.values()] + ([mix.music.provenance] if mix.music else [])
-            if quality == "proxy":
-                credits_file = project_dir / "credits.txt"
-                text = credits_file.read_text() if credits_file.is_file() else ""
-                have = {ln.strip()[2:] for ln in text.splitlines() if ln.strip().startswith("- ")}
-                if any(c not in have for c in sound_cache.credit_lines(provenances)):
-                    raise EngineError("proxy quality cannot append missing sound credits to credits.txt; "
-                                      "run python -m video_engine.sound PROJECT --credits first, then retry proxy")
-            else:
-                sound_cache.append_credits(project_dir, provenances)
+        provenances = _sound_provenances(tl, project_dir, mix)
+        if provenances:
+            sound_cache.append_credits(project_dir, provenances)
         with timer.stage("manifest") as st:
             man = manifest.write(out.parent, tl, project_dir, mix=mix, kinds_of=mix.kinds if mix else {},
                                  budget=budget, relock=relock, quality=quality, source_profile=source_profile)

@@ -178,27 +178,23 @@ def test_draft_alone_and_later_release_keep_delivery_quality(mocked_pipeline, tl
         assert report["render_quality"]["final_pix_fmt"] == "yuv420p10le"
 
 
-@pytest.mark.parametrize("prepared", [False, True])
-def test_proxy_never_appends_missing_sound_credit(mocked_pipeline, monkeypatch, prepared):
+def test_proxy_appends_missing_sound_credit(mocked_pipeline, monkeypatch):
+    """Proxy and delivery share one credit write: a resolved Epidemic file is credited during the build."""
     p = mocked_pipeline
-    credit = "song-id — Artist — Song — licensed source"
+    credit = 'song-id — Artist — "Song" — https://www.epidemicsound.com — Epidemic Sound licence'
     provenance = {"source": "epidemic", "id": "song-id", "title": "Song", "artist": "Artist", "credit": credit}
     mix = SimpleNamespace(sounds={}, music=SimpleNamespace(provenance=provenance), kinds={}, report=lambda: {})
     monkeypatch.setattr(build.mixer, "plan", lambda *a, **k: mix)
     monkeypatch.setattr(manifest, "sounds_entry", lambda *a, **k: {})
-    monkeypatch.setattr(build.sound_cache, "append_credits", lambda *a: pytest.fail("must not modify source credits"))
     monkeypatch.setattr(build.sound_request, "ensure_sounds", lambda *a, **k: pytest.fail("must not mutate sound handoff"))
     source = p / "credits.txt"
-    original = "Original visual credits\n" + (f"- {credit}\n" if prepared else "")
-    source.write_text(original)
+    source.write_text("Original visual credits\n")
     timeline_bytes = (p / "master_timeline.json").read_bytes()
-    if prepared:
-        assert build.build(p, mode="draft", quality="proxy").ok
-    else:
-        monkeypatch.setattr(build, "render_segments", lambda *a, **k: pytest.fail("fail before render"))
-        with pytest.raises(EngineError, match="cannot append missing sound credits.*--credits"):
-            build.build(p, mode="draft", quality="proxy")
-    assert source.read_text() == original
+    assert build.build(p, mode="draft", quality="proxy").ok
+    text = source.read_text()
+    assert "Audio (Epidemic Sound)" in text and f"- {credit}\n" in text
+    assert build.build(p, mode="draft", quality="proxy").ok
+    assert source.read_text().count(credit) == 1
     assert (p / "master_timeline.json").read_bytes() == timeline_bytes
 
 

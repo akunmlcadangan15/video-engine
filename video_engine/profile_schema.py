@@ -142,9 +142,16 @@ class CameraGate(_Strict):
         return self
 
 
+COAST_KM = 25.0   # G02: a pin this close to a land polygon (km) counts as on land. Coastal cities on a coarse
+                  # Natural Earth outline pass; a point tens of kilometres offshore still fails. The default adds
+                  # nothing to the profile hash.
+
+
 class GeoGate(_Strict):
-    """G02: geographic facts of map scenes; require_land also fails a pin that is in the water."""
+    """G02: geographic facts of map scenes; require_land also fails a pin that is in the water.
+    `coast_km` is the distance to the nearest land edge that still counts as on land."""
     require_land: bool = False
+    coast_km: float = Field(COAST_KM, ge=0, le=200, exclude_if=lambda v: v == COAST_KM)
 
 
 class AntiSlopGate(_Strict):

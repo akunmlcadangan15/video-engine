@@ -11,7 +11,7 @@ import hypoverum_core_rs as core
 
 from .. import hyperframes, profiles, props
 from ..assets import flag_for
-from ..licence import OWN_LICENCES, licence_allowed, norm_licence
+from ..licence import EPIDEMIC_URL, OWN_LICENCES, epidemic_licence, epidemic_url, licence_allowed, norm_licence
 from ..timeline import HYPERFRAMES, NATIVE, CaptionWord, Timeline
 from ..util import EngineError
 from .core import Finding
@@ -160,6 +160,20 @@ def _prop_timing(s, fps: int) -> list[Finding]:
     return out
 
 
+def _proven_epidemic(project_dir: Path, path: str | None) -> dict | None:
+    """Epidemic provenance of a path-supplied audio file, or None when nothing claims it.
+
+    A sidecar or sound lock that claims epidemic but fails the id or sha256 check raises EngineError: the claim
+    is not treated as an ordinary missing credit."""
+    if not path:
+        return None
+    audio = project_dir / path
+    if not audio.is_file():
+        return None
+    from ..sound import provenance
+    return provenance.for_file(audio, project_dir)
+
+
 def r07_credits(tl: Timeline, project_dir: Path) -> list[Finding]:
     out = []
     ctxt_path = project_dir / "credits.txt"
@@ -171,6 +185,11 @@ def r07_credits(tl: Timeline, project_dir: Path) -> list[Finding]:
         c = tl.credit_for(ref=aid, path=path)
         label = f"{role} '{aid or path}'"
         if c is None:
+            # A path whose sidecar or sound lock proves source=epidemic, a track id and the file hash is credited
+            # the same way as cache-sourced Epidemic music: the build writes the credit line, and the proof is the
+            # credit. A file with no such proof still needs a credits_manifest row.
+            if role == "bgm" and _proven_epidemic(project_dir, path):
+                continue
             out.append(Finding("R07", "fail", f"{label} has no credits_manifest entry", seg))
             continue
         if norm_licence(c.license) in OWN_LICENCES:
@@ -190,7 +209,11 @@ def r14_licence(tl: Timeline) -> list[Finding]:
             continue
         if not licence_allowed(c.license):
             out.append(Finding("R14", "fail", f"credit '{c.asset_id}' license '{c.license}' not in allowlist (PD, CC0, "
-                                              "CC BY, CC BY-SA, Pexels, Pixabay, Unsplash, Mixkit, Own; never NC/ND)"))
+                                              "CC BY, CC BY-SA, Pexels, Pixabay, Unsplash, Mixkit, Epidemic Sound, "
+                                              "Own; never NC/ND)"))
+        elif epidemic_licence(c.license) and not epidemic_url(c.source_url):
+            out.append(Finding("R14", "fail", f"credit '{c.asset_id}' Epidemic Sound licence requires source_url "
+                                              f"{EPIDEMIC_URL}"))
         if c.watermark_free is not True:
             state = "not declared" if c.watermark_free is None else "false"
             out.append(Finding("R14", "fail", f"credit '{c.asset_id}' watermark_free is {state}; must be true"))

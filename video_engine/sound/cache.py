@@ -18,12 +18,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import cache as engine_cache, config
+from ..licence import EPIDEMIC_LICENCE, EPIDEMIC_URL
 from ..timeline import MusicBrief
 from ..util import EngineError, blake3_files, blake3_json
-from . import AUDIO_EXTS, EPIDEMIC, LOCAL_TEST, PROVENANCE_KEYS, SFX_KINDS, SOURCES, required_source
-
-EPIDEMIC_URL = "https://www.epidemicsound.com"
-EPIDEMIC_LICENCE = "Epidemic Sound licence"
+from . import (AUDIO_EXTS, EPIDEMIC, LOCAL_TEST, PROVENANCE_KEYS, SFX_KINDS, SOURCES, generated_tones_allowed,
+               required_source)
 CREDITS_HEADER = "Audio (Epidemic Sound)"
 
 
@@ -137,9 +136,18 @@ def lookup(typ: str, key: str, source: str) -> ResolvedSound | None:
     return ResolvedSound(f, dict(meta["provenance"]))
 
 
-def _pick(typ: str, key: str, profile) -> ResolvedSound | None:
+def _pick(typ: str, key: str, profile, *, allow_generated: bool | None = None) -> ResolvedSound | None:
+    """Cached file for (type, key). A required source is the only candidate. Otherwise the Epidemic Sound file,
+    then a cached local-test file when generated tones are allowed. A real build does not treat a local-test file
+    as a licensed hit."""
     req = required_source(profile)
-    for source in ([req] if req else [EPIDEMIC, LOCAL_TEST]):
+    if req:
+        sources = [req]
+    elif generated_tones_allowed(allow_generated):
+        sources = [EPIDEMIC, LOCAL_TEST]
+    else:
+        sources = [EPIDEMIC]
+    for source in sources:
         r = lookup(typ, key, source)
         if r:
             return r
@@ -148,34 +156,49 @@ def _pick(typ: str, key: str, profile) -> ResolvedSound | None:
 
 # ---------------------------------------------------------------------------------------------------- resolver
 
-def resolve(kind: str, profile) -> ResolvedSound:
+def resolve(kind: str, profile, *, allow_generated: bool | None = None) -> ResolvedSound:
     """SFX file for kind: the cached file from the profile's required source, else (no requirement) the cached
-    Epidemic file, else a cached local-test file; with no such file, the generated local test tone (source
-    local-test). Gate A02 fails local-test files when the profile requires a source."""
-    r = _pick("sfx", kind, profile)
+    Epidemic file, else a cached local-test file when generated tones are allowed.
+
+    With no licensed file, a generated local test tone is returned only when `allow_generated` is true or
+    `VIDEO_ENGINE_LOCAL_TONES` is set. Otherwise this raises EngineError for every kind, including riser and
+    rumble. The build lists the same kinds in `missing` so the sound request can fetch them first."""
+    r = _pick("sfx", kind, profile, allow_generated=allow_generated)
     if r:
         return r
-    from .. import mixer
-    t = mixer.local_sfx(kind)
-    return ResolvedSound(t.path, t.provenance)
+    if generated_tones_allowed(allow_generated):
+        from .. import mixer
+        t = mixer.local_sfx(kind)
+        return ResolvedSound(t.path, t.provenance)
+    src = required_source(profile) or EPIDEMIC
+    raise EngineError(f"SFX kind '{kind}' has no licensed file from '{src}' in the sound cache; "
+                      "add one with python -m video_engine.sound PROJECT --resume, "
+                      "or set VIDEO_ENGINE_LOCAL_TONES=1 to use a generated test tone")
 
 
 def resolve_music(brief: dict, profile) -> ResolvedSound | None:
     """Music file for a brief: the cached file from the profile's required source, else (no requirement) the cached
-    Epidemic file, else a cached local-test file; None when none is cached."""
+    Epidemic file, else a cached local-test file when generated tones are allowed; None when none is cached."""
     return _pick("music", brief_key(brief), profile)
 
 
 def missing(tl, profile) -> list[dict]:
     """Request items, [] without a profile [sound]. With a required source: every SFX kind of the timeline and the
-    music brief with no cached file from that source. Without one: the music brief when no source has a file for it
-    (the mixer has no fallback for a brief; SFX fall back to local-test tones)."""
+    music brief with no cached file from that source. Without one, and with generated tones allowed: the music brief
+    when no source has a file for it (SFX then use a cached or generated local-test tone). Without generated tones:
+    every SFX kind with no cached file from the configured source (epidemic when none is required), for every kind
+    including riser and rumble, plus the music brief when no source has a file for it."""
     from .. import sfx
     if profile.sound is None:
         return []
     req = required_source(profile)
-    out = [] if req is None else [{"slot": slot("sfx", k), "type": "sfx", "kind": k}
-                                  for k in sfx.kinds_used(tl) if not lookup("sfx", k, req)]
+    if generated_tones_allowed():
+        out = [] if req is None else [{"slot": slot("sfx", k), "type": "sfx", "kind": k}
+                                      for k in sfx.kinds_used(tl) if not lookup("sfx", k, req)]
+    else:
+        source = req or EPIDEMIC
+        out = [{"slot": slot("sfx", k), "type": "sfx", "kind": k}
+               for k in sfx.kinds_used(tl) if not lookup("sfx", k, source)]
     mb = tl.audio_chain.music_brief
     if mb is not None:
         key = brief_key(mb.model_dump())

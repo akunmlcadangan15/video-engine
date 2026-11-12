@@ -46,6 +46,8 @@ _PARENT_PREEXISTED = SHM_PARENT.exists()
 TEST_ROOT.mkdir(parents=True, exist_ok=True)
 os.environ["VIDEO_ENGINE_SHM"] = str(TEST_ROOT / "shm")
 os.environ["VIDEO_ENGINE_CACHE"] = str(TEST_ROOT / "cache")
+# Generated SFX tones are off unless this is set. The suite opts in; a test of the real-build path unsets it.
+os.environ["VIDEO_ENGINE_LOCAL_TONES"] = "1"
 # AI provider selection is hermetic: no provider env, no AI config file unless a test writes one.
 os.environ.pop("VIDEO_ENGINE_AI_PROVIDER", None)
 os.environ["VIDEO_ENGINE_AI_CONFIG"] = str(TEST_ROOT / "no_ai_providers.toml")

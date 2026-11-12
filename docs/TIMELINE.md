@@ -43,6 +43,7 @@ The rules of `master_timeline.json` and of captions.
     After the last key the camera drifts (push-in at a constant profile `theme.camera_drift_per_s` ln zoom per second about `[camera] pulse_anchor`) to the segment end.
     Optional key field `hold` (0-90 frames): the camera stays still on that key's view after it.
     Optional key field `drift_max` (ln zoom 0.01-2) bounds the drift of the wait on that key's view: it turns between 0 and the bound.
+    Optional key field `fit` (alias `keep_in_frame`): a list of pin labels or pin indexes. For the whole wait on that key the push-in and the pulses are scaled down, deterministically, until every listed pin stays inside the safe area inset by 24 px at the reference canvas. The key's own framing is unchanged. Example: `"fit": ["Kupang", "Darwin"]` or `"keep_in_frame": [0, 1]`.
     Beats scenes write it for each wait whose drift breaks a per-frame layout rule (0.7 of the offending offset, floor 0.03).
     Pulse legs keep the drift's ln rate at both ends; a whip starts and lands at rest.
     With profile `[camera]` `pulse_zoom` > 0 every drift (before a whip and after the last key) holds evenly spaced pulses: (drift length - `pulse_gap_s`) // (`pulse_s` + `pulse_gap_s`) pulses alternating away from the drift and back to it.
@@ -141,12 +142,12 @@ The rules of `master_timeline.json` and of captions.
   `credits.txt` in the project must contain every source URL.
   Licence `Own` / `Generated` needs no URL.
 - `audio_chain`: `voiceover_path`, `bgm_path`, `bgm_asset_id`, `bgm_gain_db`, `auto_ducking`, `music_brief` (`{mood, energy: low|medium|high, bpm_min, bpm_max, duration_s}`, 30-240 BPM, `bpm_max >= bpm_min`; with a profile `[sound]` the music comes from the sound resolver for this brief, else from `bgm_path`), `target_lufs`, `true_peak`, `lra` (absent = profile value; default profile -14.0 / -1.5 / 11.0; a `true_peak` above the global -1.5 dBTP limit is an error, `profiles.loudness`), `language`, `stt` (`{model, keyterms}`; model default `grok-voice-transcribe-2.0`, keyterms at most 100, each at most 50 chars), `caption_fixes` (`{from, to}` word-sequence replacements; a blank `to` removes the matched words, a blank `from` is rejected), `sfx` (manual cues, below).
-  A `bgm_path` file is marked `local-test` unless a sidecar or a sound lock verifies Epidemic Sound provenance (source, track id, sha256 of the file). See [SOUND.md](SOUND.md#path-supplied-epidemic-music).
+  A `bgm_path` file is marked `local-test` unless a sidecar or a sound lock verifies Epidemic Sound provenance (source, track id, sha256 of the file). A verified file satisfies R07 the same way cache-sourced Epidemic music does (the build appends the credit line; a `credits_manifest` row is optional). A row that is present must use licence `Epidemic Sound licence` and source URL `https://www.epidemicsound.com`. See [SOUND.md](SOUND.md#path-supplied-epidemic-music).
 - `audio_chain.sfx`: manual cues, mixed with the automatic ones when the profile has `[sound]`, and on their own when it does not. Each cue is `{kind | asset, at_frame | time_s, gain_db, id, max_s}`.
   Exactly one of `kind` (an SFX id: `pop`, `tick`, `whoosh`, `click`, `beep`, `counter_tick`, `impact`, `riser`, `rumble`) or `asset` (a project-relative audio file).
   Exactly one of `at_frame` (absolute, from frame 0 of the timeline) or `time_s` (absolute seconds). A frame past the timeline is an error.
   `gain_db` is -60..0, default -12. `max_s` caps the cue (default: the profile `[sound.kinds.<kind>]` cap when that table exists, else 2 s). `id` is the mix asset id (default: the resolved file's provenance id, or the file stem).
-  A `kind` cue uses the sound cache, then the generated local-test tone. An `asset` cue reads the file; the same sidecar or lock rules as `bgm_path` can mark it `epidemic`.
+  A `kind` cue uses the sound cache. With no licensed file the build requests one; a generated local-test tone is used only when `VIDEO_ENGINE_LOCAL_TONES=1`. An `asset` cue reads the file; the same sidecar or lock rules as `bgm_path` can mark it `epidemic`.
   Example: `{"kind": "rumble", "at_frame": 90, "gain_db": -8}` and `{"asset": "assets/hit.wav", "time_s": 1.25, "gain_db": -6, "id": "hit"}`.
 - `captions`: pinned word list `{word, start_frame, end_frame}`.
   The build reads these words and never re-transcribes while they exist.

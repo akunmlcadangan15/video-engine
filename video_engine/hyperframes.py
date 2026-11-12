@@ -150,6 +150,111 @@ def camera_states(sc, W: int, H: int, mw: float, mh: float) -> tuple[dict, dict,
     return a, b, motion_px(a, b, W, H)
 
 
+FIT_PAD_REF = 24   # px at the reference canvas, inside the R63 safe area, that a fitted pin must clear
+_FIT_SLACK = 0.6    # px; _state rounds x/y to 0.001, so the hold check allows half a pixel of that rounding
+
+
+def fit_points(sc, refs, mw: float, mh: float) -> list[tuple[float, float]]:
+    """Map-pixel positions of the pins named by a camera key's `fit` (labels or indexes)."""
+    out = []
+    for ref in refs:
+        if isinstance(ref, int) and not isinstance(ref, bool):
+            if not 0 <= ref < len(sc.pins):
+                raise EngineError(f"camera fit index {ref} is outside the scene's {len(sc.pins)} pins")
+            pin = sc.pins[ref]
+        else:
+            hits = [p for p in sc.pins if p.label == ref]
+            if len(hits) != 1:
+                raise EngineError(f"camera fit {ref!r} matches {len(hits)} pins; use one label or a pin index")
+            pin = hits[0]
+        out.append(_pin_xy(pin, sc, mw, mh))
+    return out
+
+
+def _fit_box(W: int, H: int) -> tuple[float, float, float, float]:
+    u = units((W, H))
+    sx, top, bottom = u.safe()
+    pad = FIT_PAD_REF * u.k
+    return sx + pad, top + pad, W - sx - pad, bottom - pad
+
+
+def _pins_inside(cam: dict, f0: int, f1: int, points, box) -> bool:
+    from .layout import camera_at
+    x0, y0, x1, y1 = box
+    for f in range(f0, f1 + 1):
+        st = camera_at(cam, f)
+        for px, py in points:
+            x, y = st["x"] + st["s"] * px, st["y"] + st["s"] * py
+            if not (x0 - _FIT_SLACK <= x <= x1 + _FIT_SLACK and y0 - _FIT_SLACK <= y <= y1 + _FIT_SLACK):
+                return False
+    return True
+
+
+def _scaled_pulse(pulse: dict | None, t: float) -> dict | None:
+    if not pulse or t <= 1e-4:
+        return None
+    zoom = pulse["zoom"]
+    if isinstance(zoom, list):
+        scaled = [round(v * t, 4) for v in zoom]
+        if not scaled or max(scaled) <= 1e-4:
+            return None
+    else:
+        scaled = round(float(zoom) * t, 4)
+        if scaled <= 1e-4:
+            return None
+    return {**pulse, "zoom": scaled}
+
+
+def fit_hold(view, points, pulse, bound, f0: int, f1: int, drift: float, W: int, H: int, mw: float, mh: float,
+             fps: int, anchor, base_zoom):
+    """(pulse, drift bound) for the wait on `view` over [f0, f1) so every fitted pin stays in the safe area.
+
+    The opening view is kept. Push-in and pulses are scaled down together, deterministically, until the whole
+    hold fits, or to a still drift when nothing smaller would. A hold that already fits is returned unchanged."""
+    if f1 <= f0 or not points:
+        return pulse, bound
+    box = _fit_box(W, H)
+    centre, scale = view
+    start = _state(centre, scale, W, H, mw, mh)
+
+    def ok(pk, b) -> bool:
+        z = pk and (pk["zoom"] if isinstance(pk["zoom"], list) else [pk["zoom"]])
+        use = pk if z and max(z) > 0 else None
+        legs = drift_legs(view, f0, f1, drift, use, W, H, mw, mh, fps, base_zoom=base_zoom, anchor=anchor, bound=b)
+        return _pins_inside({"start": start, "legs": legs}, f0, f1, points, box)
+
+    if ok(pulse, bound):
+        return pulse, bound
+    # How far an unbounded push of this wait actually goes, so the search has a finite top.
+    if bound is None:
+        free = drift_legs(view, f0, f1, drift, None, W, H, mw, mh, fps, anchor=anchor, bound=None)
+        peak = max((L["to"]["s"] for L in free), default=view[1])
+        limit = math.log(peak / view[1]) if peak > view[1] else 0.0
+    else:
+        limit = float(bound)
+
+    def at(t: float):
+        if t >= 1.0:
+            return pulse, bound
+        pk = _scaled_pulse(pulse, t)
+        b = 0.0 if limit <= 0 else math.floor(limit * t * 10000) / 10000
+        return pk, b
+
+    lo, hi = 0.0, 1.0
+    for _ in range(24):
+        mid = (lo + hi) / 2
+        pk, b = at(mid)
+        if ok(pk, b):
+            lo = mid
+        else:
+            hi = mid
+    pk, b = at(lo)
+    while lo > 0 and not ok(pk, b):
+        lo = max(0.0, round(lo - 0.0001, 4))
+        pk, b = at(lo)
+    return pk, b
+
+
 def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, theme: dict) -> dict:
     """Camera of one HyperFrames segment: {start, end, legs, leg_motion}. A leg {f0, f1, to, ease[, bez, lr, blur]}
     tweens the container from the previous transform to `to` over frames [f0, f1) under the leg ease (leg_ease).
@@ -161,7 +266,9 @@ def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, them
     `reveal_ease` (fast early, long settle onto the key). leg_motion = the visible motion of each key's move (checked by R56). After the last key
     a drift runs to the segment end so the camera never stops. With theme `camera_pulse` (profile [camera]) every
     drift is split by `drift_legs` into drifts and pulses; a key's `pulse` sets the pulse sizes of the wait on its view
-    (0 = drift only) and its `drift_max` bounds the drift of that wait. A key's `hold` adds a still leg on its view
+    (0 = drift only) and its `drift_max` bounds the drift of that wait. A key's `fit` (or `keep_in_frame`) lists pins
+    that must stay inside the safe area, with a margin, for the whole wait: the push-in and the pulses of that wait
+    are scaled down until they do. A key's `hold` adds a still leg on its view
     after it. Glide legs carry endpoint speeds `v` (glide_speeds)."""
     if not sc.camera_path:
         a, b, _ = camera_states(sc, W, H, mw, mh)
@@ -176,8 +283,16 @@ def camera_plan(sc, W: int, H: int, mw: float, mh: float, n: int, fps: int, them
     def drifts(i, f0, f1):     # the wait on key i's view; key `pulse` overrides the pulse sizes of this wait
         pk = pulse and keys[i].pulse is not None and {**pulse, "zoom": keys[i].pulse} or pulse
         z = pk and (pk["zoom"] if isinstance(pk["zoom"], list) else [pk["zoom"]])
-        return drift_legs(views[i], f0, f1, drift, pk if z and max(z) > 0 else None, W, H, mw, mh, fps,
-                          base_zoom=pulse and pulse["zoom"], anchor=anchor, bound=keys[i].drift_max)
+        use = pk if z and max(z) > 0 else None
+        bound = keys[i].drift_max
+        if keys[i].fit:
+            pts = fit_points(sc, keys[i].fit, mw, mh)
+            use, bound = fit_hold(views[i], pts, use, bound, f0, f1, drift, W, H, mw, mh, fps, anchor,
+                                  pulse and pulse["zoom"])
+            z = use and (use["zoom"] if isinstance(use["zoom"], list) else [use["zoom"]])
+            use = use if z and max(z) > 0 else None
+        return drift_legs(views[i], f0, f1, drift, use, W, H, mw, mh, fps,
+                          base_zoom=pulse and pulse["zoom"], anchor=anchor, bound=bound)
 
     start = _state(*views[0], W, H, mw, mh)
     legs, motion, prev = [], [], start
