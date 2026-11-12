@@ -189,6 +189,25 @@ def frame_jpeg(path: str | Path, t_s: float, px: int, quality: int = 5) -> bytes
     return r.stdout if r.returncode == 0 and r.stdout else None
 
 
+def image_jpeg(path: str | Path, px: int, quality: int = 90, box: bool = False) -> bytes:
+    """A still image file as JPEG bytes, in process (Pillow): `px` wide with an even height (like ffmpeg
+    `scale=px:-2`), or with `box` fitted inside a `px` square and never upscaled. The one image downscale for model
+    thumbnails and review frames; a frame of a video is `frame_jpeg`."""
+    from io import BytesIO
+
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = None            # project maps are trusted inputs and may exceed Pillow's bomb guard
+    with Image.open(path) as im:
+        im = im.convert("RGB")
+        if box:
+            im.thumbnail((px, px))
+        else:
+            im = im.resize((px, max(2, round(im.height * px / im.width / 2) * 2)), Image.LANCZOS)
+        buf = BytesIO()
+        im.save(buf, "JPEG", quality=quality)
+        return buf.getvalue()
+
+
 def wav_16k_mono(path: str | Path, what: str = "audio decode") -> bytes:
     """16 kHz mono WAV bytes of any audio file via ffmpeg (speech-to-text uploads, model audio input).
     EngineError `<what> failed for '<path>': <ffmpeg message>` when it cannot be decoded."""

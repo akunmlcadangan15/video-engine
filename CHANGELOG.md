@@ -191,6 +191,21 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 ### Diubah
 
 
+- **Director: rencana sebelum build, catatan craft, dan review bermata segar** (prinsip kerja skill stageshow,
+  MIT, diadaptasi dan ditulis ulang; atribusi di `video_engine/director/NOTICE`). Span storyboard wajib punya
+  `focal` (satu hal yang harus dilihat mata) dan boleh punya `cause` (kata atau peristiwa yang memicu perubahan);
+  konsep boleh punya `left_out`, dan `hero_moment` diperlakukan sebagai payoff. Keduanya diteruskan ke
+  `CHOSEN STORYBOARD`. Catatan craft (span generik, teks di layar diulang, lebih dari 8 kata, lebih dari satu angka,
+  urutan pola yang sama di ketiga konsep) hanya menurunkan skor (`craft_penalty`, `craft_notes`), tidak pernah
+  menolak konsep dan bukan gate. `guidance.md` ditulis ulang (satu gagasan pokok, lima cara video AI gagal, restraint,
+  sebab untuk setiap gerak) dan punya bagian baru `EDIT` yang ikut di prompt draft. Prompt director dan draft memakai
+  satu helper format (`director.format_words`). Review kini hanya menerima frame, narasi bertimestamp, dan brief per
+  segmen (tanpa `timeline.json` dan tanpa alasan builder); temuan wajib punya `category` dan `evidence`, jawaban wajib
+  punya `not_checked`, temuan tanpa frame yang dikirim dibuang dan dicatat di `review[].dropped`, temuan dikirim balik
+  dengan kesalahan terbesar lebih dulu, dan blocker grounding selalu memicu revisi. Waktu kritis juga mengambil
+  momen beberapa frame setelah sesuatu masuk; frame review diperkecil di dalam proses (`util.image_jpeg`), bukan
+  satu proses ffmpeg per frame. Rincian: [docs/AI.md](docs/AI.md#director-stage-engine-draft). Pengujian:
+  `tests/test_director.py`, `tests/test_creative_workflow.py`.
 - **Default toolchain tidak lagi terkunci ke pin repositori.** Kebijakan HyperFrames default adalah `auto`:
   pakai yang sudah terpasang di mesin (penemuan portabel), dan `engine doctor --install` memasang rilis
   terbaru ke `<user-data>/video-engine/toolchain` hanya bila suatu alat tidak ada. `pinned` (kunci

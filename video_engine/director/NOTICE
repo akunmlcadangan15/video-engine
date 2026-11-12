@@ -5,3 +5,10 @@ Copyright the Qwen authors, licensed under the Apache License, Version 2.0
 rules requiring minimum numbers of effects or transitions removed, channel profile rules take precedence.
 The planning ladder (script -> scene -> shot -> camera) follows the structure of showlab/MovieAgent; no code or model
 is included.
+
+director/guidance.md and the storyboard and review checks in director/__init__.py adapt working principles of the
+stageshow skill (https://github.com/benjitaylor/skills), Copyright (c) 2026 Benji Taylor, licensed under the MIT
+License. Modifications: the ideas (plan the focal thing, its cause, the payoff and what is left out before building;
+restraint in on-screen words and numbers; a cause for every motion and a payoff that holds; a fresh-eye review from
+frames, ranked framing first) are adapted and reworded for a narrated documentary video of maps, footage and stills.
+No code is included.

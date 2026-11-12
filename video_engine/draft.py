@@ -29,7 +29,7 @@ from .hyperframes import HF_PRESETS
 from .licence import is_licence_field
 from .timeline import (HYPERFRAMES, IMAGE_EXT, NATIVE, ROLL_MAX, AudioChain, CaptionWord, CaptionsMeta, Settings, Timeline,
                        sec_to_frame)
-from .util import EngineError, frame_jpeg, video_info
+from .util import EngineError, frame_jpeg, image_jpeg, video_info
 from . import framing
 from .units import units
 
@@ -312,6 +312,7 @@ def _words_text(inp: Inputs) -> str:
 
 
 def prompt(inp: Inputs) -> str:
+    from . import director as dr
     S, fps = inp.settings, inp.settings.fps
     assets = "\n".join(
         f"- {a.id}: {a.kind} {a.width}x{a.height}" + (f", {a.duration_s:.1f}s" if a.duration_s else "")
@@ -332,7 +333,7 @@ def prompt(inp: Inputs) -> str:
                  if dp.map_path else "")
     scene_rule = draft_scene.prompt(prof.draft, prof.layout is not None, prof.transitions.map_morph)
     recipes_rule = RECIPE_RULE
-    return f"""You are the editor of a {_format_words(S)} ({S.width}x{S.height}, {fps} fps, {_language_words(inp.audio_chain.language)} narration).
+    return f"""You are the editor of a {dr.format_words(S)} ({S.width}x{S.height}, {fps} fps, {_language_words(inp.audio_chain.language)} narration).
 Draft the visual edit for the attached narration. Total length: frames 0..{inp.total_frames} (exclusive end).
 
 NARRATION WORDS with start frame (pinned STT transcript, authoritative timing):
@@ -373,22 +374,15 @@ RULES
    (person + role); position top or bottom. Text adds information not spoken in that segment (date, place, name);
    never repeat the spoken words. At most one overlay per segment; 2-6 words title.
 5. credits: one entry per asset you use; credit_line = the matching numbered line above (use the fixed number
-   when given); watermark_free = false if you see a stock watermark or channel logo in the thumbnail.{extra}
+   when given); watermark_free = false if you see a stock watermark or channel logo in the thumbnail.
+
+{dr.guidance('EDIT')}{extra}
 Return JSON only, matching the schema."""
 
 
 def _thumb_jpeg(path: Path, kind: str, duration: float | None) -> list[bytes]:
-    from io import BytesIO
-
-    from PIL import Image
-    Image.MAX_IMAGE_PIXELS = None
     if kind == "image":
-        with Image.open(path) as im:
-            im = im.convert("RGB")
-            im.thumbnail((THUMB_PX, THUMB_PX))
-            buf = BytesIO()
-            im.save(buf, "JPEG", quality=80)
-            return [buf.getvalue()]
+        return [image_jpeg(path, THUMB_PX, quality=80, box=True)]
     frames = [frame_jpeg(path, (duration or 1.0) * (k + 0.5) / VIDEO_THUMBS, THUMB_PX) for k in range(VIDEO_THUMBS)]
     return [f for f in frames if f is not None]
 
@@ -423,11 +417,6 @@ def attachments(inp: Inputs) -> dict:
 
 
 # -------------------------------------------------------------------------------------------------------- assemble
-def _format_words(S) -> str:
-    """How the draft prompt names the format (units.py orientation)."""
-    return "landscape 16:9 documentary video" if units(S).landscape else "vertical documentary short"
-
-
 def _language_words(code: str) -> str:
     """How the prompt names the narration language (audio_chain.language): its English name, else the code."""
     code = (code or "").strip()
@@ -845,7 +834,9 @@ def draft(pdir: Path, *, out: Path | None = None, provider=None, max_repairs: in
 
 def _review(provider, inp, pdir, ddir, tl, rep, why, data, base, sch, files, dom, max_rounds, sampler, workdir, report):
     """Frame review loop. Every accepted timeline is saved as draft/timeline.v<N>.json (v0 = the gate-passing draft);
-    a revision that fails the gates is recorded and the previous version stays."""
+    a revision that fails the gates is recorded and the previous version stays. The reviewer gets a fresh eye: frames,
+    the timed narration and a brief per segment, not the timeline or the builder's reasons; a finding that cites no
+    sent frame or no segment is dropped and recorded."""
     from . import director as dr
     from . import timeline as tlm
     ddir.mkdir(exist_ok=True)
@@ -859,8 +850,7 @@ def _review(provider, inp, pdir, ddir, tl, rep, why, data, base, sch, files, dom
         goals = {s.seg_index: s.goal for s in tl.segments if s.goal}
         rsch = dr.review_schema(tl)
         try:
-            r = provider.generate_json("planning", dr.review_parts(tl, inp, frames, goals), rsch, f"draft/review{k}",
-                                       {"timeline.json": tl.model_dump(mode="json", exclude_none=True)})
+            r = provider.generate_json("planning", dr.review_parts(tl, inp, frames, goals), rsch, f"draft/review{k}", {})
         except EngineError as e:       # the draft already passed the gates: an unavailable reviewer does not undo it
             if provider.name == "agent":
                 raise
@@ -873,20 +863,21 @@ def _review(provider, inp, pdir, ddir, tl, rep, why, data, base, sch, files, dom
                         "verdict": None, "findings": [], "errors": [f"schema: {e}" for e in bad[:20]],
                         "kept": versions[-1].name})
             break
-        known = {s.seg_index for s in tl.segments}
-        fs = [f for f in r.data.get("findings") or [] if f.get("seg") in known]
+        fs, dropped = dr.cited(r.data.get("findings") or [], {s.seg_index for s in tl.segments}, [t for t, _, _ in frames])
         r.data["findings"] = fs
         entry = {"round": k, "request": f"draft/review{k}", "ai": r.meta(), "version": versions[-1].name,
-                 "times": [t for t, _ in times], "verdict": r.data.get("verdict"), "findings": fs}
+                 "times": [t for t, _ in times], "verdict": r.data.get("verdict"), "findings": fs, "dropped": dropped,
+                 "not_checked": r.data.get("not_checked") or []}
         log.append(entry)
         (ddir / f"review.v{len(versions) - 1}.json").write_text(json.dumps(entry, indent=2, ensure_ascii=False) + "\n")
         major = dr.needs_revision(r.data)
         if not major:
             break
         contents = base + [Text("YOUR CURRENT DRAFT:\n" + json.dumps(data, ensure_ascii=False)),
-                           Text("THE FRAME REVIEW FOUND THESE PROBLEMS (time, segment, fix):\n" + dr.findings_text(major)
-                                + "\nReturn the complete corrected JSON (all segments and credits), fixing each problem "
-                                  "without breaking the rules.")]
+                           Text(f"THE FRAME REVIEW FOUND THESE PROBLEMS (largest fault first: {', '.join(dr.FINDING_ORDER)}):\n"
+                                + dr.findings_text(major)
+                                + "\nReturn the complete corrected JSON (all segments and credits). Fix the largest fault "
+                                  "first, then the others, without breaking the rules.")]
         rf = {**files, "previous_response.json": data, "review_findings.json": major}
         rev, tl2, rep2, why2, data2 = _attempt(provider, inp, contents, sch, f"draft/revise{k}", rf, pdir, dom)
         rev.update(round=k, revision=True)

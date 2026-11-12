@@ -11,7 +11,10 @@ Istilah dan singkatan yang dipakai di kode dan dokumentasi. Istilah tetap dalam 
 | **Segmen** | Satu potongan timeline yang dirender oleh satu jalur (native atau HyperFrames). Segmen berurutan tanpa celah dari frame 0. |
 | **Native** | Jalur render ffmpeg dan Rust untuk foto dan footage (`NATIVE_RUST_FFMPEG`). |
 | **HyperFrames** | Jalur render HTML dan GSAP di Chrome tanpa layar untuk peta, pin, kartu, dan judul (`HYPERFRAMES_GSAP`). |
-| **Storyboard span** (`spans`) | Rentang kata narasi `from_word..to_word` dalam satu konsep storyboard, dengan `goal` dan `pattern`. Alias lama `beats` diterima saat membaca. |
+| **Storyboard span** (`spans`) | Rentang kata narasi `from_word..to_word` dalam satu konsep storyboard, dengan `goal`, `focal` (satu hal yang harus dilihat mata), `pattern`, dan `cause` opsional (kata atau peristiwa yang memicu perubahan di layar). Alias lama `beats` diterima saat membaca. |
+| **Payoff** (`hero_moment`) | Momen satu konsep storyboard yang menceritakan kisahnya sendiri sebagai satu frame diam; ditahan cukup lama untuk dibaca. |
+| **Craft note** | Catatan lunak director (span generik, teks diulang, teks melebihi anggaran kata, lebih dari satu angka, pola semua konsep sama) yang menurunkan skor konsep tanpa menolaknya. Bukan gate. |
+| **Fresh-eye review** | Review frame `engine draft --review`: reviewer hanya menerima frame, narasi bertimestamp, dan brief per segmen, bukan alasan builder; temuan harus menunjuk frame yang dikirim. |
 | **Timeline `Beat`** | Unit isi layar per `at_frame` di scene peta (butuh `[layout]`). Bukan storyboard span; skala waktunya berbeda. |
 | **Profil channel** | Berkas TOML di `profiles/` berisi gaya dan aturan satu channel. Prioritas: default, profil channel, proyek. |
 | **Taste store** | `profiles/taste/<channel>.json`: hal yang disukai dan ditolak beserta alasannya, dipakai director saat draft. |

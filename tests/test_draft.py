@@ -28,10 +28,11 @@ def storyboards(**over):
     """3 concepts over the 4 fixture words (Surabaya | bergadir malabi tewas.); `over` patches concept 0."""
     def concept(name, direction, fit, clar, pattern="establish", text="Surabaya"):
         return {"name": name, "direction": direction, "opener": f"{name} opener", "hero_moment": "Mallaby",
-                "spans": [{"from_word": 0, "to_word": 0, "goal": "where: Surabaya", "pattern": pattern,
-                           "assets": ["still"], "on_screen_text": text, "transition": "continuous zoom"},
-                          {"from_word": 1, "to_word": 3, "goal": "what happened to Mallaby", "pattern": "footage_beat",
-                           "assets": ["clip_1080x1920_30"], "transition": "whip"}],
+                "spans": [{"from_word": 0, "to_word": 0, "goal": "where: Surabaya", "focal": "Surabaya harbour",
+                           "cause": "the word Surabaya", "pattern": pattern, "assets": ["still"],
+                           "on_screen_text": text, "transition": "continuous zoom"},
+                          {"from_word": 1, "to_word": 3, "goal": "what happened to Mallaby", "focal": "Mallaby's car",
+                           "pattern": "footage_beat", "assets": ["clip_1080x1920_30"], "transition": "whip"}],
                 "self_scores": {"narration_fit": fit, "clarity": clar}}
     cs = [concept("lurus", "grounded", 8, 9), concept("banding", "contrast", 7, 7, "comparison"),
           concept("berani", "bold", 9, 6, "tracing")]
@@ -39,7 +40,7 @@ def storyboards(**over):
     return {"concepts": cs}
 
 
-PASS_REVIEW = {"verdict": "pass", "findings": []}
+PASS_REVIEW = {"verdict": "pass", "findings": [], "not_checked": []}
 
 
 class RecModels:

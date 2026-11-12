@@ -54,7 +54,8 @@ def test_draft_static_intent_schema_and_roundtrip(proj):
     assert tl.segments[0].creative_autofix is False
     assert timeline.Timeline.model_validate_json(tl.model_dump_json()).segments[0].intent == tl.segments[0].intent
     req = director.review_parts(tl, inp, [], {})[0].text
-    assert "Hold the archival evidence for reading" in req and "intent:" in req
+    # fresh eye: the reviewer gets the declared flags as a claim to judge, never the builder's reason for them
+    assert "declared: motion static, negative space" in req and "Hold the archival evidence for reading" not in req
     text = draft.prompt(inp)
     assert "Suggested length" in text and "creative_autofix is false by default" in text
     assert "black frames, broken sources" in text

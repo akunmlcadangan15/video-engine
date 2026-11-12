@@ -1,11 +1,14 @@
 """Director stage of `engine draft`: storyboard concepts before the timeline, and a frame review after it.
 
 storyboard: one request (`draft/storyboard`, one repair `draft/storyboard1`) -> 3 concepts over the locked narration
-(spans = contiguous word spans in VO order, each with a goal and a pattern from patterns.toml) -> engine validation
-(order, spans, facts only from narration/script/asset notes/credits) -> score (narration fit, clarity, asset
-availability, render cost, taste penalties) -> the best valid concept is appended to the draft prompt.
-review: frames sampled at critical times of the drafted timeline + narration timing -> timestamped findings ->
-at most `rounds` revision requests; every accepted version is kept under <project>/draft/.
+(spans = contiguous word spans in VO order, each with a goal, a focal thing and a pattern from patterns.toml) ->
+engine validation (order, spans, facts only from narration/script/asset notes/credits) -> score (narration fit,
+clarity, asset availability, render cost, taste penalties, craft notes) -> the best valid concept is appended to the
+draft prompt. Craft notes (generic span, text said twice, over the word budget, several numbers, identical pattern
+sequences) only lower the score; they never reject a concept.
+review: frames sampled at critical times of the drafted timeline (hook, entrances, segment edges) + narration timing
++ a brief per segment (no builder reasons) -> timestamped findings that cite a sent frame -> at most `rounds`
+revision requests, largest fault first; every accepted version is kept under <project>/draft/.
 taste store: <taste dir>/<channel>.json (liked, rejected, rules, recent openers/transitions)."""
 from __future__ import annotations
 
@@ -20,15 +23,23 @@ from typing import Any
 from .. import config
 from ..ai.base import Image, Text, schema_errors
 from ..units import units
-from ..util import EngineError, atomic_write_text
+from ..util import EngineError, atomic_write_text, image_jpeg
 
 HERE = Path(__file__).parent
 DIRECTIONS = ("grounded", "contrast", "bold")
 WEIGHTS = {"narration_fit": 0.35, "clarity": 0.25, "availability": 0.25, "render": 0.15}
 OPENER_PENALTY, TRANSITION_PENALTY, TRANSITION_PENALTY_MAX = 0.15, 0.03, 0.15
+CRAFT_PENALTY, CRAFT_PENALTY_MAX = 0.03, 0.15    # per craft note (soft: ranking only, never a validation error)
+TEXT_WORD_BUDGET = 8                             # words of one span's on_screen_text
+CONTENT_MIN_CHARS = 5                            # shorter lower-case words are function words in most languages
 RECENT_KEEP = 20
 REVIEW_MAX_FRAMES = 16
 REVIEW_PX = 720
+REVIEW_T_TOL_S = 0.1                             # a finding cites a sent frame when its t_s is this close to one
+ENTRANCE_FRAMES = 4                              # an entrance is sampled this many frames after it starts
+ENTRANCE_FIELDS = ("pins", "cards", "figures", "regions", "routes", "beats")   # scene elements with an at_frame
+FINDING_ORDER = ("framing", "hierarchy", "motion", "legibility", "grounding")  # largest fault first
+SEVERITIES = ("blocker", "major", "minor")
 MAP_HINT = re.compile(r"map|peta|satell?it|globe|atlas", re.I)
 
 
@@ -37,8 +48,14 @@ def patterns() -> dict[str, dict]:
     return tomllib.loads((HERE / "patterns.toml").read_text())["patterns"]
 
 
+def format_words(settings) -> str:
+    """How a prompt names the frame format (units.py orientation): the one wording for the director and draft
+    prompts, which never write a literal orientation."""
+    return "landscape 16:9 documentary video" if units(settings).landscape else "vertical documentary short"
+
+
 def guidance(section: str) -> str:
-    """Prompt text of `## STORYBOARD` or `## REVIEW` in guidance.md."""
+    """Prompt text of `## STORYBOARD`, `## EDIT` or `## REVIEW` in guidance.md."""
     text = (HERE / "guidance.md").read_text()
     parts = re.split(r"^## (\w+)\s*$", text, flags=re.M)
     return dict(zip(parts[1::2], (p.strip() for p in parts[2::2])))[section]
@@ -143,12 +160,14 @@ def asset_kinds(a) -> set[str]:
 def schema(inp) -> dict:
     s, i, n = {"type": "string"}, {"type": "integer"}, {"type": "number"}
     span = {"type": "object", "properties": {
-        "from_word": i, "to_word": i, "goal": s, "pattern": {"type": "string", "enum": sorted(patterns())},
+        "from_word": i, "to_word": i, "goal": s, "focal": s, "cause": s,
+        "pattern": {"type": "string", "enum": sorted(patterns())},
         "assets": {"type": "array", "items": {"type": "string", "enum": [a.id for a in inp.assets]}},
         "on_screen_text": s, "camera": s, "transition": s},
-        "required": ["from_word", "to_word", "goal", "pattern", "assets"]}
+        "required": ["from_word", "to_word", "goal", "focal", "pattern", "assets"]}
     concept = {"type": "object", "properties": {
         "name": s, "direction": {"type": "string", "enum": list(DIRECTIONS)}, "opener": s, "hero_moment": s,
+        "left_out": {"type": "array", "items": s},
         "spans": {"type": "array", "items": span, "minItems": 1},
         "self_scores": {"type": "object", "properties": {"narration_fit": n, "clarity": n},
                         "required": ["narration_fit", "clarity"]}},
@@ -167,8 +186,7 @@ def prompt(inp, taste: dict) -> str:
                      for k, v in sorted(patterns().items()))
     assets = "\n".join(f"- {a.id}: {'/'.join(sorted(asset_kinds(a)))}" + (f", {a.duration_s:.1f}s" if a.duration_s else "")
                        + "".join(f"; {h}" for h in a.hints) for a in inp.assets)
-    fmt = "landscape 16:9 documentary video" if units(inp.settings).landscape else "vertical documentary short"
-    return f"""STORYBOARD REQUEST. You are the director of a {fmt}. Before any timeline is drafted,
+    return f"""STORYBOARD REQUEST. You are the director of a {format_words(inp.settings)}. Before any timeline is drafted,
 propose exactly 3 storyboard concepts for the attached narration, one per direction: grounded, contrast, bold.
 
 NARRATION WORDS, indexed [k] (locked: keep this order, cover every word exactly once):
@@ -189,9 +207,14 @@ PATTERNS (pattern library):
 
 FORMAT
 - spans: contiguous word spans (storyboard spans; not to be confused with timeline Beat, the per-frame screen unit of a map scene): the first from_word 0, each from_word = previous to_word + 1, the last to_word = {max(0, len(inp.words) - 1)}.
-- goal: what the viewer must understand or feel at the end of the beat (one sentence).
-- pattern from the library; assets = the asset ids the beat shows; on_screen_text only with facts from the sources.
-- opener: one line describing the opening; transition: how the beat is entered (e.g. continuous zoom, hold, cut).
+- goal: what the viewer must understand or feel at the end of the span (one sentence).
+- focal: the one thing the eye must land on in the span, named from the sources (a place, object, person or number).
+- cause (optional): the spoken word or shown event that triggers the span's on-screen change.
+- pattern from the library; assets = the asset ids the span shows; on_screen_text (optional) only with facts from the
+  sources, at most {TEXT_WORD_BUDGET} words and one number, never the same text in two spans.
+- opener: one line describing the opening; transition: how the span is entered (e.g. continuous zoom, hold, cut).
+- hero_moment: the payoff, the one moment that tells this story on its own as a still; it holds long enough to read.
+- left_out: what this concept deliberately does not show.
 - The three directions must differ in storytelling strategy, pacing and use of evidence, not only colours or transitions.
   Grounded may use a documentary hold; contrast may use comparison; bold may use a minimalist reveal or camera journey.
   A static shot, negative space, a footage-led opener and an ending without a keyword callback are valid when purposeful.
@@ -209,15 +232,23 @@ def sources_text(inp) -> str:
                      " ".join(c.text for c in inp.credit_lines)])
 
 
+def _tokens(text: str) -> list[str]:
+    """Word tokens of plan text (inner `.,'-` kept, edge punctuation stripped): the one tokenizer of the storyboard
+    checks."""
+    return [t for t in (tok.strip(".,'-") for tok in re.findall(r"[\w.,'-]+", text or "")) if t]
+
+
+def _word_set(sources: str) -> set[str]:
+    """Normalised words of source text, split at every character other than a letter, a digit, `.` and `,`."""
+    return {_norm(w) for w in re.findall(r"[\w.,]+", sources)}
+
+
 def invented(text: str, sources: str) -> list[str]:
     """Numbers and capitalised names in `text` that no source contains."""
     src = _norm(sources)
-    src_words = {_norm(w) for w in re.findall(r"[\w.,]+", sources)}
+    src_words = _word_set(sources)
     out = []
-    for tok in re.findall(r"[\w.,'-]+", text or ""):
-        core_tok = tok.strip(".,'-")
-        if not core_tok:
-            continue
+    for core_tok in _tokens(text):
         if re.search(r"\d", core_tok):
             if re.sub(r"[.,]", "", core_tok) not in re.sub(r"[.,]", "", src):
                 out.append(core_tok)
@@ -227,7 +258,8 @@ def invented(text: str, sources: str) -> list[str]:
 
 
 def validate(c: dict, inp, pats: dict) -> dict:
-    """Engine checks of one concept -> {errors, availability, render, spans_checked}."""
+    """Engine checks of one concept -> {errors, availability, render, notes}. Errors reject the concept; notes
+    (`craft_notes`) only lower its score."""
     errs: list[str] = []
     spans = c.get("spans") or c.get("beats") or []  # "beats" is the legacy alias, normalised to spans
     n = len(inp.words)
@@ -264,7 +296,59 @@ def validate(c: dict, inp, pats: dict) -> dict:
         costs.append(p.get("render_cost", 2))
     mean_cost = sum(costs) / len(costs) if costs else 3
     return {"errors": errs, "availability": round(sum(avail) / len(avail), 3) if avail else 0.0,
-            "render": round(1 - (mean_cost - 1) / 2, 3)}
+            "render": round(1 - (mean_cost - 1) / 2, 3), "notes": craft_notes(c, inp)}
+
+
+def _content(text: str, common: set[str]) -> set[str]:
+    """Normalised tokens of `text` that can name something: a number, a word of CONTENT_MIN_CHARS or more characters,
+    or a capitalised word of 3+ characters that the sources never write in lower case (a short name such as Bali).
+    Length and case only, so the rule holds for any narration language."""
+    out = set()
+    for tok in _tokens(text):
+        n = _norm(tok)
+        if re.search(r"\d", n) or len(n) >= CONTENT_MIN_CHARS or (tok[0].isupper() and len(n) >= 3 and n not in common):
+            out.add(n)
+    return out
+
+
+def _grounded(words: set[str], ref: set[str]) -> bool:
+    """Any of `words` in `ref`; a long word also matches by prefix, so inflections and possessives count."""
+    if words & ref:
+        return True
+    longs = [r for r in ref if len(r) >= CONTENT_MIN_CHARS]
+    return any(r.startswith(w) or w.startswith(r) for w in words if len(w) >= CONTENT_MIN_CHARS for r in longs)
+
+
+def craft_notes(c: dict, inp) -> list[str]:
+    """Soft craft notes of one concept: they lower its score and never reject it. A span is generic when its focal,
+    goal and on-screen text name nothing from its own narration, the script or the ids and notes of the assets it
+    shows (it could be any video). On-screen text is said once, in at most TEXT_WORD_BUDGET words, with one number."""
+    notes: list[str] = []
+    by_id = {a.id: a for a in inp.assets}
+    seen: dict[str, int] = {}
+    for k, b in enumerate(c.get("spans") or c.get("beats") or []):
+        f, t = b.get("from_word"), b.get("to_word")
+        said = " ".join(w.word for w in inp.words[f:t + 1]) if isinstance(f, int) and isinstance(t, int) and 0 <= f <= t else ""
+        shown = " ".join(" ".join([x, *by_id[x].hints]) for x in b.get("assets") or [] if x in by_id)
+        ref_text = " ".join([said, inp.script or "", shown]).replace("_", " ")
+        ref_tokens = _tokens(ref_text)
+        ref = _word_set(ref_text) | {_norm(x) for x in ref_tokens}
+        common = {_norm(x) for x in ref_tokens if x[:1].islower()}
+        plan = " ".join(str(b.get(key) or "") for key in ("focal", "goal", "on_screen_text"))
+        if not _grounded(_content(plan, common), ref):
+            notes.append(f"span {k}: focal, goal and text name nothing from its narration, the script or its assets "
+                         "(could be any video)")
+        text = str(b.get("on_screen_text") or "")
+        key, n_words, nums = _norm(text), len(_tokens(text)), re.findall(r"\d+(?:[.,]\d+)*", text)
+        if key and key in seen:
+            notes.append(f"span {k}: on-screen text repeats span {seen[key]} (say it once)")
+        elif key:
+            seen[key] = k
+        if n_words > TEXT_WORD_BUDGET:
+            notes.append(f"span {k}: on-screen text has {n_words} words (budget {TEXT_WORD_BUDGET})")
+        if len(nums) > 1:
+            notes.append(f"span {k}: {len(nums)} numbers in one on-screen text (one number gets to be big)")
+    return notes
 
 
 def score(c: dict, v: dict, taste: dict) -> dict:
@@ -280,18 +364,26 @@ def score(c: dict, v: dict, taste: dict) -> dict:
     if rep:
         pen += min(TRANSITION_PENALTY_MAX, TRANSITION_PENALTY * len(rep))
         why.append(f"{len(rep)} recently used transition(s)")
+    notes = list(v.get("notes") or [])
+    craft = min(CRAFT_PENALTY_MAX, CRAFT_PENALTY * len(notes))
     parts = {"narration_fit": fit, "clarity": clar, "availability": v["availability"], "render": v["render"]}
-    total = sum(WEIGHTS[k] * parts[k] for k in WEIGHTS) - pen
+    total = sum(WEIGHTS[k] * parts[k] for k in WEIGHTS) - pen - craft
     return {**{k: round(x, 3) for k, x in parts.items()}, "taste_penalty": round(pen, 3), "taste_notes": why,
-            "total": round(total, 3)}
+            "craft_penalty": round(craft, 3), "craft_notes": notes, "total": round(total, 3)}
 
 
 def rank(data: dict, inp, taste: dict) -> list[dict]:
-    """All concepts with validation + score; valid ones first, best first."""
+    """All concepts with validation + score; valid ones first, best first. Concepts that share one pattern sequence
+    differ only in surface: each gets a craft note."""
     pats = patterns()
+    concepts = data.get("concepts") or []
+    same = len(concepts) > 1 and len({tuple(b.get("pattern") for b in c.get("spans") or c.get("beats") or [])
+                                      for c in concepts}) == 1
     out = []
-    for k, c in enumerate(data.get("concepts") or []):
+    for k, c in enumerate(concepts):
         v = validate(c, inp, pats)
+        if same:
+            v["notes"].append("every concept has the same pattern sequence (they differ only in surface)")
         out.append({"index": k, "concept": c, "errors": v["errors"], "valid": not v["errors"], "score": score(c, v, taste)})
     return sorted(out, key=lambda r: (not r["valid"], -r["score"]["total"], r["index"]))
 
@@ -303,9 +395,13 @@ def beat_narration(inp, b: dict) -> str:
 def chosen_text(inp, c: dict) -> str:
     fps = inp.settings.fps
     lines = [f"CHOSEN STORYBOARD ({c.get('direction')}: {c.get('name')}). Build the segments from these spans in order: "
-             "a span may cover several segments, and segments may be split for timing, but keep its goal, pattern and "
-             "assets. Copy the beat goal into each segment's \"goal\".",
-             f"Opener (first 1.5 s): {c.get('opener')}", f"Hero moment: {c.get('hero_moment') or '-'}"]
+             "a span may cover several segments, and segments may be split for timing, but keep its goal, focal, "
+             "pattern and assets. Copy the span goal into each segment's \"goal\". Give the focal the heaviest mark and "
+             "start the on-screen change on its cause.",
+             f"Opener (first 1.5 s): {c.get('opener')}",
+             f"Payoff (hero moment; hold it long enough to read): {c.get('hero_moment') or '-'}"]
+    if c.get("left_out"):
+        lines.append("Left out on purpose: " + "; ".join(str(x) for x in c["left_out"]))
     pats = patterns()
     for k, b in enumerate(c.get("spans") or c.get("beats") or []):
         w0, w1 = inp.words[b["from_word"]], inp.words[b["to_word"]]
@@ -313,6 +409,8 @@ def chosen_text(inp, c: dict) -> str:
         lines.append(f"{k}. frames {w0.start_frame}-{w1.end_frame} ({w0.start_frame / fps:.1f}-{w1.end_frame / fps:.1f} s) "
                      f"\"{beat_narration(inp, b)}\" | goal: {b['goal']} | pattern: {b['pattern']} | assets: "
                      f"{', '.join(b.get('assets') or [])}" + (f" | text: {b['on_screen_text']}" if b.get("on_screen_text") else "")
+                     + (f" | focal: {b['focal']}" if b.get("focal") else "")
+                     + (f" | cause: {b['cause']}" if b.get("cause") else "")
                      + (f" | camera: {b['camera']}" if b.get("camera") else "")
                      + (f" | enter: {b['transition']}" if b.get("transition") else "")
                      + (f" | on a map: map_recipe {rec}" if rec else ""))
@@ -346,27 +444,54 @@ def plan(provider, inp, media: list, files: dict, taste: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------------------- review
+def _entrances(s) -> list[int]:
+    """Segment-relative frames where something enters: drawn overlays (native), and the title, pins, cards, figures,
+    regions, routes and beats of every map panel (HyperFrames). An element without a frame of its own is left out."""
+    if s.gsap_scene_config is None:
+        return [o.start_frame or 0 for o in s.overlays if o.drawn]
+    out = []
+    for sc in s.gsap_scene_config.panels():
+        if sc.title:
+            out.append(sc.title_at_frame or 0)
+        out += [x.at_frame for name in ENTRANCE_FIELDS for x in getattr(sc, name) or [] if x.at_frame is not None]
+    return out
+
+
+def _spread(xs: list, k: int) -> list:
+    """k items of the sorted list `xs`, evenly spaced with the first and the last kept (all of them when k >= len)."""
+    if k >= len(xs):
+        return list(xs)
+    if k <= 0:
+        return []
+    if k == 1:
+        return [xs[len(xs) // 2]]
+    step = (len(xs) - 1) / (k - 1)
+    return [xs[round(i * step)] for i in range(k)]
+
+
 def critical_times(tl) -> list[tuple[float, int]]:
-    """(t_s, seg): hook 0 s and 1.5 s, each segment just after its start and just before its end, the last frame."""
+    """(t_s, seg), at most REVIEW_MAX_FRAMES, sorted. The hook (0 s, 1.5 s) and the last frame always; then moments
+    ENTRANCE_FRAMES into an entrance (a pop or a half-drawn element shows only there); then each segment just after its
+    start and just before its end. Over the cap a group keeps an even spread. Pure and deterministic."""
     fps = tl.settings.fps
-    last = (tl.total_frames - 1) / fps
-    ts = [0.0, min(1.5, last)]
+    last = round((tl.total_frames - 1) / fps, 2)
+    must = sorted({0.0, round(min(1.5, last), 2), last})
+    ent, edges = set(), set()
     for s in tl.segments:
-        ts += [min(s.end_frame - 1, s.start_frame + round(0.25 * fps)) / fps, max(s.start_frame, s.end_frame - 3) / fps]
-    ts.append(last)
-    ts = sorted({round(t, 2) for t in ts})
-    if len(ts) > REVIEW_MAX_FRAMES:
-        step = (len(ts) - 1) / (REVIEW_MAX_FRAMES - 1)
-        ts = [ts[round(k * step)] for k in range(REVIEW_MAX_FRAMES)]
+        ent |= {round((s.start_frame + min(f + ENTRANCE_FRAMES, s.n_frames - 1)) / fps, 2) for f in _entrances(s)}
+        edges |= {round(min(s.end_frame - 1, s.start_frame + round(0.25 * fps)) / fps, 2),
+                  round(max(s.start_frame, s.end_frame - 3) / fps, 2)}
+    ent = sorted(ent - set(must))
+    edges = sorted(edges - set(must) - set(ent))
+    picked = _spread(ent, REVIEW_MAX_FRAMES - len(must))
+    picked += _spread(edges, REVIEW_MAX_FRAMES - len(must) - len(picked))
     seg_of = lambda t: next(s.seg_index for s in tl.segments if s.start_frame <= round(t * fps) < s.end_frame)
-    return [(t, seg_of(t)) for t in ts]
+    return [(t, seg_of(t)) for t in sorted(must + picked)]
 
 
 def sample_frames(tl, pdir: Path, times: list[tuple[float, int]], workdir: Path) -> list[tuple[float, int, bytes]]:
-    """Render one frame per (t, seg) and return small JPEGs. Native segments via the native preview, HyperFrames
-    segments via one DOM probe per segment."""
-    import subprocess
-
+    """Render one frame per (t, seg) and return JPEGs REVIEW_PX wide (downscaled in process). Native segments via the
+    native preview, HyperFrames segments via one DOM probe per segment."""
     from .. import hyperframes, native
     fps = tl.settings.fps
     workdir.mkdir(parents=True, exist_ok=True)
@@ -392,38 +517,40 @@ def sample_frames(tl, pdir: Path, times: list[tuple[float, int]], workdir: Path)
             res = hyperframes.probe_dom(d, rel, tl.settings.width, tl.settings.height, workdir / f"snaps{seg}", ref=skey)
             for t, r in zip(mine, res["times"]):
                 pngs[t] = Path(r["png"])
-    out = []
-    for t, seg in times:
-        r = subprocess.run([config.FFMPEG, "-v", "error", "-i", str(pngs[t]), "-vf", f"scale={REVIEW_PX}:-2",
-                            "-f", "image2", "-c:v", "mjpeg", "-q:v", "2", "-"], capture_output=True, check=True)
-        out.append((t, seg, r.stdout))
-    return out
+    return [(t, seg, image_jpeg(pngs[t], REVIEW_PX)) for t, seg in times]
 
 
 def review_schema(tl) -> dict:
     s, n = {"type": "string"}, {"type": "number"}
     f = {"type": "object", "properties": {
-        "t_s": n, "seg": {"type": "integer"}, "severity": {"type": "string", "enum": ["blocker", "major", "minor"]},
-        "issue": s, "evidence": s, "fix": s}, "required": ["t_s", "seg", "severity", "issue", "fix"]}
+        "t_s": n, "seg": {"type": "integer"}, "category": {"type": "string", "enum": list(FINDING_ORDER)},
+        "severity": {"type": "string", "enum": list(SEVERITIES)}, "issue": s, "evidence": s, "fix": s},
+        "required": ["t_s", "seg", "category", "severity", "issue", "evidence", "fix"]}
     return {"type": "object", "properties": {"verdict": {"type": "string", "enum": ["pass", "revise"]},
-                                             "findings": {"type": "array", "items": f}},
-            "required": ["verdict", "findings"]}
+                                             "findings": {"type": "array", "items": f},
+                                             "not_checked": {"type": "array", "items": s}},
+            "required": ["verdict", "findings", "not_checked"]}
+
+
+def _brief(s, fps: int, goal: str | None) -> str:
+    """What a brief says about one segment: time range, engine, goal and the declared intent flags. The builder's
+    free-text reasons stay out, so the reviewer judges the frame, not the argument for it."""
+    flags = ([f"motion {s.intent.motion}"] if s.intent and s.intent.motion else []) \
+        + (["negative space"] if s.intent and s.intent.negative_space else []) + (["hold: read"] if s.hold == "read" else [])
+    return (f"- seg {s.seg_index}: {s.start_frame / fps:.2f}-{s.end_frame / fps:.2f} s, {s.engine_type}"
+            + (f", goal: {goal}" if goal else "") + (f", declared: {', '.join(flags)}" if flags else ""))
 
 
 def review_parts(tl, inp, frames: list[tuple[float, int, bytes]], goals: dict[int, str]) -> list:
     fps = tl.settings.fps
     words = " ".join(f"[{w.start_frame / fps:.2f}s]{w.word.strip()}" for w in inp.words)
-    segs = "\n".join(f"- seg {s.seg_index}: {s.start_frame / fps:.2f}-{s.end_frame / fps:.2f} s, {s.engine_type}, "
-                     f"asset {s.asset_id}" + (f", goal: {goals[s.seg_index]}" if goals.get(s.seg_index) else "")
-                     + (f", intent: {s.intent.model_dump(exclude_none=True)}" if s.intent else "")
-                     + (", hold: read" if s.hold == "read" else "")
-                     for s in tl.segments)
+    segs = "\n".join(_brief(s, fps, goals.get(s.seg_index)) for s in tl.segments)
     parts: list = [Text(f"""DRAFT REVIEW. Frames of the drafted video follow, each labelled with its time and segment.
 
 NARRATION WORDS with start time:
 {words}
 
-SEGMENTS:
+SEGMENTS (the brief):
 {segs}
 
 {guidance('REVIEW')}
@@ -434,13 +561,38 @@ Return JSON only, matching the schema.""")]
     return parts
 
 
+def cited(findings: list[dict], segs: set[int], times: list[float]) -> tuple[list[dict], list[dict]]:
+    """(kept, dropped): a finding stays when its segment exists and its t_s is within REVIEW_T_TOL_S of a frame that
+    was sent; the bar for a finding is a frame that was looked at. Dropped ones carry a `dropped` reason."""
+    kept, dropped = [], []
+    for f in findings:
+        if f.get("seg") not in segs:
+            dropped.append({**f, "dropped": "no such segment"})
+        elif not any(abs(float(f.get("t_s", -1)) - t) <= REVIEW_T_TOL_S + 1e-9 for t in times):
+            dropped.append({**f, "dropped": "no frame was sent at t_s"})
+        else:
+            kept.append(f)
+    return kept, dropped
+
+
 def needs_revision(data: dict) -> list[dict]:
-    """Findings that justify a revision round (blocker/major), only when the verdict asks for it."""
+    """Findings that justify a revision round: blocker/major when the verdict asks for it, and a grounding blocker
+    (an unsupported fact on screen) whatever the verdict."""
+    fs = data.get("findings") or []
     if data.get("verdict") != "revise":
-        return []
-    return [f for f in data.get("findings") or [] if f.get("severity") in ("blocker", "major")]
+        return [f for f in fs if f.get("category") == "grounding" and f.get("severity") == "blocker"]
+    return [f for f in fs if f.get("severity") in ("blocker", "major")]
+
+
+def _order(f: dict) -> tuple[int, int]:
+    c, s = f.get("category"), f.get("severity")
+    return (FINDING_ORDER.index(c) if c in FINDING_ORDER else len(FINDING_ORDER),
+            SEVERITIES.index(s) if s in SEVERITIES else len(SEVERITIES))
 
 
 def findings_text(fs: list[dict]) -> str:
-    return "\n".join(f"- t={float(f['t_s']):.2f}s seg {f['seg']} [{f['severity']}] {f['issue']}"
-                     + (f" (evidence: {f['evidence']})" if f.get("evidence") else "") + f" -> fix: {f['fix']}" for f in fs)
+    """Findings fed back for a revision, largest fault first: by category in FINDING_ORDER, blockers before majors
+    inside a category, the reviewer's order otherwise."""
+    return "\n".join(f"- {f.get('category', 'other')}: t={float(f['t_s']):.2f}s seg {f['seg']} [{f['severity']}] {f['issue']}"
+                     + (f" (evidence: {f['evidence']})" if f.get("evidence") else "") + f" -> fix: {f['fix']}"
+                     for f in sorted(fs, key=_order))

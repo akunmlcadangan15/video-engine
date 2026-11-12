@@ -115,21 +115,30 @@ The answer is checked against its schema; an answer that breaks it is an `AIQA` 
 
 Before the timeline request the provider writes 3 storyboard concepts (request `draft/storyboard`, one repair `draft/storyboard1`).
 The answer is checked against its schema first; an answer that breaks it is not ranked and its schema errors go into the repair request.
-A concept is a list of spans (`spans`; legacy alias `beats`) (`from_word`, `to_word`, `goal`, `pattern`, `assets`, `on_screen_text`, `camera`, `transition`) with self scores.
+A concept is a list of spans (`spans`; legacy alias `beats`) (`from_word`, `to_word`, `goal`, `focal`, `pattern`, `assets`; optional `cause`, `on_screen_text`, `camera`, `transition`) with self scores, a payoff (`hero_moment`: the moment that tells the story on its own) and optional `left_out` (what the concept deliberately does not show).
+`focal` is the one thing the eye must land on in the span; `cause` is the spoken word or shown event that triggers its on-screen change.
 The engine rejects concepts that use unknown assets or facts absent from the narration, script, asset hints and credits, then scores the rest: fit 0.35, clarity 0.25, asset availability 0.25, render cost 0.15, minus 0.15 for an opener used in the last `avoid_recent` drafts and 0.03 per recently used transition (max 0.15).
-The best concept goes into the timeline request as `CHOSEN STORYBOARD`; each segment carries its `goal`.
-Prompt text and patterns: `video_engine/director/guidance.md`, `video_engine/director/patterns.toml` (establish, progressive_reveal, comparison, tracing, meaningful_repetition, emphasis_by_pause, footage_beat, paradox_hook, border_anomaly_tour, scale_overlay, causal_barrier, cross_section_depth, historical_flashback).
+Craft notes subtract 0.03 each (max 0.15) and never reject a concept (`director.craft_notes`, `director.rank`):
+  a span whose `focal`, `goal` and `on_screen_text` name nothing from its own narration, the script or the ids and hints of its assets (it could be any video; a word counts when it has a digit, 5 or more characters, or is a capitalised name the sources never write in lower case);
+  the same on-screen text in two spans; on-screen text over 8 words; more than one number in one text; the same pattern sequence in every concept.
+  `draft_report.json` -> `storyboard.scores[]` lists `craft_penalty` and `craft_notes` beside `taste_penalty` and `taste_notes`.
+The best concept goes into the timeline request as `CHOSEN STORYBOARD` (each span with its goal, focal and cause, then the payoff and what is left out); each segment carries its `goal`.
+Prompt text and patterns: `video_engine/director/guidance.md` (sections `STORYBOARD`, `EDIT` for the timeline request and `REVIEW`; sources in `NOTICE`), `video_engine/director/patterns.toml` (establish, progressive_reveal, comparison, tracing, meaningful_repetition, emphasis_by_pause, footage_beat, paradox_hook, border_anomaly_tour, scale_overlay, causal_barrier, cross_section_depth, historical_flashback).
 Output: `draft/storyboards.json`, `draft_report.json` -> `storyboard`.
 No valid concept = warning and the draft continues without one.
 
 Taste store `profiles/taste/<channel>.json`: `rules`, `liked`, `rejected`, `recent` (opener and transitions of accepted drafts), `avoid_recent`.
 Its text goes into the storyboard prompt as historical preferences, not universal technical constraints. Dated notes are preserved even when the current profile differs; `engine taste CHANNEL --lint` exposes mismatches. The project brief and declared shot intent govern creative departures; source facts, render integrity and effective configuration remain authoritative.
 
-`--review` (`--review-rounds` 1 or 2): after a draft passes the gates, up to 16 critical times (cuts, beats, text starts) are sampled as 360 px frames and sent with the timeline (request `draft/review<k>`).
-A `revise` verdict with a blocker or major finding asks for a revised timeline (`draft/revise<k>`);
+`--review` (`--review-rounds` 1 or 2): after a draft passes the gates, up to 16 critical times are sampled as JPEG frames 720 px wide (downscaled in process, `util.image_jpeg`):
+  the hook (0 s, 1.5 s) and the last frame always, then moments 4 frames into an entrance (drawn overlays; the map title, pins, cards, figures, regions, routes and beats), then each segment just after its start and just before its end; over the cap a group keeps an even spread (`director.critical_times`).
+The review request (`draft/review<k>`) is a fresh eye: the frames, the timed narration and a brief per segment (time range, engine, goal, the declared `motion`, `negative_space` and `hold: read`), not the timeline, the intent reasons or the asset choices.
+Each finding names its `category` (framing, hierarchy, motion, legibility, grounding), `severity`, `evidence` and `fix`; `not_checked` lists what the frames could not show.
+A finding about a segment the timeline does not have, or whose `t_s` is more than 0.1 s from every sent frame, is dropped and recorded in `review[].dropped` with the reason; `review[].not_checked` is recorded too.
+A `revise` verdict with a blocker or major finding, or a grounding blocker (an unsupported fact) under any verdict, asks for a revised timeline (`draft/revise<k>`) with the findings largest fault first (category order above, blockers before majors);
   a revision that fails the gates is dropped and the previous version kept.
 Every version is saved as `draft/timeline.v<N>.json` and `draft/review.v<N>.json`; `draft_report.json` -> `review`, `versions`.
-A review cannot undo a draft that passed the gates: a review answer that breaks its schema, or a provider error during the review (API providers), is recorded in `review[].errors` with `kept`, printed as a warning, and the gate-passing draft is written as usual. Findings about a segment the timeline does not have are dropped.
+A review cannot undo a draft that passed the gates: a review answer that breaks its schema, or a provider error during the review (API providers), is recorded in `review[].errors` with `kept`, printed as a warning, and the gate-passing draft is written as usual.
 
 ## Draft
 
@@ -139,8 +148,8 @@ A review cannot undo a draft that passed the gates: a review answer that breaks 
 - `credits[].watermark_free` is written only as the model declared it; an asset without a declaration has none and gate R14 reports it.
 - Pre-model analysis: narration pauses (profile `[draft]` `min_seg_s` / `max_seg_s`; default 1.5 s / 7 s) give the boundary candidates;
     words come from the pinned captions or a transcription.
-- Prompt: engine rules 1-5 with suggested profile segment lengths, then channel identity, defaults and alternatives from `[draft] rules`. Concepts must differ in strategy, pacing and evidence, not only decoration. A moving-map opener, continuous camera, fixed act sequence and final keyword callback are not universal requirements.
-- Segment `intent` and `creative_autofix` are accepted in draft JSON, validated and preserved into the timeline. The review prompt receives the local intent and judges visible comprehension failures rather than the absence of a preferred style. See [Timeline intent](TIMELINE.md).
+- Prompt: engine rules 1-5 with suggested profile segment lengths, then the shared craft principles (`guidance.md`, section `EDIT`), then channel identity, defaults and alternatives from `[draft] rules`. Concepts must differ in strategy, pacing and evidence, not only decoration. A moving-map opener, continuous camera, fixed act sequence and final keyword callback are not universal requirements.
+- Segment `intent` and `creative_autofix` are accepted in draft JSON, validated and preserved into the timeline. The review prompt receives the declared intent flags (not their reason) as a claim to judge again from the frames, and judges visible comprehension failures rather than the absence of a preferred style. See [Timeline intent](TIMELINE.md).
   With `[draft] map_path = true` a map segment may return `map_path` keys `{at_s, x, y, zoom}` (converted to `camera_path`: first key at frame 0, later keys sorted, deduplicated by frame, clamped to the segment and the value ranges; fewer than 2 keys = repair).
 - Map scene elements (`video_engine/draft_scene.py`, one table for schema and conversion): a `kind map` segment may return
   `map_pins[].flag` (ISO alpha-2), `map_pins[].lat/lng` (needs the map's sidecar `map_bounds` or a globe), `map_regions`

@@ -96,7 +96,7 @@ engine copies facts from `credits.txt`, sidecars and the profile (`draft.assembl
 | Draft | `video_engine/draft.py`, `draft_scene.py`, `recipes.py`, `director/` | Prompt and schema are built from the effective profile (`draft._profile`). |
 | Renderers | `video_engine/native.py`, `hyperframes.py`, `template/`, `hf/` | Python/JS twins must stay in step (`FIGURE_POP_S`, eases). |
 | Native core | `rust/hypoverum_core_rs/` | Camera, `.ass`, silence, hashing. Bump `ALGO_VERSION` on a behaviour change. |
-| Shared helpers | `video_engine/util.py` | `EngineError`, hashing, `atomic_write_text`, `frame_jpeg`, `wav_16k_mono`: one implementation each. |
+| Shared helpers | `video_engine/util.py` | `EngineError`, hashing, `atomic_write_text`, `frame_jpeg` (video frame), `image_jpeg` (still image, in process), `wav_16k_mono`: one implementation each. |
 | Paths, limits | `video_engine/config.py` | Everything machine-specific; `VIDEO_ENGINE_*` in [ENVIRONMENT.md](ENVIRONMENT.md). |
 
 `video_engine/config.py` imports the Rust extension and reads `vendor/VERSIONS.json` at import time, so no engine
@@ -117,8 +117,10 @@ module imports without a built `hypoverum_core_rs` wheel ([CONTRIBUTING.md](../C
   (`minLength`, `additionalProperties`) is enforced by Pydantic later, not there.
 - A failure after the draft passed its gates (an unavailable or malformed review) is recorded in the report and the
   draft is kept; only the agent provider's pending bundle stops the command (exit 3).
-- Prompts are assembled in code from the profile and the timeline: the frame format from `units(settings)`, the
-  narration language from `audio_chain.language`. Never write a literal "vertical", "1080x1920" or a language name.
+- Prompts are assembled in code from the profile and the timeline: the frame format from `units(settings)` (worded
+  once, `director.format_words`), the narration language from `audio_chain.language`. Never write a literal
+  "vertical", "1080x1920" or a language name. Shared prompt principles live in `video_engine/director/guidance.md`
+  (`director.guidance`), channel rules in `profiles/<channel>/creative.md`.
 - Never print or store an API key value; reports name the environment variable only.
 
 ## Conventions

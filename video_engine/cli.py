@@ -303,6 +303,8 @@ def cmd_draft(a) -> int:
                 print(f"warning: review {x['round']} not applied ({e}); kept {x.get('kept')}", file=sys.stderr)
             for f in x["findings"]:
                 print(f"  t={float(f['t_s']):.2f}s seg {f['seg']} [{f['severity']}] {f['issue']} -> {f['fix']}")
+            if x.get("dropped"):
+                print(f"  {len(x['dropped'])} finding(s) dropped: no sent frame or segment (report review[].dropped)")
         elif x["errors"]:
             print(f"revision {x['round']} failed the gates; kept {x.get('kept')}")
     if r.ok:
