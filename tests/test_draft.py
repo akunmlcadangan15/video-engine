@@ -11,6 +11,7 @@ from video_engine.ai import base
 from video_engine.ai import gemini as ai
 from video_engine import audio, draft, timeline
 from video_engine.cli import main
+from video_engine.gates.core import Finding, not_run
 from video_engine.util import EngineError
 
 from test_ai_director import APIErr, FakeFiles
@@ -217,6 +218,34 @@ def test_good_normalise_records_changes():
                                    {"start_frame": 40, "end_frame": 90}], 100)
     assert [(s["start_frame"], s["end_frame"]) for s in segs] == [(0, 40), (40, 100)]
     assert any("dropped" in n for n in notes) and any("timeline end" in n for n in notes)
+
+
+REVIEW_NOT_RUN = {"gate": None, "seg": None, "kind": "not_run", "why": "AI frame review not requested (--review)"}
+
+
+def test_good_draft_report_lists_not_checked_preflight_and_review_not_requested(proj, monkeypatch):
+    real = draft.check
+
+    def check(tl, pdir, dom=True):                         # the last round's pre-flight skips one check, misses one
+        rep = real(tl, pdir, dom=dom)
+        rep.findings += [Finding("R44", "skip", "no captions yet", 1), not_run("AS05", "DOM stage off")]
+        return rep
+    monkeypatch.setattr(draft, "check", check)
+    r = run(proj, client({"m38": [good_plan()]}))
+    nc = json.loads(r.report_path.read_text())["not_checked"]
+    assert r.ok and nc[-1] == REVIEW_NOT_RUN and nc.count(REVIEW_NOT_RUN) == 1
+    assert {"gate": "R44", "seg": 1, "kind": "skipped", "why": "no captions yet"} in nc
+    assert {"gate": "AS05", "seg": None, "kind": "not_run", "why": "DOM stage off"} in nc
+    assert any(e["kind"] == "off" and "profile 'default'" in e["why"] for e in nc)   # gates the profile switches off
+
+
+def test_bad_draft_report_with_review_has_no_review_not_requested_entry(proj):
+    from test_director import fake_sampler                # imports this module: loaded here, not at the top
+    r = run(proj, client({"m38": [good_plan()]}), review=True, frame_sampler=fake_sampler)
+    nc = r.report["not_checked"]
+    assert r.ok and r.report["review"][0]["verdict"] == "pass"
+    assert REVIEW_NOT_RUN not in nc and not any("frame review" in e["why"] for e in nc)
+    assert any(e["kind"] == "off" for e in nc)              # the pre-flight entries stay
 
 
 def test_good_503_retries_same_model(proj):

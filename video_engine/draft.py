@@ -817,6 +817,11 @@ def draft(pdir: Path, *, out: Path | None = None, provider=None, max_repairs: in
             _finish(tl, rep)
             if rep is not None:
                 report["fixes"] = rep.fixes
+        from .gates.severity import not_checked, unchecked
+        if rep is not None:
+            report["not_checked"] = not_checked(rep.findings, tl)
+            if not review:
+                report["not_checked"].append(unchecked(None, "not_run", "AI frame review not requested (--review)"))
         from . import timeline
         target = out if ok else out.with_name(out.stem + ".rejected.json")
         timeline.save(tl, target)

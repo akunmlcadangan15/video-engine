@@ -12,6 +12,15 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 ### Ditambahkan
 
 
+- **Laporan menyebut apa yang tidak diperiksa** (`not_checked`): `out/build_report.json`, `out/build_report.failed.json`,
+  `preview_report.json` dan `draft_report.json` memuat daftar `{gate, seg, kind, why}` dengan `kind` salah satu dari
+  `skipped`, `off`, `not_run`, `cached`, `sampled`. Isinya: gate yang dilewati karena tidak punya masukan, gate yang
+  dimatikan profil, pemeriksaan yang tidak berjalan (tahap DOM mati, Chrome atau toolchain HyperFrames tidak ada,
+  berhenti dini setelah T02 gagal, AI QA atau review frame tidak diminta), loudness yang dinilai dari pengukuran cache,
+  dan langkah sampling QA piksel. Build yang diperiksa penuh hanya memuat entri `sampled`. Gate yang di-waive atau
+  diturunkan tetap di `gates.waived`. Rincian: `docs/BUILD.md`. Pengujian: `tests/test_gate_severity.py`,
+  `tests/test_build_publish.py`, `tests/test_draft_build.py`, `tests/test_draft.py`.
+
 - **Penemuan perkakas dan akar aset yang portabel** (`video_engine/discover.py`): mesin dan `engine doctor`
   memakai satu resolver. Urutan pencarian default: override lingkungan > akar npm global (`NODE_PATH`,
   `npm root -g`, direktori npm khas per platform) > `PATH` > direktori cache/data standar platform (XDG,
@@ -191,6 +200,18 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 ### Diubah
 
 
+- **Identitas browser di kunci cache HyperFrames** (`video_engine/toolchain.py`): yang di-hash adalah direktori
+  instalasi browser itu sendiri (atau berkas biner hasil resolusi beserta keluaran `--version`), bukan direktori induk
+  seperti `/usr/bin`. Kunci segmen HyperFrames, probe DOM dan sprite model berubah satu kali pada mesin yang Chrome-nya
+  ditemukan lewat PATH sebagai launcher, wrapper atau symlink, dan pada aplikasi Chrome macOS; instalasi vendored
+  (`pinned`), Puppeteer, Playwright dan toolchain pengguna tidak berubah.
+
+- **Kerja berulang dihilangkan**: rata-rata luma peta atau still dihitung sekali per berkas per proses (sebelumnya
+  sekali per segmen, di pre-flight dan lagi di QA pasca-render); hash sumber dan pemeriksaan keyframe `native.plan`
+  memakai memo per identitas berkas dengan nilai yang sama; pencarian Chrome di cache Puppeteer hanya membaca tata
+  letak Puppeteer, tidak lagi menelusuri seluruh direktori cache pengguna saat CLI dimulai; `engine sheet` mendekode
+  video satu kali untuk semua ubin.
+
 - **Director: rencana sebelum build, catatan craft, dan review bermata segar** (prinsip kerja skill stageshow,
   MIT, diadaptasi dan ditulis ulang; atribusi di `video_engine/director/NOTICE`). Span storyboard wajib punya
   `focal` (satu hal yang harus dilihat mata) dan boleh punya `cause` (kata atau peristiwa yang memicu perubahan);
@@ -288,6 +309,11 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ### Diperbaiki
 
+
+- **SAR segmen kamera** (`video_engine/native.py`): segmen kamera (Ken Burns) kini ditulis dengan `setsar=1` seperti
+  segmen encode dan HyperFrames, sehingga timeline yang mencampur still dan footage bisa digabung concat demuxer dan
+  diterima pratinjau draf. Kunci segmen native berubah satu kali (render ulang sekali). Footage yang di-stream-copy dari
+  sumber tanpa SAR masih jatuh ke jalur concat filter.
 
 - **`examples/*/prepare.sh` memakai interpreter yang punya Pillow**: skrip tidak lagi memanggil `python3` di PATH
   (yang di beberapa mesin tidak memasang Pillow). Urutan: `$PYTHON`, lalu `$VIRTUAL_ENV/bin/python`, lalu `python3`.

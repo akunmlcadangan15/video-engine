@@ -62,6 +62,7 @@ A fully checked build lists only the `sampled` entry.
 Waived, advisory and draft-lowered findings are not repeated here: they stay in `gates` (`waived`, `waivers`).
 `build_report.failed.json` after a stage error lists the pre-flight's entries (when it finished) and one `not_run` entry per stage that did not start.
 `out/draft/preview_report.json` (`engine draft-preview`) has a fixed list: no pre-flight and no post-render gate runs on a preview.
+`draft_report.json` lists the entries of the last draft round's pre-flight, plus one `not_run` entry when the frame review was not requested.
 
 ## Proxy render quality
 
