@@ -15,6 +15,7 @@ from video_engine.modal_cli import (
     LockBusy,
     RenderLock,
     UsageError,
+    render_lock_path,
     apply_runtime_env,
     assert_free,
     compare_components,
@@ -415,6 +416,17 @@ def test_parse_args_defaults_and_flags():
 def test_parse_args_rejects(argv):
     with pytest.raises(UsageError):
         parse_args(argv)
+
+
+def test_render_lock_matches_the_wrapper_without_a_hardcoded_path(tmp_path: Path):
+    assert render_lock_path({"VIDEO_ENGINE_RENDER_LOCK": str(tmp_path / "lock")}) == tmp_path / "lock"
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    assert render_lock_path({}, shared_root=shared) == shared / ".render.lock"
+    assert render_lock_path({"XDG_RUNTIME_DIR": str(tmp_path / "run")}, shared_root=tmp_path / "missing") == (
+        tmp_path / "run" / "video-engine.render.lock")
+    text = (ROOT / "video_engine" / "modal_cli.py").read_text(encoding="utf-8")
+    assert '"/workspace' not in text and "'/workspace" not in text
 
 
 def test_runtime_env_and_disk_and_lock(tmp_path: Path):

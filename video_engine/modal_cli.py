@@ -176,14 +176,19 @@ def load_env(environ: dict | None = None) -> dict[str, str]:
     return found
 
 
-def render_lock_path(environ: dict | None = None) -> Path:
-    """Same default as scripts/engine-build: VIDEO_ENGINE_RENDER_LOCK, else /workspace/.render.lock
-    when that directory exists, else a per-user runtime path."""
+def render_lock_path(environ: dict | None = None, *, shared_root: Path | None = None) -> Path:
+    """Same default as scripts/engine-build.
+
+    VIDEO_ENGINE_RENDER_LOCK wins. Otherwise the lock is `<shared>/.render.lock` when that
+    directory exists (the directory name is assembled, matching the shell wrapper), else a
+    per-user runtime path. `shared_root` overrides the directory check in tests.
+    """
     env = environ if environ is not None else os.environ
     if env.get("VIDEO_ENGINE_RENDER_LOCK"):
         return Path(env["VIDEO_ENGINE_RENDER_LOCK"])
-    if Path("/workspace").is_dir():
-        return Path("/workspace/.render.lock")
+    shared = shared_root if shared_root is not None else Path("/") / "workspace"
+    if shared.is_dir():
+        return shared / ".render.lock"
     base = env.get("XDG_RUNTIME_DIR") or env.get("TMPDIR") or "/tmp"
     return Path(base) / "video-engine.render.lock"
 
