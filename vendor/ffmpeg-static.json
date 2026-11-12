@@ -1,0 +1,9 @@
+{
+  "version": "8.1.3",
+  "build": "n8.1.3-35-gf1acb0a266",
+  "major": 8,
+  "variant": "linux64-gpl-static",
+  "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-11-12-39/ffmpeg-n8.1.3-35-gf1acb0a266-linux64-gpl-8.1.tar.xz",
+  "sha256": "32430dc6642d835511470728811e1555ec7ec09d4d27638b059f0e577a98d4e7",
+  "_doc": "GPL static build so libx264 is present. The image installs this tarball and checks sha256. A newer local ffmpeg of major 8 still matches the self-test; major 7 does not."
+}

@@ -42,6 +42,8 @@ Proxy does not create or import a sound handoff; cache the files first with `pyt
 `--repin` pins the caption words again before the pre-flight when they are stale (gate W01); it runs the same step as `engine words`. Without the flag a stale pin fails the build.
 `--relock` drops the sound lock of `out/build_manifest.json` and resolves music and SFX again (see [Build manifest](BUILD.md#build-manifest)).
 
+A final build can run on Modal with `scripts/engine-build-modal` ([Remote final build](ENVIRONMENT.md#remote-final-build)). Draft builds stay local.
+
 ## `engine preview P --seg N --time S [--out F] [--timeout S]`
 
 One PNG of segment N at S seconds from segment start, no segment render. `--timeout`: HyperFrames DOM probe limit (default 120 s).

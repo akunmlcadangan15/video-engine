@@ -24,7 +24,7 @@ Dokumen ini merupakan panduan operasional teknis bagi *engineer* maupun *AI agen
 
 ## 3. Perintah Kunci
 - **Validasi & Pre-flight**: `engine validate <PROJECT>` · `engine preflight <PROJECT>`
-- **Build Produksi & Draft**: `scripts/engine-build <PROJECT>` · `engine build <PROJECT> --mode draft [--quality proxy]` · `engine build <PROJECT> --repin`
+- **Build Produksi & Draft**: `scripts/engine-build <PROJECT>` · `engine build <PROJECT> --mode draft [--quality proxy]` · `engine build <PROJECT> --repin` · `scripts/engine-build-modal <PROJECT>` (final build on Modal; draf tetap lokal)
 - **Inspeksi Gate & Selera**: `engine gates [--profile geoverum]` · `engine taste geoverum --lint`
 - **Pratinjau & Aset**: `engine preview <PROJECT> --seg N --time S` · `engine sheet <PROJECT>` · `engine doctor`
 - **Penyusunan Draf AI**: `engine draft <PROJECT> [--provider NAME] [--review] [--resume]` (tanpa `--provider`: provider `agent`, yaitu model AI yang sedang menjalankan engine menjawab bundel di `<PROJECT>/ai_request/`)

@@ -135,6 +135,13 @@ def check(vendor: Path | None = None, run_binaries: bool = True, *, machine: boo
             for c in out:
                 if c.name in {"node", "hyperframes", "puppeteer-core", "three", "chrome", "hyperframes-cli"} and c.ok and c.warn and "differs from the pin" in c.got:
                     c.warn = False
+    if run_binaries:
+        binary = ch if ch.is_file() else None
+        for c in out:
+            if c.name == "chrome" and c.path and Path(c.path).is_file():
+                binary = Path(c.path)
+                break
+        out.append(check_chrome_libs(binary))
     return out
 
 
@@ -174,6 +181,17 @@ def _ffmpeg_names(flag: str) -> set[str]:
     except (OSError, subprocess.SubprocessError):
         return set()
     return {p[1] for p in (line.split() for line in out.splitlines()) if len(p) > 1}
+
+
+def check_chrome_libs(binary: Path | None) -> Check:
+    """FAIL when ldd reports unresolved libraries for a Linux chrome-headless-shell.
+
+    A Mach-O binary (macOS) and a missing binary do not fail this line: the chrome check
+    already covers a missing file, and ldd does not apply off Linux.
+    """
+    from .chrome_probe import chrome_libs_status
+    ok, got, warn = chrome_libs_status(binary)
+    return Check("chrome-libs", ok, "ldd clean", got, warn=warn)
 
 
 def check_ffmpeg() -> Check:
