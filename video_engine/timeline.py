@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 import hypoverum_core_rs as core
 
@@ -447,6 +447,11 @@ class CameraKey(Strict):
     drift_max: Optional[float] = Field(None, ge=0.01, le=2.0)   # ln zoom bound of the drift while the camera waits
                                                                 # on this view: it turns at 0 and drift_max (None =
                                                                 # pushes in for the whole wait)
+    fit: Optional[list] = Field(None, validation_alias=AliasChoices("fit", "keep_in_frame"))
+                                                  # pin labels or indexes that must stay inside the safe area (with
+                                                  # margin) for the whole hold on this view; the push-in and pulses
+                                                  # of that hold are limited so they do. `keep_in_frame` is the same
+                                                  # field. Empty is rejected. Does not reframe the key itself.
     tilt: float = Field(0.0, ge=0.0, le=TILT_MAX)   # perspective tilt (deg) of the map plane at this view (camera3d)
     roll: float = Field(0.0, ge=-ROLL_MAX, le=ROLL_MAX, exclude_if=lambda v: v == 0.0)   # 2D roll (deg, clockwise)
                                                     # of the map about the frame centre; the map is scaled by the
@@ -462,6 +467,17 @@ class CameraKey(Strict):
         sizes = self.pulse if isinstance(self.pulse, list) else [] if self.pulse is None else [self.pulse]
         if (isinstance(self.pulse, list) and not sizes) or not all(0.0 <= v <= 1.0 for v in sizes):
             raise ValueError(f"camera key at_frame {self.at_frame}: pulse {self.pulse} must be sizes within 0..1")
+        if self.fit is not None:
+            if not self.fit:
+                raise ValueError(f"camera key at_frame {self.at_frame}: fit needs at least one pin")
+            for item in self.fit:
+                if isinstance(item, bool) or not isinstance(item, (str, int)):
+                    raise ValueError(f"camera key at_frame {self.at_frame}: fit entries are pin labels or indexes, "
+                                     f"not {item!r}")
+                if isinstance(item, str) and not item.strip():
+                    raise ValueError(f"camera key at_frame {self.at_frame}: fit label is blank")
+                if isinstance(item, int) and item < 0:
+                    raise ValueError(f"camera key at_frame {self.at_frame}: fit index {item} is negative")
         return self
 
 

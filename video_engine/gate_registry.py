@@ -118,7 +118,7 @@ GATES: tuple[Gate, ...] = (
        "math", never=True),
     _t("G02", "Geographic facts",
        "Region polygons are valid, beat pins lie inside their region, pin labels name their own region; with "
-       "`require_land` a pin over water fails.",
+       "`require_land` a pin over water fails. A pin within `[gates.geo] coast_km` of land counts as on land.",
        "math", "[gates.geo]"),
     _t("R56", "Camera motion",
        "Camera motion under 100 px at a 1080p-class diagonal (1080x1920 or 1920x1080) warns unless local intent expects motion; static intent is informational. "
