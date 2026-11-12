@@ -671,8 +671,9 @@ const figText=(F,v)=>{
   if(c.box){boxify(el,c.box);el.style.transform='none';gsap.set(el,{xPercent:-50});pop(el,t0);}
   else tl.fromTo(el,{opacity:0,y:-30},{opacity:1,y:0,duration:0.45,ease:'power3.out'},t0);
 });
-// thermometers (components.py): one value v tweened from min to value drives the fill height, the fill colour
-// (linear RGB mix low -> high) and the number together
+// thermometers (components.py): one value v tweened from T.from (min when the timeline sets neither `from`
+// nor a previous value) to value drives the fill height, the fill colour (linear RGB mix low -> high) and the
+// number together. T.from is computed in Python, so the frames do not depend on render order.
 const mix=(a,b,k)=>'#'+[1,3,5].map(i=>Math.round(parseInt(a.slice(i,i+2),16)+(parseInt(b.slice(i,i+2),16)-parseInt(a.slice(i,i+2),16))*k).toString(16).padStart(2,'0')).join('');
 (S.thermometers||[]).forEach((T,i)=>{
   const el=document.createElement('div');el.className='thermo';el.setAttribute('data-qa','thermo:'+i);
@@ -696,13 +697,13 @@ const mix=(a,b,k)=>'#'+[1,3,5].map(i=>Math.round(parseInt(a.slice(i,i+2),16)+(pa
   if(T.label){const l=document.createElement('div');l.textContent=T.label;l.style.cssText='font-weight:700;font-size:'+(0.085*T.h)+'px';cap.appendChild(l);}
   if(T.note){const n=document.createElement('div');n.textContent=T.note;n.style.cssText='font-size:'+(0.06*T.h)+'px;opacity:.85';cap.appendChild(n);}
   el.appendChild(cap);ui.appendChild(el);
-  const F={kind:'number',prefix:'',suffix:T.unit,decimals:T.decimals}, pr={v:T.min},
+  const F={kind:'number',prefix:'',suffix:T.unit,decimals:T.decimals}, v0=(T.from===undefined||T.from===null)?T.min:T.from, pr={v:v0},
     show=()=>{const k=(pr.v-T.min)/(T.max-T.min), c=mix(T.low,T.high,k);
       fill.style.height=(k*100)+'%';fill.style.background=c;bulb.style.background=c;num.textContent=figText(F,pr.v);};
   show();const t0=f2t(T.at_frame);
   tl.set(el,{visibility:'visible'},t0);
   tl.fromTo(el,{opacity:0},{opacity:1,duration:0.3,ease:'none',immediateRender:true},t0);
-  tl.fromTo(pr,{v:T.min},{v:T.value,duration:T.fill_s,ease:MO.entrance,onUpdate:show,immediateRender:true},t0+0.2);
+  tl.fromTo(pr,{v:v0},{v:T.value,duration:T.fill_s,ease:MO.entrance,onUpdate:show,immediateRender:true},t0+0.2);
   if(T.out_frame!==null)tl.to(el,{opacity:0,duration:0.4,ease:MO.exit},f2t(T.out_frame));
 });
 // flows (components.py): dashed streams moving toward each path's end at speed_px screen px per second of render
@@ -964,6 +965,7 @@ const ghosts=[];
   if(A){A.el(el,'heading:'+h.key,LG.halo_width_em);if(!paper)A.shadow(el,[2,6,P.heading_shadow_alpha]);}
   const sp=LY.els['heading:'+h.key]||[], d=P.diamond_px, g=P.rule_gap;
   fades(el,sp);if(paper)BLEND.push([el,el]);
+  if(h.ornaments===false||!(h.rules&&h.rules.length))return;
   h.rules.forEach(([x0,x1],j)=>{const ln=document.createElement('div'), inner=j===0?x1:x0;
     ln.style.cssText='position:absolute;left:'+x0+'px;top:'+(h.rule_y-P.rule_px/2)+'px;width:'+(x1-x0)+'px;height:'+P.rule_px+
       'px;transform-origin:'+(j===0?'100%':'0%')+' 50%';

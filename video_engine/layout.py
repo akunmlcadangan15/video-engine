@@ -438,16 +438,18 @@ class Note:
 
 @dataclass
 class Heading:
-    """[print] date heading: Cinzel caps centred at a baseline with a rule and a diamond on each side."""
+    """[print] date heading: Cinzel caps centred at a baseline. Ornaments (a rule and a diamond on each side)
+    are drawn only when `ornaments` is set; the plain form is the text alone."""
     text: str
     px: float
     x: float                        # CSS box left / top
     y: float
-    box: Box                        # painted box: text ink + rules + diamonds
+    box: Box                        # painted box: text ink, plus rules and diamonds when ornaments are on
     css: Box
     base: float
-    rule_y: float                   # rule centre line y
-    rules: tuple                    # (x0, x1) of the left rule, (x0, x1) of the right rule
+    rule_y: float                   # rule centre line y (unused when ornaments are off)
+    rules: tuple                    # (x0, x1) of the left rule, (x0, x1) of the right rule; () when plain
+    ornaments: bool = False
 
 
 @dataclass
@@ -694,6 +696,8 @@ class _Planner:
         self.title_role = "title" if self.theme.get("title_font") == "title" else "inter"
         self.label_wt: int | None = None
         self.pr = prof.print
+        scene_flag = getattr(self.sc, "heading_ornaments", None)
+        self.ornaments = bool(self.pr.heading_ornaments if scene_flag is None else scene_flag) if self.pr else False
         self.prb: dict | None = None
         if self.pr is not None:   # printed typography: fonts by the map surface
             from . import printstyle
@@ -942,7 +946,8 @@ class _Planner:
             if kind == "area":
                 return self.f_area_in
             if kind == "heading":
-                return _frames(max(self.pr.heading_fade_s, self.pr.rule_draw_s), self.fps)
+                dur = max(self.pr.heading_fade_s, self.pr.rule_draw_s) if self.ornaments else self.pr.heading_fade_s
+                return _frames(dur, self.fps)
             if kind == "note":
                 return _frames(self.pr.note_write_s, self.fps)
         return self.f_in
@@ -1106,8 +1111,9 @@ class _Planner:
                                  "ink": (tx + mt.ink[0], ty + mt.ink[1], tx + mt.ink[2], ty + mt.ink[3])}
 
     def place_headings(self, p: Plan):
-        """[print] date headings: centred caps on the baseline heading_baseline_y, then on each side a gap, a diamond,
-        a gap and a rule (rules drawn from the centre outwards)."""
+        """[print] date headings: centred caps on the baseline heading_baseline_y. With ornaments, each side then
+        gets a gap, a diamond, a gap and a rule (rules drawn from the centre outwards). The plain form, the
+        default, is the caps alone."""
         pr = self.pr
         role, w, trk = self.roles["heading"][:3]
         for k, text in sorted(self.heading_text.items()):
@@ -1120,12 +1126,17 @@ class _Planner:
             x = round(self.W / 2 - (m.adv - trk * px) / 2, 2)
             ink = (x + m.ink[0], y + m.ink[1], x + m.ink[2], y + m.ink[3])
             rule_y = base - (mh.base - mh.ink[1]) / 2
-            g, d, ln = pr.rule_gap * self.kx, pr.diamond_px * self.kx, pr.rule_len * self.kx
-            right = (ink[2] + g + d + g, ink[2] + g + d + g + ln)
-            left = (ink[0] - g - d - g - ln, ink[0] - g - d - g)
             tb = text_box(m, x, y, halo(self.theme, False, px))
-            box = (min(tb[0], left[0]), min(tb[1], rule_y - d / 2), max(tb[2], right[1]), max(tb[3], rule_y + d / 2))
-            p.headings[k] = Heading(T, px, x, y, box, (x, y, x + m.adv, y + m.h), base, rule_y, (left, right))
+            if self.ornaments:
+                g, d, ln = pr.rule_gap * self.kx, pr.diamond_px * self.kx, pr.rule_len * self.kx
+                right = (ink[2] + g + d + g, ink[2] + g + d + g + ln)
+                left = (ink[0] - g - d - g - ln, ink[0] - g - d - g)
+                rules = (left, right)
+                box = (min(tb[0], left[0]), min(tb[1], rule_y - d / 2), max(tb[2], right[1]), max(tb[3], rule_y + d / 2))
+            else:
+                rules, box = (), tb
+            p.headings[k] = Heading(T, px, x, y, box, (x, y, x + m.adv, y + m.h), base, rule_y, rules,
+                                    self.ornaments)
 
     def place_notes(self, p: Plan):
         """[print] hand annotations: Kalam centred on their map point, rotated; the arrow leaves the rotated text box
@@ -1745,6 +1756,7 @@ def scene_layout(p: Plan) -> dict:
         for i, fg in p.figs.items():
             out["figures"][str(i)].update({k: fg[k] for k in ("slot", "weight", "tracking") if k in fg})
         out["headings"] = [{"key": k, "text": h.text, "x": h.x, "y": h.y, "px": h.px, "rule_y": round(h.rule_y, 2),
+                            "ornaments": h.ornaments,
                             "rules": [[round(v, 2) for v in r] for r in h.rules]} for k, h in p.headings.items()]
         out["notes"] = [{"key": n, "text": nt.text, "px": nt.px, "angle": nt.angle,
                          "anchor": [round(nt.anchor[0], 2), round(nt.anchor[1], 2)], "arrow": nt.arrow}

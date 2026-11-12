@@ -746,7 +746,9 @@ def scene_data(seg: Segment, tl: Timeline, project_dir: Path) -> dict:
                            **({"accent": _accent(f, prof.theme)} if not f.entity and _accent(f, prof.theme) else {})}
                           for f in sc.figures]
     if sc.thermometers:
-        out["thermometers"] = [components.thermo_data(t, S.width, S.height) for t in sc.thermometers]
+        starts = components.thermo_starts(sc.thermometers)
+        out["thermometers"] = [components.thermo_data(t, S.width, S.height, start)
+                               for t, start in zip(sc.thermometers, starts)]
     if sc.flows:
         out["flows"] = [components.flow_data(f, mw, mh, fx._seed(tl, seg)) for f in sc.flows]
         out["flow_legend"] = sc.flow_legend

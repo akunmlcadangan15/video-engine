@@ -79,7 +79,7 @@ def prune(projects: list[Path], cache_dir: Path | None = None, dry_run: bool = F
                    if f.is_file() and not f.name.endswith(".tmp")]
         if problems:
             return {"deleted": [], "kept": len(entries), "problems": problems, "bytes": 0, "skipped_leased": [],
-                    "reclaimed_leases": []}
+                    "skipped_pinned": [], "reclaimed_leases": []}
         held, reclaimed = cache.leased(root)
         unref = [f for f in entries if not is_referenced(f, keep)]
         skipped = [f for f in unref if str(f.relative_to(root)) in held]
@@ -92,12 +92,16 @@ def prune(projects: list[Path], cache_dir: Path | None = None, dry_run: bool = F
                 continue
             if not dry_run:
                 f.unlink(missing_ok=True)
+        from .sound import pins
+        for project in projects:
+            pins.pin_project(project, cache_root=root)
         snd = sound_cache.prune(dry_run=dry_run, cache_dir=root)
     key = "deleted" if not dry_run else "would_delete"
     return {key: [str(f.relative_to(root)) for f in stale] + [f"sound/{p}" for p in snd[key]],
             "kept": len(entries) - len(stale), "bytes": size + snd["bytes"], "problems": [],
             "sound_rewritten": [f"sound/{p}" for p in snd["rewritten"]],
             "skipped_leased": [str(f.relative_to(root)) for f in skipped] + [f"sound/{p}" for p in snd["skipped_leased"]],
+            "skipped_pinned": [f"sound/{p}" for p in snd.get("skipped_pinned", [])],
             "reclaimed_leases": sorted(set(reclaimed) | set(snd["reclaimed_leases"]))}
 
 

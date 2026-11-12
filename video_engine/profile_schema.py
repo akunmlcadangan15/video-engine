@@ -32,6 +32,7 @@ class AudioProfile(_Strict):
     lra: float = Field(gt=0)
     tolerance_lu: float = Field(gt=0)
     require_source: Literal["epidemic"] | None = None   # A02: optional required source for music and SFX (warns by default unless A02 is in require)
+    aac_bitrate: int = Field(192, ge=64, le=320, exclude_if=lambda v: v == 192)   # master-audio AAC kbps; [render] aac_bitrate wins
 
 
 def _order(lo: float, hi: float, what: str) -> None:
@@ -535,6 +536,7 @@ class RenderProfile(_Strict):
     final_maxrate_kbps: int | None = Field(None, ge=1000, le=200000)
     final_bit_depth: Literal[8, 10] | None = None   # 10 = yuv420p10le, x264 High 10 (less encoder banding)
     map_jpeg_quality: int | None = Field(None, ge=50, le=100)
+    aac_bitrate: int | None = Field(None, ge=64, le=320, exclude_if=lambda v: v is None)   # overrides [audio] aac_bitrate
 
     def x264(self, stage: Literal["segment", "final"]) -> list[str]:
         """Encoder arguments of a stage: the stage default (config.X264_SEGMENT / config.X264) when the stage sets
@@ -748,8 +750,9 @@ class PrintStyle(_Strict):
     time_tracking: float = Field(0.14, ge=0, le=0.3)
     time_alpha: float = Field(0.75, ge=0.3, le=1)
     time_gap: float = Field(24, ge=0, le=80)
-    # date heading (cards): Cinzel caps between two rules with diamonds
+    # date heading (cards): Cinzel caps. Ornaments (a rule and a diamond on each side) are off unless heading_ornaments.
     heading_px: float = Field(42, ge=40, le=44)
+    heading_ornaments: bool = Field(False, exclude_if=lambda v: v is False)   # rules and diamonds; plain text is the default
     heading_tracking: float = Field(0.14, ge=0, le=0.3)
     heading_weight: int = Field(600, ge=400, le=900)
     heading_baseline_y: float = Field(384, ge=0, le=1920)     # brand range per orientation: PRINT_RANGES

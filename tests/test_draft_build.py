@@ -7,7 +7,7 @@ import pytest
 
 from video_engine import draft_build, streams
 from video_engine.cli import main, parser
-from video_engine.util import EngineError
+from video_engine.util import EngineError, probe
 
 FPS = 30
 
@@ -54,6 +54,19 @@ def test_good_concat_command_is_stream_copy_without_reencode(project, monkeypatc
     join = next(c for c in seen if "concat" in c)
     assert join[join.index("-f") + 1] == "concat" and join[join.index("-c") + 1] == "copy"
     assert not any("libx264" in c or "-filter_complex" in c for c in join)   # no final encode, no composite
+
+
+def test_good_preview_muxes_narration(project):
+    def mut(d):
+        _many_native(2)(d)
+        d["audio_chain"] = {"voiceover_path": "assets/tone.wav", "auto_captions": False}
+    p, _ = project(mut)
+    r = draft_build.build_draft_preview(p, max_segments=2, use_cache=False)
+    assert r.audio == "narration"
+    info = probe(r.preview)
+    assert any(s.get("codec_type") == "audio" for s in info["streams"])
+    assert json.loads(r.report.read_text())["audio"] == "narration"
+    streams.verify(r.preview, 60, FPS, "draft preview")
 
 
 def test_good_fewer_segments_than_five_and_custom_count(project):

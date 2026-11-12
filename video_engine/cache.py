@@ -342,11 +342,22 @@ class Pruned:
     deleted: list[str] = field(default_factory=list)          # paths relative to the cache root
     skipped_leased: list[str] = field(default_factory=list)
     reclaimed_leases: list[str] = field(default_factory=list)
+    skipped_pinned: list[str] = field(default_factory=list)   # sound files a project lock still names
+
+
+def _pinned(root: Path) -> set[str]:
+    """Sound-cache paths a project lock still names (video_engine.sound.pins). Empty when the registry is absent."""
+    try:
+        from .sound import pins
+    except ModuleNotFoundError:
+        return set()
+    return pins.protected_rels(root)
 
 
 def prune(max_bytes: int | None = None, protect=(), root: Path | None = None) -> Pruned:
-    """Drop least-recently-used files until the cache fits, skipping leased files and `protect` (the entry being
-    stored). Returns what was deleted, skipped and reclaimed."""
+    """Drop least-recently-used files until the cache fits, skipping leased files, pinned sound files and
+    `protect` (the entry being stored). A pinned file stays even when the cache is over `max_bytes`; only
+    unreferenced files are removed. Returns what was deleted, skipped and reclaimed."""
     max_bytes = config.CACHE_MAX_BYTES if max_bytes is None else max_bytes
     root = Path(root or config.CACHE_DIR)
     res = Pruned()
@@ -355,6 +366,7 @@ def prune(max_bytes: int | None = None, protect=(), root: Path | None = None) ->
     with locked(root, exclusive=True):
         keep, res.reclaimed_leases = leased(root)
         keep |= {str(Path(p).relative_to(root)) for p in protect}
+        pinned = _pinned(root)
         files = []
         for p in root.rglob("*"):
             try:  # concurrent writers rename/remove temp files while we scan
@@ -368,6 +380,9 @@ def prune(max_bytes: int | None = None, protect=(), root: Path | None = None) ->
         for _, s, p, rel in sorted(files, key=lambda f: f[0]):
             if total <= max_bytes:
                 break
+            if rel in pinned:
+                res.skipped_pinned.append(rel)
+                continue
             if rel in keep:
                 res.skipped_leased.append(rel)
                 continue

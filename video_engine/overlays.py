@@ -85,9 +85,18 @@ def _cinzel(px: int, weight: int):
     return f
 
 
+def heading_ornaments(ov: Overlay, pr) -> bool:
+    """Rules and diamonds beside a heading. The overlay's `ornaments` wins; otherwise `[print] heading_ornaments`.
+    The default is plain text."""
+    if ov.ornaments is not None:
+        return bool(ov.ornaments)
+    return bool(getattr(pr, "heading_ornaments", False))
+
+
 def heading_layout(ov: Overlay, pr, H: int = 1920, ss: int = 1) -> dict:
-    """Heading geometry in box px x ss: the per-letter x of the caps, the baseline, the rule y, both rules
-    (x0, x1) and both diamond centres; `w` = painted width (text + gaps + diamonds + rules)."""
+    """Heading geometry in box px x ss: the per-letter x of the caps, the baseline, and, when ornaments are on,
+    the rule y, both rules (x0, x1) and both diamond centres. `w` is the painted width (text, plus gaps, diamonds
+    and rules when ornaments are on)."""
     k = _scale(H) * ss
     px = round(pr.heading_px * k)
     ft = _cinzel(px, pr.heading_weight)
@@ -98,17 +107,23 @@ def heading_layout(ov: Overlay, pr, H: int = 1920, ss: int = 1) -> dict:
         xs.append(x)
         x += ft.getlength(ch) + trk
     tw = x - trk
+    ornaments = heading_ornaments(ov, pr)
     g, d, ln = pr.rule_gap * k, pr.diamond_px * k, pr.rule_len * k
-    w = tw + 2 * (g + d + g + ln)
+    extra = 2 * (g + d + g + ln) if ornaments else 0.0
+    w = tw + extra
     bw, bh = ov.box[2] * ss, ov.box[3] * ss
     base = bh - HEADING_PAD * k
     asc = -ft.getbbox("H", anchor="ls")[1]
     tx = (bw - tw) / 2
     rule_y = base - asc / 2
-    left = (tx - g - d - g - ln, tx - g - d - g)
-    right = (tx + tw + g + d + g, tx + tw + g + d + g + ln)
+    if ornaments:
+        left = (tx - g - d - g - ln, tx - g - d - g)
+        right = (tx + tw + g + d + g, tx + tw + g + d + g + ln)
+        rules, diamonds = (left, right), (tx - g - d / 2, tx + tw + g + d / 2)
+    else:
+        rules, diamonds = (), ()
     return {"px": px, "font": ft, "text": T, "xs": [tx + v for v in xs], "base": base, "asc": asc, "rule_y": rule_y,
-            "rules": (left, right), "diamonds": (tx - g - d / 2, tx + tw + g + d / 2), "d": d, "w": w, "tw": tw}
+            "rules": rules, "diamonds": diamonds, "d": d, "w": w, "tw": tw, "ornaments": ornaments}
 
 
 def fit(ov: Overlay, H: int = 1920, pr=None, max_px: float | None = None) -> Layout:
@@ -119,7 +134,8 @@ def fit(ov: Overlay, H: int = 1920, pr=None, max_px: float | None = None) -> Lay
     if ov.kind == "heading":
         hl = heading_layout(ov, _print(pr), H)
         if hl["w"] > ov.box[2] + 0.5 or hl["base"] - hl["asc"] < 0:
-            raise EngineError(f"overlay '{ov.id}': heading ({hl['w']:.0f} px wide with its rules) does not fit box "
+            wide = " with its rules" if hl["ornaments"] else ""
+            raise EngineError(f"overlay '{ov.id}': heading ({hl['w']:.0f} px wide{wide}) does not fit box "
                               f"{ov.box}; widen the box or shorten the text")
         return Layout(hl["px"], (hl["text"],), 0, (), round(hl["asc"]))
     x, y, w, h = ov.box
@@ -150,8 +166,8 @@ def _hex(c: str, a: float = 1.0) -> tuple:
 
 
 def render_heading(ov: Overlay, out: Path, pr, H: int = 1920) -> Path:
-    """Heading PNG: caps, rules and diamonds in one ink, drawn at HEADING_SS x and downsampled; on a photo light ink
-    over a soft shadow (0, 2 px, blur 6 px, print.heading_shadow_alpha black)."""
+    """Heading PNG: caps in one ink, plus rules and diamonds when ornaments are on, drawn at HEADING_SS x and
+    downsampled; on a photo light ink over a soft shadow (0, 2 px, blur 6 px, print.heading_shadow_alpha black)."""
     from PIL import Image, ImageDraw, ImageFilter
     fit(ov, H, pr)
     ss = HEADING_SS
@@ -161,13 +177,14 @@ def render_heading(ov: Overlay, out: Path, pr, H: int = 1920) -> Path:
     d = ImageDraw.Draw(mask)
     for ch, x in zip(hl["text"], hl["xs"]):
         d.text((x, hl["base"]), ch, font=hl["font"], fill=255, anchor="ls")
-    rp = pr.rule_px * _scale(H) * ss
-    for x0, x1 in hl["rules"]:
-        d.rectangle([x0, hl["rule_y"] - rp / 2, x1, hl["rule_y"] + rp / 2], fill=255)
-    r = hl["d"] / 2 ** 0.5                          # half-diagonal of a d x d square turned 45 deg
-    for cx in hl["diamonds"]:
-        cy = hl["rule_y"]
-        d.polygon([(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)], fill=255)
+    if hl["ornaments"]:
+        rp = pr.rule_px * _scale(H) * ss
+        for x0, x1 in hl["rules"]:
+            d.rectangle([x0, hl["rule_y"] - rp / 2, x1, hl["rule_y"] + rp / 2], fill=255)
+        r = hl["d"] / 2 ** 0.5                          # half-diagonal of a d x d square turned 45 deg
+        for cx in hl["diamonds"]:
+            cy = hl["rule_y"]
+            d.polygon([(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)], fill=255)
     mask = mask.resize((w, h), Image.LANCZOS)
     k = _scale(H)
     im = Image.new("RGBA", (w, h), (0, 0, 0, 0))

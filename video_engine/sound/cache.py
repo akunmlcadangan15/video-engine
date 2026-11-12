@@ -216,19 +216,24 @@ def append_credits(project_dir: Path, provenances) -> list[str]:
 
 def prune(dry_run: bool = False, cache_dir: Path | None = None) -> dict:
     """Remove broken entries: index lines whose file or sidecar is gone, sidecars without a file, files without a
-    sidecar, unreferenced files and temp files. Leased files (an in-flight write leases its temp file) are kept and listed in
-    "skipped_leased". Size-based LRU eviction is engine cache.prune().
+    sidecar, unreferenced files and temp files. Leased files (an in-flight write leases its temp file) and files
+    pinned by a project sound lock (video_engine.sound.pins) are kept and listed in "skipped_leased" and
+    "skipped_pinned". Size-based LRU eviction is engine cache.prune(), which also skips pins.
     cache_dir: engine cache root (default config.CACHE_DIR); paths are reported relative to <cache_dir>/sound."""
+    from . import pins
     base = Path(cache_dir) if cache_dir is not None else config.CACHE_DIR
     r = base / "sound"
     with engine_cache.locked(base, exclusive=True):
         held, reclaimed = engine_cache.leased(base)
-        return {**_prune(r, {str(Path(p).relative_to("sound")) for p in held if p.startswith("sound/")}, dry_run),
-                "reclaimed_leases": reclaimed}
+        pinned = {p[len("sound/"):] for p in pins.protected_rels(base) if p.startswith("sound/")}
+        report = _prune(r, {str(Path(p).relative_to("sound")) for p in held if p.startswith("sound/")}, dry_run,
+                        pinned=pinned)
+        return {**report, "reclaimed_leases": reclaimed}
 
 
-def _prune(r: Path, held: set[str], dry_run: bool) -> dict:
+def _prune(r: Path, held: set[str], dry_run: bool, pinned: set[str] | None = None) -> dict:
     files, index = r / "files", r / "index"
+    pinned = pinned or set()
     gone: list[Path] = []
     rewrite: dict[Path, dict] = {}
     refs: set[str] = set()
@@ -244,8 +249,12 @@ def _prune(r: Path, held: set[str], dry_run: bool) -> dict:
     for f in sorted(files.iterdir()) if files.is_dir() else []:
         if f.name.endswith(".tmp") or (f.name not in refs if f.suffix != ".json" else f.stem not in stems):
             gone.append(f)
-    skipped = [f for f in gone if str(f.relative_to(r)) in held]
-    gone = [f for f in gone if str(f.relative_to(r)) not in held]
+    def _rel(f: Path) -> str:
+        return str(f.relative_to(r))
+    skipped_pin = [f for f in gone if _rel(f) in pinned]
+    gone = [f for f in gone if _rel(f) not in pinned]
+    skipped = [f for f in gone if _rel(f) in held]
+    gone = [f for f in gone if _rel(f) not in held]
     size = sum(f.stat().st_size for f in gone if f.is_file())
     if not dry_run:
         for idx, keep in rewrite.items():
@@ -254,4 +263,5 @@ def _prune(r: Path, held: set[str], dry_run: bool) -> dict:
             f.unlink(missing_ok=True)
     return {("would_delete" if dry_run else "deleted"): [str(p.relative_to(r)) for p in gone],
             "rewritten": [str(p.relative_to(r)) for p in rewrite], "bytes": size,
-            "skipped_leased": [str(p.relative_to(r)) for p in skipped]}
+            "skipped_leased": [str(p.relative_to(r)) for p in skipped],
+            "skipped_pinned": [str(p.relative_to(r)) for p in skipped_pin]}

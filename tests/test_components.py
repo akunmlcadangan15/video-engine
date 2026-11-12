@@ -92,6 +92,45 @@ def test_good_thermometer_one_value_drives_fill_colour_and_number(project, tmp_p
     assert f"{int(value)}°C" in text.replace(" ", "") and "ilustratif" in text
 
 
+def test_good_thermometer_starts_at_from_or_the_previous_value():
+    first = Thermometer.model_validate({"value": 40, "max": 50, "from": 10})
+    nxt = Thermometer(value=22, min=0, max=50, continue_from=True, at_frame=40)
+    assert first.from_value == 10
+    assert components.thermo_starts([first, nxt]) == [10.0, 40.0]
+    assert components.thermo_starts([first, nxt]) == [10.0, 40.0]   # same timeline, same starts
+    assert components.thermo_data(first, 1080, 1920, 10.0)["from"] == 10.0
+    plain = Thermometer(value=18, min=0, max=50)
+    assert components.thermo_starts([plain]) == [0.0]
+
+
+def test_bad_continue_from_outside_this_range():
+    hot = Thermometer(value=40, min=0, max=50)
+    cool = Thermometer(value=10, min=0, max=20, continue_from=True, at_frame=20)
+    with pytest.raises(ValueError, match="outside"):
+        components.thermo_starts([hot, cool])
+
+
+def test_good_from_value_is_on_screen_before_the_tween(project, tmp_path):
+    """The fill is already at `from` before the rise toward `value` starts (0.2 s after at_frame)."""
+    T = {"value": 42, "min": 0, "max": 50, "from": 40, "label": "Suhu", "note": "ilustratif", "fill_s": 1.6,
+         "position": [0.5, 0.5], "height_pct": 40}
+    shots, sc, _res = _shot(project, tmp_path, _scene(thermometers=[T]), [0.35], name="from")
+    th = sc["thermometers"][0]
+    assert th["from"] == 40
+    model = Thermometer.model_validate(T)
+    frac = (40 - model.min) / (model.max - model.min)
+    want = np.array([int(components.thermo_colour(model, frac)[k:k + 2], 16) for k in (1, 3, 5)])
+    img, cx = shots[0], round(th["x"] + th["w"] / 2)
+    tube_h = th["h"] - th["bulb_d"] * 0.85 + th["bulb_d"] * 0.3
+    top, bottom = th["y"], th["y"] + tube_h
+    col = img[round(top):round(bottom), cx]
+    hits = np.where(np.abs(col - want).max(axis=1) < 40)[0]
+    assert len(hits), "fill colour of the start value is present"
+    fill_top = top + hits.min()
+    expect = bottom - frac * tube_h
+    assert abs(fill_top - expect) < 0.12 * tube_h, (fill_top, expect, frac)
+
+
 # flow ---------------------------------------------------------------------------------------------------------------
 def test_bad_flow():
     with pytest.raises(ValidationError, match="at least 2 points"):

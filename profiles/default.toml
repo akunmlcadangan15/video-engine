@@ -27,6 +27,7 @@ target_lufs = -14.0  # loudnorm target and A01 target
 true_peak = -1.5     # dBTP; global safety limit, a profile may only lower it
 lra = 11.0           # loudnorm LRA parameter
 tolerance_lu = 0.2   # A01 tolerance; global safety limit, a profile may only lower it
+# aac_bitrate = 192   # AAC kbps of the master audio, 64-320 (default 192). [render] aac_bitrate overrides it.
 
 [draft]
 min_seg_s = 1.5      # segment length range given to the drafting model and the pause segmenter

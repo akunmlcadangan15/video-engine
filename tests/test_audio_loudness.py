@@ -99,7 +99,7 @@ def test_good_correction_passes_lower_the_ceiling_until_tp_passes(project, tmp_p
     _, tl = project()
     L = audio.profiles.loudness(tl)
     ceilings = []
-    monkeypatch.setattr(audio, "apply_gain", lambda src, dst, g, tp, threads=None, ceiling=None:
+    monkeypatch.setattr(audio, "apply_gain", lambda src, dst, g, tp, threads=None, ceiling=None, bitrate="192k":
                         (ceilings.append(ceiling), dst.write_bytes(b""))[1])
     monkeypatch.setattr(audio, "loudness",
                         lambda p, threads=None: {"I": L.target_lufs, "LRA": 1.0,

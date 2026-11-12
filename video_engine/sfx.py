@@ -57,10 +57,13 @@ def events(tl: Timeline) -> list[dict]:
 
 
 def kinds_used(tl: Timeline) -> list[str]:
+    """SFX kinds the mix will resolve: mapped render events, plus manual cues that name a kind."""
     sp = profiles.of(tl).sound
+    kinds = {c.kind for c in tl.audio_chain.sfx if c.kind}
     if sp is None:
-        return []
-    return sorted({sp.events[e["event"]] for e in events(tl) if e["event"] in sp.events})
+        return sorted(kinds)
+    kinds |= {sp.events[e["event"]] for e in events(tl) if e["event"] in sp.events}
+    return sorted(kinds)
 
 
 def cues(tl: Timeline, asset: Callable[[str], tuple[str, float]]) -> list[SfxCue]:

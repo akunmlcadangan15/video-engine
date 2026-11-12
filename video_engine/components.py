@@ -2,7 +2,8 @@
 
 Python lays them out (frame / map px, frames -> seconds stay in the template) and fixes every random choice from a
 seed; the template animates them from the paused timeline only (no wall clock): a thermometer's fill, colour and
-number come from one tweened value; a flow's dash offset is (phase + speed x (t - t0)) at render time t."""
+number come from one tweened value, starting at `from` (or min); a flow's dash offset is (phase + speed x (t - t0))
+at render time t."""
 from __future__ import annotations
 
 import math
@@ -12,14 +13,43 @@ TUBE_W = 0.2     # tube width / thermometer height
 BULB_D = 0.34    # bulb diameter / thermometer height
 
 
-def thermo_data(t, W: int, H: int) -> dict:
-    """Scene entry of a thermometer: box (x, y = top-left, w, h in frame px), tube and bulb sizes, value range."""
+def thermo_starts(items: list) -> list[float]:
+    """Start value of each thermometer, in list order.
+
+    A thermometer starts at `from` when that is set. Otherwise, with `continue_from`, it starts at the `value`
+    of the previous thermometer in time (`at_frame`, then list order). Otherwise it starts at `min`. The first
+    thermometer in time has no previous value, so `continue_from` leaves it at `min`. An explicit `from` wins
+    over `continue_from`. A start outside that thermometer's min..max is an error. The result depends only on
+    the timeline, so two renders of the same scene match."""
+    order = sorted(range(len(items)), key=lambda i: (items[i].at_frame, i))
+    starts = [0.0] * len(items)
+    prev: float | None = None
+    for i in order:
+        t = items[i]
+        if t.from_value is not None:
+            start = float(t.from_value)
+        elif t.continue_from and prev is not None:
+            start = prev
+        else:
+            start = float(t.min)
+        if not t.min <= start <= t.max:
+            raise ValueError(f"thermometer: start {start} is outside {t.min}..{t.max}")
+        starts[i] = start
+        prev = float(t.value)
+    return starts
+
+
+def thermo_data(t, W: int, H: int, start: float | None = None) -> dict:
+    """Scene entry of a thermometer: box (x, y = top-left, w, h in frame px), tube and bulb sizes, value range.
+
+    `from` is the fill's start value (default `min`). The template tweens that number to `value`."""
     h = t.height_pct / 100 * H
     w = max(BULB_D, TUBE_W) * h
     cx, cy = t.position[0] * W, t.position[1] * H
+    origin = float(t.min if start is None else start)
     return {"x": round(cx - w / 2, 2), "y": round(cy - h / 2, 2), "w": round(w, 2), "h": round(h, 2),
             "tube_w": round(TUBE_W * h, 2), "bulb_d": round(BULB_D * h, 2), "value": t.value, "min": t.min,
-            "max": t.max, "unit": t.unit, "decimals": t.decimals, "label": t.label, "note": t.note,
+            "max": t.max, "from": origin, "unit": t.unit, "decimals": t.decimals, "label": t.label, "note": t.note,
             "at_frame": t.at_frame, "out_frame": t.out_frame, "fill_s": t.fill_s, "low": t.colour_low.lower(),
             "high": t.colour_high.lower()}
 
