@@ -20,6 +20,7 @@ from video_engine.modal_cli import (
     assert_free,
     compare_components,
     format_dry_run,
+    components_from_checks,
     image_build_args,
     major_token,
     parse_args,
@@ -761,3 +762,15 @@ def test_build_without_modal_exits_127(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr()
     assert "not installed" in captured.out
     assert "TransferError" not in captured.out and "TransferError" not in captured.err
+
+
+def test_good_image_follows_the_active_hyperframes_not_the_first_one_found():
+    checks = [{"name": "hyperframes", "got": "0.8.223"},
+              {"name": "hyperframes-active", "got": "0.9.13 (pinned, setting 'pinned' from file)"}]
+    assert components_from_checks(checks)["hyperframes"] == "0.9.13"
+
+
+def test_bad_missing_active_hyperframes_keeps_the_discovered_version():
+    checks = [{"name": "hyperframes", "got": "0.8.223"},
+              {"name": "hyperframes-active", "got": "missing at /x/vendor/npm/node_modules/hyperframes"}]
+    assert components_from_checks(checks)["hyperframes"] == "0.8.223"

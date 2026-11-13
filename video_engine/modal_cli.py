@@ -10,6 +10,7 @@ import argparse
 import fcntl
 import json
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -306,6 +307,11 @@ def components_from_checks(checks: list[dict]) -> dict[str, str]:
     for name in ("node", "hyperframes", "puppeteer-core", "three", "chrome"):
         if by.get(name):
             out[name] = by[name]
+    # The build renders with the active HyperFrames (`engine toolchain`), which can differ from the first
+    # install that discovery finds; `hyperframes-active` starts with that version when one is installed.
+    active = re.match(r"\d+\.\d+\.\d+", by.get("hyperframes-active", ""))
+    if active:
+        out["hyperframes"] = active.group(0)
     return out
 
 
