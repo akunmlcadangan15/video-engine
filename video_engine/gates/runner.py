@@ -50,7 +50,9 @@ def _dom_gaps(tl: Timeline, project_dir: Path, dom: bool, dom_res: dict) -> list
         return out
     out = []
     for s in hf:
-        if s.seg_index in dom_res or not (project_dir / s.gsap_scene_config.map_asset).is_file():
+        sc = s.gsap_scene_config
+        assert sc is not None
+        if s.seg_index in dom_res or not (project_dir / sc.map_asset).is_file():
             continue
         out.append(not_run("E01", "no DOM probe result for this segment (see R63): region fills not checked", s.seg_index))
         if on["R64"]:
@@ -142,6 +144,9 @@ def _run(tl: Timeline, project_dir: Path, words, workdir: Path, dom: bool, snaps
             fs, paths = layer3.r38_snapshots(tl, project_dir, dom_snaps, workdir / "snaps" / "gate")
             rep.extend(fs)
             rep.snapshots = paths
+            cc = profiles.of(tl).gates.caption_contrast
+            if cc is not None and words:
+                rep.extend(layer3.r65_caption_contrast(tl, paths, events, cc.min_lc))
         if ai_qa is not None and paths:
             from ..ai import tasks
             with rep.timed("layer3_ai"):

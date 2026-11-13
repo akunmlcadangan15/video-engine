@@ -10,7 +10,8 @@ the repair prompt points at it; nothing is dropped or turned into a plain pin or
 
 Always on: regions (with flags and optional hatch), routes, borders, figures (counters), flag characters, pin flags,
 flows, thermometers, map_texts, bubbles. Opt-in per profile `[draft] scene = [...]`: "globe", "props", "morph",
-"beats" (beats also need a profile [layout]), "cross_section", "historical", "terrain3d", "blind_spot", "data_viz"."""
+"beats" (beats also need a profile [layout]), "cross_section", "historical", "terrain3d", "blind_spot", "data_viz",
+"camera3d" (a named move of the full 3D camera, timeline camera3d_preset)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,7 +19,7 @@ from typing import Callable
 
 from pydantic import ValidationError
 
-from .timeline import (Backdrop, Beat, Border, Bubble, Cutaway, Flag, FlagCharacter, Figure, Flow, Geoid, Globe,
+from .timeline import (Backdrop, Beat, Border, Bubble, Camera3DPreset, Cutaway, Flag, FlagCharacter, Figure, Flow, Geoid, Globe,
                        GsapScene, Hatch, Inset, MapMorph, MapText, Particle, Prop, Region, Route, Thermometer,
                        sec_to_frame)
 from .util import EngineError
@@ -253,6 +254,11 @@ def _globe(c, path, g):
     return _model(Globe, {"keys": keys}, path)
 
 
+def _camera3d(c, path, r):
+    _keys(path, r, ("name", "target", "height", "fov", "options"))
+    return _model(Camera3DPreset, dict(r), path)
+
+
 def _morph(c, path, m):
     _keys(path, m, ("asset", "at_s", "s", "back_at_s", "sepia", "paper", "grain"))
     a = _asset(c, f"{path}.asset", m.get("asset"))
@@ -370,6 +376,10 @@ FIELDS: dict[str, Spec] = {
     "map_globe": Spec("globe", _obj({"keys": _arr(_obj({"at_s": n, "lat": n, "lng": n, "altitude": n, "tilt": n,
                                                         "hold_s": n}, ["at_s", "lat", "lng", "altitude"]))},
                                     ["keys"]), _globe, many=False, gate="globe"),
+    "map_camera3d": Spec("camera3d_preset", _obj({
+        "name": {"type": "string", "enum": ["push_in", "orbit", "crash_zoom", "vertigo"]}, "target": PT, "height": n,
+        "fov": n, "options": {"type": "object", "additionalProperties": n}}, ["name"]), _camera3d, many=False,
+        gate="camera3d"),
     "map_morph": Spec("morph", _obj({"asset": s, "at_s": n, "s": n, "back_at_s": n, "sepia": n, "paper": n,
                                      "grain": n}, ["asset"]), _morph, many=False, gate="morph"),
     "map_cutaway": Spec("cutaway", _obj({
@@ -422,6 +432,13 @@ def convert(seg: dict, idx: int, *, n: int, fps: int, assets: dict, map_asset, u
             scene[sp.target] = sp.convert(c, path, v)
     if scene.get("beats") and scene.get("camera_path"):
         raise _err(f"segment {idx}: map_beats", "beats derive the camera; drop map_path")
+    if scene.get("camera3d_preset"):   # the preset is the whole camera of a 3D scene
+        for k, draft_key in (("camera_path", "map_path"), ("focus", "map_focus")):
+            if scene.get(k):
+                raise _err(f"segment {idx}: map_camera3d", f"the preset is the camera; drop {draft_key}")
+        scene["camera_mode"] = "3d"
+        scene.pop("map_bounds", None)
+        scene.pop("map_projection", None)
     if scene.get("globe"):
         scene.pop("map_bounds", None)
         scene.pop("map_projection", None)
@@ -461,6 +478,11 @@ PROMPT_GATED = {
              "out_s, path (map points it travels)}",
     "globe": "map_globe = 3D globe on a 2:1 world texture {keys [{at_s, lat, lng, altitude 0.005-12}]}; pins need "
              "lat/lng; no routes, borders, props, morph or beats on a globe",
+    "camera3d": "map_camera3d = one cinematic 3D camera move over a flat map for the whole segment {name push_in "
+                "(slow dolly towards the target) | orbit (arc around it) | crash_zoom (sudden dive, for one reveal) | "
+                "vertigo (dolly zoom, for unease), target [x, y] the camera looks at, height (start distance in map "
+                "widths, 0.3 close - 1.0 far)}; such a segment takes map_pins, map_card, map_title and screen "
+                "map_figures only, with pins as x, y",
     "morph": "map_morph = second map texture crossfaded over the map {asset (same aspect), at_s, back_at_s, sepia}",
     "cross_section": "map_cutaway = stacked 2D/3D cross-section diagram {layers [{label, colour, thickness}], xy, width_pct, at_s, reveal_s}",
     "historical": "map_insets = framed photo inset with leader line to a pin or map xy {asset, anchor {pin|xy}, size_pct, at_s, out_s}",

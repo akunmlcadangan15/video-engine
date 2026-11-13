@@ -238,7 +238,7 @@ def page_frame(page: np.ndarray, under: np.ndarray, d: float, shade_amt: float =
     ux, uy = PAGE_DIR
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
     s = (xx - (W - 1)) * ux + (yy - (H - 1)) * uy          # distance from the corner along the fold travel
-    out = under.astype(np.float32)
+    out: np.ndarray = under.astype(np.float32)
     turned = s <= d
     gap = np.clip(d - s, 0, None)
     shade = 1 - shade_amt * np.exp(-gap / Units.of(W, H).x(PAGE_SHADE_PX))

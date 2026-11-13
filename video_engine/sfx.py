@@ -45,9 +45,9 @@ def events(tl: Timeline) -> list[dict]:
                     fw = max(f0, k.at_frame - max(1, round((k.move_s or th["whip_s"]) * fps)))
                     add("whip", s, (fw + k.at_frame) / 2)
             if sc.camera3d_preset is not None:   # the one sharp move of a 3D preset
-                fw = camera_full3d.preset_sfx_frame(sc.camera3d_preset.name, fps, sc.camera3d_preset.options)
-                if fw is not None:
-                    add("whip", s, fw)
+                push = camera_full3d.preset_sfx_frame(sc.camera3d_preset.name, fps, sc.camera3d_preset.options)
+                if push is not None:
+                    add("whip", s, push)
             if sc.title:
                 add("title", s, sc.title_at_frame or 0)
             for f in sc.figures or []:

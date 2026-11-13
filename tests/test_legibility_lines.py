@@ -9,8 +9,8 @@ from PIL import Image
 
 from video_engine import hyperframes, legibility as L, profiles, timeline
 from video_engine.gates import layer2
-from tests.test_layout import beats_doc
-from tests.test_legibility import GEO, LG, PAPER, DARK_MAP, _geo, _geo_tl, _halo_first, _plain_labels, _r64_dom
+from test_layout import beats_doc
+from test_legibility import GEO, LG, PAPER, DARK_MAP, _geo, _geo_tl, _halo_first, _plain_labels, _r64_dom
 
 WATER = "#033d57"
 

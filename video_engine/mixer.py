@@ -117,7 +117,7 @@ def _peak(path: str, mtime: float) -> float:
                        capture_output=True)
     if r.returncode != 0 or not r.stdout:
         raise EngineError(f"{path}: not a decodable audio file")
-    x = np.frombuffer(r.stdout, dtype=np.float32)
+    x: np.ndarray = np.frombuffer(r.stdout, dtype=np.float32)
     return round(int(np.argmax(np.abs(x))) / PEAK_SR, 4)
 
 

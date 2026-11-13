@@ -89,6 +89,11 @@ class SilenceGate(_Strict):
     threshold_db: float = Field(lt=0)
 
 
+class CaptionContrastGate(_Strict):
+    """R65: APCA contrast of the caption colour against the picture under the caption box."""
+    min_lc: float = Field(gt=0, le=106)      # smallest |Lc| (APCA-W3) between the caption colour and its background
+
+
 class KeywordReturnGate(_Strict):
     """K01: a hook keyword is on screen again at the end."""
     hook_s: float = Field(gt=0)
@@ -203,6 +208,7 @@ class StyleGates(_Strict):
     visual_type: VisualTypeGate | None = None
     novelty: NoveltyGate | None = None
     silence: SilenceGate | None = None
+    caption_contrast: CaptionContrastGate | None = Field(None, exclude_if=lambda v: v is None)
     keyword_return: KeywordReturnGate | None = None
     ending_keyword: EndingKeywordGate | None = None
     duration: DurationGate | None = None
@@ -230,7 +236,7 @@ class DraftProfile(_Strict):
     rules: list[str] = []
     rules_file: str | None = Field(None, exclude_if=lambda v: v is None)  # single source of creative rules (profiles-relative .md, `- ` lines); mutually exclusive with `rules`
     map_path: bool = False   # the model may give a map segment a multi-key camera path (map_path)
-    scene: list[Literal["globe", "props", "morph", "beats", "radar", "terrain3d", "cross_section", "historical", "flag_char", "data_viz", "blind_spot", "grid_split"]] = Field([], exclude_if=lambda v: not v)   # opt-in map
+    scene: list[Literal["globe", "props", "morph", "beats", "radar", "terrain3d", "cross_section", "historical", "flag_char", "data_viz", "blind_spot", "grid_split", "camera3d"]] = Field([], exclude_if=lambda v: not v)   # opt-in map
                                                     # scene keys (draft_scene.py; beats also need [layout]); empty
                                                     # = not in the profile hash
 

@@ -481,10 +481,10 @@ def critical_times(tl) -> list[tuple[float, int]]:
         ent |= {round((s.start_frame + min(f + ENTRANCE_FRAMES, s.n_frames - 1)) / fps, 2) for f in _entrances(s)}
         edges |= {round(min(s.end_frame - 1, s.start_frame + round(0.25 * fps)) / fps, 2),
                   round(max(s.start_frame, s.end_frame - 3) / fps, 2)}
-    ent = sorted(ent - set(must))
-    edges = sorted(edges - set(must) - set(ent))
-    picked = _spread(ent, REVIEW_MAX_FRAMES - len(must))
-    picked += _spread(edges, REVIEW_MAX_FRAMES - len(must) - len(picked))
+    ent_t = sorted(ent - set(must))
+    edge_t = sorted(edges - set(must) - set(ent_t))
+    picked = _spread(ent_t, REVIEW_MAX_FRAMES - len(must))
+    picked += _spread(edge_t, REVIEW_MAX_FRAMES - len(must) - len(picked))
     seg_of = lambda t: next(s.seg_index for s in tl.segments if s.start_frame <= round(t * fps) < s.end_frame)
     return [(t, seg_of(t)) for t in sorted(must + picked)]
 

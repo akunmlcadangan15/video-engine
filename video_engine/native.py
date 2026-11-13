@@ -29,8 +29,8 @@ class NativeJob:
     mode: str                 # copy | encode | camera
     src_w: int
     src_h: int
-    start_win: tuple | None = None
-    end_win: tuple | None = None
+    start_win: tuple[float, float, float, float] | None = None
+    end_win: tuple[float, float, float, float] | None = None
     motion_px: float = 0.0
     key: str = ""
     encode_key: str = ""       # the encode-mode key when this job plans a copy that may fall back
@@ -209,6 +209,7 @@ def render_camera(job: NativeJob, tl: Timeline, out: Path, threads: int) -> None
                     raise EngineError(f"segment {job.seg.seg_index}: could not decode {job.src.name}: "
                                       f"{_decoder_stderr(dec)}")
                 # short source: hold the last frame (pre-flight M01 flags this before render)
+            assert frame is not None
             enc.stdin.write(core.warp_frame(frame, ws, hs, wins[i], W, H))
         enc.stdin.close()
         if enc.wait() != 0:
@@ -316,6 +317,7 @@ def snapshot_rgb(job: NativeJob, tl: Timeline, frame_idx: int, ow: int, oh: int)
                "-f", "rawvideo", "-"]
         buf = subprocess.run(cmd, capture_output=True, check=True).stdout[: ow * oh * 3]
         return overlays.composite_rgb(buf, ow, oh, job.seg, i, ow / S.width, profiles.of(tl).print, profiles.of(tl).theme)
+    assert job.start_win is not None and job.end_win is not None
     win = core.camera_windows(job.start_win, job.end_win, job.seg.n_frames)[i]
     s = min(1.0, ow / max(1.0, win[2]) * 1.02)
     ws, hs = max(2, round(job.src_w * s)), max(2, round(job.src_h * s))

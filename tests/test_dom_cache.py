@@ -7,7 +7,7 @@ from pathlib import Path
 
 from video_engine import cache, cache_prune, config, hyperframes, toolchain
 from video_engine.gates import layer2
-from tests.test_legibility import _plain_labels
+from test_legibility import _plain_labels
 
 
 def _built(project, tmp_path, title="Surabaya", profile=None):

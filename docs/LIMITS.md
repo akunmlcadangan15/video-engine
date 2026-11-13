@@ -1,6 +1,7 @@
 # Limits and not implemented
 
 - Platforms: Linux x64 and macOS Apple Silicon (arm64) are equal, supported platforms (see [ENVIRONMENT.md](ENVIRONMENT.md#platforms)). Intel Macs, Linux arm64 and Windows are not supported by the toolchain installer.
+- A grade on FFmpeg 9 shifts luma by about +0.25 code values (of 255): its swscale converts 8-bit YUV to the 16-bit RGB the grade works in at lower precision than FFmpeg 7 and 8. The pinned Modal image (FFmpeg 8) and the macOS CI job (FFmpeg 7) are not affected.
 - Output across platforms has the same spec and passes the same gates, but is not bit-identical (different ffmpeg and Chrome builds); the cache is not shared between platforms.
 - Engine upload: not implemented; the Projects Manager bot handles Google Drive delivery.
 - AI QA: covered by mock tests; not part of the default build.
