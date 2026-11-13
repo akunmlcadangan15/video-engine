@@ -175,6 +175,7 @@ Tiers (historical registry classification; runtime blocking uses `KERNEL_GATE_ID
 | R38 | technical (mandatory) | mandatory | Snapshot quality | Snapshots and sampled video frames must decode; no black frame (black fraction above 0.85 or mean luma below 12). | always |
 | R38space | style | profile | Negative space | Low-detail empty thirds warn by default; local intentional negative space with a reason is informational. | `segments[].intent.negative_space` |
 | AIQA | technical | flexible | AI visual QA | Optional (`--ai-qa`): AI models judge the snapshots; overlapping or cut-off text fails, an unavailable provider warns. | `--ai-qa` |
+| R65 | technical | flexible | Caption contrast | The caption colour keeps an APCA contrast of at least `min_lc` against the picture under the caption box (captions on a box pass). | `[gates.caption_contrast]` |
 
 ### Channel style gates (profile `[gates.*]` tables)
 
@@ -302,6 +303,7 @@ The full rule of each gate, with its thresholds. Where this list and the index d
     invalid agent response = error.
   `build_report.json` -> `ai_qa` holds `provider`, `model`, `retries`, `fallback`
 - **QA** (layer post-render): Every 5th frame at 1/4 size: R38/R38space per sample; R56px mean luma difference below 0.5 per segment warns by default, is info for static/read intent, and fails for explicit moving intent even in draft mode. Too few samples to estimate motion are informational for static/read/unspecified shots; explicit moving intent fails with "cannot verify expected motion" instead of a false freeze claim. No decoded samples is an integrity failure. Exact frame counts and stream timing are independently verified by the build and remain hard errors regardless of intent.
+- **R65** (visual, `[gates.caption_contrast]`): per segment snapshot, APCA |Lc| between the caption colour (`caption_style.primary`) and the picture inside the caption boxes shown in that segment >= `min_lc`; fail otherwise. A light caption is judged against the 90th luminance percentile of that area, a dark one against the 10th; the soft shadow is not counted; `caption_style.box_bg = true` passes. Off without the table.
 - **S01** (layer delivery): Profile silence gate on the final file (see [Style gate configuration](#style-gate-configuration))
 - **A02** (layer delivery): Profile `[audio] require_source` only: every music and SFX file of the final mix (without `[sound]`: `audio_chain.bgm_path`) has provenance `source` equal to `require_source` = pass.
     A `bgm_path` or manual SFX file whose sidecar or sound lock verifies `source=epidemic`, a track id and the file hash counts as `epidemic` (docs/SOUND.md).
@@ -373,6 +375,9 @@ Profile format and precedence: PROFILES.md.
       with `require_land`, a geographic pin over water = fail (warn without it).
       A pin within `coast_km` kilometres of a land edge counts as on land.
     Uses the Natural Earth land file in the geo library when present, finest first (`ne_10m`, `ne_50m`, `ne_110m`); absent library skips the land part.
+- **R65** (`[gates.caption_contrast]`)
+  - Keys: `min_lc`
+  - Rule: Pre-flight snapshots: caption colour against the picture under the caption boxes of the segment, APCA |Lc| < `min_lc` = fail (a lint gate: a warning unless `[gates] require` lists it).
 - **S01** (`[gates.silence]`)
   - Keys: `max_gap_s`, `threshold_db`
   - Rule: Final file: a gap below `threshold_db` (ffmpeg `silencedetect`) longer than `max_gap_s` = fail.

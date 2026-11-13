@@ -39,7 +39,7 @@ def is_active(g: reg.Gate, p) -> bool:
     gt = p.gates
     tables = {"H01": gt.hook, "C01": gt.cuts, "V01": gt.visual_type, "N01": gt.novelty, "P01": gt.camera, "P03": gt.camera,
               "K01": gt.keyword_return, "K02": gt.ending_keyword, "C02": gt.cta, "D01": gt.duration,
-              "D02": gt.duration_exact, "S01": gt.silence}
+              "D02": gt.duration_exact, "S01": gt.silence, "R65": gt.caption_contrast}
     if g.id in tables:
         return tables[g.id] is not None
     if g.id == "P02":

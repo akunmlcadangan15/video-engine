@@ -75,6 +75,48 @@ def snapshots(tl: Timeline, project_dir: Path, dom_snaps: dict[int, str]) -> dic
         return {i: b for i, b in ex.map(one, tl.segments) if b}
 
 
+CAPTION_BG_PCT = 90           # background luminance percentile a light caption is judged against (dark: 100 - it)
+
+
+def r65_caption_contrast(tl: Timeline, paths: dict[int, str], events: list[tuple], min_lc: float) -> list[Finding]:
+    """R65: per segment snapshot, the APCA contrast of the caption colour against the picture inside the union of
+    the caption boxes shown during the segment. A light caption is judged against the bright end of that area
+    (percentile CAPTION_BG_PCT), a dark one against the dark end; the soft shadow is not counted."""
+    import numpy as np
+    from PIL import Image
+    from .. import legibility, profiles
+    from .layer2 import caption_box
+    st = profiles.caption_style(tl)
+    if st.get("box_bg") is True:
+        return [Finding("R65", "pass", "captions sit on a box")]
+    colour = str(st.get("primary", "FFFFFF")).lstrip("#")
+    y_text = float(legibility.apca_y(legibility.hex_rgb("#" + colour)))
+    light = y_text > 0.18
+    out, seen = [], 0
+    for s in tl.segments:
+        boxes = [caption_box(e) for e in events if e[0] < s.end_frame and e[1] > s.start_frame]
+        p = paths.get(s.seg_index)
+        if not boxes or not p:
+            continue
+        with Image.open(p) as im:
+            a = np.asarray(im.convert("RGB"))
+        h, w = a.shape[:2]
+        kx, ky = w / tl.settings.width, h / tl.settings.height
+        x0, y0 = max(0, int(min(b[0] for b in boxes) * kx)), max(0, int(min(b[1] for b in boxes) * ky))
+        x1, y1 = min(w, int(max(b[2] for b in boxes) * kx) + 1), min(h, int(max(b[3] for b in boxes) * ky) + 1)
+        if x1 <= x0 or y1 <= y0:
+            continue
+        seen += 1
+        y_bg = float(np.percentile(legibility.apca_y(a[y0:y1, x0:x1]), CAPTION_BG_PCT if light else 100 - CAPTION_BG_PCT))
+        lc = abs(float(legibility.apca_lc(y_text, y_bg)))
+        if lc < min_lc:
+            out.append(Finding("R65", "fail", f"caption #{colour} has contrast Lc {lc:.0f} < {min_lc:g} against the "
+                                              f"{'bright' if light else 'dark'} picture under it; darken the picture "
+                                              "there, move the caption (caption_style.y_overrides) or set "
+                                              "caption_style.box_bg", s.seg_index))
+    return out or [Finding("R65", "pass", f"{seen} snapshots: caption contrast Lc >= {min_lc:g}")]
+
+
 _LUMA: dict[tuple, float | None] = {}   # util.file_identity -> mean luma (None: unreadable)
 
 

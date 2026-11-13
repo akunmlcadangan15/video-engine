@@ -298,6 +298,9 @@ max_gap_s = 3.0               # Maximum interval (3.0 s) allowed without a new v
 max_gap_s = 0.8               # Maximum continuous duration (0.80 s) where integrated audio falls below threshold_db
 threshold_db = -40.0          # Amplitude floor in dBFS used to detect silent gaps in the voiceover and mix
 
+[gates.caption_contrast]      # R65: Caption legibility against the picture under the caption box
+min_lc = 45.0                 # Minimum APCA contrast |Lc| (45 = the floor for large bold text) between the white caption and the brightest 10% of the picture behind it
+
 [gates.keyword_return]        # K01: Narrative loop closure between opening hook and ending payoff
 hook_s = 3.0                  # Duration of the opening window (first 3.0 s) scanned for primary topic keywords
 end_s = 5.0                   # Duration of the closing window (final 5.0 s) scanned for thematic keyword recurrence

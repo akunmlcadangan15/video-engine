@@ -222,3 +222,43 @@ def test_good_flows_thermometers_reach_the_scene(proj):
     assert sc.thermometers[0].value == 33 and sc.thermometers[0].note == "ilustratif"
     with pytest.raises(ValueError, match=r"segment 1: map_thermometers\[0\]: .*within"):
         draft.assemble(inp, plan(map_thermometers=[{"value": 80, "max": 50}]))
+
+
+# camera3d preset (opt-in: [draft] scene = ["camera3d"]) -------------------------------------------------------------
+@pytest.fixture
+def camera3d_profile(tmp_path, monkeypatch):
+    """Profiles dir whose `cam3d` profile is the default profile with the draft camera3d key exposed."""
+    from video_engine import config
+    d = tmp_path / "cam3d_profiles"
+    d.mkdir()
+    (d / "default.toml").write_text((config.PROFILES_DIR / "default.toml").read_text())
+    (d / "cam3d.toml").write_text('description = "3D camera draft"\n[draft]\nscene = ["camera3d"]\n')
+    monkeypatch.setattr(config, "PROFILES_DIR", d)
+    return "cam3d"
+
+
+PLAIN_PIN = [{"label": "Surabaya", "x": 0.4, "y": 0.6, "at_s": 0.3}]   # no flag: needs no flag library
+
+
+def test_good_camera3d_preset_reaches_the_scene_as_a_3d_camera(proj, camera3d_profile):
+    inp = draft.collect(proj, profile=camera3d_profile)
+    assert "map_camera3d" in draft.schema(inp)["properties"]["segments"]["items"]["properties"]
+    assert "map_camera3d" in draft.prompt(inp)
+    tl, _, _ = draft.assemble(inp, plan(map_pins=PLAIN_PIN, map_camera3d={"name": "orbit", "target": [0.4, 0.6], "height": 0.5,
+                                                      "options": {"tilt": 20}}))
+    sc = _scene(tl)
+    assert sc.camera_mode == "3d" and sc.camera3d_preset.name == "orbit" and sc.camera3d_preset.options == {"tilt": 20}
+    assert sc.camera3d[0].at_frame == 0 and sc.camera3d[-1].at_frame == tl.segments[1].n_frames - 1
+
+
+def test_bad_camera3d_preset_misuse_names_the_field(proj, camera3d_profile):
+    inp = draft.collect(proj)
+    with pytest.raises(ValueError, match=r"segment 1: map_camera3d is not enabled"):
+        draft.assemble(inp, plan(map_pins=PLAIN_PIN, map_camera3d={"name": "orbit"}))
+    inp = draft.collect(proj, profile=camera3d_profile)
+    with pytest.raises(ValueError, match=r"segment 1: map_camera3d"):
+        draft.assemble(inp, plan(map_pins=PLAIN_PIN, map_camera3d={"name": "whirl"}))
+    with pytest.raises(ValueError, match=r"segment 1: map_camera3d: the preset is the camera; drop map_focus"):
+        draft.assemble(inp, plan(map_pins=PLAIN_PIN, map_camera3d={"name": "orbit"}, map_focus=[0.4, 0.6]))
+    with pytest.raises(ValueError, match=r"3D camera scenes take only"):
+        draft.assemble(inp, plan(map_pins=PLAIN_PIN, map_camera3d={"name": "orbit"}, map_routes=ADVANCED["map_routes"]))

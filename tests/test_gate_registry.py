@@ -31,7 +31,7 @@ def test_good_registry_ids_are_unique_and_every_layer_is_known():
 
 def test_good_derived_id_lists_match_the_lists_before_the_registry():
     assert set(reg.STYLE_GATE_IDS) == OLD_STYLE | {"P03", "R38space"} and len(reg.STYLE_GATE_IDS) == 19
-    assert len(reg.TECHNICAL_GATE_IDS) == 41 and "U01" in reg.TECHNICAL_GATE_IDS and "AS04" in reg.TECHNICAL_GATE_IDS
+    assert len(reg.TECHNICAL_GATE_IDS) == 42 and "U01" in reg.TECHNICAL_GATE_IDS and "AS04" in reg.TECHNICAL_GATE_IDS
     assert set(reg.KERNEL_GATE_IDS) == KERNEL_GATES
     assert KERNEL_GATES <= set(reg.NEVER_ADVISORY)  # kernel gates are a subset of the 12 never-advisory gates
     assert reg.KNOWN_GATE_IDS == reg.STYLE_GATE_IDS + reg.TECHNICAL_GATE_IDS

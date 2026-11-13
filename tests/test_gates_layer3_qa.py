@@ -231,3 +231,46 @@ def test_bad_a_replaced_source_is_decoded_again(project, monkeypatch):
     Image.new("RGB", (64, 64), (250, 250, 250)).save(p / "assets" / "still.jpg")
     after = layer3._source_mean_lumas(tl, p)[0]
     assert after > 240 and after != before
+
+
+# R65 caption contrast -----------------------------------------------------------------------------------------------
+def _caption_case(project, tmp_path, band, **style):
+    """The fixture timeline with one caption event over a snapshot whose caption band has grey level `band`."""
+    from PIL import Image
+    d, tl = project(lambda t: t.update(caption_style={**t.get("caption_style", {}), **style}))
+    Wf, Hf = tl.settings.width, tl.settings.height
+    ev = (tl.segments[0].start_frame, tl.segments[0].end_frame, "halo", 48.0, 400.0, Wf / 2, Hf * 0.7)
+    a = np.full((Hf // layer3.SNAP_DIV, Wf // layer3.SNAP_DIV, 3), 20, np.uint8)
+    y = int(Hf * 0.7 / layer3.SNAP_DIV)
+    a[y - 6:y + 6] = band
+    p = tmp_path / "seg000.png"
+    Image.fromarray(a).save(p)
+    return tl, {0: str(p)}, [ev]
+
+
+def test_R65_good_white_caption_over_a_dark_picture(project, tmp_path):
+    tl, paths, events = _caption_case(project, tmp_path, band=30)
+    fs = layer3.r65_caption_contrast(tl, paths, events, 45.0)
+    assert [f.level for f in fs] == ["pass"]
+
+
+def test_R65_bad_white_caption_over_bright_paper(project, tmp_path):
+    tl, paths, events = _caption_case(project, tmp_path, band=235)
+    fs = layer3.r65_caption_contrast(tl, paths, events, 45.0)
+    assert len(fs) == 1 and fs[0].level == "fail" and fs[0].gate == "R65" and fs[0].seg == 0
+    assert "Lc" in fs[0].message and "box_bg" in fs[0].message
+
+
+def test_R65_good_boxed_caption_passes_on_any_picture(project, tmp_path):
+    tl, paths, events = _caption_case(project, tmp_path, band=235, box_bg=True)
+    fs = layer3.r65_caption_contrast(tl, paths, events, 45.0)
+    assert fs[0].level == "pass" and "box" in fs[0].message
+
+
+def test_R65_is_off_without_its_profile_table_and_on_for_geoverum():
+    from video_engine import gate_registry, gate_tools, profiles
+    g = next(x for x in gate_registry.GATES if x.id == "R65")
+    assert not gate_tools.is_active(g, profiles.load())
+    geo = profiles.load("geoverum")
+    assert gate_tools.is_active(g, geo) and geo.gates.caption_contrast.min_lc == 45.0
+    assert "R65" in gate_registry.LINT_GATE_IDS

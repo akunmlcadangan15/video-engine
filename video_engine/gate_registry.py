@@ -253,6 +253,10 @@ GATES: tuple[Gate, ...] = (
     _s("S01", "Silence",
        "The final file has no gap below `threshold_db` longer than `max_gap_s`.",
        "[gates.silence]"),
+    _t("R65", "Caption contrast",
+       "The caption colour keeps an APCA contrast of at least `min_lc` against the picture under the caption box "
+       "(captions on a box pass).",
+       "visual", "[gates.caption_contrast]"),
     _s("AS01", "Decorative side-strip panels",
        "A drawn lower third or text card with a left accent strip on a dark panel.",
        "[gates.anti_slop] panel"),
@@ -306,7 +310,7 @@ LINT_GATE_IDS: tuple[str, ...] = tuple(
         STYLE_GATE_IDS
         + ("L01","L02","L03","L04","L05","L06","L07","L08","L09","L10",
            "R44","R64","T01","E01","O01","U01","M02","M04","F02","F03","F04","G02",
-           "R38space","R62","Z01","B01","R63","R56","R56px","R07","R14","A02")
+           "R38space","R62","Z01","B01","R63","R56","R56px","R07","R14","A02","R65")
     )
 )
 ANTI_SLOP_IDS: tuple[str, ...] = tuple(g.id for g in GATES if g.id.startswith("AS"))
