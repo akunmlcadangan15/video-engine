@@ -199,6 +199,6 @@ If the download stops, the run stays on the volume and the command prints `--fet
 - Ephemeral disk: leave `--disk` and `VIDEO_ENGINE_MODAL_DISK_MB` unset to use Modal's default. A value outside 524288–3145728 MiB is a usage error (exit 2) and is rejected before any upload or container start.
 - `modal_render.py` does not build and does not request a GPU. Use this command.
 
-Image definition: `Dockerfile.modal`, `scripts/modal_image_setup.py`, `modal_build.py`. The image installs the static FFmpeg build, the Node tarball, the npm packages, chrome-headless-shell, and the Rust extension (`maturin`), then runs `engine doctor`. Python sources mounted for the run are the client tree; the image supplies the tools and the extension. A Rust change needs a new image build.
+Image definition: `deploy/modal.Dockerfile`, `scripts/modal_image_setup.py`, `modal_build.py`. The image installs the static FFmpeg build, the Node tarball, the npm packages, chrome-headless-shell, and the Rust extension (`maturin`), then runs `engine doctor`. Python sources mounted for the run are the client tree; the image supplies the tools and the extension. A Rust change needs a new image build.
 
 Tests: `pytest -q tests/test_modal_build.py` (closure, chunked download, argument parsing, dry-run text; no Modal calls).
