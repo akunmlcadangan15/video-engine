@@ -208,3 +208,74 @@ console.log(JSON.stringify(out));""")
     for gf, wf in zip(got, want):
         for g, w in zip(gf, wf):
             assert g[0] == pytest.approx(w[0], abs=0.05) and g[1] == pytest.approx(w[1], abs=0.05)
+
+
+# ---------------------------------------------------------------------------------------------------------- presets
+PN, PFPS = 120, 30
+
+
+def _preset_states(name, **kw):
+    from video_engine import timeline
+    keys = [timeline.CameraKey3D(**k) for k in c3.preset_keys(name, PN, PFPS, aspect=MW / MH, **kw)]
+    return keys, c3.frames(keys, PN, MW, MH)
+
+
+def _dist(st, target=(0.5, 0.5, 0.0)):
+    return math.dist(st.position, c3.world(target, MW, MH)) / MW
+
+
+@pytest.mark.parametrize("name", list(c3.PRESETS))
+def test_good_preset_keys_are_valid_ordered_and_keep_the_target_centred(name):
+    keys, states = _preset_states(name)
+    at = [k.at_frame for k in keys]
+    assert at[0] == 0 and at[-1] == PN - 1 and at == sorted(set(at))
+    assert c3.preset_keys(name, PN, PFPS, aspect=MW / MH) == c3.preset_keys(name, PN, PFPS, aspect=MW / MH)
+    centre = c3.world((0.5, 0.5, 0.0), MW, MH)
+    for st in states:
+        x, y, d = c3.project(st, centre, W, H)
+        assert x == pytest.approx(W / 2, abs=0.25) and y == pytest.approx(H / 2, abs=0.25) and d > 0
+
+
+def test_good_push_in_closes_the_distance_fast_then_eases_and_pitches():
+    _, st = _preset_states("push_in", height=0.6, depth=0.35, pitch=3.0)
+    d = [_dist(s) for s in st]
+    assert d[0] == pytest.approx(0.6) and d[-1] == pytest.approx(0.6 * 0.65, rel=1e-3)
+    assert all(b <= a + 1e-9 for a, b in zip(d, d[1:]))
+    assert d[0] - d[PN // 4] > 0.8 * (d[0] - d[-1])                      # easeOutExpo: most of the travel early
+    off = math.degrees(math.asin(math.hypot(st[-1].position[0] - 0.5 * MW, st[-1].position[1] + 0.5 * MH) / (d[-1] * MW)))
+    assert off == pytest.approx(3.0, abs=0.05)
+
+
+def test_good_orbit_sweeps_the_yaw_at_constant_distance():
+    _, st = _preset_states("orbit", yaw=24.0, tilt=35.0)
+    az = [math.degrees(math.atan2(s.position[0] - 0.5 * MW, -(s.position[1] + 0.5 * MH))) for s in st]
+    assert az[0] == pytest.approx(-12.0, abs=0.05) and az[-1] == pytest.approx(12.0, abs=0.05)
+    assert all(b >= a - 1e-6 for a, b in zip(az, az[1:]))
+    assert all(_dist(s) == pytest.approx(0.6, rel=2e-3) for s in st)
+
+
+def test_good_crash_zoom_overshoots_then_settles():
+    _, st = _preset_states("crash_zoom", height=0.6, depth=0.55, push_s=0.4)
+    d = [_dist(s) for s in st]
+    end, push = 0.6 * 0.45, round(0.4 * PFPS)
+    assert d[push] == pytest.approx(end, rel=1e-2)                        # the push lands on the end distance
+    assert min(d) < end * 0.99                                            # spring overshoot past it
+    assert all(x == pytest.approx(end, rel=2e-3) for x in d[-10:])        # settled
+
+
+def test_good_vertigo_keeps_the_target_size_while_the_fov_narrows():
+    _, st = _preset_states("vertigo", pull=1.6)
+    size = [_dist(s) * math.tan(math.radians(s.fov) / 2) for s in st]
+    assert all(x == pytest.approx(size[0], rel=2e-3) for x in size)
+    assert st[-1].fov < st[0].fov and _dist(st[-1]) == pytest.approx(0.6 * 1.6, rel=1e-3)
+
+
+def test_bad_preset_unknown_name_option_or_out_of_bounds_view():
+    with pytest.raises(ValueError, match="unknown camera3d preset"):
+        c3.preset_keys("whirl", PN, PFPS)
+    with pytest.raises(ValueError, match="has no option"):
+        c3.preset_keys("orbit", PN, PFPS, depth=0.2)
+    with pytest.raises(ValueError, match="leaves the camera bounds"):
+        c3.preset_keys("vertigo", PN, PFPS, fov=12.0, pull=3.0)
+    with pytest.raises(ValueError, match="n_frames"):
+        c3.preset_keys("push_in", 1, PFPS)
