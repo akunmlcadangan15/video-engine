@@ -6,9 +6,19 @@ module, so callers keep writing `profiles.Theme`, `profiles.CameraProfile`, ... 
 from __future__ import annotations
 
 import re
-from typing import Literal
+from typing import Any, Iterator, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    StrictStr,
+    model_serializer,
+    model_validator,
+)
 
 from .gate_registry import ANTI_SLOP_IDS, LINT_GATE_IDS, NEVER_ADVISORY, TECHNICAL_GATE_IDS
 from .grade import Grade
@@ -959,6 +969,136 @@ class FormatProfile(_Strict):
     orientation: Literal["portrait", "landscape"] | None = None
 
 
+class _DictModel(_Strict):
+    """Pydantic model supporting read-only mapping access over set fields (preserves dict compatibility and exact hashes)."""
+
+    def _set_dict(self) -> dict[str, Any]:
+        fields = type(self).model_fields
+        return {k: getattr(self, k) for k in self.model_fields_set if k in fields} | dict(
+            self.model_extra or {})
+
+    def __getitem__(self, key: str) -> Any:
+        d = self._set_dict()
+        if key in d:
+            return d[key]
+        raise KeyError(key)
+
+    def __contains__(self, key: object) -> bool:
+        return isinstance(key, str) and key in self._set_dict()
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._set_dict())
+
+    def __len__(self) -> int:
+        return len(self._set_dict())
+
+    def __bool__(self) -> bool:
+        return bool(self._set_dict())
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._set_dict().get(key, default)
+
+    def keys(self):
+        return self._set_dict().keys()
+
+    def values(self):
+        return self._set_dict().values()
+
+    def items(self):
+        return self._set_dict().items()
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump(exclude_unset=True)
+
+    @model_serializer(mode="wrap")
+    def _serialize_set_only(self, handler) -> dict[str, Any]:
+        d = handler(self)
+        keep = self.model_fields_set | set((self.model_extra or {}).keys())
+        return {k: v for k, v in d.items() if k in keep}
+
+
+class _RefGroup(_DictModel):
+    """Typed optional catalog group inside `[reference_style.*]`, extensible via `extra='allow'`."""
+    model_config = ConfigDict(extra="allow")
+
+
+class ReferenceTransitions(_RefGroup):
+    extra_kinds: list[StrictStr] | None = None
+    continuous_shot: StrictBool | None = None
+    tilt_latitude: StrictBool | None = None
+
+
+class ReferenceFill(_RefGroup):
+    hatch: StrictBool | None = None
+    hatch_angle_deg: StrictInt | StrictFloat | None = None
+    double_layer: StrictBool | None = None
+    policy_fill: StrictBool | None = None
+    spotlight_dim: StrictBool | None = None
+    coast_glow: StrictBool | None = None
+    heatmap: StrictBool | None = None
+    territory_sweep: StrictBool | None = None
+    dmz_fire_border: StrictBool | None = None
+
+
+class ReferenceLabel(_RefGroup):
+    types: list[StrictStr] | None = None
+    banner_bg: StrictStr | None = None
+    typing_chars_per_s: StrictInt | StrictFloat | None = None
+    handwritten_arrow: StrictBool | None = None
+    stamp: StrictBool | None = None
+    title_cinematic: StrictBool | None = None
+    title_morph: StrictBool | None = None
+    equation_slash: StrictBool | None = None
+
+
+class ReferenceDataViz(_RefGroup):
+    count_up: StrictBool | None = None
+    thermometer: StrictBool | None = None
+    stat_box: StrictBool | None = None
+    flame_numbers: StrictBool | None = None
+    timeline_ruler: StrictBool | None = None
+    measure_bar: StrictBool | None = None
+
+
+class ReferenceOverlay(_RefGroup):
+    speech_bubble: StrictBool | None = None
+    characters: StrictBool | None = None
+    ships: StrictBool | None = None
+    city_icons: StrictBool | None = None
+    weather_icons: StrictBool | None = None
+    snow_particles: StrictBool | None = None
+    medal: StrictBool | None = None
+    flag_badges_moving: StrictBool | None = None
+
+
+class ReferenceSceneVariants(_RefGroup):
+    document: StrictBool | None = None
+    ink_illustration: StrictBool | None = None
+    parchment_map: StrictBool | None = None
+    live_footage: StrictBool | None = None
+    framed_photo: StrictBool | None = None
+    cross_section: StrictBool | None = None
+    schematic_hud: StrictBool | None = None
+    telescope: StrictBool | None = None
+
+
+class ReferenceUnifiedStyle(_RefGroup):
+    lower_third_card: StrictBool | None = None
+    dmz_glow: StrictBool | None = None
+    border_pulse: StrictBool | None = None
+    great_circle: StrictBool | None = None
+    flag_fill: StrictBool | None = None
+    year_big: StrictBool | None = None
+    bubble_one_word: StrictBool | None = None
+    typing_chars_per_s: StrictInt | StrictFloat | None = None
+    signal_colors_locked: StrictBool | None = None
+    signal_colors: dict[str, StrictStr] | None = None
+
+
+class ReferenceStyleOptions(_RefGroup):
+    unified: ReferenceUnifiedStyle | None = None
+
+
 class ReferenceOverlap(_Strict):
     """[reference_style.overlap]: may two on-screen elements overlap (gates R63 elements, L04)."""
     allowed: bool = Field(False, strict=True)   # true: a pairwise overlap of readable elements is info, not a finding
@@ -967,16 +1107,15 @@ class ReferenceOverlap(_Strict):
 
 
 class ReferenceStyle(_Strict):
-    """[reference_style.*]: reference-video concept options (docs/REFERENCE-STYLE.md). `overlap` is read by the
-    gates and typed; the other groups are the channel's catalogue of creator options (data for people and the taste
-    lint, never mandatory), so their keys are free but the group names are fixed."""
-    transitions: dict = Field({}, exclude_if=lambda v: not v)     # an absent group is left out of the dump (and
-    fill: dict = Field({}, exclude_if=lambda v: not v)            # so of the profile hash), as when the table
-    label: dict = Field({}, exclude_if=lambda v: not v)           # was untyped
-    data_viz: dict = Field({}, exclude_if=lambda v: not v)
-    overlay: dict = Field({}, exclude_if=lambda v: not v)
-    scene_variants: dict = Field({}, exclude_if=lambda v: not v)
-    style: dict = Field({}, exclude_if=lambda v: not v)
+    """[reference_style.*]: typed reference-video concept options (docs/REFERENCE-STYLE.md). `overlap` is read by
+    gates; the other sections type the channel's option catalog while permitting extensions (`extra='allow'`)."""
+    transitions: ReferenceTransitions = Field(default_factory=ReferenceTransitions, exclude_if=lambda v: not v)
+    fill: ReferenceFill = Field(default_factory=ReferenceFill, exclude_if=lambda v: not v)
+    label: ReferenceLabel = Field(default_factory=ReferenceLabel, exclude_if=lambda v: not v)
+    data_viz: ReferenceDataViz = Field(default_factory=ReferenceDataViz, exclude_if=lambda v: not v)
+    overlay: ReferenceOverlay = Field(default_factory=ReferenceOverlay, exclude_if=lambda v: not v)
+    scene_variants: ReferenceSceneVariants = Field(default_factory=ReferenceSceneVariants, exclude_if=lambda v: not v)
+    style: ReferenceStyleOptions = Field(default_factory=ReferenceStyleOptions, exclude_if=lambda v: not v)
     overlap: ReferenceOverlap | None = Field(None, exclude_if=lambda v: v is None)
 
     @property
@@ -984,9 +1123,40 @@ class ReferenceStyle(_Strict):
         return self.overlap is not None and self.overlap.allowed
 
 
+ShotName = Literal["establish", "track", "reveal", "compare", "journey", "hold", "reaction", "contrast"]
+
+
+class FramingShotOverride(_DictModel):
+    """[framing.<orientation>.<shot>]: per-shot framing overrides of `video_engine/framing.py`."""
+    native: StrictStr | None = None
+    hf: StrictStr | None = None
+    intensity: StrictInt | StrictFloat | None = Field(None, ge=0, le=6)
+    subject: list[StrictInt | StrictFloat] | None = Field(None, min_length=2, max_length=2)
+    read: StrictStr | None = None
+    title_slot: StrictStr | None = None
+    caption_slot: StrictStr | None = None
+
+
+class FramingProfile(_DictModel):
+    """[framing]: per-orientation shot overrides (`portrait`, `landscape`)."""
+    portrait: dict[ShotName, FramingShotOverride] = Field(default_factory=dict, exclude_if=lambda v: not v)
+    landscape: dict[ShotName, FramingShotOverride] = Field(default_factory=dict, exclude_if=lambda v: not v)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_structure(cls, raw):
+        if isinstance(raw, cls):
+            return raw
+        if not isinstance(raw, dict):
+            return raw
+        from . import framing
+        framing.check_overrides(raw)
+        return raw
+
+
 # [caption_style]: keys handled in Python (video_engine/captions.py) and the fields of the Rust caption `Style`
-# (rust/hypoverum_core_rs/src/lib.rs, style_from). The table stays a dict (most keys pass through to Rust); these
-# tables are what `profiles.check_caption_style` holds a profile or a timeline to, so a misspelt key fails at load.
+# (rust/hypoverum_core_rs/src/lib.rs, style_from). CAPTION_PY_KEYS and CAPTION_RUST_KEYS remain the source of key
+# introspection while CaptionStyleProfile gives ProfileData and JSON Schema typed structure.
 _NUM, _INT = (int, float), (int,)
 CAPTION_PY_KEYS = ("y_overrides", "auto_place", "place_band", "clearance", "fixed_y", "max_bottom_y", "forbid_box",
                    "ab_sizes")
@@ -1000,11 +1170,51 @@ CAPTION_RUST_KEYS: dict[str, tuple] = {
 CAPTION_SLOTS = ("lower", "mid", "upper")
 
 
+class CaptionStyleProfile(_DictModel):
+    """Typed schema of `[caption_style]` covering Python layout keys and Rust `.ass` compiler keys."""
+    # Python placement & A/B rules
+    y_overrides: list[list[StrictInt | StrictFloat]] | None = None
+    auto_place: StrictBool | None = None
+    place_band: list[StrictInt | StrictFloat] | None = Field(None, min_length=2, max_length=2)
+    clearance: StrictInt | StrictFloat | None = Field(None, ge=0)
+    fixed_y: StrictInt | StrictFloat | None = Field(None, gt=0)
+    max_bottom_y: StrictInt | StrictFloat | None = Field(None, gt=0)
+    forbid_box: StrictBool | None = None
+    ab_sizes: list[StrictInt] | None = None
+    # Rust ASS compiler style keys
+    font: StrictStr | None = None
+    size: StrictInt | StrictFloat | None = None
+    bold: StrictBool | None = None
+    uppercase: StrictBool | None = None
+    primary: StrictStr | None = None
+    outline_colour: StrictStr | None = None
+    outline: StrictInt | StrictFloat | None = None
+    shadow: StrictInt | StrictFloat | None = None
+    soft_shadow: StrictBool | None = None
+    shadow_blur: StrictInt | StrictFloat | None = None
+    shadow_alpha: StrictInt | None = None
+    shadow_dx: StrictInt | StrictFloat | None = None
+    shadow_dy: StrictInt | StrictFloat | None = None
+    box_bg: StrictBool | None = None
+    box_colour: StrictStr | None = None
+    slot: Literal["lower", "mid", "upper"] | None = None
+    margin_x: StrictInt | StrictFloat | None = None
+    max_words: StrictInt | None = None
+    max_chars: StrictInt | None = None
+    gap_break_frames: StrictInt | None = None
+    hold_frames: StrictInt | None = None
+    active_word_highlight: StrictBool | None = None
+    highlight_colour: StrictStr | None = None
+    emphasis_scale: StrictInt | StrictFloat | None = None
+    emphasis_colour: StrictStr | None = None
+    pop: StrictBool | None = None
+
+
 class ProfileData(_Strict):
     description: str = ""
     format: FormatProfile = FormatProfile()
-    framing: dict = {}                      # [framing.<orientation>.<shot>] overrides of video_engine/framing.py
-    caption_style: dict = {}
+    framing: FramingProfile = Field(default_factory=FramingProfile)
+    caption_style: CaptionStyleProfile = Field(default_factory=CaptionStyleProfile)
     audio: AudioProfile
     draft: DraftProfile
     theme: Theme
@@ -1023,4 +1233,4 @@ class ProfileData(_Strict):
     resources: Resources = Resources()
     flags: FlagsProfile = FlagsProfile()
     fx: FxProfile = FxProfile()
-    reference_style: ReferenceStyle = ReferenceStyle()   # reference-video concept options; overlap policy typed
+    reference_style: ReferenceStyle = ReferenceStyle()   # typed reference-video concept options & overlap policy

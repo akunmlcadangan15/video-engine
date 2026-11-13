@@ -122,3 +122,30 @@ def test_good_dom_timing_sums_phases_and_counts_hits():
 
 def test_bad_dom_timing_of_no_segments_is_zero():
     assert layer2.dom_timing({}, 0.0)["probes"] == 0
+
+
+def test_good_probe_pool_reuses_worker_and_respects_run_patch(project, tmp_path, monkeypatch):
+    from video_engine import hf_probe
+
+    monkeypatch.setattr(config, "CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setenv("VIDEO_ENGINE_PROBE_POOL", "1")
+    hf_probe.shutdown_probe_pool()
+    try:
+        _, _, d1 = _built(project, tmp_path / "p1", "Surabaya")
+        _, _, d2 = _built(project, tmp_path / "p2", "Semarang")
+        hyperframes.probe_dom(d1, [0.5], 1080, 1920, tmp_path / "s1", ref="pool1")
+        idle_after_1 = [w.proc.pid for q in hf_probe._POOL._idle.values() for w in q]
+        assert len(idle_after_1) == 1
+        hyperframes.probe_dom(d2, [0.5], 1080, 1920, tmp_path / "s2", ref="pool2")
+        idle_after_2 = [w.proc.pid for q in hf_probe._POOL._idle.values() for w in q]
+        assert idle_after_2 == idle_after_1
+
+        calls = []
+        real_run = hf_probe._DEFAULT_RUN
+        monkeypatch.setattr(hyperframes, "run", lambda *a, **k: calls.append(a[0]) or real_run(*a, **k))
+        _, _, d3 = _built(project, tmp_path / "p3", "Medan")
+        hyperframes.probe_dom(d3, [0.5], 1080, 1920, tmp_path / "s3", ref="pool3")
+        assert len(calls) == 1 and str(calls[0][1]) == str(hyperframes.PROBE_JS)
+    finally:
+        hf_probe.shutdown_probe_pool()
+    assert not any(hf_probe._POOL._idle.values())

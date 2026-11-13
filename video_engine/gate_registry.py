@@ -11,8 +11,8 @@ Classes:
 Severity levels (kernel vs lint vs technical default):
   kernel     the 8-gate frozen integrity core (KERNEL_GATE_IDS):
              no profile, project, or draft mode can lower its fail to warn.
-  lint       the 50 non-blocking gates in LINT_GATE_IDS (style gates, layout L01-L10, taste/anti-slop,
-             margin/camera/collision, and provenance/motion lint): warns and publishes with warnings
+  lint       the 51 non-blocking gates in LINT_GATE_IDS (style gates, layout L01-L10, taste/anti-slop,
+             margin/camera/collision, and provenance/motion/contrast lint): warns and publishes with warnings
              by default unless explicitly listed in `[gates] require` or `gates.require`.
   error      technical gates outside KERNEL_GATE_IDS and LINT_GATE_IDS (`F01`, `AS04`, plus `AIQA`
              when `--ai-qa` is enabled): block a release build when they emit `fail` unless lowered

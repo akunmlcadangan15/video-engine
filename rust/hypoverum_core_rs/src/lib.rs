@@ -348,6 +348,74 @@ mod py {
         Ok(PyBytes::new(py, &out))
     }
 
+    fn warp_err(err: camera::WarpErr) -> PyErr {
+        match err {
+            camera::WarpErr::Value(msg) => PyValueError::new_err(msg),
+            camera::WarpErr::Io(e) => PyErr::from(e),
+        }
+    }
+
+    #[cfg(unix)]
+    fn borrowed_fd_file(fd: i32) -> PyResult<std::fs::File> {
+        use std::os::fd::BorrowedFd;
+        if fd < 0 {
+            return Err(PyValueError::new_err(format!(
+                "negative file descriptor {fd}"
+            )));
+        }
+        // SAFETY: fd belongs to a live Python pipe/file object on the calling thread for the duration
+        // of the call; cloning via dup gives Rust an independent owned File without closing Python's fd.
+        let owned = unsafe { BorrowedFd::borrow_raw(fd) }
+            .try_clone_to_owned()
+            .map_err(PyErr::from)?;
+        Ok(std::fs::File::from(owned))
+    }
+
+    #[cfg(not(unix))]
+    fn borrowed_fd_file(_fd: i32) -> PyResult<std::fs::File> {
+        Err(PyIOError::new_err("fd streaming requires unix"))
+    }
+
+    /// Warp one RGB24 still `src` over `wins` and stream directly to `fd` (GIL released once, single buffer).
+    #[pyfunction]
+    #[allow(clippy::too_many_arguments)]
+    fn warp_still_to_fd(
+        py: Python<'_>,
+        src: &[u8],
+        src_w: usize,
+        src_h: usize,
+        wins: Vec<W4>,
+        out_w: usize,
+        out_h: usize,
+        fd: i32,
+    ) -> PyResult<()> {
+        let ws: Vec<camera::Win> = wins.into_iter().map(to_win).collect();
+        let file = borrowed_fd_file(fd)?;
+        py.detach(|| camera::warp_still_to_writer(src, src_w, src_h, &ws, out_w, out_h, file))
+            .map_err(warp_err)
+    }
+
+    /// Stream RGB24 frames from `in_fd`, warp per window, and write to `out_fd` (holding last frame on short EOF).
+    /// Returns the number of frames written (`0` if EOF precedes frame 0).
+    #[pyfunction]
+    #[allow(clippy::too_many_arguments)]
+    fn warp_stream_to_fd(
+        py: Python<'_>,
+        in_fd: i32,
+        out_fd: i32,
+        src_w: usize,
+        src_h: usize,
+        wins: Vec<W4>,
+        out_w: usize,
+        out_h: usize,
+    ) -> PyResult<usize> {
+        let ws: Vec<camera::Win> = wins.into_iter().map(to_win).collect();
+        let in_file = borrowed_fd_file(in_fd)?;
+        let out_file = borrowed_fd_file(out_fd)?;
+        py.detach(|| camera::warp_stream_rw(in_file, out_file, src_w, src_h, &ws, out_w, out_h))
+            .map_err(warp_err)
+    }
+
     /// Borrow an iterable of bytes-like frames: `bytes` zero-copy, anything else copied via `Vec<u8>`.
     fn with_frames<R>(frames: &Bound<'_, PyAny>, f: impl FnOnce(&[&[u8]]) -> R) -> PyResult<R> {
         let items: Vec<Bound<'_, PyAny>> = frames.try_iter()?.collect::<PyResult<_>>()?;
@@ -556,6 +624,8 @@ mod py {
         m.add_function(wrap_pyfunction!(camera_plan, m)?)?;
         m.add_function(wrap_pyfunction!(camera_windows, m)?)?;
         m.add_function(wrap_pyfunction!(warp_frame, m)?)?;
+        m.add_function(wrap_pyfunction!(warp_still_to_fd, m)?)?;
+        m.add_function(wrap_pyfunction!(warp_stream_to_fd, m)?)?;
         m.add_function(wrap_pyfunction!(frame_stats, m)?)?;
         m.add_function(wrap_pyfunction!(frame_motion, m)?)?;
         m.add_function(wrap_pyfunction!(make_proxy, m)?)?;

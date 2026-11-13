@@ -59,6 +59,16 @@ def warp_frame(
 ) -> bytes:
     """Bilinear crop+scale of RGB24. Sizes 1..=32768, len(src) == src_w*src_h*3."""
 
+def warp_still_to_fd(
+    src: bytes, src_w: int, src_h: int, wins: list[Window], out_w: int, out_h: int, fd: int
+) -> None:
+    """Warp one RGB24 still across `wins` and stream to file descriptor `fd` (GIL released)."""
+
+def warp_stream_to_fd(
+    in_fd: int, out_fd: int, src_w: int, src_h: int, wins: list[Window], out_w: int, out_h: int
+) -> int:
+    """Stream RGB24 frames from `in_fd`, warp over `wins`, write to `out_fd`; returns frames written."""
+
 def frame_stats(
     frames: Iterable[bytes], width: int, height: int
 ) -> list[tuple[float, float, list[float], list[float]]]:

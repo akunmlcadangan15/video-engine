@@ -53,7 +53,7 @@ class Profile:
 
     @property
     def caption_style(self) -> dict:
-        return self.data.caption_style
+        return self.data.caption_style.to_dict()
 
     @property
     def gates(self) -> StyleGates:
@@ -525,7 +525,11 @@ def hash_dump(data: ProfileData) -> dict:
         dump["render"].pop("final_bit_depth", None)
     if dump.get("type") == json.loads(TypeScale().model_dump_json()):
         dump.pop("type", None)
-    if not dump.get("framing"):
+    dump["caption_style"] = data.caption_style.model_dump(mode="json", exclude_unset=True)
+    framing_dump = data.framing.model_dump(mode="json", exclude_unset=True)
+    if framing_dump:
+        dump["framing"] = framing_dump
+    else:
         dump.pop("framing", None)
     if dump.get("format") == json.loads(FormatProfile().model_dump_json()):
         dump.pop("format", None)
@@ -543,12 +547,19 @@ def _build(name: str, layers: tuple[Layer, ...], rules_text: str | None) -> Prof
     """Profile of the layers (`_layers` order). Memoised on the file contents (and the text of the rules file), so
     an edited file is a new profile and an unchanged one is not validated twice."""
     raw, base_raw = _resolved(name, layers)
+    if "caption_style" in raw and isinstance(raw["caption_style"], dict):
+        # Preserve exact `check_caption_style` error text before Pydantic type/constraint validation.
+        fmt_o = (raw.get("format") or {}).get("orientation") if isinstance(raw.get("format"), dict) else None
+        raw_cs = raw["caption_style"]
+        pre_o = fmt_o or ("portrait" if (raw.get("layout") is not None or raw.get("print") is not None or any(
+            k in raw_cs for k in PORTRAIT_GEOMETRY_CAPTION_KEYS)) else "portrait")
+        check_caption_style(raw_cs, pre_o, f"profile '{name}'")
     try:
         data = ProfileData.model_validate(raw)
         base = data if name == DEFAULT else ProfileData.model_validate(base_raw)
     except ValidationError as e:
         raise EngineError(f"profile '{name}': {e}") from e
-    check_caption_style(data.caption_style, profile_orientation(data) or "portrait", f"profile '{name}'")
+    check_caption_style(data.caption_style.to_dict(), profile_orientation(data) or "portrait", f"profile '{name}'")
     _check_print(name, data)
     try:
         from . import framing
@@ -625,7 +636,11 @@ def _override(base: Profile, over: dict) -> Profile:
     key = (base.blake3, json.dumps(over, sort_keys=True))
     if (hit := _OVERRIDDEN.get(key)) is not None:
         return hit
-    raw = merge(json.loads(base.data.model_dump_json(by_alias=True)), over)
+    base_dump = json.loads(base.data.model_dump_json(by_alias=True))
+    base_dump["caption_style"] = base.data.caption_style.model_dump(mode="json", exclude_unset=True)
+    base_dump["framing"] = base.data.framing.model_dump(mode="json", exclude_unset=True)
+    base_dump["reference_style"] = base.data.reference_style.model_dump(mode="json", exclude_unset=True)
+    raw = merge(base_dump, over)
     # load() resolves rules_file into draft.rules and keeps the path. That pair is one source,
     # already rejected at parse when a profile file itself contains both. Revalidation here only
     # checks the overridden tables, so the path is set aside and restored on the new profile.

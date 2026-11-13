@@ -98,6 +98,18 @@ def test_good_docs_gates_embeds_the_generated_index_unchanged():
     assert text[a:b] == gate_tools.render_markdown(), "docs/GATES.md is stale: run `engine gates --format md`"
 
 
+def test_good_docs_gate_counts_and_lint_list_match_registry():
+    """Every count and gate id listed in the lint section of docs/GATES.md / SPEC.md stays in sync with gate_registry."""
+    gates_md = (ROOT / "docs" / "GATES.md").read_text(encoding="utf-8")
+    head = gates_md.split(gate_tools.MD_BEGIN)[0]
+    assert f"warn by default, {len(reg.LINT_GATE_IDS)} gates" in head
+    assert f"`KERNEL_GATE_IDS` ({len(reg.KERNEL_GATE_IDS)}) and `LINT_GATE_IDS` ({len(reg.LINT_GATE_IDS)})" in head
+    missing = [gid for gid in reg.LINT_GATE_IDS if f"`{gid}`" not in head]
+    assert not missing, f"LINT_GATE_IDS missing from docs/GATES.md summary: {missing}"
+    spec_md = (ROOT / "docs" / "SPEC.md").read_text(encoding="utf-8")
+    assert f"the {len(reg.LINT_GATE_IDS)} non-kernel gates in `LINT_GATE_IDS`" in spec_md
+
+
 def _report(path: Path, ok: bool, fails=(), warns=(), waived=()):
     rows = lambda gs, key: [{"gate": g, "level": key, "message": "x"} for g in gs]   # noqa: E731
     path.parent.mkdir(parents=True, exist_ok=True)

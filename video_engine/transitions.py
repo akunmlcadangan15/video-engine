@@ -266,10 +266,15 @@ def page_frames(last: np.ndarray, head: list[np.ndarray]) -> list[np.ndarray]:
 
 # ------------------------------------------------------------------------------------------------ files
 
-def decode(path: Path, first: int, count: int, W: int, H: int, threads: int = 2) -> list[np.ndarray]:
-    """Frames [first, first + count) of a segment file as RGB arrays (engine segments are BT.709 limited range)."""
-    cmd = [config.FFMPEG, "-v", "error", "-threads", str(threads), "-i", str(path),
-           "-vf", f"select=gte(n\\,{first}),scale={W}:{H}:in_color_matrix=bt709:in_range=limited",
+def decode(path: Path, first: int, count: int, W: int, H: int, threads: int = 2,
+           fps: float | None = None) -> list[np.ndarray]:
+    """Frames [first, first + count) of a segment file as RGB arrays (engine segments are BT.709 limited range).
+    When `fps` is given and `first > 0`, seeks cleanly to the midpoint `(first - 0.5) / fps` before `-i`."""
+    use_seek = first > 0 and fps is not None and fps > 0
+    seek_args = ["-ss", f"{(first - 0.5) / fps:.6f}"] if use_seek else []
+    sel = "" if (use_seek or first <= 0) else f"select=gte(n\\,{first}),"
+    cmd = [config.FFMPEG, "-v", "error", "-threads", str(threads), *seek_args, "-i", str(path),
+           "-vf", f"{sel}scale={W}:{H}:in_color_matrix=bt709:in_range=limited",
            "-frames:v", str(count), "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
     buf = subprocess.run(cmd, capture_output=True, check=True).stdout
     n = len(buf) // (W * H * 3)
@@ -318,18 +323,18 @@ def render(tl: Timeline, seg_files: list[Path], workdir: Path, threads: int = 2)
         a = tl.segments[w.seg - 1]
         if w.kind in ("crossfade", "state"):
             n_out, n_in = w.boundary - w.f0, w.f1 - w.boundary
-            tail = decode(seg_files[w.seg - 1], a.n_frames - n_out, n_out, W, H, threads)
-            a_last = decode(seg_files[w.seg - 1], a.n_frames - 1, 1, W, H, threads)[0]
-            head = decode(seg_files[w.seg], 0, n_in, W, H, threads)
+            tail = decode(seg_files[w.seg - 1], a.n_frames - n_out, n_out, W, H, threads, fps=fps)
+            a_last = tail[-1] if n_out > 0 else decode(seg_files[w.seg - 1], a.n_frames - 1, 1, W, H, threads, fps=fps)[0]
+            head = decode(seg_files[w.seg], 0, n_in, W, H, threads, fps=fps)
             frames = fade_frames(tail, a_last, head[0], head)
         elif w.kind in ("zoom_whip", "zoom_through"):
             n_out = w.boundary - w.f0
-            tail = decode(seg_files[w.seg - 1], a.n_frames - n_out, n_out, W, H, threads)
-            head = decode(seg_files[w.seg], 0, w.f1 - w.boundary, W, H, threads)
+            tail = decode(seg_files[w.seg - 1], a.n_frames - n_out, n_out, W, H, threads, fps=fps)
+            head = decode(seg_files[w.seg], 0, w.f1 - w.boundary, W, H, threads, fps=fps)
             frames = (whip_frames if w.kind == "zoom_whip" else through_frames)(tail, head, T, fps)
         else:
-            last = decode(seg_files[w.seg - 1], a.n_frames - 1, 1, W, H, threads)[0]
-            frames = page_frames(last, decode(seg_files[w.seg], 0, w.f1 - w.f0, W, H, threads))
+            last = decode(seg_files[w.seg - 1], a.n_frames - 1, 1, W, H, threads, fps=fps)[0]
+            frames = page_frames(last, decode(seg_files[w.seg], 0, w.f1 - w.f0, W, H, threads, fps=fps))
         out.append((write_clip(frames, workdir / f"transition_{w.seg:03d}.mkv", fps, threads), w.f0))
     return out
 

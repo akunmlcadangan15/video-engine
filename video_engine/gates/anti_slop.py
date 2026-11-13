@@ -160,18 +160,17 @@ def _built_entries(built_dirs: list[Path] | Path | str) -> list[tuple[Path, str]
     for d in dirs:
         d = Path(d)
         if d.is_file():
-            p = d
-            where = f"{d.parent.name}/{d.name}"
+            candidates = [(d, f"{d.parent.name}/{d.name}")]
         else:
-            p = d / "index.html"
-            where = f"{d.name}/index.html"
-        if not p.is_file() or p.suffix.lower() not in (".html", ".htm"):
-            continue
-        key = p.resolve()
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append((p, where))
+            candidates = [(d / name, f"{d.name}/{name}") for name in ("index.html", "styles.css", "printstyle.js")]
+        for p, where in candidates:
+            if not p.is_file() or p.suffix.lower() not in (".html", ".htm", ".css", ".js"):
+                continue
+            key = p.resolve()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append((p, where))
     return out
 
 
@@ -186,10 +185,14 @@ ENGINE_HTML_ALLOW = (
 
 @lru_cache(maxsize=1)
 def _engine_template_lines() -> frozenset[str]:
+    lines: set[str] = set()
     try:
-        return frozenset(line.strip() for line in (config.TEMPLATE_DIR / "index.html").read_text().splitlines())
+        for p in sorted(config.TEMPLATE_DIR.iterdir()):
+            if p.suffix in {".html", ".css", ".js"}:
+                lines.update(line.strip() for line in p.read_text().splitlines())
     except OSError:
         return frozenset()
+    return frozenset(lines)
 
 
 def _engine_generated(line: str) -> bool:

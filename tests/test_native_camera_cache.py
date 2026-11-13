@@ -141,3 +141,70 @@ def test_bad_keyframe_probe_reads_a_rewritten_source_again(tmp_path, monkeypatch
     engine_clip(tmp_path / "rewritten.mp4", 60, extra=("-g", "10", "-keyint_min", "10", "-sc_threshold", "0"))
     (tmp_path / "rewritten.mp4").replace(clip)
     assert native._keyframe_at(clip, 10 / 30, 30)
+
+
+def test_good_warp_still_and_stream_fds_match_warp_frame_and_fallback(project, wd, monkeypatch):
+    import os
+
+    sw, sh, ow, oh = 16, 12, 8, 6
+    fsz = sw * sh * 3
+    src0 = bytes((i * 11 % 251 for i in range(fsz)))
+    src1 = bytes(((i * 13 + 37) % 251 for i in range(fsz)))
+    wins = core.camera_windows((0.0, 0.0, 12.0, 9.0), (4.0, 3.0, 8.0, 6.0), 4)
+
+    r_fd, w_fd = os.pipe()
+    try:
+        core.warp_still_to_fd(src0, sw, sh, wins, ow, oh, w_fd)
+    finally:
+        os.close(w_fd)
+    with os.fdopen(r_fd, "rb") as f:
+        still_got = f.read()
+    assert still_got == b"".join(core.warp_frame(src0, sw, sh, w, ow, oh) for w in wins)
+
+    in_r, in_w = os.pipe()
+    out_r, out_w = os.pipe()
+    try:
+        with os.fdopen(in_w, "wb") as fin:
+            fin.write(src0 + src1)
+        written = core.warp_stream_to_fd(in_r, out_w, sw, sh, wins, ow, oh)
+    finally:
+        os.close(in_r)
+        os.close(out_w)
+    with os.fdopen(out_r, "rb") as fout:
+        stream_got = fout.read()
+    assert written == 4
+    expected = b"".join(
+        core.warp_frame(src0 if i == 0 else src1, sw, sh, w, ow, oh) for i, w in enumerate(wins)
+    )
+    assert stream_got == expected
+
+    # EOF before first complete frame returns 0 cleanly
+    e_r, e_w = os.pipe()
+    o2_r, o2_w = os.pipe()
+    try:
+        os.close(e_w)
+        assert core.warp_stream_to_fd(e_r, o2_w, sw, sh, wins, ow, oh) == 0
+    finally:
+        os.close(e_r)
+        os.close(o2_w)
+        os.close(o2_r)
+
+    # render_camera produces exact 60 frames with both fd path and Python fallback (still + video)
+    wd.mkdir(parents=True, exist_ok=True)
+    p, tl = project()
+    job = native.plan(tl.segments[0], tl, p)
+    out_fast = wd / "fast.mp4"
+    out_slow = wd / "slow.mp4"
+    native.render_camera(job, tl, out_fast, threads=2)
+    monkeypatch.setattr(native, "_fd_or_none", lambda _s: None)
+    native.render_camera(job, tl, out_slow, threads=2)
+    assert count_frames(out_fast) == 60 and count_frames(out_slow) == 60
+
+    monkeypatch.undo()
+    p2, tl2 = project(lambda d: d["segments"][1].update(
+        camera_move={"preset": "ken_burns_zoom_in", "intensity": 1.2},
+    ))
+    vjob = native.plan(tl2.segments[1], tl2, p2)
+    out_v = wd / "vid_fast.mp4"
+    native.render_camera(vjob, tl2, out_v, threads=2)
+    assert count_frames(out_v) == 60

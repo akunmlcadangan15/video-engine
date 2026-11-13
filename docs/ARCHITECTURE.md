@@ -142,7 +142,8 @@ module imports without a built `hypoverum_core_rs` wheel ([CONTRIBUTING.md](../C
   `_build` memoises on the file contents. A test that swaps profile files under one name inside the same timestamp
   tick is still correct (recently changed files are always re-read); call `profiles.clear_cache()` when in doubt.
 - `[motion]` frame tokens (`micro_frames`, `overlay_frames`, `panel_frames`, `stagger_frames`) are exported to the
-  scene but only `entrance`, `move`, `exit`, `entrance_scale` and `overlay_fade_s` change a render.
+  scene as `micro_s`, `overlay_s`, `panel_s`, `stagger_s`; the HyperFrames template reads `entrance`, `move`,
+  `exit`, `entrance_scale`, `overlay_s` and `panel_s`, and native drawn overlay fades read `overlay_fade_s`.
 - `extends` cannot unset a key of its base. Format-specific keys (portrait caption geometry) live in a file only
   that format includes, which is why `geoverum_landscape` shares `geoverum/core.toml` by `include`.
 - `profiles/taste/<channel>.json` is both tracked seed data and runtime state: a successful `engine draft` rewrites

@@ -33,8 +33,8 @@ Istilah dan singkatan yang dipakai di kode dan dokumentasi. Istilah tetap dalam 
 | **Gate** | Pemeriksaan otomatis yang bisa lolos, memperingatkan, atau menggagalkan build. Daftarnya di [GATES.md](GATES.md). |
 | **Pre-flight** | Gate yang berjalan sebelum render apa pun (lapis 1 sampai 3). |
 | **Kernel gate** (`KERNEL_GATE_IDS`) | 8 gate integritas inti (`T02`, `M01`, `W01`, `L22`, `R38`, `A01`, `G01`, `M03`) yang selalu memblokir build bila gagal dan tidak dapat diturunkan. |
-| **Lint gate** (`LINT_GATE_IDS`) | 50 gate non-kernel (mencakup style gate, tata letak `L01`–`L10`, anti-slop, serta margin/kamera/tabrakan) yang secara bawaan hanya memperingatkan (`warn`) kecuali dimasukkan ke `gates.require`. |
-| **Technical gate** | Kelas gate pemeriksaan teknis (`TECHNICAL_GATE_IDS`); terdiri atas 8 kernel gate, 31 technical lint gate, serta `F01`/`AS04`. |
+| **Lint gate** (`LINT_GATE_IDS`) | 51 gate non-kernel (mencakup style gate, tata letak `L01`–`L10`, anti-slop, serta margin/kamera/tabrakan/kontras) yang secara bawaan hanya memperingatkan (`warn`) kecuali dimasukkan ke `gates.require`. |
+| **Technical gate** | Kelas gate pemeriksaan teknis (`TECHNICAL_GATE_IDS`); terdiri atas 8 kernel gate, 32 technical lint gate, serta `F01`/`AS04`. |
 | **Style gate** | Kelas gate selera channel (`STYLE_GATE_IDS`, bagian dari `LINT_GATE_IDS`). Hanya memperingatkan kecuali masuk `gates.require`. |
 | **Required** | Gate di dalam `LINT_GATE_IDS` yang didaftarkan di `[gates] require` atau `gates.require` sehingga kegagalannya memblokir build. |
 | **Advisory** | Daftar `[gates] advisory` di profil untuk menurunkan gate teknis di luar `NEVER_ADVISORY` menjadi peringatan. |

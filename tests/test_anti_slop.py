@@ -179,7 +179,7 @@ def test_good_AS05_built_engine_effects_are_allowlisted(project, tmp_path):
     from video_engine import hyperframes
     d, tl = project()
     out, _scene = hyperframes.build_dir(tl.segments[2], tl, d, tmp_path / "built" / "seg002")
-    text = (out / "index.html").read_text()
+    text = (out / "index.html").read_text() + (out / "styles.css").read_text()
     assert "box-shadow:0 0 14px" in text          # the template's built-in pin glow is a source tell
     assert anti_slop.as05_built_html([out], gate()) == []
     assert anti_slop.as06_built_html([out], tl, gate()) == []

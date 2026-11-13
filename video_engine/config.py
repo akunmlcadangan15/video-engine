@@ -144,7 +144,9 @@ def _node_module_roots() -> list[str]:
 def hf_env() -> dict:
     env = dict(os.environ)
     env.update({
-        "HYPERFRAMES_BROWSER_PATH": str(CHROME), "PRODUCER_HEADLESS_SHELL_PATH": str(CHROME),
+        "HYPERFRAMES_BROWSER_PATH": str(PKG / "hf" / "chrome_repeatable.py"),
+        "PRODUCER_HEADLESS_SHELL_PATH": str(PKG / "hf" / "chrome_repeatable.py"),
+        "VIDEO_ENGINE_CHROME_REAL": str(CHROME),
         "HYPERFRAMES_SKIP_SKILLS": "1", "HYPERFRAMES_NO_TELEMETRY": "1", "HYPERFRAMES_NO_UPDATE_CHECK": "1",
         # Screenshot capture on SwiftShader. BeginFrame is not available on current Chrome
         # (HeadlessExperimental.enable is missing) and its fallback is this same screenshot path.

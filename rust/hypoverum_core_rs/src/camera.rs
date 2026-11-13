@@ -2,6 +2,8 @@
 //! A window is (x, y, w, h) in source pixels with the output aspect ratio.
 //! All public functions validate their inputs and return `Err(String)`; none panics on user data.
 
+use std::io::{ErrorKind, Read, Write};
+
 use rayon::prelude::*;
 
 use crate::num::{clampf, f64_to_index, finite, positive, rgb_len, usize_to_f64, weight256};
@@ -214,6 +216,79 @@ pub fn motion_px(s: Win, e: Win, ow: f64, oh: f64) -> f64 {
     shift.max(dz)
 }
 
+/// Error returned by streaming/batch camera warp helpers (`Value` -> `ValueError`, `Io` -> `OSError`).
+#[derive(Debug)]
+pub enum WarpErr {
+    Value(String),
+    Io(std::io::Error),
+}
+
+impl From<String> for WarpErr {
+    fn from(s: String) -> Self {
+        Self::Value(s)
+    }
+}
+
+impl From<std::io::Error> for WarpErr {
+    fn from(e: std::io::Error) -> Self {
+        Self::Io(e)
+    }
+}
+
+struct RgbSrc<'a> {
+    bytes: &'a [u8],
+    w: usize,
+    h: usize,
+}
+
+struct RgbDst<'a> {
+    bytes: &'a mut [u8],
+    w: usize,
+    h: usize,
+}
+
+/// Core validated bilinear crop+scale kernel writing into caller-owned `dst` and `xt` buffers.
+fn warp_into_inner(src: RgbSrc<'_>, win: Win, dst: RgbDst<'_>, xt: &mut Vec<(usize, usize, u32)>) {
+    let sx = win.w / usize_to_f64(dst.w);
+    let sy = win.h / usize_to_f64(dst.h);
+    let (maxx, maxy) = (src.w - 1, src.h - 1); // sw, sh >= 1 (rgb_len)
+    let (maxx_f, maxy_f) = (usize_to_f64(maxx), usize_to_f64(maxy));
+    let row_bytes = src.w * 3;
+    xt.clear();
+    xt.reserve(dst.w);
+    for ox in 0..dst.w {
+        let fx = clampf(win.x + (usize_to_f64(ox) + 0.5) * sx - 0.5, 0.0, maxx_f);
+        let x0 = f64_to_index(fx, maxx);
+        let x1 = (x0 + 1).min(maxx);
+        xt.push((x0 * 3, x1 * 3, weight256(fx - usize_to_f64(x0))));
+    }
+    let xt_slice = xt.as_slice();
+    dst.bytes
+        .par_chunks_mut(dst.w * 3)
+        .enumerate()
+        .for_each(|(oy, row)| {
+            let fy = clampf(win.y + (usize_to_f64(oy) + 0.5) * sy - 0.5, 0.0, maxy_f);
+            let y0 = f64_to_index(fy, maxy);
+            let y1 = (y0 + 1).min(maxy);
+            let wy = weight256(fy - usize_to_f64(y0));
+            let (Some(r0), Some(r1)) = (
+                src.bytes.get(y0 * row_bytes..(y0 + 1) * row_bytes),
+                src.bytes.get(y1 * row_bytes..(y1 + 1) * row_bytes),
+            ) else {
+                return; // unreachable: y0, y1 <= maxy
+            };
+            for (px, &(a, b, wx)) in row.as_chunks_mut::<3>().0.iter_mut().zip(xt_slice.iter()) {
+                for (ch, o) in px.iter_mut().enumerate() {
+                    let g = |r: &[u8], i: usize| u32::from(r.get(i + ch).copied().unwrap_or(0));
+                    let top = g(r0, a) * (256 - wx) + g(r0, b) * wx;
+                    let bot = g(r1, a) * (256 - wx) + g(r1, b) * wx;
+                    *o = u8::try_from((top * (256 - wy) + bot * wy + 32768) >> 16)
+                        .unwrap_or(u8::MAX);
+                }
+            }
+        });
+}
+
 /// Bilinear crop+scale of an RGB24 source (`sw x sh`) into a new RGB24 buffer (`ow x oh`), rows in parallel.
 /// Errors: any size 0 or `> MAX_SIDE`, buffer size overflow, `src.len() != sw*sh*3`, window not finite or
 /// `w <= 0` / `h <= 0`.
@@ -235,44 +310,142 @@ pub fn warp(
     let out_len = rgb_len(ow, oh, "output")?;
     let win = win.check("window")?;
     let mut out = vec![0u8; out_len];
-    let sx = win.w / usize_to_f64(ow);
-    let sy = win.h / usize_to_f64(oh);
-    let (maxx, maxy) = (sw - 1, sh - 1); // sw, sh >= 1 (rgb_len)
-    let (maxx_f, maxy_f) = (usize_to_f64(maxx), usize_to_f64(maxy));
-    let row_bytes = sw * 3;
-    // x taps: (byte offset x0, byte offset x1, weight of x1 in 0..=256)
-    let xt: Vec<(usize, usize, u32)> = (0..ow)
-        .map(|ox| {
-            let fx = clampf(win.x + (usize_to_f64(ox) + 0.5) * sx - 0.5, 0.0, maxx_f);
-            let x0 = f64_to_index(fx, maxx);
-            let x1 = (x0 + 1).min(maxx);
-            (x0 * 3, x1 * 3, weight256(fx - usize_to_f64(x0)))
-        })
-        .collect();
-    out.par_chunks_mut(ow * 3)
-        .enumerate()
-        .for_each(|(oy, row)| {
-            let fy = clampf(win.y + (usize_to_f64(oy) + 0.5) * sy - 0.5, 0.0, maxy_f);
-            let y0 = f64_to_index(fy, maxy);
-            let y1 = (y0 + 1).min(maxy);
-            let wy = weight256(fy - usize_to_f64(y0));
-            let (Some(r0), Some(r1)) = (
-                src.get(y0 * row_bytes..(y0 + 1) * row_bytes),
-                src.get(y1 * row_bytes..(y1 + 1) * row_bytes),
-            ) else {
-                return; // unreachable: y0, y1 <= maxy
-            };
-            for (px, &(a, b, wx)) in row.as_chunks_mut::<3>().0.iter_mut().zip(xt.iter()) {
-                for (ch, o) in px.iter_mut().enumerate() {
-                    let g = |r: &[u8], i: usize| u32::from(r.get(i + ch).copied().unwrap_or(0));
-                    let top = g(r0, a) * (256 - wx) + g(r0, b) * wx;
-                    let bot = g(r1, a) * (256 - wx) + g(r1, b) * wx;
-                    *o = u8::try_from((top * (256 - wy) + bot * wy + 32768) >> 16)
-                        .unwrap_or(u8::MAX);
-                }
-            }
-        });
+    let mut xt = Vec::with_capacity(ow);
+    warp_into_inner(
+        RgbSrc {
+            bytes: src,
+            w: sw,
+            h: sh,
+        },
+        win,
+        RgbDst {
+            bytes: &mut out,
+            w: ow,
+            h: oh,
+        },
+        &mut xt,
+    );
     Ok(out)
+}
+
+fn check_windows(wins: &[Win]) -> Result<Vec<Win>, String> {
+    if wins.len() > MAX_WINDOWS {
+        return Err(format!(
+            "windows length {} exceeds MAX_WINDOWS ({MAX_WINDOWS})",
+            wins.len()
+        ));
+    }
+    wins.iter().map(|w| w.check("window")).collect()
+}
+
+fn read_frame<R: Read>(r: &mut R, buf: &mut [u8]) -> std::io::Result<bool> {
+    let mut filled = 0;
+    while filled < buf.len() {
+        match r.read(&mut buf[filled..]) {
+            Ok(0) => return Ok(false),
+            Ok(n) => filled += n,
+            Err(e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(true)
+}
+
+/// Warps one RGB24 still `src` across all `wins` and writes every frame into `dst` with a single
+/// reusable output buffer and x-tap buffer.
+pub fn warp_still_to_writer<W: Write>(
+    src: &[u8],
+    sw: usize,
+    sh: usize,
+    wins: &[Win],
+    ow: usize,
+    oh: usize,
+    mut dst: W,
+) -> Result<(), WarpErr> {
+    let need = rgb_len(sw, sh, "source")?;
+    if src.len() != need {
+        return Err(WarpErr::Value(format!(
+            "src has {} bytes, expected {need} ({sw}x{sh}x3)",
+            src.len()
+        )));
+    }
+    let out_len = rgb_len(ow, oh, "output")?;
+    let wins = check_windows(wins)?;
+    let mut out = vec![0u8; out_len];
+    let mut xt = Vec::with_capacity(ow);
+    for win in wins {
+        warp_into_inner(
+            RgbSrc {
+                bytes: src,
+                w: sw,
+                h: sh,
+            },
+            win,
+            RgbDst {
+                bytes: &mut out,
+                w: ow,
+                h: oh,
+            },
+            &mut xt,
+        );
+        dst.write_all(&out)?;
+    }
+    dst.flush()?;
+    Ok(())
+}
+
+/// Reads RGB24 frames from `src_r`, warps each against `wins`, and writes to `dst`.
+/// If `src_r` hits EOF before frame 0 completes, writes nothing and returns `Ok(0)`.
+/// If `src_r` ends early after frame 0, holds the last complete frame for remaining windows.
+pub fn warp_stream_rw<R: Read, W: Write>(
+    mut src_r: R,
+    mut dst: W,
+    sw: usize,
+    sh: usize,
+    wins: &[Win],
+    ow: usize,
+    oh: usize,
+) -> Result<usize, WarpErr> {
+    let need = rgb_len(sw, sh, "source")?;
+    let out_len = rgb_len(ow, oh, "output")?;
+    let wins = check_windows(wins)?;
+    if wins.is_empty() {
+        return Ok(0);
+    }
+    let mut cur = vec![0u8; need];
+    if !read_frame(&mut src_r, &mut cur)? {
+        return Ok(0);
+    }
+    let mut next = vec![0u8; need];
+    let mut out = vec![0u8; out_len];
+    let mut xt = Vec::with_capacity(ow);
+    let mut eof = false;
+    for (i, &win) in wins.iter().enumerate() {
+        if i > 0 && !eof {
+            if read_frame(&mut src_r, &mut next)? {
+                std::mem::swap(&mut cur, &mut next);
+            } else {
+                eof = true;
+            }
+        }
+        warp_into_inner(
+            RgbSrc {
+                bytes: &cur,
+                w: sw,
+                h: sh,
+            },
+            win,
+            RgbDst {
+                bytes: &mut out,
+                w: ow,
+                h: oh,
+            },
+            &mut xt,
+        );
+        dst.write_all(&out)?;
+    }
+    dst.flush()?;
+    Ok(wins.len())
 }
 
 #[cfg(test)]
@@ -475,5 +648,104 @@ mod pivot_tests {
         };
         let v = windows(s, e, 31).unwrap();
         assert!((v[15].x - 200.0).abs() < 1e-9 && v.iter().all(|w| (w.w - 500.0).abs() < 1e-9));
+    }
+
+    #[test]
+    fn still_writer_matches_single_warp() {
+        let (sw, sh, ow, oh) = (8, 6, 4, 4);
+        let src: Vec<u8> = (0..sw * sh * 3).map(|i| (i * 7 % 251) as u8).collect();
+        let wins = windows(
+            Win {
+                x: 0.0,
+                y: 0.0,
+                w: 6.0,
+                h: 6.0,
+            },
+            Win {
+                x: 2.0,
+                y: 1.0,
+                w: 4.0,
+                h: 4.0,
+            },
+            5,
+        )
+        .unwrap();
+        let mut batched = Vec::new();
+        super::warp_still_to_writer(&src, sw, sh, &wins, ow, oh, &mut batched).unwrap();
+        let expected: Vec<u8> = wins
+            .iter()
+            .flat_map(|&w| super::warp(&src, sw, sh, w, ow, oh).unwrap())
+            .collect();
+        assert_eq!(batched, expected);
+    }
+
+    #[test]
+    fn stream_rw_holds_short_tail_and_handles_empty_input() {
+        let (sw, sh, ow, oh) = (6, 6, 4, 4);
+        let fsz = sw * sh * 3;
+        let f0: Vec<u8> = (0..fsz).map(|i| (i % 200) as u8).collect();
+        let f1: Vec<u8> = (0..fsz).map(|i| ((i + 50) % 200) as u8).collect();
+        let wins = [
+            Win {
+                x: 0.0,
+                y: 0.0,
+                w: 4.0,
+                h: 4.0,
+            },
+            Win {
+                x: 1.0,
+                y: 0.0,
+                w: 4.0,
+                h: 4.0,
+            },
+            Win {
+                x: 1.0,
+                y: 1.0,
+                w: 4.0,
+                h: 4.0,
+            },
+        ];
+        // Empty / truncated first frame -> 0 written
+        let mut out_empty = Vec::new();
+        assert_eq!(
+            super::warp_stream_rw(&f0[..10], &mut out_empty, sw, sh, &wins, ow, oh).unwrap(),
+            0
+        );
+        assert!(out_empty.is_empty());
+        // 2 input frames for 3 windows -> frame 2 reuses f1
+        let mut stream_in = Vec::new();
+        stream_in.extend_from_slice(&f0);
+        stream_in.extend_from_slice(&f1);
+        let mut out = Vec::new();
+        assert_eq!(
+            super::warp_stream_rw(stream_in.as_slice(), &mut out, sw, sh, &wins, ow, oh).unwrap(),
+            3
+        );
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&super::warp(&f0, sw, sh, wins[0], ow, oh).unwrap());
+        expected.extend_from_slice(&super::warp(&f1, sw, sh, wins[1], ow, oh).unwrap());
+        expected.extend_from_slice(&super::warp(&f1, sw, sh, wins[2], ow, oh).unwrap());
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn still_and_stream_validate_inputs_before_io() {
+        let src = vec![0u8; 4 * 4 * 3];
+        let bad = [Win {
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 4.0,
+        }];
+        let mut out = Vec::new();
+        assert!(matches!(
+            super::warp_still_to_writer(&src, 4, 4, &bad, 4, 4, &mut out),
+            Err(super::WarpErr::Value(_))
+        ));
+        assert!(out.is_empty());
+        assert!(matches!(
+            super::warp_stream_rw(src.as_slice(), &mut out, 4, 4, &bad, 4, 4),
+            Err(super::WarpErr::Value(_))
+        ));
     }
 }

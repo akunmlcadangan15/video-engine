@@ -185,6 +185,13 @@ def _decoder_stderr(dec: subprocess.Popen) -> str:
     return err[-800:] or f"decoder exit code {dec.returncode}, no stderr"
 
 
+def _fd_or_none(stream) -> int | None:
+    try:
+        return stream.fileno()
+    except (AttributeError, OSError):
+        return None
+
+
 def render_camera(job: NativeJob, tl: Timeline, out: Path, threads: int) -> None:
     S = tl.settings
     W, H, n = S.width, S.height, job.seg.n_frames
@@ -199,19 +206,42 @@ def render_camera(job: NativeJob, tl: Timeline, out: Path, threads: int) -> None
     if dec.stdout is None or enc.stdin is None or enc.stderr is None:
         raise EngineError(f"segment {job.seg.seg_index}: encoder pipes were not created")
     try:
-        frame = None
-        for i in range(n):
-            if i == 0 or not job.seg.is_still:
-                buf = dec.stdout.read(fsz)
-                if len(buf) == fsz:
-                    frame = buf
-                elif frame is None:
+        try:
+            out_fd, in_fd = _fd_or_none(enc.stdin), _fd_or_none(dec.stdout)
+            if job.seg.is_still:
+                frame = dec.stdout.read(fsz)
+                if len(frame) != fsz:
                     raise EngineError(f"segment {job.seg.seg_index}: could not decode {job.src.name}: "
                                       f"{_decoder_stderr(dec)}")
-                # short source: hold the last frame (pre-flight M01 flags this before render)
-            assert frame is not None
-            enc.stdin.write(core.warp_frame(frame, ws, hs, wins[i], W, H))
-        enc.stdin.close()
+                if out_fd is not None and hasattr(core, "warp_still_to_fd"):
+                    enc.stdin.flush()
+                    core.warp_still_to_fd(frame, ws, hs, wins, W, H, out_fd)
+                else:
+                    for i in range(n):
+                        enc.stdin.write(core.warp_frame(frame, ws, hs, wins[i], W, H))
+            elif in_fd is not None and out_fd is not None and hasattr(core, "warp_stream_to_fd"):
+                enc.stdin.flush()
+                written = core.warp_stream_to_fd(in_fd, out_fd, ws, hs, wins, W, H)
+                if n > 0 and written == 0:
+                    raise EngineError(f"segment {job.seg.seg_index}: could not decode {job.src.name}: "
+                                      f"{_decoder_stderr(dec)}")
+            else:
+                frame = None
+                for i in range(n):
+                    buf = dec.stdout.read(fsz)
+                    if len(buf) == fsz:
+                        frame = buf
+                    elif frame is None:
+                        raise EngineError(f"segment {job.seg.seg_index}: could not decode {job.src.name}: "
+                                          f"{_decoder_stderr(dec)}")
+                    # short source: hold the last frame (pre-flight M01 flags this before render)
+                    assert frame is not None
+                    enc.stdin.write(core.warp_frame(frame, ws, hs, wins[i], W, H))
+            enc.stdin.close()
+        except BrokenPipeError:
+            if enc.wait() != 0:
+                raise EngineError(f"encoder failed: {enc.stderr.read().decode()[-800:]}") from None
+            raise
         if enc.wait() != 0:
             raise EngineError(f"encoder failed: {enc.stderr.read().decode()[-800:]}")
     finally:

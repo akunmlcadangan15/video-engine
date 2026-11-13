@@ -43,8 +43,8 @@ map_path = true               # Enables multi-keyframe continuous camera traject
 scene = ["globe", "props", "beats", "radar", "terrain3d", "cross_section", "historical", "flag_char", "data_viz", "blind_spot", "grid_split"]   # Scene capabilities unlocked for the AI draft generator
 rules_file = "geoverum/creative.md"   # External markdown file containing the canonical creative direction rules injected into the draft prompt
 
-# Named motion duration tokens: validated and exported to the HyperFrames scene (theme.motion.overlay_s), but no
-# renderer reads the frame durations yet; element timings come from [layout.timing], [theme] and [transitions].
+# Named motion duration tokens: validated and exported to the HyperFrames scene (theme.motion.overlay_s, panel_s);
+# element layouts and paths keep their timings in [layout.timing], [theme] and [transitions].
 [motion]
 overlay_frames = 10           # Overlay duration token: 10 frames at 30 fps (~333 ms), exported as theme.motion.overlay_s
 overlay_frames_range = [8, 12] # Validation range that overlay_frames must sit inside

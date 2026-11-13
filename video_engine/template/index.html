@@ -5,70 +5,11 @@
 <meta name="viewport" content="width=__W__, height=__H__" />
 <script src="assets/gsap.min.js"></script>
 <script src="scene.js"></script>
+<link rel="stylesheet" href="styles.css" />
 <style>
 @font-face{font-family:'EngInter';src:url('assets/Inter-Bold.otf') format('opentype');font-weight:700}
 @font-face{font-family:'EngInterS';src:url('assets/Inter-SemiBold.otf') format('opentype');font-weight:600}__FONTFACES__
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{width:__W__px;height:__H__px;overflow:hidden;background:#0b1118}
-#root{position:relative;width:__W__px;height:__H__px;overflow:hidden;background:#0b1118;font-family:EngInter,sans-serif;--pin:#ffd84a}
-#cam{position:absolute;left:0;top:0;transform-origin:0 0}
-#cam>img,#base>img{position:absolute;left:0;top:0;display:block}
-#shade{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,rgba(5,10,16,0) 45%,rgba(5,10,16,.55) 100%),linear-gradient(180deg,rgba(5,10,16,.45) 0%,rgba(5,10,16,0) 22%,rgba(5,10,16,0) 78%,rgba(5,10,16,.4) 100%)}
-.pin{position:absolute;width:0;height:0;visibility:hidden}
-.pin .dot{position:absolute;left:-13px;top:-13px;width:26px;height:26px;border-radius:50%;background:var(--pin);border:4px solid #fff;box-shadow:0 0 14px 4px rgba(255,200,60,.8)}
-.pin .ring{position:absolute;left:-13px;top:-13px;width:26px;height:26px;border-radius:50%;border:4px solid var(--pin)}
-.pin .pb{position:absolute;left:0;top:0;transform-origin:0 0}
-.pin .shadow{position:absolute;left:-17px;top:-7px;width:34px;height:14px;border-radius:50%;background:rgba(0,0,0,.45);filter:blur(3px)}
-.pin .drop{position:absolute;left:-22px;top:-53px;width:44px;height:44px}
-.pin .tear{position:absolute;inset:0;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--pin);box-shadow:-3px 5px 10px rgba(0,0,0,.45)}
-.pin .tear i{position:absolute;left:14px;top:14px;width:16px;height:16px;border-radius:50%;background:#fff}
-.pin .beside{position:absolute;top:-31px;white-space:nowrap;color:#fff;font-size:var(--lab-size);line-height:1;font-family:var(--lab-font);text-shadow:0 3px 8px rgba(0,0,0,.85),0 0 3px rgba(0,0,0,.9)}
-.pin .lab{position:absolute;left:0;bottom:30px;transform:translateX(-50%);transform-origin:50% 100%;white-space:nowrap;padding:10px 20px 12px;border-radius:12px;background:rgba(8,12,18,.82);color:#fff;font-size:44px;line-height:1;box-shadow:0 6px 18px rgba(0,0,0,.5)}
-.legible .beside,.legible .title{-webkit-text-stroke:calc(2*var(--txt-outline-px)) var(--txt-outline);paint-order:stroke fill}
-.legible .beside{text-shadow:var(--txt-shadow)}
-.title{position:absolute;left:50%;width:max-content;max-width:900px;text-align:center;line-height:1.04;visibility:hidden;white-space:normal}
-.fig{position:absolute;white-space:nowrap;line-height:1;visibility:hidden;font-variant-numeric:tabular-nums}
-.card{position:absolute;left:50%;transform:translateX(-50%);width:max-content;min-width:520px;max-width:880px;padding:26px 40px 30px;border-radius:22px;background:rgba(10,14,22,.86);color:#fff;text-align:center;visibility:hidden;box-shadow:0 14px 34px rgba(0,0,0,.55)}
-.adapt::before{content:'';position:absolute;left:50%;top:50%;width:var(--vw,0);height:var(--vh,0);transform:translate(-50%,-50%);background:var(--vig,none);z-index:-1;pointer-events:none}
-.ink-measure [data-ink]{color:transparent!important;-webkit-text-stroke-color:transparent!important;text-shadow:none!important}
-.adapt::after{content:'';position:absolute;left:calc(-1*var(--hm,0px));top:calc(-1*var(--hm,0px));width:calc(100% + 2*var(--hm,0px));height:calc(100% + 2*var(--hm,0px));background:var(--halo-c,transparent);-webkit-mask-image:var(--halo-mask,none);-webkit-mask-size:100% 100%;z-index:-1;pointer-events:none}
-.ink-measure [data-ink-ghost],.line-measure [data-ink-ghost]{visibility:hidden!important}
-.ink-measure [data-ink]::before,.ink-mask [data-ink]::before,.ink-measure [data-ink]::after,.ink-mask [data-ink]::after{display:none!important}
-#root.ink-mask{background:#fff!important}
-.ink-mask *{visibility:hidden!important}
-.ink-mask [data-ink]{visibility:visible!important;color:#000!important;-webkit-text-stroke:0!important;text-shadow:none!important}
-#root.line-mask{background:#fff!important}
-.line-mask *{visibility:hidden!important}
-.line-mask [data-line],.line-mask [data-line] *{visibility:visible!important}
-.line-mask polygon[data-line],.line-mask [data-shape][data-line]{fill-opacity:0!important}
-.line-mask [data-line-casing],.line-mask mask *{visibility:visible!important}
-.line-measure [data-line]:not(polygon):not([data-shape]),.line-measure [data-line] *{visibility:hidden!important}
-.line-measure polygon[data-line],.line-measure [data-shape][data-line]{stroke-opacity:0!important}
-.line-measure [data-line-casing]{visibility:hidden!important}
-.card .t{font-size:64px;line-height:1.05;white-space:nowrap}
-.card .s{font-family:EngInterS;font-size:36px;line-height:1.2;color:#ffffff;margin-top:10px}
-.card img{display:block;width:100%;max-height:360px;object-fit:cover;border-radius:12px;margin-bottom:18px}
-.box{white-space:nowrap;color:#fff;font-family:EngInter,sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.02em;line-height:1;padding:.2em .45em .24em;text-shadow:none;box-shadow:0 6px 14px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.35)}
-.rl{position:absolute;width:0;height:0;visibility:hidden}
-.rl .pb{position:absolute;left:0;top:0;transform-origin:0 0}
-.rl .box{position:absolute;left:0;top:0}
-.card.box{min-width:0;padding:20px 36px 22px;box-shadow:0 10px 24px rgba(0,0,0,.5)}
-.card.box img{border-radius:0}
-.card.box .s{color:#fff;text-transform:none}
-.bubble{position:absolute;visibility:hidden;background:#fff;color:#14181c;font-family:EngInterS,sans-serif;font-weight:600;
-  line-height:1.22;border-radius:18px;padding:16px 22px;box-shadow:0 10px 26px rgba(0,0,0,.35);
-  white-space:pre-wrap;overflow-wrap:break-word;--tail-colour:#fff}
-.bubble.dark{background:#15181d;color:#fff;--tail-colour:#15181d}
-.bubble::after{content:'';position:absolute;width:0;height:0;border:16px solid transparent}
-.bubble.s-top::after{left:var(--tail,50%);top:100%;transform:translateX(-16px);
-  border-left:16px solid transparent;border-right:16px solid transparent;border-top:22px solid var(--tail-colour);border-bottom:0}
-.bubble.s-right::after{right:100%;top:var(--tail,50%);transform:translateY(-16px);
-  border-top:16px solid transparent;border-bottom:16px solid transparent;border-right:22px solid var(--tail-colour);border-left:0}
-.bubble.s-left::after{left:100%;top:var(--tail,50%);transform:translateY(-16px);
-  border-top:16px solid transparent;border-bottom:16px solid transparent;border-left:22px solid var(--tail-colour);border-right:0}
-.tzl{position:absolute;width:0;height:0;visibility:hidden}
-.tzl .pb{position:absolute;left:0;top:0;transform-origin:0 0;white-space:nowrap;font-family:EngInterS,sans-serif;font-weight:600;
-  font-size:26px;line-height:1;letter-spacing:.04em;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.75)}
+html,body,#root{width:__W__px;height:__H__px}
 </style>
 </head>
 <body>
@@ -133,7 +74,7 @@ const base=LG?(()=>{const b=document.createElement('div');b.id='base';
 const tl=gsap.timeline({paused:true});
 window.__timelines=window.__timelines||{};window.__timelines["main"]=tl;
 // motion tokens (profile [motion]): named curves and role eases; defaults keep the engine look
-const MO=window.__motion=Object.assign({ease_out:[0.23,1,0.32,1],ease_in_out:[0.77,0,0.175,1],ease_drawer:[0.32,0.72,0,1],entrance:'power2.out',move:'power2.inOut',exit:'power2.in',entrance_scale:0.96},(S.theme&&S.theme.motion)||{});
+const MO=window.__motion=Object.assign({ease_out:[0.23,1,0.32,1],ease_in_out:[0.77,0,0.175,1],ease_drawer:[0.32,0.72,0,1],micro_s:4/30,overlay_s:7/30,panel_s:12/30,stagger_s:2/30,entrance:'power2.out',move:'power2.inOut',exit:'power2.in',entrance_scale:0.96},(S.theme&&S.theme.motion)||{});
 // map morph: a second map (same extent) over #map under the regions, toned and paper-multiplied inside its own
 // group, crossfading in (at_frame 0: shown from the first frame) and back out; optional screen grain over the camera
 // while it shows
@@ -159,18 +100,37 @@ const C=S.camera;
 const F3=C.tilt?{force3D:false}:{};
 if(C.tilt){cam.style.willChange='auto';cam.setAttribute('data-flat-raster','');
   document.querySelectorAll('#map,#map>img,[data-deep]').forEach(e=>{e.style.willChange='auto';});}
-gsap.set(cam,{x:C.start.x,y:C.start.y,scale:C.start.s,...F3});
+const cfSig=c=>{const r=v=>Math.floor((+v||0)*1e6+0.5),
+  pt=p=>[r(p.x),r(p.y),r(p.s),r(p.t),('r' in p)?r(p.r):''];
+  return JSON.stringify([FPS,S.n_frames,c.tilt?r(c.tilt.p):'',pt(c.start),
+    (c.legs||[]).map(L=>[L.f0,L.f1,L.ease||'',L.v?L.v.map(r):'',L.bez?L.bez.map(r):'',L.lr!==undefined?r(L.lr):'',pt(L.to)])]);};
+const CF=S.camera_frames, hasCF=Boolean(!S.globe&&CF&&CF.length===S.n_frames+1&&S.camera_frames_sig===cfSig(C));
+const cfAt=t=>{const u=Math.max(0,Math.min(S.n_frames,t*FPS)), nr=Math.round(u);
+  if(Math.abs(u-nr)<1e-5)return CF[nr];
+  const i=Math.min(S.n_frames-1,Math.floor(u)), a=u-i, A=CF[i], B=CF[i+1];
+  const st={x:A.x+(B.x-A.x)*a,y:A.y+(B.y-A.y)*a,s:A.s+(B.s-A.s)*a};
+  if('t' in A||'t' in B)st.t=(A.t||0)+((B.t||0)-(A.t||0))*a;
+  if('r' in A||'r' in B)st.r=(A.r||0)+((B.r||0)-(A.r||0))*a;
+  return st;};
 const legs=window.__legs(C,FPS);
-legs.forEach(g=>tl.fromTo(cam,{x:g.from.x,y:g.from.y,scale:g.from.s},
-  {x:g.L.to.x,y:g.L.to.y,scale:g.L.to.s,duration:g.d,ease:g.ease,immediateRender:g.k===0,...F3},g.t0));
-// perspective tilt (camera key `tilt`, camera3d.py): #cam and the map props layer sit in #tilt, which turns about the
-// frame centre under perspective(C.tilt.p) to each leg's tilt with the leg's ease
-if(C.tilt){const tw=document.createElement('div');tw.id='tilt';
+let tw=null;
+if(C.tilt){tw=document.createElement('div');tw.id='tilt';
   tw.style.cssText='position:absolute;left:0;top:0;width:'+S.width+'px;height:'+S.height+'px;transform-origin:50% 50%';
   cam.before(tw);tw.appendChild(cam);
-  gsap.set(tw,{transformPerspective:C.tilt.p,rotationX:C.start.t});
-  legs.forEach(g=>{if(g.from.t!==g.L.to.t)tl.fromTo(tw,{rotationX:g.from.t},
-    {rotationX:g.L.to.t,transformPerspective:C.tilt.p,duration:g.d,ease:g.ease,immediateRender:false},g.t0);});}
+  gsap.set(tw,{transformPerspective:C.tilt.p,rotationX:C.start.t});}
+if(hasCF){
+  const D_cam=f2t(S.n_frames), drvCam={t:0};
+  const syncCam=()=>{const st=cfAt(tl.time());gsap.set(cam,{x:st.x,y:st.y,scale:st.s,...F3});
+    if(tw)gsap.set(tw,{rotationX:st.t||0,transformPerspective:C.tilt.p});};
+  tl.fromTo(drvCam,{t:0},{t:D_cam,duration:D_cam,ease:'none',immediateRender:true,onUpdate:syncCam},0);
+  syncCam();
+}else{
+  gsap.set(cam,{x:C.start.x,y:C.start.y,scale:C.start.s,...F3});
+  legs.forEach(g=>tl.fromTo(cam,{x:g.from.x,y:g.from.y,scale:g.from.s},
+    {x:g.L.to.x,y:g.L.to.y,scale:g.L.to.s,duration:g.d,ease:g.ease,immediateRender:g.k===0,...F3},g.t0));
+  if(tw)legs.forEach(g=>{if(g.from.t!==g.L.to.t)tl.fromTo(tw,{rotationX:g.from.t},
+    {rotationX:g.L.to.t,transformPerspective:C.tilt.p,duration:g.d,ease:g.ease,immediateRender:false},g.t0);});
+}
 // whip motion blur: an SVG Gaussian blur on the camera only strictly between a whip's first and last frame (half a
 // frame inside, so both are sharp); deviations are in map pixels, so the on-screen blur is divided by the zoom
 const whips=legs.filter(g=>g.L.blur);
@@ -189,7 +149,7 @@ if(whips.length){
     tl.set(base,{filter:'none'},e);});
 }
 // counter-scaling on every frame: `zs` callbacks get the camera scale of the frame (the legs' math; 1 on the globe)
-const ZS=window.__zs=[], camS=t=>{let s=C.start.s;for(const g of legs){if(t<g.t0)break;s=t>=g.t0+g.d?g.L.to.s:g.from.s+(g.L.to.s-g.from.s)*g.ease((t-g.t0)/g.d);}return s;};
+const ZS=window.__zs=[], camS=hasCF?(t=>cfAt(t).s):(t=>{let s=C.start.s;for(const g of legs){if(t<g.t0)break;s=t>=g.t0+g.d?g.L.to.s:g.from.s+(g.L.to.s-g.from.s)*g.ease((t-g.t0)/g.d);}return s;});
 const zsRun=()=>{const s=S.globe?1:camS(tl.time());ZS.forEach(f=>f(s));};
 // camera roll (camera key `roll`, deg): #cam (inside #tilt when tilted) sits in #roll, turned about the frame centre
 // to the legs' roll and scaled by the angle's cover factor, so the map still fills every corner; the roll of a frame
@@ -197,7 +157,7 @@ const zsRun=()=>{const s=S.globe?1:camS(tl.time());ZS.forEach(f=>f(s));};
 if('r' in C.start){const rw=document.createElement('div');rw.id='roll';
   rw.style.cssText='position:absolute;left:0;top:0;width:'+S.width+'px;height:'+S.height+'px;transform-origin:50% 50%';
   const inner=document.getElementById('tilt')||cam;inner.before(rw);rw.appendChild(inner);
-  const camR=t=>{let r=C.start.r;for(const g of legs){if(t<g.t0)break;r=t>=g.t0+g.d?g.L.to.r:g.from.r+(g.L.to.r-g.from.r)*g.ease((t-g.t0)/g.d);}return r;};
+  const camR=hasCF?(t=>cfAt(t).r||0):(t=>{let r=C.start.r;for(const g of legs){if(t<g.t0)break;r=t>=g.t0+g.d?g.L.to.r:g.from.r+(g.L.to.r-g.from.r)*g.ease((t-g.t0)/g.d);}return r;});
   const cover=r=>{const a=Math.abs(r)*Math.PI/180, c=Math.cos(a), n=Math.sin(a);return Math.max(c+S.height/S.width*n,c+S.width/S.height*n);};
   window.__roll=camR;
   ZS.push(()=>{const r=camR(tl.time());rw.style.transform='rotate('+r+'deg) scale('+cover(r)+')';});}
@@ -377,7 +337,7 @@ if(S.regions&&S.regions.length){
       ZS.push(s=>pb.style.transform='scale('+(1/s)+')');
       const lt=f2t(L.at_frame);tl.set(el,{visibility:'visible'},lt);
       if(boxed){pop(bx,lt);let pv=R;R.changes.forEach(c=>{chg(R,bx,{backgroundColor:pv.box},{backgroundColor:c.box},f2t(c.at_frame));pv=c;});}
-      else{if(LG)adapt(bx,'region:'+i,LG.halo_width_em);tl.fromTo(bx,{opacity:0},{opacity:1,duration:0.3,ease:MO.entrance},lt);}}
+      else{if(LG)adapt(bx,'region:'+i,LG.halo_width_em);tl.fromTo(bx,{opacity:0},{opacity:1,duration:MO.overlay_s||0.3,ease:MO.entrance},lt);}}
   });
 }
 // borders: neon lines (open or closed, solid or dashed) drawn on along their length
@@ -404,7 +364,7 @@ if(S.map_texts&&S.map_texts.length){const svg=mapSvg();
       t.appendChild(tp);g.appendChild(t);});
     tl.set(g,{visibility:'visible'},t0);
     spans.forEach((sp,j)=>tl.fromTo(sp,{attr:{'fill-opacity':0}},{attr:{'fill-opacity':1},duration:0.12,ease:'none',immediateRender:true},t0+j*step));
-    if(T.out_frame!==null)tl.fromTo(g,{opacity:1},{opacity:0,duration:0.3,ease:MO.exit,immediateRender:false},f2t(T.out_frame));});}
+    if(T.out_frame!==null)tl.fromTo(g,{opacity:1},{opacity:0,duration:MO.overlay_s||0.3,ease:MO.exit,immediateRender:false},f2t(T.out_frame));});}
 // routes: a dashed line revealed along its length by a solid mask stroke, an arrowhead riding the drawing tip; line,
 // dashes and arrowhead keep their on-screen size while the camera zooms
 if(S.routes&&S.routes.length){
@@ -656,7 +616,7 @@ const figText=(F,v)=>{
     if(O.subtitle){const s=document.createElement('div');s.style.cssText='font-family:EngInterS,sans-serif;font-weight:600;font-size:32px;color:#ffffff;margin-top:6px';s.textContent=O.subtitle;el.appendChild(s);}
   }
   ui.appendChild(el);
-  const t0=f2t(O.start_frame||0), t1=f2t(O.end_frame||S.n_frames), fd=Math.min(0.2,(t1-t0)/3);
+  const t0=f2t(O.start_frame||0), t1=f2t(O.end_frame||S.n_frames), fd=Math.min(MO.overlay_s!=null?MO.overlay_s:0.2,(t1-t0)/3);
   tl.set(el,{visibility:'visible'},t0);
   tl.fromTo(el,{opacity:0,y:10},{opacity:1,y:0,duration:fd,ease:MO.entrance,immediateRender:true},t0);
   if(O.end_frame&&O.end_frame<S.n_frames){tl.to(el,{opacity:0,duration:fd,ease:MO.exit},t1-fd);tl.set(el,{visibility:'hidden'},t1);}
@@ -670,7 +630,7 @@ const figText=(F,v)=>{
   ui.appendChild(el);const t0=f2t(c.at_frame);
   tl.set(el,{visibility:'visible'},t0);
   if(c.box){boxify(el,c.box);el.style.transform='none';gsap.set(el,{xPercent:-50});pop(el,t0);}
-  else tl.fromTo(el,{opacity:0,y:-30},{opacity:1,y:0,duration:0.45,ease:'power3.out'},t0);
+  else tl.fromTo(el,{opacity:0,y:-30},{opacity:1,y:0,duration:MO.panel_s!=null?MO.panel_s:0.45,ease:'power3.out'},t0);
 });
 // thermometers (components.py): one value v tweened from T.from (min when the timeline sets neither `from`
 // nor a previous value) to value drives the fill height, the fill colour (linear RGB mix low -> high) and the
@@ -705,7 +665,7 @@ const mix=(a,b,k)=>'#'+[1,3,5].map(i=>Math.round(parseInt(a.slice(i,i+2),16)+(pa
   tl.set(el,{visibility:'visible'},t0);
   tl.fromTo(el,{opacity:0},{opacity:1,duration:0.3,ease:'none',immediateRender:true},t0);
   tl.fromTo(pr,{v:v0},{v:T.value,duration:T.fill_s,ease:MO.entrance,onUpdate:show,immediateRender:true},t0+0.2);
-  if(T.out_frame!==null)tl.to(el,{opacity:0,duration:0.4,ease:MO.exit},f2t(T.out_frame));
+  if(T.out_frame!==null)tl.to(el,{opacity:0,duration:MO.panel_s!=null?MO.panel_s:0.4,ease:MO.exit},f2t(T.out_frame));
 });
 // flows (components.py): dashed streams moving toward each path's end at speed_px screen px per second of render
 // time from at_frame (offset = phase + speed x (t - t0), set on every frame with the counter-scale, no tween state);
@@ -733,7 +693,7 @@ if(S.flows&&S.flows.length){const svg=mapSvg();svg.setAttribute('data-flows','')
       const sw=document.createElement('span');sw.style.cssText='display:inline-block;width:56px;height:10px;border-radius:5px;background:'+F.colour;
       const tx=document.createElement('span');tx.textContent=F.label;r.append(sw,tx);box.appendChild(r);});
     ui.appendChild(box);const t0=f2t(Math.min(...L.map(F=>F.at_frame)));
-    tl.set(box,{visibility:'visible'},t0);tl.fromTo(box,{opacity:0},{opacity:1,duration:0.45,ease:MO.entrance,immediateRender:true},t0);}
+    tl.set(box,{visibility:'visible'},t0);tl.fromTo(box,{opacity:0},{opacity:1,duration:MO.panel_s!=null?MO.panel_s:0.45,ease:MO.entrance,immediateRender:true},t0);}
 }
 if(LG){const drv={t:0}, D=f2t(S.n_frames), up=()=>ADAPT.forEach(a=>applyInk(a,drv.t));
   twinFaces(['tabular-nums','lining-nums tabular-nums']);
@@ -903,127 +863,9 @@ if(window.__adapt)window.__adapt.up();
 })();
 </script>
 <script>
-// print block (profile [print], video_engine/printstyle.py): type roles, map grade, regions as printed ink, date
-// headings, hand notes and the emboss of place names. Runs after the layout block; sets fonts, blend modes and the
-// grade, and adds the heading and note elements (positions and times from S.layout).
-(function(){
-const S=window.SCENE, P=S.print, LY=S.layout, LG=S.legibility;
-if(!P||!LY)return;
-const MO=window.__motion;
-const tl=window.__timelines.main, q=s=>document.querySelector(s), FPS=S.fps, C=S.camera, paper=P.surface==='paper';
-const NS='http://www.w3.org/2000/svg', A=window.__adapt;
-const rgba=(hex,a)=>'rgba('+[1,3,5].map(k=>parseInt(hex.slice(k,k+2),16)).join(',')+','+a+')';
-const FAM={inter:'EngInter,sans-serif',serif:"'EngSerif',serif",garamond:"'EngGaramond',serif",
-  garamond_italic:"'EngGaramondI',serif",cinzel:"'EngCinzel',serif",hand:"'EngHand',cursive"};
-const font=(el,role,w,trk,caps)=>{el.style.fontFamily=FAM[role];el.style.fontWeight=w;if(role==='garamond_italic')el.style.fontStyle='normal';
-  if(trk!==null&&trk!==undefined)el.style.letterSpacing=trk+'em';if(caps)el.style.textTransform='uppercase';};
-const legs=window.__legs(C,FPS);
-const fades=(el,spans)=>{gsap.set(el,{opacity:0});(spans||[]).forEach((s,j)=>{
-  tl.fromTo(el,{opacity:0},{opacity:1,duration:Math.max(s[1],1e-3),ease:MO.entrance,immediateRender:j===0},s[0]);
-  if(s[2]!==null)tl.fromTo(el,{opacity:1},{opacity:0,duration:Math.max(s[3],1e-3),ease:'power1.in',immediateRender:false},s[2]);});};
-const base=q('#base'), map=q('#map'), shade=q('#shade'), cam=q('#cam'), ui=q('#ui');
-const BLEND=[];   // [el, text el]: multiply on paper, normal while the knock-back vignette is up
-// grade (paper): static saturation and contrast, the paper texture and grain multiplied over the map, a light vignette
-if(paper){
-  tl.getTweensOf(map).forEach(tw=>{if('filter' in (tw.vars||{}))tw.kill();});
-  map.style.filter='saturate('+P.grade_saturate+') contrast('+P.grade_contrast+')';
-  if(P.paper_texture&&P.paper_alpha>0){const t=document.createElement('div');t.setAttribute('data-grade','paper');
-    t.style.cssText='position:absolute;left:0;top:0;width:'+S.map_size[0]+'px;height:'+S.map_size[1]+'px;background:url("assets/'+
-      P.paper_texture+'") repeat;background-size:512px 512px;mix-blend-mode:multiply;opacity:'+P.paper_alpha+';pointer-events:none';
-    map.after(t);}
-  if(P.grain&&P.grain_alpha>0){const g=document.createElement('div');g.setAttribute('data-grade','grain');
-    g.style.cssText='position:absolute;inset:0;background:url("assets/'+P.grain+'") repeat;mix-blend-mode:multiply;opacity:'+P.grain_alpha+';pointer-events:none';
-    (q('#tilt')||cam).after(g);}
-  shade.style.background='radial-gradient(ellipse at 50% 50%,'+rgba(P.ink,0)+' 55%,'+rgba(P.ink,P.vignette_alpha)+' 100%)';
-}
-const R=P.roles;
-// pin labels: print role (the leader follows the ink)
-S.pins.forEach((p,i)=>{const lab=q('[data-qa="pin:'+i+'"]');if(lab)font(lab,...R.label);});
-// place names and the scene title: inside their region, entry tracking tightening, emboss under the ink on paper
-const ghosts=[];
-(LY.areas||[]).forEach(a=>{const lab=q('[data-qa="area:'+a.key+'"]');if(!lab)return;
-  const k=a.title?'title':'area';font(lab,a.role||R[k][0],a.weight||R[k][1],a.tracking,true);
-  const lw=lab.parentElement, pb=lw.parentElement, el=pb.parentElement;
-  if(a.tracking_in!==undefined)(LY.els['area:'+a.key]||[]).forEach(s=>tl.fromTo(lab,{letterSpacing:a.tracking_in+'em'},
-    {letterSpacing:a.tracking+'em',duration:Math.max(s[1],1e-3),ease:MO.entrance,immediateRender:false},s[0]));
-  gsap.set(lab,{letterSpacing:(a.tracking_in!==undefined?a.tracking_in:a.tracking)+'em'});
-  if(paper){BLEND.push([pb,lab]);
-    if(P.emboss_alpha>0){const g=el.cloneNode(true);g.querySelectorAll('[data-qa],[data-ink],[data-line]').forEach(n=>{
-        n.removeAttribute('data-qa');n.removeAttribute('data-ink');n.removeAttribute('data-line');n.classList.remove('adapt');});
-      g.setAttribute('data-ink-ghost','emboss');el.before(g);
-      ghosts.push({src:[pb,lw,lab],dst:[g.querySelector('.pb'),g.querySelector('.lw'),g.querySelector('.beside')]});}}
-});
-// year and time: print roles, centred by the layout
-(S.figures||[]).forEach((F,i)=>{const el=q('[data-qa="figure:'+i+'"]'), Pf=LY.figures[String(i)];if(!el||!Pf)return;
-  const time=Pf.tracking!==undefined;
-  font(el,(time?R.time:R.year)[0],Pf.weight,time?Pf.tracking:0,time);
-  if(paper)BLEND.push([el,el]);else if(!time&&A)A.shadow(el,[4,12,0.35]);});
-// date headings: caps between two rules drawn from the centre outwards, a diamond at each inner end
-(LY.headings||[]).forEach(h=>{
-  const el=document.createElement('div');el.className='heading';el.setAttribute('data-qa','heading:'+h.key);el.textContent=h.text;
-  el.style.cssText='position:absolute;white-space:nowrap;line-height:1;left:'+h.x+'px;top:'+h.y+'px;font-size:'+h.px+'px';
-  font(el,...R.heading);ui.appendChild(el);
-  if(A){A.el(el,'heading:'+h.key,LG.halo_width_em);if(!paper)A.shadow(el,[2,6,P.heading_shadow_alpha]);}
-  const sp=LY.els['heading:'+h.key]||[], d=P.diamond_px, g=P.rule_gap;
-  fades(el,sp);if(paper)BLEND.push([el,el]);
-  if(h.ornaments===false||!(h.rules&&h.rules.length))return;
-  h.rules.forEach(([x0,x1],j)=>{const ln=document.createElement('div'), inner=j===0?x1:x0;
-    ln.style.cssText='position:absolute;left:'+x0+'px;top:'+(h.rule_y-P.rule_px/2)+'px;width:'+(x1-x0)+'px;height:'+P.rule_px+
-      'px;transform-origin:'+(j===0?'100%':'0%')+' 50%';
-    const dm=document.createElement('div'), cx=j===0?x1+g+d/2:x0-g-d/2;
-    dm.style.cssText='position:absolute;left:'+(cx-d/2)+'px;top:'+(h.rule_y-d/2)+'px;width:'+d+'px;height:'+d+'px;transform:rotate(45deg)';
-    [ln,dm].forEach((e,m)=>{ui.appendChild(e);e.setAttribute('data-line','rule:'+h.key+':'+j+':'+m);if(A)A.line(el,e);
-      if(paper)BLEND.push([e,el]);fades(e,sp);});
-    sp.forEach(s=>tl.fromTo(ln,{scaleX:0},{scaleX:1,duration:P.rule_draw_s,ease:MO.entrance,immediateRender:false},s[0]));
-    gsap.set(ln,{scaleX:sp.length?0:1});
-  });
-});
-// hand notes: written on left to right, then the arrow draws to its target; fixed on-screen size under the camera
-const arrows=[];
-(LY.notes||[]).forEach(n=>{
-  const el=document.createElement('div');el.className='pin';el.style.left=n.anchor[0]+'px';el.style.top=n.anchor[1]+'px';el.style.visibility='visible';
-  el.innerHTML='<div class="pb"><div class="lw" style="position:absolute;left:0;top:0"><div class="beside" data-qa="note:'+n.key+'"></div></div></div>';
-  const lab=el.querySelector('.beside'), lw=el.querySelector('.lw'), pb=el.querySelector('.pb');
-  lab.textContent=n.text;lab.style.cssText+=';left:0;top:0;font-size:'+n.px+'px;text-shadow:none';font(lab,...R.note);
-  if(A)A.el(lab,'note:'+n.key,LG.halo_width_em);
-  gsap.set(lab,{xPercent:-50,yPercent:-50,rotation:n.angle});cam.appendChild(el);
-  legs.forEach(g=>tl.fromTo(pb,{scale:1/g.from.s},{scale:1/g.L.to.s,duration:g.d,ease:g.inv,immediateRender:g.k===0},g.t0));
-  const sp=LY.els['note:'+n.key]||[];fades(lw,sp);if(paper)BLEND.push([pb,lab]);
-  gsap.set(lab,{clipPath:'inset(-20% 100% -20% 0%)'});
-  sp.forEach(s=>tl.fromTo(lab,{clipPath:'inset(-20% 100% -20% 0%)'},{clipPath:'inset(-20% 0% -20% 0%)',duration:P.note_write_s,ease:'none',immediateRender:false},s[0]));
-  if(n.arrow){const [x1,y1,x2,y2]=n.arrow, sv=document.createElementNS(NS,'svg');
-    sv.setAttribute('width','1');sv.setAttribute('height','1');sv.style.cssText='position:absolute;left:0;top:0;overflow:visible';
-    const mx=(x1+x2)/2, my=(y1+y2)/2, L=Math.hypot(x2-x1,y2-y1), cx=mx-(y2-y1)*0.15, cy=my+(x2-x1)*0.15;
-    const ang=Math.atan2(y2-cy,x2-cx), hl=Math.min(22,0.3*L), w=0.45;
-    const path=document.createElementNS(NS,'path'), head=document.createElementNS(NS,'path');
-    path.setAttribute('d','M'+x1+' '+y1+' Q'+cx+' '+cy+' '+x2+' '+y2);
-    head.setAttribute('d','M'+(x2-hl*Math.cos(ang-w))+' '+(y2-hl*Math.sin(ang-w))+' L'+x2+' '+y2+' L'+(x2-hl*Math.cos(ang+w))+' '+(y2-hl*Math.sin(ang+w)));
-    [path,head].forEach(e=>{e.setAttribute('fill','none');e.setAttribute('stroke-width','3.5');e.setAttribute('stroke-linecap','round');
-      e.setAttribute('stroke-linejoin','round');sv.appendChild(e);});
-    lw.appendChild(sv);sv.setAttribute('data-line','arrow:note:'+n.key);arrows.push([sv,lab]);
-    const pl=path.getTotalLength(), hlen=head.getTotalLength();
-    path.setAttribute('stroke-dasharray',pl+' '+pl);head.setAttribute('stroke-dasharray',hlen+' '+hlen);
-    gsap.set(path,{attr:{'stroke-dashoffset':pl}});gsap.set(head,{attr:{'stroke-dashoffset':hlen}});
-    sp.forEach(s=>{const a=s[0]+0.6*P.note_write_s;
-      tl.fromTo(path,{attr:{'stroke-dashoffset':pl}},{attr:{'stroke-dashoffset':0},duration:0.3,ease:'power1.inOut',immediateRender:false},a);
-      tl.fromTo(head,{attr:{'stroke-dashoffset':hlen}},{attr:{'stroke-dashoffset':0},duration:0.12,ease:'none',immediateRender:false},a+0.3);});}
-});
-// per frame (after the ink driver): blend modes from the ink state, emboss ghosts copied from their source, note
-// arrows in the note's ink
-const sync=()=>{
-  BLEND.forEach(([e,t])=>{let va=0;try{va=+(JSON.parse(t.getAttribute('data-ink-state')||'{}').va||0);}catch(_){}
-    e.style.mixBlendMode=va>0?'normal':'multiply';});
-  ghosts.forEach(G=>{G.src.forEach((s,j)=>{G.dst[j].style.cssText=s.style.cssText;});
-    const [gp,gw,gl]=G.dst;gw.style.opacity=(+getComputedStyle(G.src[1]).opacity)*P.emboss_alpha;gw.style.top=P.emboss_dy+'px';
-    gl.style.color=P.emboss_colour;gl.style.textShadow='none';gl.style.setProperty('--vig','none');gl.style.setProperty('--halo-c','transparent');
-    gp.style.mixBlendMode='normal';});
-  arrows.forEach(([sv,lab])=>{const c=getComputedStyle(lab).color;sv.querySelectorAll('path').forEach(e=>e.setAttribute('stroke',c));
-    const m=c.match(/\d+/g);if(m)sv.setAttribute('data-line-ink',JSON.stringify(['#'+m.slice(0,3).map(v=>(+v).toString(16).padStart(2,'0')).join('')]));});
-};
-const D=S.n_frames/FPS, drv={t:0};
-tl.fromTo(drv,{t:0},{t:D,duration:D,ease:'none',immediateRender:true,onUpdate:sync},0);
-if(A)A.up();sync();document.fonts.ready.then(()=>{if(A)A.up();sync();});
-})();
+// print block (profile [print], video_engine/printstyle.py): loaded via printstyle.js when [print] is active;
+// legibility reads sit inside printstyle.js behind `if(A)`.
+(function(){const S=window.SCENE,P=S.print,LY=S.layout;if(!P||!LY)return;})();
 </script>
 </body>
 </html>

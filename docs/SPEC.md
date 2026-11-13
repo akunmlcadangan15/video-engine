@@ -110,7 +110,7 @@ The specification of the engine: goal, architecture, components, gates, profiles
 - 3-level severity (`KERNEL_GATE_IDS` / `LINT_GATE_IDS` in `gate_registry.py`):
   - **error**: the 8 kernel gates (`T02`, `M01`, `W01`, `L22`, `R38`, `A01`, `G01`, `M03`); any kernel fail stops `build`.
   - **fix**: auto-repaired findings (camera intensity, caption slot, layout adjustments), recorded in top-level `preflight_fixes`.
-  - **lint**: the 50 non-kernel gates in `LINT_GATE_IDS` (style, layout `L01`-`L10` and margin/camera/collision gates), which warn and publish with warnings unless listed in channel `[gates] require` or timeline `gates.require`.
+  - **lint**: the 51 non-kernel gates in `LINT_GATE_IDS` (style, layout `L01`-`L10`, caption contrast `R65`, and margin/camera/collision gates), which warn and publish with warnings unless listed in channel `[gates] require` or timeline `gates.require`.
   Timeline `gates.waive` and `hold: "read"` (segment or beat; P01/N01 findings) lower non-required lint findings to `info`.
   `build_report.json` `gates` always holds `{required, segment_intents, fails, warns, waived}` (plus `waivers` when active) alongside top-level `preflight_fixes`. `F01` (prop files) and `AS04` (readable on-screen time; default level `warn`, raised with `[gates.anti_slop.levels] AS04 = "fail"`) are technical-class gates outside `KERNEL_GATE_IDS` and `LINT_GATE_IDS`: they block a release build on `fail` unless lowered via `[gates] advisory` or `--mode draft`.
 No M-patches, no meta-gates. Every gate must be proven with labelled good + bad cases in tests.
@@ -167,8 +167,9 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
   (`micro_frames` 4, `overlay_frames` 7, `panel_frames` 12, `stagger_frames` 2); role eases `entrance` (`power2.out`),
   `move` (`power2.inOut`) and `exit` (`power2.in`), plus `entrance_scale` 0.96 and `overlay_fade_s` 0.20. The role names
   keep the existing look until a profile names an Emil curve. The HyperFrames scene carries `theme.motion` and the
-  template uses the role names (the frame durations are exported as `micro_s` / `overlay_s` / `panel_s` / `stagger_s`
-  but not read by any renderer yet); native drawn overlay fades read `overlay_fade_s`. A default `[motion]` table is left
+  template uses the role names plus `overlay_s` and `panel_s` (for unboxed region labels, map-text fades,
+  in-template overlay cards, unboxed cards, thermometer exits and flow legends; `micro_s` and `stagger_s` remain
+  exported tokens), while native drawn overlay fades read `overlay_fade_s`. A default `[motion]` table is left
   out of the profile hash. Native camera easing is baked in the Rust `camera_windows` kernel (`ALGO_VERSION`), so the
   Python path carries no easing literal to rewire.
 - HyperFrames `camera_path`: several camera keys in one map segment (legs tweened key to key, glide end speeds continuous

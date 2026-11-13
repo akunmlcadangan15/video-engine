@@ -162,3 +162,33 @@ def test_bad_explicit_state_needs_the_same_base_map(project):
     _, tl = project(_bad_state)
     with pytest.raises(EngineError, match="state"):
         transitions.kind_at(tl, 1)
+
+
+def test_good_transition_render_reuses_tail_last_and_ss_seek_is_bit_exact(project, tmp_path, monkeypatch):
+    from conftest import engine_clip
+
+    def cross(d):
+        d["profile"] = "geoverum"
+        d["settings"].update(width=216, height=384)
+        d["segments"][1]["transition_in"] = "crossfade"
+
+    _, tl = project(cross)
+    files = [engine_clip(tmp_path / f"s{i}.mp4", 60, (216, 384), src=s)
+             for i, s in enumerate(["testsrc2", "smptebars", "rgbtestsrc"])]
+    calls = []
+    real_decode = transitions.decode
+
+    def spy_decode(*args, **kwargs):
+        calls.append((args, kwargs))
+        return real_decode(*args, **kwargs)
+
+    monkeypatch.setattr(transitions, "decode", spy_decode)
+    wd = tmp_path / "wd"
+    wd.mkdir()
+    clips = transitions.render(tl, files, wd)
+    assert len(clips) == 1 and len(calls) == 2
+    assert all(kw.get("fps") == tl.settings.fps for _, kw in calls)
+    for first in (1, 17, 45):
+        a = real_decode(files[0], first, 6, 216, 384, 2, fps=None)
+        b = real_decode(files[0], first, 6, 216, 384, 2, fps=tl.settings.fps)
+        assert len(a) == len(b) and all(np.array_equal(x, y) for x, y in zip(a, b))

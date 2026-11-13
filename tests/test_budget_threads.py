@@ -62,3 +62,14 @@ def test_good_hyperframes_ffmpeg_wrapper_matches_the_repeatable_params():
     assert out[out.index("-threads") + 1] == "1"
     assert out[out.index("-x264-params") + 1].endswith(":" + config.X264_REPEATABLE)
     assert mod._with_repeatable(["-version"]) == ["-version"]
+
+
+def test_good_hyperframes_chrome_wrapper_pins_cpu_raster_single_thread():
+    path = config.PKG / "hf" / "chrome_repeatable.py"
+    spec = importlib.util.spec_from_file_location("chrome_repeatable", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    out = mod._with_repeatable(["--no-sandbox", "--use-angle=swiftshader"])
+    assert out[:2] == ["--disable-gpu-rasterization", "--num-raster-threads=1"]
+    assert mod._with_repeatable(["--num-raster-threads=1", "--headless"]) == ["--disable-gpu-rasterization", "--num-raster-threads=1", "--headless"]
+    assert mod._with_repeatable(["--version"]) == ["--version"]

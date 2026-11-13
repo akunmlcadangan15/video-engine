@@ -808,3 +808,46 @@ def test_good_reveal_leg_ease_matches_engine_in_the_template():
     for p, (ge, gi) in zip((0, 0.1, 0.19, 0.4, 0.7, 1), out):
         z = 1.2 + 1.8 * ge
         assert ge == pytest.approx(e(p), abs=1e-9) and z * (1 / 1.2 + (1 / 3.0 - 1 / 1.2) * gi) == pytest.approx(1)
+
+
+def test_good_camera_frames_chrome_parity_and_motion_durations(project, tmp_path, monkeypatch):
+    def mut(d):
+        d["segments"][2]["gsap_scene_config"]["camera_path"] = [
+            {"at_frame": 0, "focus": [0.3, 0.3], "zoom": 1.25},
+            {"at_frame": 30, "focus": [0.5, 0.5], "zoom": 2.1},
+            {"at_frame": 45, "focus": [0.68, 0.6], "zoom": 1.6},
+        ]
+
+    prof = profiles.load("default")
+    motion_ov = prof.motion.model_copy(update={"overlay_frames": 14, "panel_frames": 21})
+    _profile(monkeypatch, "default", motion=motion_ov)
+    p, tl = project(mut)
+    out, sc = hyperframes.build_dir(tl.segments[2], tl, p, tmp_path / "hf")
+    assert sc["theme"]["motion"]["overlay_s"] == pytest.approx(14 / tl.settings.fps, abs=1e-4)
+    assert sc["theme"]["motion"]["panel_s"] == pytest.approx(21 / tl.settings.fps, abs=1e-4)
+    assert "camera_frames" in sc and "camera_frames_sig" in sc
+    script = hyperframes.PROBE_JS.read_text().replace(
+        "return { rects, paints, lines };",
+        """rects.push({id:'cam_xf', text:getComputedStyle(document.getElementById('cam')).transform});
+        return { rects, paints, lines };""",
+    )
+    probe = tmp_path / "cam_probe.mjs"
+    probe.write_text(script)
+    frames = (8, 23, 40)
+    times = [f / tl.settings.fps for f in frames]
+    env = config.hf_env()
+    env.update(ENGINE_PUPPETEER=str(config.PUPPETEER), ENGINE_CHROME=str(config.CHROME))
+    with hyperframes.serve(out) as url:
+        res = subprocess.run(
+            [str(config.NODE), str(probe), url + "/index.html", "-", ",".join(f"{t:.6f}" for t in times), "1080", "1920"],
+            env=env, text=True, capture_output=True, check=True, timeout=30,
+        )
+    data = json.loads(res.stdout)
+    cf = sc["camera_frames"]
+    for f, entry in zip(frames, data["times"]):
+        ex, ey, es = cf[f]["x"], cf[f]["y"], cf[f]["s"]
+        xf = next(r["text"] for r in entry["rects"] if r["id"] == "cam_xf")
+        vals = [float(v) for v in xf.removeprefix("matrix(").removesuffix(")").split(",")]
+        assert vals[0] == pytest.approx(es, abs=1e-4)
+        assert vals[4] == pytest.approx(ex, abs=0.01)
+        assert vals[5] == pytest.approx(ey, abs=0.01)

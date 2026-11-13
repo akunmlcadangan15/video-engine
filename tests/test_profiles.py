@@ -207,3 +207,24 @@ def test_bad_legibility_defaults_still_order_checked(pdir):
     pdir("chan", _legibility_toml(drop=LEG_DEFAULTED, extra="lc_line_fail = 35\n"))
     with pytest.raises(EngineError, match="lc_line_fail must not exceed legibility.lc_line"):
         profiles.load("chan")
+
+
+def test_bad_strict_reference_style_framing_and_caption_style_reject_bad_keys():
+    from pydantic import ValidationError
+    from video_engine import profile_schema
+
+    assert isinstance(profiles.load("geoverum").data.framing, profile_schema.FramingProfile)
+    assert profile_schema.FramingProfile(portrait={"reveal": {"intensity": 1.5}})["portrait"]["reveal"]["intensity"] == 1.5
+    assert isinstance(profiles.load("geoverum").data.caption_style, profile_schema.CaptionStyleProfile)
+    with pytest.raises(ValidationError):
+        profile_schema.ReferenceStyle(overlap={"allowed": "yes"})
+    with pytest.raises(ValidationError):
+        profile_schema.ReferenceStyle(unknown_group={"x": 1})
+    with pytest.raises(ValidationError):
+        profile_schema.FramingShotOverride(intensity=99)
+    with pytest.raises(ValidationError):
+        profile_schema.FramingProfile(portrait={"bogus_shot": {"intensity": 1.0}})
+    with pytest.raises(ValidationError):
+        profile_schema.CaptionStyleProfile(bogus_key=1)
+    with pytest.raises(ValidationError):
+        profile_schema.CaptionStyleProfile(place_band=[0.1, 0.2, 0.3])
