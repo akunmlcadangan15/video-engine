@@ -50,6 +50,43 @@ engine doctor --install
 
 Untuk eksekusi produksi yang terproteksi, gunakan `scripts/engine-build` atau `scripts/engine-batch` yang secara otomatis memuat `engine.env`, memeriksa sisa ruang disk (minimal 8 GB), dan mengunci *render lock* global. Lihat [AGENTS.md](AGENTS.md) dan [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#build-wrappers).
 
+## Arsitektur
+
+```
+master_timeline.json ─► timeline.py (kontrak data) ─► gates/ lapis 1-2 (pre-flight, tanpa render)
+profiles/*.toml ──────► profiles.py (resolusi + hash) ┘            │
+                                                                   ▼
+                        ┌──────────── build per segmen (cache BLAKE3) ───────────┐
+                        │ NATIVE_RUST_FFMPEG           HYPERFRAMES_GSAP          │
+                        │ native.py + hypoverum_core_rs hyperframes.py + hf/*.js │
+                        │ (Ken Burns, overlay, grade)  (peta, globe, kamera 3D)  │
+                        └───────────────────────────┬────────────────────────────┘
+                                                    ▼
+               FFmpeg komposit: transisi ─► caption .ass (Rust) ─► watermark ─► mixer + loudnorm
+                                                    ▼
+                          gates/ lapis 3 (post-render) ─► out/final.mp4 + build_report.json
+```
+
+Model kerja lengkap: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Profil `geoverum`
+
+Dua titik masuk berbagi satu inti lewat `include`: `profiles/geoverum.toml` (9:16) dan `profiles/geoverum_landscape.toml` (16:9). Keduanya hanya memuat geometri caption, jendela durasi, dan ukuran watermark format masing-masing.
+
+| File | Isi |
+|---|---|
+| `profiles/geoverum/core.toml` | Tabel yang tidak bergantung orientasi: gaya caption, kamera, gerak, transisi, FX, `reference_style`, watermark, dan gate gaya. |
+| `profiles/geoverum/entities.toml` | Warna tetap untuk negara, aliansi, dan perairan yang berulang (`[theme.entities]`). |
+| `profiles/geoverum/legibility.toml` | Target kontras APCA, polaritas tinta, halo, dan vignette teks peta (gate `R64`). |
+| `profiles/geoverum/print.toml` | Tipografi kartografi cetak, tekstur kertas, dan blending tinta `multiply` (gate `T01`, `B01`). |
+| `profiles/geoverum/sound.toml` | Pemetaan SFX ke peristiwa visual dan *ducking* musik di bawah narasi. |
+| `profiles/geoverum/layout.toml` | Grid, zona aman, hierarki ukuran, anggaran elemen, dan waktu *fly-in* (gate `L01`-`L10`). |
+| `profiles/geoverum/landscape/`, `profiles/landscape/format.toml` | Penggantian layout, print, dan geometri caption untuk 16:9. |
+| `profiles/geoverum/creative.md` | Aturan kreatif channel untuk *director*. |
+| `profiles/taste/geoverum.json` | Catatan selera `liked` / `rejected`, diperiksa dengan `engine taste geoverum --lint`. |
+
+Rincian kunci: [docs/PROFILES.md](docs/PROFILES.md).
+
 ## Alur kerja
 
 ```
@@ -95,6 +132,7 @@ Referensi lengkap seluruh perintah dan opsi: [docs/CLI.md](docs/CLI.md).
 | `video_engine/gates/` | Modul gate 3-lapis; definisi terpusat di `video_engine/gate_registry.py`. |
 | `rust/hypoverum_core_rs/` | Ekstensi Rust (PyO3): interpolasi kamera, kompilator `.ass`, deteksi jeda suara, dan statistik piksel. |
 | `profiles/` | Profil channel (`default.toml`, `geoverum.toml`, `geoverum_landscape.toml`, sub-tabel `geoverum/`, dan `taste/`). |
+| `deploy/` | Definisi image: `modal.Dockerfile` (build final di Modal) dan `test.Dockerfile` (lingkungan tes Linux). |
 | `scripts/` | Skrip pemeriksaan dokumentasi (`check_docs.py`) dan *wrapper* eksekusi (`engine-build`, `engine-batch`, `engine-draft`). |
 | `docs/` | Dokumentasi teknis lengkap. Mulai dari [docs/README.md](docs/README.md). |
 | `tests/` | Rangkaian pengujian `pytest` untuk seluruh modul dan gate. |

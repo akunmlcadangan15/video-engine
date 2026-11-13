@@ -5,7 +5,8 @@ plane in 3D and flies a perspective camera over it: dolly, orbit, crane, truck a
 
 World (right-handed, three.js convention): the map is the plane z = 0, map point (u, v) (normalised, v down) at
 world (u * mw, -v * mh, 0) in cover px (mw x mh = the map at cover scale), so north is +y and z points at the viewer.
-A key gives `eye` and `target` as [u, v, h] with h the height above the map in map widths (world z = h * mw), a
+A key gives `eye` and `target` as [u, v, h] with h the height above the map in map widths (world z = h * mw), or
+the eye as `polar` [distance, tilt, azimuth] about the target (`eye_world`), a
 `roll` about the view axis (deg, clockwise on screen) and a vertical `fov` (deg).
 
 Sampler (pure, frame-indexed, no wall clock): `sample(keys, frame)`.
@@ -129,6 +130,19 @@ def world(p, mw: float, mh: float) -> tuple[float, float, float]:
     return (p[0] * mw, -p[1] * mh, (p[2] if len(p) > 2 else 0.0) * mw)
 
 
+def eye_world(k, mw: float, mh: float) -> tuple[float, float, float]:
+    """Eye of a key in world cover px: `eye` [u, v, h], or `polar` [distance, tilt, azimuth] about the target
+    (distance in map widths, tilt in deg off the vertical, azimuth in deg: 0 = eye south of the target, positive =
+    eye to the east)."""
+    polar = getattr(k, "polar", None)
+    if not polar:
+        return world(k.eye, mw, mh)
+    d, t, a = polar[0] * mw, math.radians(polar[1]), math.radians(polar[2])
+    tx, ty, tz = world(k.target, mw, mh)
+    g = d * math.sin(t)
+    return (tx + g * math.sin(a), ty - g * math.cos(a), tz + d * math.cos(t))
+
+
 def _ease(move: str, p: float) -> float:
     p = min(1.0, max(0.0, p))
     return p * p * (3 - 2 * p) if move == "glide" else p
@@ -147,7 +161,7 @@ class Path3D:
         if not keys:
             raise ValueError("camera3d needs at least one key")
         self.keys = keys
-        self.eyes = [world(k.eye, mw, mh) for k in keys]
+        self.eyes = [eye_world(k, mw, mh) for k in keys]
         self.quats = [look_at(e, world(k.target, mw, mh), k.roll) for e, k in zip(self.eyes, keys)]
         self.fovs = [k.fov for k in keys]
         self.arcs = [self._arc(i) for i in range(len(keys) - 1)]
@@ -305,3 +319,106 @@ def motion(states: list[State], W: int, H: int, fps: int) -> list[tuple[float, f
         zb = max(1e-9, b.position[2] * math.tan(math.radians(b.fov) / 2))
         out.append((abs(math.log(za / zb)) * fps, m * fps / W))
     return out
+
+
+# ------------------------------------------------------------------------------------------------------- presets
+# Each preset is a function of time that gives the view as (distance to the target, tilt off the vertical, azimuth,
+# roll, fov). `preset_keys` samples it every `step` frames into polar `camera3d` keys with move "linear", so the
+# curve of the preset (not the per-leg glide) sets the timing. A scene names a preset in
+# gsap_scene_config.camera3d_preset; the timeline expands it into its camera3d keys.
+def _ease_out_expo(x: float) -> float:
+    return 1.0 if x >= 1.0 else 1.0 - 2.0 ** (-10.0 * x)
+
+
+def _ease_in_expo(x: float) -> float:
+    return (2.0 ** (10.0 * min(1.0, max(0.0, x))) - 1.0) / 1023.0
+
+
+def _smooth(x: float) -> float:
+    return _ease("glide", x)
+
+
+def _push_in(t, T, o):
+    """Dolly towards the target by `depth` of the start distance while the camera pitches `pitch` deg off the
+    vertical; easeOutExpo."""
+    p = _ease_out_expo(t / T)
+    return o["height"] * (1.0 - o["depth"] * p), o["pitch"] * p, 0.0, 0.0, o["fov"]
+
+
+def _orbit(t, T, o):
+    """Arc of `yaw` deg about the target at a fixed distance and `tilt`, centred on the south view, with the roll
+    going 0 -> `roll`; smoothstep."""
+    p = _smooth(t / T)
+    return o["height"], o["tilt"], o["yaw"] * (p - 0.5), o["roll"] * p, o["fov"]
+
+
+def _crash_zoom(t, T, o):
+    """Exponential dolly by `depth` in `push_s`, then a damped spring about the end distance (`overshoot` of the
+    travel, `freq_hz`, `decay` per second)."""
+    if t < o["push_s"]:
+        p = _ease_in_expo(t / o["push_s"])
+    else:
+        tau = t - o["push_s"]
+        p = 1.0 + o["overshoot"] * math.exp(-o["decay"] * tau) * math.sin(2.0 * math.pi * o["freq_hz"] * tau)
+    return o["height"] * (1.0 - o["depth"] * p), 0.0, 0.0, 0.0, o["fov"]
+
+
+def _vertigo(t, T, o):
+    """Dolly zoom: the eye pulls back to `pull` times the start distance along a view tilted `tilt` deg while the fov
+    narrows so that distance * tan(fov / 2) stays constant: the target keeps its size and the perspective flattens."""
+    d = o["height"] * (1.0 + (o["pull"] - 1.0) * _smooth(t / T))
+    return d, o["tilt"], 0.0, 0.0, 2.0 * math.degrees(math.atan(math.tan(math.radians(o["fov"]) / 2.0) * o["height"] / d))
+
+
+PRESETS = {
+    "push_in": (_push_in, {"depth": 0.35, "pitch": 3.0}),
+    "orbit": (_orbit, {"yaw": 24.0, "roll": 1.5, "tilt": 35.0}),
+    "crash_zoom": (_crash_zoom, {"depth": 0.55, "push_s": 0.4, "overshoot": 0.06, "freq_hz": 3.0, "decay": 7.0}),
+    "vertigo": (_vertigo, {"pull": 1.6, "tilt": 40.0}),
+}
+FOV_RANGE = (10.0, 120.0)   # CameraKey3D.fov bounds
+
+
+def preset_sfx_frame(name: str, fps: int, opts: dict) -> float | None:
+    """Frame (segment-relative) of the fastest part of a preset that has one sharp move, else None: the middle of
+    the `crash_zoom` push."""
+    if name != "crash_zoom":
+        return None
+    return {**PRESETS[name][1], **opts}["push_s"] * fps / 2.0
+
+
+def preset_keys(name: str, n_frames: int, fps: int, *, target=(0.5, 0.5), height: float = 0.6, fov: float = 50.0,
+                step: int = 2, **opts) -> list[dict]:
+    """`camera3d` keys of a named camera move over a segment of `n_frames`.
+
+    target: normalised map point the camera looks at. height: start distance from the target in map widths.
+    step: frames between keys.
+    opts: the preset's own parameters (PRESETS[name][1] lists them with their defaults).
+    Keys start at frame 0, end before n_frames and are deterministic; runs of identical views keep only their ends.
+    ValueError: unknown preset or option, fewer than 2 frames, or a view outside the key bounds."""
+    if name not in PRESETS:
+        raise ValueError(f"unknown camera3d preset '{name}' (known: {', '.join(PRESETS)})")
+    fn, defaults = PRESETS[name]
+    unknown = sorted(set(opts) - set(defaults))
+    if unknown:
+        raise ValueError(f"camera3d preset '{name}' has no option {', '.join(unknown)} (known: {', '.join(defaults)})")
+    if n_frames < 2 or fps <= 0 or step < 1 or height <= 0:
+        raise ValueError("camera3d preset needs n_frames >= 2 and positive fps, step and height")
+    o = {**defaults, **opts, "height": height, "fov": fov}
+    last = n_frames - 1
+    T = last / fps
+    at = sorted({*range(0, last, step), last})
+    keys = []
+    for f in at:
+        dist, tilt, az, roll, fv = fn(f / fps, T, o)
+        if not (dist > 0 and 0 <= tilt < 90 and FOV_RANGE[0] <= fv <= FOV_RANGE[1]):
+            raise ValueError(f"camera3d preset '{name}' leaves the camera bounds at frame {f} "
+                             f"(distance {dist:g}, tilt {tilt:g}, fov {fv:g})")
+        keys.append({"at_frame": f, "polar": [round(dist, 6), round(tilt, 4), round(az, 4)],
+                     "target": [target[0], target[1], 0.0], "roll": round(roll, 4), "fov": round(fv, 4),
+                     "move": "linear", "hold": 0})
+
+    def view(k):
+        return k["polar"], k["roll"], k["fov"]
+    return [k for i, k in enumerate(keys)
+            if i in (0, len(keys) - 1) or not view(keys[i - 1]) == view(k) == view(keys[i + 1])]

@@ -681,7 +681,7 @@ def test_ldd_and_chrome_launch_checks(tmp_path: Path):
     assert launch_chrome(elf, run=lambda cmd: (0, "<html></html>", "") )["ok"] is True
     assert chrome_launch_problem({"chrome_launch": {"ok": True, "detail": "about:blank"}}) is None
     assert "did not run" in chrome_launch_problem({})
-    image = (ROOT / "Dockerfile.modal").read_text(encoding="utf-8")
+    image = (ROOT / "deploy" / "modal.Dockerfile").read_text(encoding="utf-8")
     for package in CHROME_RUNTIME_PACKAGES:
         assert package in image
 

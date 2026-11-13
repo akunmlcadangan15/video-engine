@@ -10,7 +10,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-# Ubuntu 24.04 package names (t64 where the archive renamed them). Dockerfile.modal installs this set.
+# Ubuntu 24.04 package names (t64 where the archive renamed them). deploy/modal.Dockerfile installs this set.
 CHROME_RUNTIME_PACKAGES = (
     "libnss3",
     "libnspr4",

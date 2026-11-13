@@ -17,6 +17,7 @@ Dokumen ini merupakan panduan operasional teknis bagi *engineer* maupun *AI agen
   - `default.toml`: Nilai dasar mesin.
   - `geoverum.toml` & `geoverum_landscape.toml`: Profil channel Geoverum (portrait 9:16 & landscape 16:9) yang berbagi aturan inti melalui `profiles/geoverum/core.toml` serta sub-tabel modular (`entities.toml`, `legibility.toml`, `print.toml`, `sound.toml`, `layout.toml`, `creative.md`).
   - `taste/geoverum.json`: Basis data preferensi desain (*liked* / *rejected*) dengan pemeriksaan otomatis (`engine taste geoverum --lint`).
+- `deploy/` — Definisi image container: `modal.Dockerfile` (dipakai `modal_build.py`) dan `test.Dockerfile`.
 - `scripts/` — Skrip pemeriksaan dokumentasi (`check_docs.py`) dan pembungkus eksekusi aman (`engine-build`, `engine-batch`, `engine-draft`).
 - `docs/` — Dokumentasi teknis terindeks di [docs/README.md](docs/README.md).
 - `tests/` — Rangkaian pengujian otomatis `pytest` (kasus `GOOD` dan `BAD` untuk setiap gate dan fitur).
@@ -40,3 +41,5 @@ Dokumen ini merupakan panduan operasional teknis bagi *engineer* maupun *AI agen
 - **Integritas Kunci Cache**: Setiap perubahan perilaku pada kode Python atau Rust (`ALGO_VERSION`) harus tercermin pada kunci cache segmen terkait. Memecah file profil dengan `include` tidak boleh mengubah nilai `profiles.load(name).blake3`.
 - **Tanpa Default Vendor AI**: Mesin tidak menunjuk provider AI bawaan. Tanpa `--provider`, env `VIDEO_ENGINE_AI_PROVIDER`, atau `default` di `ai_providers.toml`, permintaan menjadi bundel berkas untuk provider `agent`: model AI yang sedang menjalankan mesin yang menjawab. Jangan menambah fallback ke layanan lain: tiap provider hanya mencoba daftar modelnya sendiri. Gemini adalah provider opsional (`--provider gemini`, extra `gemini`), bukan pilihan bawaan dan bukan fallback.
 - **Keamanan Kredensial**: Jangan pernah mencetak atau menyimpan nilai `GEMINI_API_KEY`, `XAI_API_KEY`, atau kunci API lainnya ke dalam log maupun laporan *build*.
+- **Komentar Murni Teknis**: Komentar dan docstring hanya menjelaskan fungsi, kontrak, satuan, dan alasan teknis kode saat ini. Jangan menulis riwayat perubahan, catatan percakapan, atau kronologi bug di dalam kode sumber; riwayat tempatnya di `CHANGELOG.md` dan pesan commit.
+- **Gate Wajib Lulus**: Perubahan dinyatakan selesai hanya bila tes area terkait, `python scripts/check_docs.py`, dan `ruff` lulus. Jangan melonggarkan ambang gate atau menghapus tes dan *golden frame* agar perubahan lolos; perbaiki penyebabnya, atau ubah ambang di profil dengan alasan terukur yang tertulis di komentar kuncinya.

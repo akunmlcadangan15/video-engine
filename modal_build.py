@@ -52,7 +52,7 @@ import modal  # noqa: E402  (resource env is read before the app is constructed)
 
 app = modal.App("video-engine-build")
 image = modal.Image.from_dockerfile(
-    path=Path(__file__).with_name("Dockerfile.modal"),
+    path=Path(__file__).resolve().parent / "deploy" / "modal.Dockerfile",
     context_dir=Path(__file__).resolve().parent,
     build_args=_build_args(),
 )
