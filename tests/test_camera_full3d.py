@@ -216,7 +216,7 @@ PN, PFPS = 120, 30
 
 def _preset_states(name, **kw):
     from video_engine import timeline
-    keys = [timeline.CameraKey3D(**k) for k in c3.preset_keys(name, PN, PFPS, aspect=MW / MH, **kw)]
+    keys = [timeline.CameraKey3D(**k) for k in c3.preset_keys(name, PN, PFPS, **kw)]
     return keys, c3.frames(keys, PN, MW, MH)
 
 
@@ -229,7 +229,7 @@ def test_good_preset_keys_are_valid_ordered_and_keep_the_target_centred(name):
     keys, states = _preset_states(name)
     at = [k.at_frame for k in keys]
     assert at[0] == 0 and at[-1] == PN - 1 and at == sorted(set(at))
-    assert c3.preset_keys(name, PN, PFPS, aspect=MW / MH) == c3.preset_keys(name, PN, PFPS, aspect=MW / MH)
+    assert c3.preset_keys(name, PN, PFPS) == c3.preset_keys(name, PN, PFPS)
     centre = c3.world((0.5, 0.5, 0.0), MW, MH)
     for st in states:
         x, y, d = c3.project(st, centre, W, H)
@@ -279,3 +279,63 @@ def test_bad_preset_unknown_name_option_or_out_of_bounds_view():
         c3.preset_keys("vertigo", PN, PFPS, fov=12.0, pull=3.0)
     with pytest.raises(ValueError, match="n_frames"):
         c3.preset_keys("push_in", 1, PFPS)
+
+
+def test_good_polar_eye_matches_the_cartesian_eye():
+    polar = type("P", (), dict(at_frame=0, polar=[0.5, 30.0, 40.0], target=[0.4, 0.6, 0.0], roll=0.0, fov=50.0, move="glide", hold=0))()
+    g = 0.5 * math.sin(math.radians(30))
+    eye = (0.4 + g * math.sin(math.radians(40)), 0.6 + g * math.cos(math.radians(40)) * MW / MH, 0.5 * math.cos(math.radians(30)))
+    a = c3.Path3D([polar], MW, MH).sample(0)
+    b = c3.Path3D([K(0, eye, (0.4, 0.6, 0.0))], MW, MH).sample(0)
+    assert a.position == pytest.approx(b.position) and a.quaternion == pytest.approx(b.quaternion)
+
+
+def _preset_scene(name="orbit", **extra):
+    def mut(d):
+        sc = d["segments"][2]["gsap_scene_config"]
+        sc["camera_mode"] = "3d"
+        sc["camera3d_preset"] = {"name": name, **extra}
+    return mut
+
+
+def test_good_timeline_preset_expands_to_keys_and_is_not_stored(project):
+    from video_engine import timeline
+    d, tl = project(_preset_scene("orbit", target=[0.5, 0.5], options={"yaw": 20.0, "tilt": 20.0}))
+    seg = tl.segments[2]
+    sc = seg.gsap_scene_config
+    assert sc.camera3d and sc.camera3d[0].at_frame == 0 and sc.camera3d[-1].at_frame == seg.n_frames - 1
+    assert all(k.polar and k.eye is None for k in sc.camera3d)
+    dumped = sc.model_dump()
+    assert "camera3d" not in dumped and dumped["camera3d_preset"]["name"] == "orbit"
+    again = timeline.Timeline.model_validate(tl.model_dump())                      # a dumped timeline loads back
+    assert again.segments[2].gsap_scene_config.camera3d == sc.camera3d
+    scene = hyperframes.scene_data(seg, tl, d)
+    assert len(scene["cam3d"]["frames"]) == seg.n_frames
+
+
+def test_good_preset_is_one_camera_event_and_crash_zoom_cues_a_whoosh(project):
+    from video_engine import sfx
+    from video_engine.gates import style
+    d, tl = project(_preset_scene("crash_zoom", options={"push_s": 0.4}))
+    seg = tl.segments[2]
+    assert style.camera_events(seg) == [seg.start_frame]
+    whips = [e["frame"] for e in sfx.events(tl) if e["event"] == "whip"]
+    assert whips == [seg.start_frame + round(0.4 * tl.settings.fps / 2)]
+    d, tl = project(_preset_scene("orbit", options={"tilt": 20.0}))
+    assert [e for e in sfx.events(tl) if e["event"] == "whip"] == []
+
+
+@pytest.mark.parametrize("mut,msg", [
+    (_preset_scene("whirl"), "camera3d_preset"),
+    (_preset_scene("orbit", options={"depth": 0.3}), "has no option"),
+    (_preset_scene("vertigo", fov=12.0, options={"pull": 3.0}), "leaves the camera bounds"),
+    (lambda d: d["segments"][2]["gsap_scene_config"].update(camera3d_preset={"name": "orbit"}), "need camera mode '3d'"),
+    (lambda d: (_preset_scene("orbit")(d), d["segments"][2]["gsap_scene_config"].update(camera3d=DOLLY)), "not both"),
+    (lambda d: (_preset_scene("orbit")(d), d["segments"][2]["gsap_scene_config"].update(routes=[{"points": [[0.1, 0.1], [0.2, 0.2]]}])),
+     "3D camera scenes take only"),
+    (_scene3d([{"at_frame": 0, "eye": [0.5, 0.5, 0.5], "polar": [0.5, 10, 0]}]), "exactly one of eye and polar"),
+    (_scene3d([{"at_frame": 0, "polar": [0.5, 95, 0]}]), "tilt in"),
+])
+def test_bad_preset_and_polar_misuse(project, mut, msg):
+    with pytest.raises(Exception, match=msg):
+        project(mut)

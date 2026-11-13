@@ -58,6 +58,8 @@ def camera_events(s: Segment) -> list[int]:
     """Absolute frames of the camera_path, globe, or camera3d keys (each starts a new leg or the final drift: a new
     view counts as something new on screen)."""
     sc = s.gsap_scene_config if s.engine_type == HYPERFRAMES else None
+    if sc and sc.camera3d_preset is not None:   # one move, however many keys sample it
+        return [s.start_frame]
     keys = (sc.globe.keys if sc.globe else (sc.camera3d if sc.camera3d else sc.camera_path)) if sc else None
     return [s.start_frame + k.at_frame for k in keys] if keys else []
 

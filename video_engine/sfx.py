@@ -1,7 +1,7 @@
 """SFX cue model: one cue per render event, for profiles with a [sound] table.
 
 Render events (absolute frames): pin (teardrop: when the drop first touches its shadow), region (fade-in start),
-route (mid-draw), whip (mid-move), label (HyperFrames card, drawn native overlay), title (entrance), figure
+route (mid-draw), whip (mid-move of a camera_path whip or of a camera3d_preset crash_zoom push), label (HyperFrames card, drawn native overlay), title (entrance), figure
 (bounce figure entrance), counter_tick (each step of a counter's shown text). The profile maps events to SFX
 kinds ([sound.events]) and gives each kind its gain, alignment and length cap ([sound.kinds.<kind>]).
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from . import hyperframes, profiles
+from . import camera_full3d, hyperframes, profiles
 from .timeline import HYPERFRAMES, NATIVE, SfxCue, Timeline
 
 PIN_LAND_S = 0.22      # teardrop drop (0.6 s bounce.out) first touches its shadow
@@ -44,6 +44,10 @@ def events(tl: Timeline) -> list[dict]:
                     f0 = min(n, prev.at_frame + prev.hold)   # key's hold and lasts move_s (else theme whip_s)
                     fw = max(f0, k.at_frame - max(1, round((k.move_s or th["whip_s"]) * fps)))
                     add("whip", s, (fw + k.at_frame) / 2)
+            if sc.camera3d_preset is not None:   # the one sharp move of a 3D preset
+                fw = camera_full3d.preset_sfx_frame(sc.camera3d_preset.name, fps, sc.camera3d_preset.options)
+                if fw is not None:
+                    add("whip", s, fw)
             if sc.title:
                 add("title", s, sc.title_at_frame or 0)
             for f in sc.figures or []:

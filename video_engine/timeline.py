@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError, model_serializer, model_validator
 
 import hypoverum_core_rs as core
 
@@ -1014,6 +1014,8 @@ class GsapScene(Strict):
                                                     # [camera] mode
     camera3d: Optional[list[CameraKey3D]] = Field(None, exclude_if=lambda v: v is None)   # full 3D camera keys
                                                     # (camera mode "3d"; video_engine/camera_full3d.py)
+    camera3d_preset: Optional[Camera3DPreset] = Field(None, exclude_if=lambda v: v is None)   # a named 3D move
+                                                    # in place of camera3d keys (the keys are derived, not stored)
     regions: Optional[list[Region]] = None          # entity highlights drawn on the map under the pins
     borders: Optional[list[Border]] = None          # self-drawing neon border lines (dashed: sea borders)
     morph: Optional[MapMorph] = None                # second map texture crossfaded over the map
@@ -1142,12 +1144,19 @@ class GsapScene(Strict):
                 raise ValueError(f"globe pin '{p.label}' needs lat and lng")
         return self
 
+    @model_serializer(mode="wrap")
+    def _dump(self, handler):
+        d = handler(self)
+        if self.camera3d_preset is not None and isinstance(d, dict):   # derived keys are not part of the document
+            d.pop("camera3d", None)
+        return d
+
     @model_validator(mode="after")
     def _camera3d(self):
-        k = self.camera3d
-        if not k:
+        k = self.camera3d or []
+        if not k and self.camera3d_preset is None:
             return self
-        if k[0].at_frame != 0:
+        if k and k[0].at_frame != 0:
             raise ValueError(f"camera3d[0].at_frame is {k[0].at_frame}; the first key is the opening view at frame 0")
         for i in range(1, len(k)):
             if k[i].at_frame <= k[i - 1].at_frame + k[i - 1].hold:
@@ -1183,7 +1192,11 @@ class CameraKey3D(Strict):
     """One view of the full 3D camera (gsap_scene_config.camera3d; video_engine/camera_full3d.py). `eye` and `target`
     are [u, v, h]: a normalised map point (v down) and the height above the map in map widths."""
     at_frame: int = Field(ge=0)
-    eye: list[float] = Field(min_length=3, max_length=3)
+    eye: Optional[list[float]] = Field(None, min_length=3, max_length=3, exclude_if=lambda v: v is None)
+    polar: Optional[list[float]] = Field(None, min_length=3, max_length=3, exclude_if=lambda v: v is None)
+                                                       # the eye as [distance (map widths), tilt (deg off the
+                                                       # vertical), azimuth (deg, 0 = south of the target)] about
+                                                       # the target, instead of `eye`
     target: list[float] = Field([0.5, 0.5, 0.0], min_length=2, max_length=3)
     roll: float = Field(0.0, ge=-180.0, le=180.0)      # deg, the map turns clockwise on screen
     fov: float = Field(50.0, ge=10.0, le=120.0)        # vertical field of view (deg)
@@ -1192,20 +1205,38 @@ class CameraKey3D(Strict):
 
     @model_validator(mode="after")
     def _k(self):
-        if not all(math.isfinite(v) for v in self.eye + self.target):
+        if (self.eye is None) == (self.polar is None):
+            raise ValueError(f"camera3d key at_frame {self.at_frame}: give exactly one of eye and polar")
+        if not all(math.isfinite(v) for v in (self.eye or self.polar) + self.target):
             raise ValueError(f"camera3d key at_frame {self.at_frame}: eye and target must be finite")
+        if len(self.target) == 2:
+            self.target = [*self.target, 0.0]
+        if self.polar is not None:
+            if not (self.polar[0] > 0 and 0 <= self.polar[1] < 90):
+                raise ValueError(f"camera3d key at_frame {self.at_frame}: polar needs distance > 0 and tilt in "
+                                 f"[0, 90), got {self.polar[0]:g} and {self.polar[1]:g}")
+            return self
         if self.eye[2] <= 0:
             raise ValueError(f"camera3d key at_frame {self.at_frame}: eye height {self.eye[2]:g} must be above the "
                              "map (> 0)")
-        if len(self.target) == 2:
-            self.target = [*self.target, 0.0]
         if math.dist(self.eye, self.target) < 1e-6:
             raise ValueError(f"camera3d key at_frame {self.at_frame}: eye and target coincide")
         return self
 
 
+class Camera3DPreset(Strict):
+    """A named move of the full 3D camera (camera_full3d.PRESETS): the timeline expands it into the scene's
+    `camera3d` keys over the whole segment."""
+    name: Literal["push_in", "orbit", "crash_zoom", "vertigo"]
+    target: list[float] = Field([0.5, 0.5], min_length=2, max_length=2)   # normalised map point the camera looks at
+    height: float = Field(0.6, gt=0.0, le=8.0)         # start distance from the target (map widths)
+    fov: float = Field(50.0, ge=10.0, le=120.0)        # start vertical field of view (deg)
+    options: dict[str, float] = {}                     # the preset's own parameters (camera_full3d.PRESETS)
+
+
 # Scene fields a 3D-camera scene supports (screen-anchored or pin-anchored); every other optional table is refused.
 CAMERA3D_FIELDS = {"pins", "cards", "title", "title_entity", "title_at_frame", "figures", "camera3d", "camera_mode",
+                   "camera3d_preset",
                    "map_asset", "map_asset_id", "map_region", "template", "camera_preset", "camera_intensity",
                    "map_projection"}
 
@@ -1483,8 +1514,20 @@ class Timeline(Strict):
             if sc is None:
                 continue
             mode = sc.camera_mode or prof.camera.mode
+            if sc.camera3d_preset is not None:
+                from . import camera_full3d
+                p = sc.camera3d_preset
+                try:
+                    keys = [CameraKey3D(**k) for k in camera_full3d.preset_keys(
+                        p.name, s.n_frames, self.settings.fps, target=p.target, height=p.height, fov=p.fov, **p.options)]
+                except ValueError as e:
+                    raise ValueError(f"segment {s.seg_index}: {e}") from e
+                if sc.camera3d and sc.camera3d != keys:
+                    raise ValueError(f"segment {s.seg_index}: give camera3d keys or camera3d_preset, not both")
+                sc.camera3d = keys
             if mode == "3d" and not sc.camera3d:
-                raise ValueError(f"segment {s.seg_index}: camera mode '3d' needs gsap_scene_config.camera3d keys")
+                raise ValueError(f"segment {s.seg_index}: camera mode '3d' needs gsap_scene_config.camera3d keys "
+                                 "or camera3d_preset")
             if sc.camera3d and mode != "3d":
                 raise ValueError(f"segment {s.seg_index}: camera3d keys need camera mode '3d' (set "
                                  "gsap_scene_config.camera_mode = \"3d\" or the profile [camera] mode)")
