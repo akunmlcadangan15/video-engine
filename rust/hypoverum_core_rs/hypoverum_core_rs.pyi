@@ -49,7 +49,7 @@ def camera_plan(
     src_h: float,
     out_w: float,
     out_h: float,
-    focus_box: tuple[float, float, float, float] | None = None,
+    focus_box: Sequence[float] | None = None,
 ) -> tuple[Window, Window, float]:
     """(start, end, motion_px). focus_box = (ymin, xmin, ymax, xmax) on the 0..=1000 grid, finite, min < max."""
 

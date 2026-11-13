@@ -35,7 +35,7 @@ MARGIN = 1.02          # bounding-sphere radius factor (a little transparent bor
 FRAMES_MAX = 240       # longest turntable sequence
 PAGE = config.PKG / "hf" / "model_page.html"
 DRIVER = config.PKG / "hf" / "model_render.mjs"
-THREE = config.VENDOR / "npm" / "node_modules" / "three"
+THREE = config.THREE     # the resolved three.js package (vendor/npm or the user toolchain)
 LIGHT = {"ambient": 1.6, "key": 2.2}
 
 

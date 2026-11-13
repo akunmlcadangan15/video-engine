@@ -154,7 +154,7 @@ def blake3_files(paths: list) -> list[str]:
         return core.blake3_files(paths)          # raises its "expects an iterable of paths" TypeError
     paths = list(paths)
     ids = [file_identity(p) for p in paths]
-    out = [_BLAKE3.get(i) if i is not None else None for i in ids]
+    out: list = [_BLAKE3.get(i) if i is not None else None for i in ids]
     todo = [k for k, h in enumerate(out) if h is None]
     if todo:
         for k, h in zip(todo, core.blake3_files([paths[k] for k in todo])):

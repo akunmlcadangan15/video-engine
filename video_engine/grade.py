@@ -143,6 +143,9 @@ def apply_values(g: Grade, x: np.ndarray, lut_root: Path) -> np.ndarray:
 def cube_text(g: Grade, lut_root: Path) -> str:
     """The grade baked into an N-point 3D .cube (red fastest)."""
     v = np.linspace(0, 1, N)
+    b: np.ndarray
+    gg: np.ndarray
+    r: np.ndarray
     b, gg, r = np.meshgrid(v, v, v, indexing="ij")
     y = apply_values(g, np.stack([r, gg, b], -1), lut_root).reshape(-1, 3)
     return f"LUT_3D_SIZE {N}\n" + "".join(f"{a:.6f} {c:.6f} {d:.6f}\n" for a, c, d in y)

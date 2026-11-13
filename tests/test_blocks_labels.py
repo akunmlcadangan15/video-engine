@@ -101,7 +101,7 @@ def test_good_path_at_walks_arc_length_with_the_segment_heading():
 
 
 def test_good_rendered_path_prop_matches_props_state(project, tmp_path):
-    from tests.test_props import _proj, MAP_PROP
+    from test_props import _proj, MAP_PROP
     pr = {**{k: v for k, v in MAP_PROP.items() if k not in ("x", "y", "lat", "lng")},
           "path": [[0.3, 0.6], [0.5, 0.4], [0.6, 0.3]], "path_s": 1.5, "heading": True}
     d, tl = _proj(project, pr)
@@ -121,7 +121,7 @@ def test_good_rendered_path_prop_matches_props_state(project, tmp_path):
     ({"path": [[0.1, 0.1], [0.2, 0.2]], "x": 0.5}, "replaces x"),
 ], ids=["BAD-path-one-point", "BAD-path-off-map", "BAD-path-and-x"])
 def test_bad_path_prop_rejected(project, bad, msg):
-    from tests.test_props import _proj, MAP_PROP
+    from test_props import _proj, MAP_PROP
     with pytest.raises(EngineError, match=msg):
         _proj(project, {**{k: v for k, v in MAP_PROP.items() if k not in ("x", "y")}, **bad})
 
@@ -244,7 +244,7 @@ def test_bad_morph_with_another_aspect_ratio_is_rejected(project, tmp_path):
 
 # globe ---------------------------------------------------------------------------------------------------------------
 def test_good_globe_regions_project_to_the_screen_and_labels_carry_lat_lng(project, monkeypatch):
-    from tests.test_globe import _globe_proj, KEYS
+    from test_globe import _globe_proj, KEYS
     _boxed(monkeypatch)
     poly = [[(lng + 180) / 360, (90 - lat) / 180] for lat, lng in ((25, 25), (25, 35), (15, 35), (15, 25))]
     d, _ = _globe_proj(project)
@@ -263,7 +263,7 @@ def test_good_globe_regions_project_to_the_screen_and_labels_carry_lat_lng(proje
 @pytest.mark.parametrize("extra", [{"borders": [{"points": SQ[:2]}]}, {"morph": {"asset": "assets/map.jpg"}}],
                          ids=["BAD-globe-borders", "BAD-globe-morph"])
 def test_bad_globe_rejects_borders_and_morph(project, extra):
-    from tests.test_globe import KEYS
+    from test_globe import KEYS
     def mut(doc):
         sc = doc["segments"][2]["gsap_scene_config"]
         sc.pop("camera_preset", None)

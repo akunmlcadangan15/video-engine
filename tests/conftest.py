@@ -140,11 +140,12 @@ def ff(*args):
     subprocess.run(["ffmpeg", "-v", "error", "-y", *map(str, args)], check=True)
 
 
-def require_ffmpeg_major() -> None:
+def require_ffmpeg_major(verified_max: int | None = None) -> None:
     """For pixel-exact colour tests: skip with the reason unless both the `ffmpeg` on PATH (test helpers) and
     config.FFMPEG (the engine) are at least doctor.FFMPEG_MAJOR_MIN (7), the version `engine doctor` requires; older
-    swscale rounds the grade's colour conversions differently. VIDEO_ENGINE_REQUIRE_TOOLCHAIN=1 turns the skip into
-    a failure, like a missing vendored toolchain."""
+    swscale rounds the grade's colour conversions differently. `verified_max`: the newest major whose rounding the
+    calling test's bound was measured on; a newer one skips (docs/LIMITS.md). VIDEO_ENGINE_REQUIRE_TOOLCHAIN=1 turns
+    a too-old ffmpeg into a failure, like a missing vendored toolchain."""
     from video_engine import config, doctor
     for exe in dict.fromkeys(("ffmpeg", config.FFMPEG)):
         try:
@@ -157,6 +158,8 @@ def require_ffmpeg_major() -> None:
             if os.environ.get("VIDEO_ENGINE_REQUIRE_TOOLCHAIN") == "1":
                 pytest.fail(msg)
             pytest.skip(msg)
+        if verified_max is not None and major > verified_max:
+            pytest.skip(f"bound measured on ffmpeg {doctor.FFMPEG_MAJOR_MIN}-{verified_max}; {exe} is {major}")
 
 
 def engine_clip(out: Path, n: int, size=(1080, 1920), fps: int = 30, src: str = "testsrc2", extra=()) -> Path:

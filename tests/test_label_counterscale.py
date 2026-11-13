@@ -7,7 +7,7 @@ import json
 import pytest
 
 from video_engine import hyperframes
-from tests.test_pins import TEAR, _pins, _theme
+from test_pins import TEAR, _pins, _theme
 
 PIN = {"label": "Pusat Kota", "x": 0.5, "y": 0.5, "at_frame": 0}
 F0, F1, Z0, Z1 = 30, 60, 1.0, 4.0                 # the zoom leg: frames [30, 60), scale 1 -> 4

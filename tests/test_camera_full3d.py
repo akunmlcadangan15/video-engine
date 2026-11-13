@@ -4,11 +4,10 @@ from __future__ import annotations
 import math
 import shutil
 import subprocess
-from pathlib import Path
 
 import pytest
 
-from video_engine import camera_full3d as c3, hyperframes, profiles
+from video_engine import camera_full3d as c3, config, hyperframes, profiles
 from video_engine.gates import layer2
 
 W, H = 1080, 1920
@@ -188,10 +187,10 @@ def test_good_planar_scenes_and_profile_hashes_do_not_change(project):
 
 
 # --------------------------------------------------------------------------- browser twin (three.js, when present)
-THREE = Path(__file__).resolve().parents[1] / "vendor" / "npm" / "node_modules" / "three" / "build" / "three.module.js"
+THREE = config.THREE / "build" / "three.module.js"   # the resolved three.js package
 
 
-@pytest.mark.skipif(not (THREE.is_file() and shutil.which("node")), reason="three.js (vendor/npm) or node not installed")
+@pytest.mark.skipif(not (THREE.is_file() and shutil.which("node")), reason="three.js or node not installed")
 def test_good_three_js_projects_like_the_python_mirror(tmp_path):
     keys = [K(0, (0.3, 0.85, 0.35), (0.55, 0.4, 0.0), 15.0, 55.0), K(40, (0.7, 0.6, 0.2), (0.5, 0.45, 0.0), -10.0, 40.0)]
     states = c3.frames(keys, 41, MW, MH)

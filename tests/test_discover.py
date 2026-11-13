@@ -383,7 +383,8 @@ def test_good_which_respects_pathext_on_mocked_win32(tmp_path):
     d = tmp_path / "bin"
     exe = _touch(d / "ffmpeg.exe")
     env = {"PATH": str(d), "PATHEXT": ".COM;.EXE;.BAT", "USERPROFILE": str(tmp_path)}
-    assert discover.which("ffmpeg", env, "win32") == exe
+    got = discover.which("ffmpeg", env, "win32")
+    assert got is not None and got.samefile(exe)     # a case-insensitive filesystem may report the PATHEXT spelling
     assert discover.which("nope", env, "win32") is None
 
 

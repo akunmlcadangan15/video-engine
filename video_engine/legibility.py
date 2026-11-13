@@ -326,7 +326,8 @@ def _components(mask: np.ndarray) -> list[np.ndarray]:
         if seen[p0]:
             continue
         seen[p0] = True
-        st, comp = [p0], []
+        st: list = [p0]
+        comp: list = []
         while st:
             p = st.pop()
             comp.append(p)
@@ -357,7 +358,7 @@ def counters(png: np.ndarray, bg: np.ndarray, mask_img: np.ndarray, rect: dict, 
     full = mask_img[y0:y1, x0:x1].mean(axis=2) < 128
     hl = holes(full)
     hl &= ~_dilate(~hl, 1)
-    keep = np.zeros(hl.size, bool)
+    keep: np.ndarray = np.zeros(hl.size, bool)
     for c in _components(hl):
         if len(c) >= lg["counter_min_px"]:
             keep[c] = True
@@ -365,7 +366,7 @@ def counters(png: np.ndarray, bg: np.ndarray, mask_img: np.ndarray, rect: dict, 
     if not keep.any():
         return None
     ys, xs = np.nonzero(keep)
-    want = bg[y0:y1, x0:x1][keep].astype(float)
+    want: np.ndarray = bg[y0:y1, x0:x1][keep].astype(float)
     xy = np.stack([ox + x0 + xs + 0.5, oy + y0 + ys + 0.5], axis=1)
     for rc, s in ((rect, st), *others):
         va = vignette_alpha(xy, (rc["x"], rc["y"], rc["w"], rc["h"]), float(s.get("va") or 0) * rc.get("opacity", 1), lg)

@@ -189,6 +189,7 @@ def motion_frames(tl: Timeline, project_dir: Path) -> list[tuple[float, float] |
                                           max(pan, abs(math.radians(tb - ta)) * fps * H / 2 / W))
         elif s.camera_move is not None and _is_file(project_dir, s.source):
             job = native.plan(s, tl, project_dir)
+            assert job.start_win is not None and job.end_win is not None
             wins = list(core.camera_windows(job.start_win, job.end_win, n))
             wins.append(wins[-1])
             for f in range(n):   # window (x, y, w, h) in source px; the window width maps to the frame width
