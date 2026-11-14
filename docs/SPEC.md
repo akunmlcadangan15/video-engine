@@ -398,10 +398,12 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 - Palette (geoverum, 17 muted OKLCH colours, L 0.40-0.82, C <= 0.12, pairwise OKLab distance >= 0.07): teal #136868,
   umber #5F4025, wine #74364B, mauve #796394, jade #75A58B, olive #6A662B, plum #B56A95, indigo #4B4D8B, ochre #C99D4E
   (never text), moss #6B8B5A, steel #437AA6, brick #9C443B, sienna #A7693C, taupe #A19073, sky #549CC0, lagoon
-  #70B8C6, mist #AEC8DC; teal and indigo are not adjacent in palette order. `[theme.entities]` pins Indonesia plum,
-  Sekutu indigo, Belanda ochre, Jepang moss, Caspian Sea steel, Russia brick, Kazakhstan sienna, Turkmenistan ochre,
-  Iran moss, Azerbaijan taupe, Black Sea sky, Mediterranean lagoon, Paratethys mist, Atlantic indigo; the six
-  unpinned colours (teal, umber, wine, mauve, jade, olive, in that order) go to every other entity.
+  #70B8C6, mist #AEC8DC; teal and indigo are not adjacent in palette order. `[theme.entities]` pins Indonesia brick
+  (`#9C443B`), Sekutu indigo, Belanda ochre, Jepang moss, Caspian Sea steel, Russia brick, Kazakhstan sienna,
+  Turkmenistan ochre, Iran moss, Azerbaijan taupe, Black Sea sky, Mediterranean lagoon, Paratethys mist, Atlantic
+  indigo, plus all 242 Natural Earth countries/territories (`NAME_ID`, `NAME`, `NAME_LONG`, and common Indonesian
+  aliases) across the 7 non-marine colours with zero land or key maritime border conflicts; the six unpinned colours
+  (teal, umber, wine, mauve, jade, olive, in that order) stay free for any other entity.
 - Camera drift: a constant ln zoom rate `camera_drift_per_s` (geoverum 0.06 ln / s, above the P01 `still_zoom_ln_s`
   0.05) for the whole wait, zooming about `pulse_anchor` (frame centre without pulses). Camera key `drift_max` (ln
   zoom, 0.01-2) bounds a wait's drift: it turns at 0 and the bound. Camera key `fit` (alias `keep_in_frame`, pin

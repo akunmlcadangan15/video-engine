@@ -1,11 +1,12 @@
 """Geoverum profile values: the camera drift counts as motion in P01; the region palette leaves six free muted
 colours after the pinned entities; pinned Eurasian/maritime entities take distinct colours near their target reference hues."""
+import collections
 import itertools
 import math
 
 import pytest
 
-from video_engine import entities, profiles
+from video_engine import config, entities, geodata, profiles
 from video_engine.gates import layer2, style
 
 GEO = profiles.load("geoverum")
@@ -140,3 +141,102 @@ def test_bad_pinned_entities_on_old_palette_share_colours_warn_E01(project, monk
     _geo(monkeypatch, palette=OLD_PALETTE, entities=OLD_ENTITIES)
     _, tl = project(_regions(PINNED_EURASIA))
     assert any(f.level == "warn" and "share colour" in f.message for f in layer2.e01_entity_colours(tl, {}))
+
+
+LAND_COLOURS = {"#9c443b", "#a7693c", "#c99d4e", "#6b8b5a", "#a19073", "#b56a95", "#4b4d8b"}
+WATER_KEYS = {"Caspian Sea", "Laut Kaspia", "Black Sea", "Laut Hitam", "Mediterranean", "Laut Mediterania",
+              "Laut Tengah", "Paratethys", "Atlantic", "Samudra Atlantik"}
+COUNTRY_ALIAS_GROUPS = [
+    ("Indonesia",), ("Australia",), ("Papua Nugini", "Papua New Guinea"), ("Timor Leste", "Timor-Leste"),
+    ("Malaysia",), ("Singapura", "Singapore"), ("Brunei Darussalam", "Brunei"), ("Filipina", "Philippines"),
+    ("Belanda", "Netherlands"), ("Jepang", "Japan"), ("Rusia", "Russia", "Russian Federation"),
+    ("Amerika Serikat", "United States of America", "United States", "USA", "AS"),
+    ("Republik Rakyat Tiongkok", "China", "Tiongkok", "Cina", "RRT"),
+    ("Britania Raya", "United Kingdom", "Inggris", "UK", "Great Britain"),
+    ("Prancis", "France", "Perancis"), ("Jerman", "Germany"), ("Spanyol", "Spain"), ("Portugal",),
+    ("Turki", "Turkey"), ("Uni Emirat Arab", "United Arab Emirates", "UEA", "Emirat Arab"),
+    ("Antartika", "Antarktika", "Antarctica"),
+]
+BORDER_PAIRS = [
+    ("Indonesia", "Australia"), ("Indonesia", "Malaysia"), ("Indonesia", "Singapura"), ("Indonesia", "Brunei"),
+    ("Indonesia", "Filipina"), ("Indonesia", "Timor Leste"), ("Indonesia", "Papua Nugini"),
+    ("Malaysia", "Thailand"), ("Malaysia", "Singapura"), ("Malaysia", "Brunei"), ("Malaysia", "Filipina"),
+    ("China", "Taiwan"), ("China", "India"), ("China", "Russia"), ("China", "Jepang"), ("China", "Vietnam"),
+    ("Inggris", "Prancis"), ("Inggris", "Irlandia"), ("Inggris", "Belanda"), ("Inggris", "Spanyol"),
+    ("Russia", "Ukraina"), ("Russia", "Belarus"), ("Russia", "Finlandia"), ("Russia", "Polandia"),
+    ("Israel", "Palestina"), ("Israel", "Mesir"), ("Israel", "Yordania"), ("Israel", "Suriah"), ("Israel", "Lebanon"),
+    ("India", "Pakistan"), ("India", "Bangladesh"), ("India", "Sri Lanka"), ("Amerika Serikat", "Kanada"),
+    ("Amerika Serikat", "Meksiko"), ("Amerika Serikat", "Kuba"), ("Brasil", "Argentina"),
+]
+
+
+def _seg_dist2(px, py, ax, ay, bx, by):
+    dx, dy = bx - ax, by - ay
+    l2 = dx * dx + dy * dy
+    t = 0.0 if l2 == 0 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / l2))
+    return (px - (ax + t * dx)) ** 2 + (py - (ay + t * dy)) ** 2
+
+
+def _feature_segments(idx: int, geom: dict, thresh: float, grid: dict):
+    polys = [geom["coordinates"]] if geom["type"] == "Polygon" else geom["coordinates"]
+    segs = []
+    for poly in polys:
+        for ring in poly:
+            for a, b in zip(ring, ring[1:]):
+                bb = (min(a[0], b[0]) - thresh, min(a[1], b[1]) - thresh,
+                      max(a[0], b[0]) + thresh, max(a[1], b[1]) + thresh)
+                sidx = len(segs)
+                segs.append((a[0], a[1], b[0], b[1], *bb))
+                for gx in range(math.floor(bb[0] * 4), math.floor(bb[2] * 4) + 1):
+                    for gy in range(math.floor(bb[1] * 4), math.floor(bb[3] * 4) + 1):
+                        grid[(gx, gy)].append((idx, sidx))
+    return segs
+
+
+def _touch_segments(s1: tuple, s2: tuple, thresh2: float) -> bool:
+    ax, ay, bx, by, x0, y0, x1, y1 = s1
+    cx, cy, dx, dy, ux0, uy0, ux1, uy1 = s2
+    if x1 < ux0 or ux1 < x0 or y1 < uy0 or uy1 < y0:
+        return False
+    return min(_seg_dist2(ax, ay, cx, cy, dx, dy), _seg_dist2(bx, by, cx, cy, dx, dy),
+               _seg_dist2(cx, cy, ax, ay, bx, by), _seg_dist2(dx, dy, ax, ay, bx, by)) <= thresh2
+
+
+def _land_border_pairs(feats: list, thresh: float = 0.015) -> set[tuple[int, int]]:
+    thresh2, grid = thresh * thresh, collections.defaultdict(list)
+    all_segs = [_feature_segments(i, f["geometry"], thresh, grid) for i, f in enumerate(feats)]
+    pairs: set[tuple[int, int]] = set()
+    for items in grid.values():
+        if len({c for c, _ in items}) < 2:
+            continue
+        for i, (c1, s1) in enumerate(items):
+            for c2, s2 in items[i + 1:]:
+                pair = (min(c1, c2), max(c1, c2))
+                if c1 != c2 and pair not in pairs and _touch_segments(all_segs[c1][s1], all_segs[c2][s2], thresh2):
+                    pairs.add(pair)
+    return pairs
+
+
+def test_good_country_entities_cover_indonesia_aliases_and_border_constraints():
+    ents = {k: v.lower() for k, v in GEO.theme.entities.items()}
+    assert ents["Indonesia"] == "#9c443b"
+    assert all(v in LAND_COLOURS for k, v in ents.items() if k not in WATER_KEYS)
+    for grp in COUNTRY_ALIAS_GROUPS:
+        cols = {ents[name] for name in grp}
+        assert len(cols) == 1, (grp, cols)
+    for a, b in BORDER_PAIRS:
+        assert ents[a] != ents[b], f"border conflict between {a} and {b} ({ents[a]})"
+
+    admin = (config.GEO_LIBRARY / "natural-earth" / "natural-earth-vector" / "geojson"
+             / "ne_50m_admin_0_countries.geojson")
+    if not admin.is_file():
+        return
+    feats = geodata.features(admin)
+    assert len(feats) == 242
+    for f in feats:
+        pr = f["properties"]
+        assert ents[pr["NAME"]] == ents[pr["NAME_ID"]] in LAND_COLOURS
+    for c1, c2 in _land_border_pairs(feats):
+        n1, n2 = feats[c1]["properties"]["NAME"], feats[c2]["properties"]["NAME"]
+        assert ents[n1] != ents[n2], f"land border conflict: {n1} vs {n2} ({ents[n1]})"
+

@@ -178,7 +178,7 @@ def test_good_repository_geoverum_loads_from_its_include_files():
     assert "[theme.entities]" in flat and "\ninclude" not in flat
     for key in ("layout", "legibility", "print", "sound"):
         assert getattr(profiles.load("geoverum"), key) is not None, key
-    assert profiles.load("geoverum").data.theme.entities["Indonesia"] == "#B56A95"
+    assert profiles.load("geoverum").data.theme.entities["Indonesia"] == "#9C443B"
 
 
 # ------------------------------------------------------------------------------------------------------------ bad
