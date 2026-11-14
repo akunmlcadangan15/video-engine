@@ -71,18 +71,17 @@ Model kerja lengkap: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Profil `geoverum`
 
-Dua titik masuk berbagi satu inti lewat `include`: `profiles/geoverum.toml` (9:16) dan `profiles/geoverum_landscape.toml` (16:9). Keduanya hanya memuat geometri caption, jendela durasi, dan ukuran watermark format masing-masing.
+Satu profil merek tunggal `profiles/geoverum.toml` melayani portrait (9:16) maupun landscape (16:9), memisahkan geometri orientasi ke cabang `.portrait` / `.landscape` tanpa aturan kreatif atau durasi wajib.
 
 | File | Isi |
 |---|---|
-| `profiles/geoverum/core.toml` | Tabel yang tidak bergantung orientasi: gaya caption, kamera, gerak, transisi, FX, `reference_style`, watermark, dan gate gaya. |
+| `profiles/geoverum.toml` | Titik masuk merek Geoverum dengan cabang `[caption_style.portrait/landscape]` dan `[watermark.portrait/landscape]`. |
+| `profiles/geoverum/core.toml` | Tabel yang tidak bergantung orientasi: gaya caption, kamera, gerak, transisi, FX, `reference_style`, watermark, dan gate kualitas teknis (`S01`, `R65`, `G02`). |
 | `profiles/geoverum/entities.toml` | Warna tetap untuk negara, aliansi, dan perairan yang berulang (`[theme.entities]`). |
 | `profiles/geoverum/legibility.toml` | Target kontras APCA, polaritas tinta, halo, dan vignette teks peta (gate `R64`). |
-| `profiles/geoverum/print.toml` | Tipografi kartografi cetak, tekstur kertas, dan blending tinta `multiply` (gate `T01`, `B01`). |
+| `profiles/geoverum/print.toml` | Tipografi kartografi cetak, tekstur kertas, blending tinta `multiply`, serta cabang `[print.portrait/landscape]` (gate `T01`, `B01`). |
 | `profiles/geoverum/sound.toml` | Pemetaan SFX ke peristiwa visual dan *ducking* musik di bawah narasi. |
-| `profiles/geoverum/layout.toml` | Grid, zona aman, hierarki ukuran, anggaran elemen, dan waktu *fly-in* (gate `L01`-`L10`). |
-| `profiles/geoverum/landscape/`, `profiles/landscape/format.toml` | Penggantian layout, print, dan geometri caption untuk 16:9. |
-| `profiles/geoverum/creative.md` | Aturan kreatif channel untuk *director*. |
+| `profiles/geoverum/layout.toml` | Grid, zona aman, hierarki ukuran, anggaran elemen, waktu *fly-in*, serta cabang `[layout.portrait/landscape]` (gate `L01`-`L10`). |
 | `profiles/taste/geoverum.json` | Catatan selera `liked` / `rejected`, diperiksa dengan `engine taste geoverum --lint`. |
 
 Rincian kunci: [docs/PROFILES.md](docs/PROFILES.md).
@@ -114,7 +113,7 @@ bahan (aset, voiceover) ──► draft AI ──► master_timeline.json ──
 | `engine sheet P` | Membuat *contact sheet* dari `out/final.mp4`. |
 | `engine words P` | Mentranskripsi *voiceover* dan menyematkan *word timestamps* ke timeline. |
 | `engine draft P` | Menghasilkan draf timeline menggunakan AI *director*. Tanpa `--provider`, model AI yang sedang menjalankan mesin yang menjawab (bundel di `P/ai_request/`, lanjutkan dengan `--resume`). |
-| `engine profile [NAMA] --origin` | Menampilkan profil hasil resolusi dan file asal tiap kunci. |
+| `engine profile [NAMA] [--orientation portrait|landscape] --origin` | Menampilkan profil hasil resolusi dan file asal tiap kunci. |
 | `engine deliver P --export DIR` | Menyiapkan paket siap unggah. |
 | `engine taste CHANNEL [--lint]` | Menampilkan atau memverifikasi keselarasan catatan selera channel terhadap profil TOML. |
 | `engine doctor [--install]` | Memeriksa atau memasang toolchain Node, HyperFrames, dan Chrome di `vendor/`. |
@@ -131,7 +130,7 @@ Referensi lengkap seluruh perintah dan opsi: [docs/CLI.md](docs/CLI.md).
 | `video_engine/ai/` & `director/` | Lapisan provider AI (Agent, Gemini, OpenAI-compatible; tanpa default vendor) serta kompilator pola *storyboard*. |
 | `video_engine/gates/` | Modul gate 3-lapis; definisi terpusat di `video_engine/gate_registry.py`. |
 | `rust/hypoverum_core_rs/` | Ekstensi Rust (PyO3): interpolasi kamera, kompilator `.ass`, deteksi jeda suara, dan statistik piksel. |
-| `profiles/` | Profil channel (`default.toml`, `geoverum.toml`, `geoverum_landscape.toml`, sub-tabel `geoverum/`, dan `taste/`). |
+| `profiles/` | Profil channel (`default.toml`, `geoverum.toml`, sub-tabel `geoverum/`, dan `taste/`). |
 | `deploy/` | Definisi image: `modal.Dockerfile` (build final di Modal) dan `test.Dockerfile` (lingkungan tes Linux). |
 | `scripts/` | Skrip pemeriksaan dokumentasi (`check_docs.py`) dan *wrapper* eksekusi (`engine-build`, `engine-batch`, `engine-draft`). |
 | `docs/` | Dokumentasi teknis lengkap. Mulai dari [docs/README.md](docs/README.md). |

@@ -53,7 +53,10 @@ def is_active(g: reg.Gate, p) -> bool:
     if g.id == "B01":
         return p.watermark is not None
     if g.id == "Z01":
-        return "max_bottom_y" in p.caption_style
+        cs = p.caption_style
+        return "max_bottom_y" in cs or any(
+            isinstance(cs.get(o), dict) and "max_bottom_y" in cs[o] for o in ("portrait", "landscape")
+        )
     if g.layer == "layout" and g.id.startswith("L"):
         return p.layout is not None
     if g.id == "A02":

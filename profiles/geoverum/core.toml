@@ -1,15 +1,14 @@
-# Geoverum Shared Core Specification (loaded by both profiles/geoverum.toml and profiles/geoverum_landscape.toml).
-# Contains all orientation-independent visual, typographic, caption, drafting, motion, camera, transition,
-# Stage 4 FX, reference-style, rendering, watermark and style-gate parameters. A key that only repeats
-# profiles/default.toml is left out: [flags], [audio] and the anti-slop levels are the engine defaults.
+# Geoverum Shared Core Brand Style (loaded by profiles/geoverum.toml for both 9:16 and 16:9).
+# Contains visual brand style, typography, captions, watermark, motion/camera tokens, transitions, Stage 4 FX,
+# reference style options, render config, and technical quality gates. A key that repeats profiles/default.toml
+# is left out: [flags], [audio] and anti-slop levels use engine defaults.
 
 # Base of the type scale. A size set here reaches every surface that does not set its own: title_px is the
-# [theme] title and the [layout.sizes] title (the landscape layout sets its own 88 px).
+# [theme] title and the [layout.portrait.sizes] title (landscape layout sets its own 88 px).
 [type]
 title_px = 104                # Primary display title size in pixels on dark satellite basemaps (reference titles enter at ~104 px, 37% of the width)
 
-# Burned-in caption look shared by both formats (rendered via libass on the final composite pass). Size, line
-# position and placement band are per format: profiles/geoverum.toml (9:16), profiles/landscape/format.toml (16:9).
+# Burned-in caption look shared by both orientations (size, margin_x and placement live in [caption_style.<orient>]).
 [caption_style]
 font = "Inter"                # Font family resolved to vendor/fonts/Inter-Bold.otf when bold = true
 bold = true                   # Enforces bold weight for rapid legibility on mobile screens
@@ -35,13 +34,12 @@ colour = "#ffffff"            # Pure white glyph fill color
 opacity = 0.85                # Opacity (85%) so the watermark remains unobtrusive over dark satellite terrain
 shadow = true                 # Enables a subtle drop shadow for legibility over bright cloud or snow regions
 
-# AI storyboard and timeline drafting constraints (used by video_engine/draft.py and video_engine/draft_scene.py).
+# AI drafting technical capabilities (scene schema and segmentation bounds; no creative/story rules).
 [draft]
-min_seg_s = 3.0               # Minimum segment duration in seconds; supports both rapid 3-6 s evidence cuts and extended 6-30 s continuous map flights
-max_seg_s = 30.0              # Maximum single-segment duration in seconds before requiring a narrative beat or scene transition (reference shot length p90 30.8 s)
-map_path = true               # Enables multi-keyframe continuous camera trajectories (flow, glide, reveal, whip, settle) within a single map segment
+min_seg_s = 3.0               # Minimum pause-splitter segment bound in seconds
+max_seg_s = 30.0              # Maximum pause-splitter segment bound in seconds
+map_path = true               # Enables multi-keyframe continuous camera trajectories within a single map segment
 scene = ["globe", "props", "beats", "radar", "terrain3d", "cross_section", "historical", "flag_char", "data_viz", "blind_spot", "grid_split"]   # Scene capabilities unlocked for the AI draft generator
-rules_file = "geoverum/creative.md"   # External markdown file containing the canonical creative direction rules injected into the draft prompt
 
 # Named motion duration tokens: validated and exported to the HyperFrames scene (theme.motion.overlay_s, panel_s);
 # element layouts and paths keep their timings in [layout.timing], [theme] and [transitions].
@@ -267,53 +265,18 @@ final_maxrate_kbps = 40000    # VBV maximum bitrate cap (40 Mbps) to prevent bit
 final_bit_depth = 10          # Encodes the final master in 10-bit H.264 High 10 (yuv420p10le) to eliminate banding in dark ocean, sky, and neon glow gradients
 map_jpeg_quality = 95         # JPEG compression quality for generated basemap derivatives and deep-zoom tiles
 
-# Automated quality-gate policy (kernel integrity gates always block; style gates emit warnings).
+# Automated quality-gate policy (kernel integrity gates always block; technical/legibility gates check readability).
 [gates]
-require = []                  # Empty list: all non-mandatory style gates operate in advisory warning mode
+require = []                  # Empty list: all non-mandatory lint/style gates operate in advisory warning mode
 advisory = []                 # Optional list of flexible technical gates downgraded to warnings
 
-# Shared style-gate thresholds (orientation-independent). Anti-slop rules AS01-AS06 run at the engine defaults
-# (warn; profiles/default.toml [gates.anti_slop]).
-[gates.hook]                  # H01: Opening hook timing thresholds in the first seconds of the video
-vo_warn_s = 0.2               # Emits a warning if voiceover onset occurs later than 0.20 s
-vo_fail_s = 0.8               # Threshold (0.80 s) above which delayed voiceover onset is flagged
-caption_warn_s = 0.2          # Emits a warning if the first caption appears later than 0.20 s
-caption_fail_s = 1.0          # Threshold (1.00 s) above which delayed first caption appearance is flagged
-graphic_warn_s = 1.5          # Emits a warning if the primary visual hook graphic (region, pin, route, title) appears after 1.50 s
-graphic_fail_s = 2.0          # Threshold (2.00 s) above which delayed visual hook graphic appearance is flagged
-open_on_moving_map = true     # Requires the opening shot to begin with active camera motion from frame 0 rather than a static hold
-
-[gates.camera]                # P01 & P02: Camera motion continuity and minimum drift verification
-hold_warn_s = 3.0             # Emits a warning if the camera remains below the motion threshold for more than 3.0 s (reference longest hold per Short: median 2.6 s, p75 3.6 s)
-hold_fail_s = 5.0             # Threshold (5.0 s) above which a static camera hold is flagged (reference p90 4.5 s)
-moving_warn = 0.65            # Minimum fraction of frames (65%) that must exhibit active camera movement (reference per-Short median 0.77, p10 0.64)
-still_zoom_ln_s = 0.05        # Logarithmic zoom speed floor (0.05 ln/s) below which a frame is classified as stationary in the absence of pan
-still_pan_w_s = 0.02          # Screen-width pan speed floor (0.02 W/s) below which a frame is classified as stationary in the absence of zoom
-min_drift_per_s = 0.06        # Minimum required inter-keyframe camera drift rate (0.06 ln/s, matching [theme] camera_drift_per_s)
-
-[gates.novelty]               # N01: Visual beat frequency verification
-max_gap_s = 3.0               # Maximum interval (3.0 s) allowed without a new visual event (camera pulse, label, pin, route, figure, or cut)
-
+# Technical audio/legibility/geographic quality gates. Narrative, pacing, duration, and CTA rules are unset.
 [gates.silence]               # S01: Dead-air audio verification
 max_gap_s = 0.8               # Maximum continuous duration (0.80 s) where integrated audio falls below threshold_db
 threshold_db = -40.0          # Amplitude floor in dBFS used to detect silent gaps in the voiceover and mix
 
 [gates.caption_contrast]      # R65: Caption legibility against the picture under the caption box
 min_lc = 45.0                 # Minimum APCA contrast |Lc| (45 = the floor for large bold text) between the white caption and the brightest 10% of the picture behind it
-
-[gates.keyword_return]        # K01: Narrative loop closure between opening hook and ending payoff
-hook_s = 3.0                  # Duration of the opening window (first 3.0 s) scanned for primary topic keywords
-end_s = 5.0                   # Duration of the closing window (final 5.0 s) scanned for thematic keyword recurrence
-min_chars = 4                 # Minimum token length in characters considered a substantive keyword
-
-[gates.ending_keyword]        # K02: Final-frame visual keyword persistence
-hook_s = 3.0                  # Opening window duration in seconds
-end_s = 5.0                   # Closing window duration in seconds
-min_chars = 4                 # Minimum character length for keyword matching
-
-[gates.cta]                   # C02: Prohibition of generic promotional sign-offs and subscribe end-cards
-phrases = ["terima kasih", "subscribe", "follow", "like", "share", "tonton", "kunjungi", "link di bio",
-           "sampai jumpa", "jangan lupa", "selesai"]
 
 [gates.geo]                   # G02: Geographic coordinate placement validation
 require_land = false          # Permits pins and labels to be anchored on oceans, straits, and maritime routes as well as land polygons

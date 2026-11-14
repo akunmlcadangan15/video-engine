@@ -49,7 +49,7 @@ Neither kernel nor lint: `F01`, `AS04` (technical gates that keep their blocking
 The old per-tier comparison (`mandatory` / `profile` / `flexible`) and the 61 gate x tier/waive table are replaced by the model above. `engine gates` shows `KERNEL`, `LINT` or `ERROR` (for `F01`, `AS04` and `AIQA`) in the runtime `TIER` column (while `engine gates --format md` preserves the historical registry tier column `mandatory` / `profile` / `flexible` for reference); the effective policy is kernel vs lint: **KERNEL (error)** always blocks, **LINT** warns unless required, and technical **ERROR** gates (`F01`, `AS04` when raised to `fail`) block a release build unless lowered via `[gates] advisory` or `--mode draft`.
 Explicit downgrades below only turn lint findings down to `info`; they cannot lower a kernel gate.
 
-Not every channel document is a gate: `profiles/geoverum/creative.md` (draft rules) and `profiles/taste/geoverum.json`
+Not every channel document is a gate: optional `[draft] rules`/`rules_file` and `profiles/taste/geoverum.json`
 (historical taste notes) do not block a build; they are not part of the gate registry.
 - `build_report.json` -> `gates`: `required`, `segment_intents`, `fails`, `warns`, `waived` (each row: `gate`, `class`, `tier`, `level`, `message`, `seg`, `frames`, and the original level in `waived`), plus `waivers` when the timeline lowers gates with a reason (auto-repairs are recorded in top-level `preflight_fixes`).
   Geoverum has `[gates] require = []`: no lint gate is required by the channel; use `engine gates --profile geoverum` for the effective policy. A project may still add required gates.

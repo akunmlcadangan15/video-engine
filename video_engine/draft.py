@@ -101,9 +101,10 @@ class Inputs:
 
 
 def _profile(inp: Inputs) -> profiles.Profile:
-    """Effective profile of the draft: the channel profile (default when none) with the project's overrides, the
-    same one the drafted Timeline validates against."""
-    return profiles.load(inp.profile, getattr(inp, "profile_overrides", None))
+    """Effective profile of the draft: the channel profile (default when none) resolved for the frame orientation
+    and project overrides, the same one the drafted Timeline validates against."""
+    return profiles.load(inp.profile, getattr(inp, "profile_overrides", None),
+                         orientation=units(inp.settings).orientation)
 
 
 # ---------------------------------------------------------------------------------------------------------- inputs
@@ -236,8 +237,8 @@ def collect(pdir: Path, voiceover: str | None = None, script: str | None = None,
         from . import timeline
         existing = timeline.load(pdir)
     profile = profile or (existing.profile if existing else None)
-    dp = profiles.load(profile or profiles.DEFAULT).draft
     settings = existing.settings if existing else Settings()
+    dp = profiles.load(profile or profiles.DEFAULT, orientation=units(settings).orientation).draft
     ac = existing.audio_chain.model_copy(deep=True) if existing else AudioChain()
     ac.voiceover_path = _find_voiceover(pdir, voiceover, ac)
     if not (pdir / ac.voiceover_path).is_file():

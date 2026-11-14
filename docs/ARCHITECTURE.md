@@ -41,28 +41,31 @@ Entry points: `profiles.of(tl)` for a timeline, `profiles.load(name, overrides)`
 TOML anywhere else. To see what a profile resolves to and which file set a key:
 
 ```bash
-engine profile geoverum_landscape --origin --table caption_style
+engine profile geoverum --orientation landscape --origin --table caption_style
 ```
 
 ## Profile contract
 
 - Schema: the Pydantic models in `video_engine/profile_schema.py` (`ProfileData` and its tables) plus
-  `LayoutProfile` in `video_engine/layout.py`. Every model forbids unknown keys. `engine schema profile` prints the
-  JSON Schema. Key reference: [PROFILES.md](PROFILES.md).
+  `LayoutProfile` in `video_engine/layout.py` and `video_engine/layout_models.py`. Every model forbids unknown keys.
+  `engine schema profile` prints the JSON Schema. Key reference: [PROFILES.md](PROFILES.md).
 - `caption_style` and `framing` stay dicts, each with its own check at load: `profiles.check_caption_style` (known
   keys, value types, geometry; it also runs for a timeline's `caption_style`) and `framing.check_overrides`.
 - `[audio]`, `[draft]` and `[theme]` are filled by `default.toml`. An optional table (`[legibility]`, `[sound]`,
   `[layout]`, `[print]`) has a default for every key, so it may list only the keys the channel changes;
   `[watermark]` needs its `text`, and a style-gate table (`[gates.hook]`, ...) needs its thresholds.
-- Orientation: `[format] orientation`, else inferred as portrait when the profile has `[layout]`, `[print]` or
-  portrait caption geometry. Lengths are px at the reference canvas (1080x1920 or 1920x1080, `video_engine/units.py`).
-- `Profile.blake3` hashes the effective profile (`profiles.hash_dump`). Splitting files with `include`, building on
-  a base with `extends`, and deleting a key that only repeats a lower layer leave it unchanged. A new field must
-  stay out of the hash at its default (`Field(exclude_if=...)`, or a rule in `hash_dump`), or every existing profile
-  hash changes. `tests/test_landscape.py` pins the default profile's hash.
-- `[draft] rules_file` points at `profiles/<channel>/creative.md`; each `- ` line is one prompt rule. A number that
-  differs per format is written `{{table.key}}` and filled from the effective profile. Numbers written as literals
-  must equal the TOML values (`tests/test_geoverum_style.py`, `tests/test_creative_workflow.py`).
+- Orientation: `[format] orientation`, else `None` (dual-orientation) when any oriented table (`caption_style`,
+  `layout`, `print`, `watermark`) carries a `.landscape` branch (and set automatically when `orientation` is resolved),
+  else inferred as portrait when the profile has root `[layout]`, `[print]`, `.portrait` branch, or portrait caption
+  geometry. `profiles.of(tl)` resolves the profile for the timeline's frame orientation; lengths are px at the
+  reference canvas (1080x1920 or 1920x1080, `video_engine/units.py`).
+- `Profile.blake3` hashes the effective profile (`profiles.hash_dump`), isolated per resolved orientation. Splitting
+  files with `include`, building on a base with `extends`, and deleting a key that only repeats a lower layer leave
+  it unchanged. A new field must stay out of the hash at its default (`Field(exclude_if=...)`, or a rule in
+  `hash_dump`), or every existing profile hash changes. `tests/test_landscape.py` pins the default profile's hash.
+- Optional `[draft] rules_file` points at a channel markdown file (e.g. `profiles/<channel>/creative.md`); each `- `
+  line is one prompt rule, with `{{table.key}}` filled from the effective profile. Brand-only profiles like `geoverum`
+  leave `rules` and `rules_file` unset so creative directing stays open.
 - Adding a channel: `profiles/<name>.toml` with only the keys it changes (or `extends = "<base>"`), optional
   `include` parts under `profiles/<name>/`, then `engine profile <name> --origin`, `engine gates --profile <name>`
   and `pytest -q tests/test_profiles.py tests/test_profile_include.py tests/test_profile_layers.py`.
@@ -120,7 +123,7 @@ module imports without a built `hypoverum_core_rs` wheel ([CONTRIBUTING.md](../C
 - Prompts are assembled in code from the profile and the timeline: the frame format from `units(settings)` (worded
   once, `director.format_words`), the narration language from `audio_chain.language`. Never write a literal
   "vertical", "1080x1920" or a language name. Shared prompt principles live in `video_engine/director/guidance.md`
-  (`director.guidance`), channel rules in `profiles/<channel>/creative.md`.
+  (`director.guidance`); optional per-channel rules (unset on `geoverum`) can be added via `[draft] rules` / `rules_file`.
 - Never print or store an API key value; reports name the environment variable only.
 
 ## Conventions
@@ -144,8 +147,8 @@ module imports without a built `hypoverum_core_rs` wheel ([CONTRIBUTING.md](../C
 - `[motion]` frame tokens (`micro_frames`, `overlay_frames`, `panel_frames`, `stagger_frames`) are exported to the
   scene as `micro_s`, `overlay_s`, `panel_s`, `stagger_s`; the HyperFrames template reads `entrance`, `move`,
   `exit`, `entrance_scale`, `overlay_s` and `panel_s`, and native drawn overlay fades read `overlay_fade_s`.
-- `extends` cannot unset a key of its base. Format-specific keys (portrait caption geometry) live in a file only
-  that format includes, which is why `geoverum_landscape` shares `geoverum/core.toml` by `include`.
+- `extends` cannot unset a key of its base: keys specific to portrait or landscape belong under `.portrait` and
+  `.landscape` orientation branches (as in `geoverum`) or in separate `include` files rather than repeating base keys.
 - `profiles/taste/<channel>.json` is both tracked seed data and runtime state: a successful `engine draft` rewrites
   `recent`. Tests redirect it with `VIDEO_ENGINE_TASTE_DIR`.
 - A redraft keeps the project's `profile_overrides` but starts with no project `gates` (waivers are decisions about

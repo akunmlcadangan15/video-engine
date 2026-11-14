@@ -18,18 +18,20 @@ def test_good_taste_seed_records_the_approved_choices_with_reasons():
     assert "−14 LUFS" in liked
     assert "92/104" in rejected and "Stage 4 sekaligus" in rejected and "pecah" in rejected
     assert all(e["why"].strip() for e in t["liked"] + t["rejected"])
-    # Free-text creative rules are not stored here: the single source is profiles/geoverum/creative.md
-    # (loaded via [draft] rules_file). This store keeps liked/rejected preferences with machine checks.
+    # Free-text creative mandates are not forced in the profile; this store keeps liked/rejected preferences
+    # with machine-verified checks where applicable.
 
 
 def test_good_geoverum_profile_matches_the_taste_lock():
-    p = profiles.load("geoverum")
-    cs = p.caption_style
-    assert (cs["size"], cs["fixed_y"], cs["outline"]) == (48, 1366, 0)
-    assert "box_bg" not in cs and cs["forbid_box"] is False   # no box by default; an explicit box is allowed
-    assert abs(cs["fixed_y"] / 1920 - 0.711) < 0.005
-    assert p.data.flags.fit == "auto"
-    d = p.data
+    p_port = profiles.load("geoverum", orientation="portrait")
+    p_land = profiles.load("geoverum", orientation="landscape")
+    cs_port, cs_land = p_port.caption_style, p_land.caption_style
+    assert (cs_port["size"], cs_port["fixed_y"], cs_port["outline"]) == (48, 1366, 0)
+    assert (cs_land["size"], cs_land["fixed_y"], cs_land["outline"]) == (58, 900, 0)
+    assert "box_bg" not in cs_port and cs_port["forbid_box"] is False and cs_land["forbid_box"] is False
+    assert abs(cs_port["fixed_y"] / 1920 - 0.711) < 0.005
+    assert p_port.data.flags.fit == "auto" and p_land.data.flags.fit == "auto"
+    d = p_port.data
     assert d.draft.min_seg_s == 3.0
     assert d.gates.cuts is None and d.gates.visual_type is None
     assert d.audio.target_lufs == -14.0 and d.audio.true_peak <= -1.0
@@ -49,4 +51,7 @@ def test_good_taste_and_profile_agree_on_transitions_peak_and_caption_sizes():
     # true peak: the taste store quotes the profile value
     assert "−1,5 dBTP" in liked and d.data.audio.true_peak == -1.5
     # caption size: 84 / 92 / 104 rejected, so only 48 (the reference Shorts' caption size) is a profile candidate
-    assert "84/92/104" in rejected and d.caption_style["ab_sizes"] == [48]
+    p_port = profiles.load("geoverum", orientation="portrait")
+    p_land = profiles.load("geoverum", orientation="landscape")
+    assert "84/92/104" in rejected and p_port.caption_style["ab_sizes"] == [48] and p_land.caption_style["ab_sizes"] == [58]
+    assert d.caption_style["portrait"]["ab_sizes"] == [48] and d.caption_style["landscape"]["ab_sizes"] == [58]

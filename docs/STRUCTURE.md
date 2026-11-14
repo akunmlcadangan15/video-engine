@@ -5,11 +5,11 @@ tempat lain hanya mereferensikan, bukan menyalin.
 
 | Lapisan | Pertanyaan | Sumber kebenaran | Bukan di sini |
 |---|---|---|---|
-| **Profil** (`profiles/*.toml`) | Nilai & batas keras apa? | angka, gate, ukuran, `[type]` | prose kreatif |
-| **Kreatif / Sutradara** (`video_engine/director/`, `profiles/<channel>/creative.md`) | Cerita & pola apa? | `guidance.md` (prinsip global), `patterns.toml`, `creative.md` per channel (aturan keras) | nilai render, ukuran teks |
+| **Profil** (`profiles/*.toml`) | Gaya merek, geometri & batas teknis? | warna, font, animasi, gate teknis/legibilitas, `[type]` | aturan cerita/durasi wajib |
+| **Kreatif / Sutradara** (`video_engine/director/`) | Cerita & pola apa? | `guidance.md` (prinsip global), `patterns.toml`, dan opsional `[draft] rules`/`rules_file` per channel | nilai render, ukuran teks |
 | **Struktur** (`master_timeline.json`) | Kapan & apa urutannya? | segmen, `goal`, caption, kredit | gaya visual |
 | **Presentasi** (renderer) | Penampilannya bagaimana? | `[theme]`, `[print]`, `[legibility]`, `[layout]` sebagai override di atas `[type]` | keputusan cerita |
-| **Selera** (`profiles/taste/<channel>.json`) | Apa yang disukai channel? | `liked`/`rejected` + `check` mesin | aturan keras (itu profil/creative.md) |
+| **Selera** (`profiles/taste/<channel>.json`) | Apa yang disukai channel? | `liked`/`rejected` + `check` mesin | aturan keras (itu profil/rules opsional) |
 
 ## Istilah yang tidak boleh tertukar
 
@@ -47,10 +47,10 @@ hanya boleh diketatkan, tidak dilonggarkan.
 `[theme] title_px`/`pin_label_px`, `[print] title_px`, dan `[layout.sizes] title`/`pin_label`. Nilai surface
 yang ditulis eksplisit tetap menang sebagai override per-surface. Ukuran caption tetap di `[caption_style]` (aturan caption, bukan scene type).
 
-## Creative rules
+## Creative rules (opsional)
 
-Aturan keras per channel hanya di `profiles/<channel>/creative.md`, dimuat lewat
-`[draft] rules_file`. Angka yang berbeda per format ditulis sebagai placeholder `{{tabel.kunci}}` dan diisi dari
-profil efektif, bukan sebagai literal. Dilarang menyalin aturan yang sama ke `taste/*.json` (`rules` di sana
-adalah preferensi) atau ke `guidance.md` (prinsip global). `[draft] rules` inline dan
-`rules_file` saling eksklusif — keduanya bersama adalah error.
+Profil merek seperti `geoverum` tidak mengunci arahan kreatif; aturan kreatif tambahan hanya berlaku bila channel
+menyatakan `[draft] rules` atau `[draft] rules_file` (mis. file tunggal `profiles/<channel>/creative.md`). Bila dipakai,
+angka yang berbeda per orientasi ditulis sebagai placeholder `{{tabel.kunci}}` dan diisi dari profil efektif untuk
+orientasi tersebut. Dilarang menyalin aturan yang sama ke `taste/*.json` (`rules` di sana adalah preferensi) atau ke
+`guidance.md` (prinsip global). `[draft] rules` inline dan `rules_file` saling eksklusif — keduanya bersama adalah error.

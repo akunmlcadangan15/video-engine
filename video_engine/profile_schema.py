@@ -6,7 +6,7 @@ module, so callers keep writing `profiles.Theme`, `profiles.CameraProfile`, ... 
 from __future__ import annotations
 
 import re
-from typing import Any, Iterator, Literal
+from typing import TYPE_CHECKING, Any, Iterator, Literal
 
 from pydantic import (
     BaseModel,
@@ -22,7 +22,7 @@ from pydantic import (
 
 from .gate_registry import ANTI_SLOP_IDS, LINT_GATE_IDS, NEVER_ADVISORY, TECHNICAL_GATE_IDS
 from .grade import Grade
-from .layout import LayoutProfile
+from .layout_models import LayoutProfile, SetOnlyModel, partial_model
 
 HEX_COLOUR = re.compile(r"#[0-9a-fA-F]{6}")
 
@@ -702,7 +702,7 @@ class Legibility(_Strict):
         return self
 
 
-class Watermark(_Strict):
+class _WatermarkBase(_Strict):
     """Channel text mark burned into the final video (top right, inside the safe area) by the final mux."""
     text: str = Field(min_length=1, max_length=40)
     font: Literal["inter", "title"] = "inter"          # inter = Inter Bold, title = Archivo Black
@@ -712,6 +712,18 @@ class Watermark(_Strict):
     shadow: bool = True                                 # soft dark shadow under the text
     corner: Literal["top_right", "bottom_right", "top_left", "bottom_left"] | None = None   # None = by orientation:
                                                         # top_right in portrait, bottom_right in landscape
+
+
+if TYPE_CHECKING:
+    class WatermarkOverride(SetOnlyModel): pass
+else:
+    WatermarkOverride = partial_model("WatermarkOverride", _WatermarkBase)
+
+
+class Watermark(_WatermarkBase):
+    """Channel text mark with optional `[watermark.portrait]` / `[watermark.landscape]` branches."""
+    portrait: WatermarkOverride | None = Field(None, exclude_if=lambda v: v is None)
+    landscape: WatermarkOverride | None = Field(None, exclude_if=lambda v: v is None)
 
     @model_validator(mode="after")
     def _hex(self):
@@ -725,7 +737,7 @@ class Watermark(_Strict):
 SOUND_EVENTS = ("pin", "region", "route", "whip", "label", "title", "figure", "counter_tick")
 
 
-class PrintStyle(_Strict):
+class _PrintStyleBase(_Strict):
     """Profile [print]: printed typography. On paper maps (map p50 APCA Y >= paper_min_y) map text is dark ink
     printed into the map (multiply, no halo, no glow, no box); on dark imagery it is light text with a soft shadow.
     Lengths are px at the reference canvas (1080 x 1920 portrait, 1920 x 1080 landscape). Absent = the theme typography."""
@@ -799,6 +811,18 @@ class PrintStyle(_Strict):
     note_ink: str = "#2E4E7A"                                 # paper
     note_light: str = "#FFFFFF"                               # dark imagery
     note_write_s: float = Field(0.5, ge=0.2, le=2)
+
+
+if TYPE_CHECKING:
+    class PrintStyleOverride(SetOnlyModel): pass
+else:
+    PrintStyleOverride = partial_model("PrintStyleOverride", _PrintStyleBase)
+
+
+class PrintStyle(_PrintStyleBase):
+    """Printed cartographic typography with optional `[print.portrait]` / `[print.landscape]` branches."""
+    portrait: PrintStyleOverride | None = Field(None, exclude_if=lambda v: v is None)
+    landscape: PrintStyleOverride | None = Field(None, exclude_if=lambda v: v is None)
 
     @model_validator(mode="after")
     def _hex(self):
@@ -963,9 +987,9 @@ class FxProfile(_Strict):
 
 
 class FormatProfile(_Strict):
-    """Profile [format]: the frame orientation the profile is written for (units.py). None = not declared: a profile
-    with portrait geometry (caption fixed_y / max_bottom_y / place_band, [layout] or [print]) counts as portrait,
-    any other (the default profile) fits both orientations."""
+    """Profile [format]: explicit orientation pin (portrait or landscape). None = automatically portrait when legacy
+    portrait-only geometry is written without a `.landscape` branch; dual-orientation profiles (`.landscape` branch)
+    and default fit both 9:16 and 16:9."""
     orientation: Literal["portrait", "landscape"] | None = None
 
 
@@ -1170,8 +1194,8 @@ CAPTION_RUST_KEYS: dict[str, tuple] = {
 CAPTION_SLOTS = ("lower", "mid", "upper")
 
 
-class CaptionStyleProfile(_DictModel):
-    """Typed schema of `[caption_style]` covering Python layout keys and Rust `.ass` compiler keys."""
+class _CaptionStyleFields(_DictModel):
+    """Common `[caption_style]` keys covering Python layout keys and Rust `.ass` compiler keys."""
     # Python placement & A/B rules
     y_overrides: list[list[StrictInt | StrictFloat]] | None = None
     auto_place: StrictBool | None = None
@@ -1208,6 +1232,16 @@ class CaptionStyleProfile(_DictModel):
     emphasis_scale: StrictInt | StrictFloat | None = None
     emphasis_colour: StrictStr | None = None
     pop: StrictBool | None = None
+
+
+class CaptionStyleBranch(_CaptionStyleFields):
+    """Orientation-specific overrides under `[caption_style.portrait]` / `[caption_style.landscape]`."""
+
+
+class CaptionStyleProfile(_CaptionStyleFields):
+    """Typed schema of `[caption_style]` with optional `.portrait` / `.landscape` branches."""
+    portrait: CaptionStyleBranch | None = Field(None, exclude_if=lambda v: v is None)
+    landscape: CaptionStyleBranch | None = Field(None, exclude_if=lambda v: v is None)
 
 
 class ProfileData(_Strict):

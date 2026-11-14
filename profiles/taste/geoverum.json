@@ -27,14 +27,7 @@
     {
       "what": "geographical paradox hook with an instant dividing line, visual pun, or magnifying-glass mystery in the first 1.5 s",
       "why": "Captures viewer attention immediately by presenting a concrete spatial contradiction on an already-moving satellite map from frame 0.",
-      "at": "2026-10-29T00:00:00+00:00",
-      "check": [
-        {
-          "key": "gates.hook.open_on_moving_map",
-          "op": "==",
-          "value": true
-        }
-      ]
+      "at": "2026-10-29T00:00:00+00:00"
     },
     {
       "what": "vibrant near-solid region fill with glowing edge and dark charcoal banner boxes (#18181c) on dark satellite maps",
@@ -74,14 +67,19 @@
       "at": "2026-10-29T00:00:00+00:00"
     },
     {
-      "what": "caption Inter bold 48 px putih tanpa box/outline di y≈0,71 H (fixed_y 1366)",
-      "why": "Ukuran 48 px (tinggi-x 24 px dan tinggi kapital 36 px pada 48 Shorts referensi) berwarna putih bersih (primary = 'FFFFFF', highlight_colour = 'FFFFFF' untuk menimpa warna kuning bawaan compiler Rust #FFD84A) terbaca di layar ponsel dalam satu baris pendek (maksimal 4 kata) tanpa menutupi area fokus peta, sedangkan fixed_y = 1366 px (pusat tinta caption referensi) menempatkan dasar kotak caption di 1402 px, di atas batas aman antarmuka vertikal (max_bottom_y = 1480 px).",
+      "what": "caption Inter bold putih tanpa box/outline (48 px di 9:16 fixed_y 1366; 58 px di 16:9 fixed_y 900)",
+      "why": "Caption putih bersih (primary = 'FFFFFF', highlight_colour = 'FFFFFF') tanpa box atau outline terbaca jelas tanpa menutupi area fokus peta di portrait maupun landscape.",
       "at": "2026-11-07T00:00:00+00:00",
       "check": [
         {
-          "key": "caption_style.size",
+          "key": "caption_style.portrait.size",
           "op": "==",
           "value": 48
+        },
+        {
+          "key": "caption_style.landscape.size",
+          "op": "==",
+          "value": 58
         },
         {
           "key": "caption_style.primary",
@@ -94,9 +92,14 @@
           "value": "FFFFFF"
         },
         {
-          "key": "caption_style.fixed_y",
+          "key": "caption_style.portrait.fixed_y",
           "op": "==",
           "value": 1366
+        },
+        {
+          "key": "caption_style.landscape.fixed_y",
+          "op": "==",
+          "value": 900
         },
         {
           "key": "caption_style.forbid_box",
@@ -212,27 +215,13 @@
   "rejected": [
     {
       "what": "static camera hold over 3 s",
-      "why": "Violates camera continuity gate P01 (hold_warn_s = 3.0; the reference Shorts' longest hold is 2.6 s at the median and 3.6 s at p75); map viewports and documentary stills keep drifting, pulsing or animating an overlay so the image never freezes.",
-      "at": "2026-11-07T00:00:00+00:00",
-      "check": [
-        {
-          "key": "gates.camera.hold_warn_s",
-          "op": "<=",
-          "value": 3.0
-        }
-      ]
+      "why": "In historical pacing notes, long static holds were avoided on map flights; held shots remain a valid creative choice when motivated.",
+      "at": "2026-11-07T00:00:00+00:00"
     },
     {
       "what": "call to action or subscribe end card",
-      "why": "Videos must terminate immediately on the final factual punchline or thematic keyword return without promotional sign-offs.",
-      "at": "2026-10-29T00:00:00+00:00",
-      "check": [
-        {
-          "key": "gates.cta",
-          "op": "exists",
-          "value": true
-        }
-      ]
+      "why": "Historical channel preference avoided generic promotional sign-offs; closing style belongs to the brief and script rather than a profile gate.",
+      "at": "2026-10-29T00:00:00+00:00"
     },
     {
       "what": "unquantified geographic claims without a line, dimension bar, counter, pill badge, or scale overlay on screen",
@@ -258,14 +247,21 @@
     },
     {
       "what": "caption 84/92/104 px atau caption dengan box latar",
-      "why": "Ukuran huruf 84, 92, dan 104 px terlalu dominan secara visual (caption Shorts referensi sekitar 48 px) dan menutupi detail peta di zona fokus bawah, sehingga kandidat ukuran dikunci pada 48 px tanpa kotak latar bawaan.",
+      "why": "Ukuran huruf 84, 92, dan 104 px terlalu dominan secara visual sehingga kandidat ukuran dikunci ke 48 px (portrait) / 58 px (landscape).",
       "at": "2026-11-07T00:00:00+00:00",
       "check": [
         {
-          "key": "caption_style.ab_sizes",
+          "key": "caption_style.portrait.ab_sizes",
           "op": "==",
           "value": [
             48
+          ]
+        },
+        {
+          "key": "caption_style.landscape.ab_sizes",
+          "op": "==",
+          "value": [
+            58
           ]
         },
         {

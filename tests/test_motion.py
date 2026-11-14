@@ -500,8 +500,9 @@ def test_good_layout_without_fly_keeps_its_hash(tmp_path, monkeypatch):
         dump["gates"].pop("anti_slop")        # default anti-slop levels add nothing to the hash
     else:
         assert anti["levels"] == {"AS01": "fail"}   # a raised anti-slop rule stays in the hash
-    for k in ("duration_exact",):             # an absent optional gate table adds nothing
-        assert dump["gates"].pop(k) is None
+    for k in ("camera", "ending_keyword", "cta", "duration_exact"):   # absent optional gate tables add nothing
+        if dump["gates"].get(k) is None:
+            dump["gates"].pop(k)
     dump.pop("resources")                     # the worker budget is a machine setting, never hashed
     assert dump.pop("format") == {"orientation": None}   # an undeclared [format] adds nothing to the hash
     assert dump.pop("framing") == {}                      # nor does an absent [framing]
@@ -518,7 +519,7 @@ def test_good_layout_without_fly_keeps_its_hash(tmp_path, monkeypatch):
         dump["transitions"].pop(k)            # default zoom_through values add nothing to the hash
     if dump["theme"].get("reveal_ease") == list(profiles.REVEAL_EASE):
         dump["theme"].pop("reveal_ease")      # nor does the default reveal ease
-    if dump["gates"]["camera"].get("step_warn") is None:
+    if isinstance(dump["gates"].get("camera"), dict) and dump["gates"]["camera"].get("step_warn") is None:
         dump["gates"]["camera"].pop("step_warn", None)   # nor an unset P03 step_warn
     if not dump["gates"].get("require"):
         dump["gates"].pop("require", None)       # nor an empty required-gate list

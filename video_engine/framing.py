@@ -144,7 +144,7 @@ def apply(tl) -> list[str]:
     if not shots:
         return []
     orient = orientation_of(tl.settings.width, tl.settings.height)
-    over = profiles.load(tl.profile, tl.profile_overrides).data.framing
+    over = profiles.of(tl).data.framing
     notes = []
     for s in shots:
         f = framing(s.intent.shot, orient, over)

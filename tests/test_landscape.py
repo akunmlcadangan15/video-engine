@@ -36,20 +36,31 @@ def test_good_portrait_profile_hashes_do_not_move(name):
 
 
 def test_good_landscape_profile_loads_with_its_orientation_and_geometry():
-    p = profiles.load("geoverum_landscape")
+    p = profiles.load("geoverum", orientation="landscape")
     assert profiles.profile_orientation(p.data) == "landscape"
     assert p.caption_style["fixed_y"] == 900 and p.caption_style["size"] == 58
     assert p.watermark.corner == "bottom_right"
     assert p.data.layout.grid.columns == 12 and p.data.print.year_cy == 380
-    assert profiles.profile_orientation(profiles.load("geoverum").data) == "portrait"   # inferred from its geometry
-    assert profiles.profile_orientation(profiles.load().data) is None                  # default: either orientation
+    assert profiles.profile_orientation(profiles.load("geoverum", orientation="portrait").data) == "portrait"
+    assert profiles.profile_orientation(profiles.load("geoverum").data) is None   # unified dual-orientation profile
+    assert profiles.profile_orientation(profiles.load().data) is None             # default: either orientation
 
 
-def test_bad_profile_orientation_and_frame_disagree(project):
+def test_bad_profile_orientation_and_frame_disagree(project, tmp_path, monkeypatch):
+    from video_engine import config
+    project(_landscape(profile="geoverum"))             # unified geoverum works in 16:9
+    project(lambda d: d.update(profile="geoverum"))     # and in 9:16
+
+    d = tmp_path / "profiles"
+    d.mkdir()
+    (d / "default.toml").write_text((config.PROFILES_DIR / "default.toml").read_text())
+    (d / "port_only.toml").write_text("[caption_style]\nfixed_y = 1366\n")
+    (d / "land_only.toml").write_text('[format]\norientation = "landscape"\n')
+    monkeypatch.setattr(config, "PROFILES_DIR", d)
     with pytest.raises(Exception, match="portrait profile but the frame 1920x1080 is landscape"):
-        project(_landscape(profile="geoverum"))
+        project(_landscape(profile="port_only"))
     with pytest.raises(Exception, match="landscape profile but the frame 1080x1920 is portrait"):
-        project(lambda d: d.update(profile="geoverum_landscape"))
+        project(lambda mut: mut.update(profile="land_only"))
 
 
 def test_good_default_profile_accepts_both_orientations(project):
@@ -108,7 +119,7 @@ def test_bad_landscape_caption_too_wide_fails_r62(project):
 
 
 def test_good_landscape_watermark_sits_bottom_right_inside_the_safe_area(project):
-    _, tl = project(_landscape(profile="geoverum_landscape", W=3840, H=2160))
+    _, tl = project(_landscape(profile="geoverum", W=3840, H=2160))
     pl = watermark.placement(tl)
     r = pl.text_rect()
     sx, st, sb = Units.of(3840, 2160).safe()

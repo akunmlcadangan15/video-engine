@@ -356,14 +356,15 @@ def cmd_profile(a) -> int:
             p = profiles.load(n)
             print(f"{n:24} {p.blake3[:16]}  {p.data.description}")
         return 0
-    prof = profiles.load(a.name)
+    orient = getattr(a, "orientation", None)
+    prof = profiles.load(a.name, orientation=orient)
     data = json.loads(prof.data.model_dump_json(by_alias=True))
     if a.table:
         if a.table not in data:
             raise EngineError(f"profile '{a.name}' has no table '{a.table}' (tables: {', '.join(sorted(data))})")
         data = {a.table: data[a.table]}
     if a.origin:
-        src = profiles.origins(a.name)
+        src = profiles.origins(a.name, orientation=orient)
 
         def rows(d, pre=""):
             for k, v in d.items():
@@ -817,6 +818,8 @@ def parser() -> argparse.ArgumentParser:
     x = add("profile", cmd_profile, "List the profiles, or print one profile as the engine resolves it (default < "
                                     "extends < include < channel). --origin: the file that set each key.")
     x.add_argument("name", nargs="?", help="profile name (none: list every profile with its hash)")
+    x.add_argument("--orientation", choices=["portrait", "landscape"],
+                   help="resolve an orientation-specific view (portrait or landscape)")
     x.add_argument("--origin", action="store_true", help="one line per key: value and the file (or [type] size, or "
                                                          "engine default) it comes from")
     x.add_argument("--table", help="only this top-level table (theme, caption_style, gates, ...)")
@@ -841,8 +844,8 @@ def parser() -> argparse.ArgumentParser:
                                                 "shot-list CSV of an existing edit. Sources are only read.")
     x.add_argument("csv")
     x.add_argument("--format", choices=["short", "short-4k", "landscape-1080p", "landscape-1440p", "landscape-4k"],
-                   help="output size (units.FORMATS; default short = 1080x1920). Landscape needs a landscape profile, "
-                        "for example geoverum_landscape")
+                   help="output size (units.FORMATS; default short = 1080x1920). Landscape needs a landscape or "
+                        "dual-orientation profile (such as geoverum)")
     x.add_argument("dst")
     x.add_argument("--search", action="append", required=True, help="directory searched for shot files (repeatable)")
     x.add_argument("--credits", required=True, help="credits.txt copied into the project")

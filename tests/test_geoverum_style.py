@@ -157,11 +157,13 @@ def test_good_number_pop_stays_inside_the_frame(project, tmp_path):
         assert f["x"] >= 0 and f["x"] + f["w"] <= 1080, (it["t"], f["x"], f["w"])
 
 
-def test_good_creative_staging_rule_quotes_the_profile_values():
-    """The staging default in creative.md names the same values the renderer reads (one source, kept equal here)."""
-    th, d = GEO.theme, GEO.data
-    rule = next(r for r in d.draft.rules if r.startswith("Default, not a mandate: stage every beat"))
-    assert f"Archivo Black {th.title_px:g} px" in rule and th.title_font == "title"
-    for key in ("title_entrance", "title_anchor", "label_box_entrance", "figure_pop", "figure_accent"):
-        assert f'`{key} = "{getattr(th, key)}"`' in rule, key
-    assert f"`[layout.budget] animating = {d.layout.budget.animating}`" in rule
+def test_good_geoverum_brand_style_and_budget_consistent_across_orientations():
+    """Visual brand tokens live cleanly in geoverum across portrait and landscape without creative rule locks."""
+    for o in ("portrait", "landscape"):
+        prof = profiles.load("geoverum", orientation=o)
+        th, d = prof.theme, prof.data
+        assert (th.title_font, th.title_px) == ("title", 104.0)
+        assert (th.title_entrance, th.title_anchor, th.label_box_entrance, th.figure_pop, th.figure_accent) == (
+            "track", "region", "type", "back", "#FFD417")
+        assert d.layout.budget.animating == 2
+        assert d.draft.rules == []

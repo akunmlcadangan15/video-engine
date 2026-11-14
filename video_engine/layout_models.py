@@ -3,15 +3,38 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Optional
+from typing import TYPE_CHECKING, Annotated, Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, create_model, model_serializer, model_validator
 
 from .layout_geometry import Box
 from .units import Units
 
 class _M(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class SetOnlyModel(BaseModel):
+    """Strict model that serializes only explicitly set fields (`exclude_unset` behavior in nested dumps)."""
+    model_config = ConfigDict(extra="forbid")
+
+    @model_serializer(mode="wrap")
+    def _serialize_set_only(self, handler) -> dict[str, Any]:
+        d = handler(self)
+        keep = self.model_fields_set | set((self.model_extra or {}).keys())
+        return {k: v for k, v in d.items() if k in keep}
+
+
+def partial_model(name: str, base_cls: type[BaseModel], *, frozen: bool = False) -> type[SetOnlyModel]:
+    """Create a strict partial-override Pydantic model from `base_cls` with every field optional."""
+    cfg = ConfigDict(extra="forbid", frozen=frozen)
+    fields: dict[str, Any] = {}
+    for fname, info in base_cls.model_fields.items():
+        if fname in ("portrait", "landscape"):
+            continue
+        ann = Annotated[(info.annotation, *info.metadata)] if info.metadata else info.annotation
+        fields[fname] = (Optional[ann], None)
+    return create_model(name, __base__=SetOnlyModel, __config__=cfg, __module__=base_cls.__module__, **fields)
 
 
 class LayoutGrid(_M):
@@ -110,6 +133,36 @@ class LayoutFly(_M):
     ease_out: str = "power2.in"                     # cubic ease-in
 
 
+if TYPE_CHECKING:
+    class LayoutGridOverride(SetOnlyModel): pass
+    class LayoutZonesOverride(SetOnlyModel): pass
+    class LayoutSizesOverride(SetOnlyModel): pass
+    class LayoutBudgetOverride(SetOnlyModel): pass
+    class LayoutTimingOverride(SetOnlyModel): pass
+    class LayoutLabelsOverride(SetOnlyModel): pass
+    class LayoutFlyOverride(SetOnlyModel): pass
+else:
+    LayoutGridOverride = partial_model("LayoutGridOverride", LayoutGrid, frozen=True)
+    LayoutZonesOverride = partial_model("LayoutZonesOverride", LayoutZones, frozen=True)
+    LayoutSizesOverride = partial_model("LayoutSizesOverride", LayoutSizes, frozen=True)
+    LayoutBudgetOverride = partial_model("LayoutBudgetOverride", LayoutBudget, frozen=True)
+    LayoutTimingOverride = partial_model("LayoutTimingOverride", LayoutTiming, frozen=True)
+    LayoutLabelsOverride = partial_model("LayoutLabelsOverride", LayoutLabels, frozen=True)
+    LayoutFlyOverride = partial_model("LayoutFlyOverride", LayoutFly, frozen=True)
+
+
+class LayoutBranch(SetOnlyModel):
+    """Orientation-specific overrides under `[layout.portrait]` / `[layout.landscape]`."""
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    grid: LayoutGridOverride | None = None
+    zones: LayoutZonesOverride | None = None
+    sizes: LayoutSizesOverride | None = None
+    budget: LayoutBudgetOverride | None = None
+    timing: LayoutTimingOverride | None = None
+    labels: LayoutLabelsOverride | None = None
+    fly: LayoutFlyOverride | None = None
+
+
 class LayoutProfile(_M):
     """Profile [layout] table. Its presence turns on the beats layout and the L gates."""
     grid: LayoutGrid = LayoutGrid()
@@ -119,6 +172,8 @@ class LayoutProfile(_M):
     timing: LayoutTiming = LayoutTiming()
     labels: LayoutLabels = LayoutLabels()
     fly: LayoutFly | None = None   # None = opacity fades
+    portrait: LayoutBranch | None = Field(None, exclude_if=lambda v: v is None)
+    landscape: LayoutBranch | None = Field(None, exclude_if=lambda v: v is None)
 
     @model_validator(mode="after")
     def _units(self):

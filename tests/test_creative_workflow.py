@@ -12,19 +12,14 @@ from video_engine.ai.base import schema_errors
 from test_draft import good_plan, proj  # noqa: F401 (fixture)
 
 
-def test_channel_direction_distinguishes_identity_defaults_and_alternatives():
-    rules = profiles.load("geoverum").draft.rules
-    assert any(r.startswith("Identity:") for r in rules)
-    assert any(r.startswith("Default, not a mandate:") for r in rules)
-    assert any(r.startswith("Alternatives:") for r in rules)
-    assert any(r.startswith("Intent:") for r in rules)
-    assert any("already-moving dark satellite basemap" in r for r in rules)
-    # the motion numbers quoted in creative.md are the profile's P01 / N01 values (one source, tests keep them equal)
-    gates = profiles.load("geoverum").data.gates
-    camera = next(r for r in rules if r.startswith("Default, not a mandate: favor a continuous"))
-    assert "median 77% of frames" in camera
-    assert f"`moving_warn = {gates.camera.moving_warn}`" in camera and f"`hold_warn_s = {gates.camera.hold_warn_s}`" in camera
-    assert f"`max_gap_s = {gates.novelty.max_gap_s}`" in camera
+def test_geoverum_leaves_creative_direction_and_duration_unrestricted():
+    for o in ("portrait", "landscape"):
+        p = profiles.load("geoverum", orientation=o)
+        assert p.draft.rules == [] and p.draft.rules_file is None
+        g = p.data.gates
+        assert g.duration is None and g.hook is None and g.camera is None and g.novelty is None
+        assert g.keyword_return is None and g.ending_keyword is None and g.cta is None
+    assert "no fixed act count" in director.guidance("STORYBOARD").lower()
 
 
 def test_storyboard_and_taste_treat_preferences_as_preferences(proj):

@@ -52,15 +52,16 @@ def test_bad_a_registered_gate_that_no_code_emits_is_stale():
 
 def test_good_geoverum_effects_match_the_profile():
     p = profiles.load("geoverum")
+    assert p.gates.require == [] and p.gates.advisory == []
     eff = {g.id: gate_tools.effect(g, p) for g in reg.GATES}
     assert all(eff[g.id] != "blocks" for g in reg.GATES if g.kind == "style")   # no style gate blocks by default on Geoverum
-    assert eff["S01"] == "warns"
-    assert eff["H01"] == "warns" and eff["P01"] == "warns" and eff["C02"] == "warns"
-    assert eff["C01"] == eff["V01"] == eff["D02"] == "off"     # tables absent in geoverum.toml
-    assert eff["R64"] == "warns" and eff["L02"] == "warns"     # advisory in geoverum.toml
-    assert eff["L06"] == eff["R63"] == eff["Z01"] == "warns"   # layout/placement advisory in geoverum.toml
-    assert eff["T02"] == eff["A01"] == "blocks"   # kernel gates always block
-    assert eff["R07"] == eff["R14"] == "warns"   # classified as lint gates (warn unless required)
+    assert eff["S01"] == "warns" and eff["G02"] == "warns"
+    for gid in ("H01", "P01", "P02", "P03", "N01", "K01", "K02", "C02", "D01", "C01", "V01", "D02"):
+        assert eff[gid] == "off", gid
+    assert eff["R64"] == "warns" and eff["L02"] == "warns"
+    assert eff["L06"] == "warns" and eff["R63"] == "warns" and eff["Z01"] == "warns"
+    assert eff["T02"] == "blocks" and eff["A01"] == "blocks"   # kernel gates always block
+    assert eff["R07"] == "warns" and eff["R14"] == "warns"   # classified as lint gates (warn unless required)
     assert eff["A02"] == "off"   # off when require_source is unset
     assert eff["AS01"] == "warns"                       # anti-slop stays warn
     assert eff["AIQA"] == "on request" and "GW01" not in reg.BY_ID and "GW01" not in eff  # No meta-gate finding is emitted for waivers

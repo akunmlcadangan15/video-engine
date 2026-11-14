@@ -22,7 +22,7 @@ The format of a channel profile and the profiles that ship with the engine.
 - `[audio]`: `target_lufs`, `true_peak`, `lra`, `tolerance_lu` (A01 tolerance), `require_source` (`"epidemic"` or absent: source every music and SFX file must have, gate A02; docs/SOUND.md), `aac_bitrate` (AAC kbps of the master audio and of the corrective gain passes; integer 64-320; default 192, and 192 is left out of the profile hash). `[render] aac_bitrate` overrides it, including a project `profile_overrides.render.aac_bitrate`.
 - `[type]`: base of the type scale (`title_px`, `title_px_paper`, `pin_label_px`). A size a channel sets here is written to every surface the channel leaves open: `title_px` -> `[theme] title_px` and `[layout.sizes] title`; `title_px_paper` -> `[print] title_px`; `pin_label_px` -> `[theme] pin_label_px` and `[layout.sizes] pin_label`.
   A surface key a channel file writes wins, and a surface table the profile does not have (`[layout]`, `[print]`) stays absent. See [STRUCTURE](STRUCTURE.md).
-- `[draft]`: `min_seg_s`, `max_seg_s` (pause segmenter and draft prompt segment length), `rules` (prompt rules appended after the engine rules, numbered from 6) or `rules_file` (single-source markdown `profiles/<channel>/creative.md`; mutually exclusive with `rules`), `map_path` (true = the draft schema offers `map_path` camera keys for map segments), `scene` (opt-in draft map scene keys: `globe`, `props`, `morph`, `beats`, `camera3d` (draft key `map_camera3d`: a named 3D camera move, timeline `camera3d_preset`); beats also need `[layout]`; regions, routes, borders, figures, flag characters and pin flags are always offered; docs/AI.md)
+- `[draft]`: `min_seg_s`, `max_seg_s` (pause segmenter and draft prompt segment length), optional `rules` (prompt rules appended after the engine rules, numbered from 6) or `rules_file` (optional markdown file such as `profiles/<channel>/creative.md`; mutually exclusive with `rules`), `map_path` (true = the draft schema offers `map_path` camera keys for map segments), `scene` (opt-in draft map scene keys: `globe`, `props`, `morph`, `beats`, `camera3d` (draft key `map_camera3d`: a named 3D camera move, timeline `camera3d_preset`); beats also need `[layout]`; regions, routes, borders, figures, flag characters and pin flags are always offered; docs/AI.md)
 - `[theme]`: Renderer values written into the HyperFrames scene (`theme`): `camera_drift_per_s`, `camera_start_speed`, `camera_end_speed`, `whip_s`, `whip_blur_px`, `reveal_ease` (camera move `reveal`, CSS cubic-bezier, default `[0.28, 0.37, 0.29, 0.91]`), `region_fill_opacity`, `region_edge`, `region_edge_px`, `region_glow_px`, `pin_style`, `pin_colour`, `label_font`, `pin_label_px`, `route_colour`, `route_width_px`, `route_dash_px`, `route_gap_px`, `route_arrow_px`, `route_draw_s`, `region_glow_alpha`, `title_font`, `title_px`, `title_glow_px`, `title_tint`, `text_outline_px`, `text_outline_colour`, `text_outline_alpha`, `text_shadow_dy_px`, `text_shadow_blur_px`, `text_shadow_alpha`, `figure_px`, `counter_s`, `number_group`, `number_decimal`.
   Style options, left out of the profile hash at their defaults (the engine look): `vivid_chroma_scale` and `vivid_l` (on a dark satellite map, i.e. no `[print]` or a map `[print]` classifies "dark", entity colours keep their hue at `vivid_chroma_scale` x chroma with OKLCH L mapped from 0.38-0.84 onto `vivid_l`, `entities.vivid_colour`; paper maps keep the palette; gate E01 compares fills with these scene colours),
   `title_entrance` (`fade` | `track`: letters close in from 0.35 em at the settled width, and track out on a layout exit), `title_anchor` (`top` | `region`: a scene title without beats enters above its `title_entity` region, below it near the top, inside the safe area),
@@ -83,20 +83,18 @@ The format of a channel profile and the profiles that ship with the engine.
 ## Shipped profiles
 
 - `default`: the engine values; every anti-slop rule warns and no channel gate is required.
-- `geoverum`: map-led geography shorts.
-  - Captions: white Inter Bold 48 px, no outline, optional backing box, soft shadow 0 3 px with blur 4 at 55 %, active-word emphasis and at most 4 words.
-    `fixed_y` 1366, `max_bottom_y` 1480, `auto_place` inside `place_band` 0.58-0.76 H, `clearance` 0. The effective timeline/profile, not dated taste notes, determines placement.
+- `geoverum`: unified brand style for cartographic documentaries across both portrait (`9:16`) and landscape (`16:9`). Leaves story directing and video duration unrestricted (`[draft] rules` unset; no duration, hook, camera-hold, novelty, keyword, or CTA gates).
+  - Captions: white Inter Bold, no outline, optional backing box, soft shadow 0 3 px with blur 4 at 55 %, active-word emphasis and at most 4 words.
+    Orientation branches: `[caption_style.portrait]` (`size` 48 px, `fixed_y` 1366, `max_bottom_y` 1480, `auto_place` inside `place_band` 0.58-0.76 H, `clearance` 0) and `[caption_style.landscape]` (`size` 58 px, `margin_x` 160, `fixed_y` 900, `place_band` 0.74-0.88 H, `clearance` 90). The effective timeline/profile, not dated taste notes, determines placement.
   - Audio: -14 LUFS and -1.5 dBTP (the default), optional `require_source` (unset by default so local or Epidemic Sound assets can be mixed; set `require_source = "epidemic"` to enforce A02), music ducked -12 dB under the voiceover with keyframed ramps.
     SFX cues: pin and figure `pop`, label and region `tick`, route and whip `whoosh` (peak on the move), `counter_tick` per counter step, title `impact`.
-  - Pacing: suggested draft segments of 3-30 s with free cuts; hard cuts, with a 0.35 s state dissolve between segments on one map; page turns and map morphs disabled (`page_turn = false`, `map_morph = false`). Channel creative direction separates identity, defaults and alternatives; these are not universal shot quotas.
-  - Camera: zoom up to 16x; drift of 0.06 per second between moves (counts as P01 motion).
+  - Technical draft bounds & transitions: suggested draft segment length `min_seg_s = 3.0`, `max_seg_s = 30.0`; hard cuts, with a 0.35 s state dissolve between segments on one map; page turns and map morphs disabled (`page_turn = false`, `map_morph = false`). These are visual style & timing bounds, not universal story quotas.
+  - Camera: zoom up to 16x; drift of 0.06 per second and optional subtle pulses.
   - Render: HyperFrames quality `high` at CRF 8; intermediates CRF 8 `medium`; final CRF 16 `medium`, 10-bit (High 10), capped at 40 Mb/s; map JPEG quality 95.
-  - Gates: every style gate is on except C01 (cut rate), V01 (visual type) and D02 (exact duration).
-    No style gate is required (`require = []`), and `advisory = []` because lint gates in `LINT_GATE_IDS` warn by default unless required; `engine gates --profile geoverum` shows their effective behavior.
-    Anti-slop AS01-AS06 warn.
-  - Look: muted OKLCH entity palette of 17 colours with six unpinned (teal, umber, wine, mauve, jade, olive), painted vivid on dark satellite maps (`vivid_chroma_scale` 1.8); titles Archivo Black 104 px white without outline that track in above their region; box labels in a darker shade of the entity colour (`label_box_lc` 80) that grow with their typed text, written case, tilted -3 deg; numbers 96 px in signal yellow `#FFD417` with a back pop; pins `#E61129`; adaptive legibility (`[legibility]`, gate R64), printed typography (`[print]`), watermark "Geoverum" in Inter Bold 40 px, white at 85 % with a shadow.
-  - Landscape variant: `geoverum_landscape` (see Orientation).
-  - Files: `profiles/geoverum.toml` holds only what 9:16 changes (caption geometry, runtime window, watermark size) and `include`s `profiles/geoverum/core.toml` (the shared look, caption style, watermark, gates and draft rules), `entities.toml`, `legibility.toml`, `print.toml`, `sound.toml` and `layout.toml`. `core.toml` leaves out every key that only repeats `default.toml`.
+  - Gates: technical & audio quality only — `[gates.silence]` (S01), `[gates.caption_contrast]` (R65), `[gates.geo]` (G02), and `[gates.anti_slop]` (`warn`). No creative or duration style gates (`hook`, `camera`, `novelty`, `keyword_return`, `ending_keyword`, `cta`, `duration`, `duration_exact`, `cuts`, `visual_type` are off).
+    No gate is promoted to required (`require = []`), and `advisory = []`; `engine gates --profile geoverum` shows their effective behavior.
+  - Look: muted OKLCH entity palette of 17 colours with six unpinned (teal, umber, wine, mauve, jade, olive), painted vivid on dark satellite maps (`vivid_chroma_scale` 1.8); titles Archivo Black 104 px white without outline that track in above their region; box labels in a darker shade of the entity colour (`label_box_lc` 80) that grow with their typed text, written case, tilted -3 deg; numbers 96 px in signal yellow `#FFD417` with a back pop; pins `#E61129`; adaptive legibility (`[legibility]`, gate R64), printed typography (`[print.portrait]` / `[print.landscape]`), layout grids (`[layout.portrait]` / `[layout.landscape]`), watermark "Geoverum" in Inter Bold (40 px top-right in portrait, 28 px bottom-right in landscape), white at 85 % with a shadow.
+  - Files: `profiles/geoverum.toml` holds portrait/landscape `[caption_style.*]` and `[watermark.*]` branches and `include`s `profiles/geoverum/core.toml`, `entities.toml`, `legibility.toml`, `print.toml`, `sound.toml`, and `layout.toml`.
   - Taste notes: `profiles/taste/geoverum.json`; `engine taste geoverum --lint` exposes historical differences from the active profile without rewriting dated feedback. The director labels them historical preferences, not hard constraints.
 
 ## Orientation (portrait and landscape)
@@ -113,10 +111,11 @@ The engine renders portrait 9:16 (Shorts: 1080x1920, 2160x3840) and landscape 16
   top/bottom (5 % title safe), at the reference canvas.
 - Gate U01 warns when the frame aspect differs from its reference by more than 1 % (for example 1080x1350): layout
   values are then scaled non-uniformly as before.
-- `[format] orientation = "portrait" | "landscape"` declares what a profile is written for. Undeclared: a profile with
-  portrait geometry (`caption_style.fixed_y`, `max_bottom_y`, `place_band`, `[layout]` or `[print]`) counts as
-  portrait, any other profile (the default) fits both. A timeline whose frame disagrees with its profile is rejected at
-  load (`engine validate`). An undeclared `[format]` adds nothing to the profile hash.
+- `[format] orientation = "portrait" | "landscape"` declares what a single-orientation profile is written for. When undeclared:
+  - A profile whose oriented tables (`caption_style`, `layout`, `print`, `watermark`) provide a `.landscape` branch is dual-orientation (`profile_orientation` returns `None`) and validates/resolves both `"portrait"` and `"landscape"` views automatically via `profiles.of(tl)` or `profiles.load(name, orientation=...)`, isolating their `blake3` hashes.
+  - A legacy profile with root portrait geometry (`caption_style.fixed_y`, `max_bottom_y`, `place_band`, `[layout]`, `[print]`, or `.portrait` only) counts as `"portrait"`.
+  - Any other profile (the default) fits both.
+  A timeline whose frame disagrees with a single-orientation profile is rejected at load (`engine validate`). An undeclared `[format]` adds nothing to the profile hash.
 - Captions in landscape: the Rust length keys (`size`, `margin_x`, `outline`, `shadow`, `shadow_blur`, `shadow_dx`,
   `shadow_dy`, `ab_sizes`) are px at 1920x1080 and are scaled by `k` (`captions.effective_style`, read by the
   compiler and by R62). Without a `size` / `margin_x` a landscape caption is 58 / 160 px (portrait Rust defaults 84 /
@@ -135,15 +134,10 @@ The engine renders portrait 9:16 (Shorts: 1080x1920, 2160x3840) and landscape 16
 - The final file's H.264 level must be 5.2 or lower (`streams.verify_level`; x264 picks 4.0/4.1 at 1080p, 5.1 at
   2160p30, 5.2 at 2160p60).
 
-Landscape profiles:
+Landscape & dual-orientation profiles:
 
-- `profiles/landscape/format.toml`: an include for any landscape channel: `[format] orientation = "landscape"`,
-  caption geometry (58 px, `margin_x` 160, `max_words` 4, `fixed_y` 900, `place_band` 0.74-0.88, `clearance` 90).
-- `geoverum_landscape`: the Geoverum brand on 16:9. It includes the Geoverum tables plus `landscape/format.toml`,
-  `geoverum/landscape/layout.toml` (12 columns of 104 px from x0 116; safe `[96,54,1824,1026]`, Z1 title band at the
-  top left `[116,72,1100,200]`, Z2 map `[116,216,1804,880]`, title 88, year 112) and `geoverum/landscape/print.toml`
-  (year 960 / 380, heading baseline 150). Watermark 28 px bottom right; duration 60-3600 s. Both `geoverum.toml` and
-  `geoverum_landscape.toml` share their channel tables through `geoverum/core.toml` and the modular `geoverum/*.toml` includes, overriding only orientation-specific settings.
+- `profiles/landscape/format.toml`: an optional include for standalone landscape-only profiles: `[format] orientation = "landscape"`, caption geometry (58 px, `margin_x` 160, `max_words` 4, `fixed_y` 900, `place_band` 0.74-0.88, `clearance` 90).
+- `geoverum`: dual-orientation profile sharing all channel tables and overriding orientation geometry via `[caption_style.portrait/landscape]`, `[watermark.portrait/landscape]`, `[layout.portrait/landscape]` (landscape: 12 columns of 104 px from x0 116; safe `[96,54,1824,1026]`, Z1 `[116,72,1100,200]`, Z2 `[116,216,1804,880]`, title 88, year 112), and `[print.portrait/landscape]` (landscape: year 960 / 380, heading baseline 150). Use `engine profile geoverum --orientation portrait|landscape` to inspect each resolved view.
 - Values not yet specified in a shipped profile: rhythm gates and duration for long-form, the landscape grid and title placement,
   the O01 minimum font per orientation, the grid backdrop cell basis (`fx.grid.cell_pct` is
   a share of H in both orientations), source quality policy at 4K, delivery metadata and thumbnail rule,
@@ -192,7 +186,7 @@ include = ["geoverum/entities.toml", "geoverum/layout.toml"]
 - Paths are relative to the profiles directory, end in `.toml` and must stay inside it.
   An included file cannot include another file, and `default.toml` cannot include.
 - Merge order: `default.toml` < included files (in list order) < the channel file itself.
-- `profiles/geoverum/core.toml`: shared orientation-independent core tables included by both `profiles/geoverum.toml` (9:16 portrait) and `profiles/geoverum_landscape.toml` (16:9 widescreen).
+- `profiles/geoverum/core.toml`: shared orientation-independent brand tables included by `profiles/geoverum.toml`.
   A key set in the channel file wins over the same key in an included file; later includes win over earlier ones.
 - The merged profile and its hash do not depend on how the keys are split between files, so moving a table into an included file never changes a segment cache key.
   Check with `profiles.load(name).blake3` before and after.
@@ -211,11 +205,11 @@ text = "My Channel"
 
 - Merge order: `default.toml` < the base profile's `include` files < the base profile's file < this profile's `include` files < this profile's file. A chain may be up to 8 profiles long.
 - A loop, a missing base, `extends = "default"` (every profile already builds on it) and `extends` inside an included file or `default.toml` are errors.
-- There is no way to unset a key of the base: a base key that must not reach the child (portrait caption geometry under a landscape child) belongs in a file only the base's own format includes. That is why `geoverum_landscape` shares `geoverum/core.toml` through `include` and does not extend `geoverum`.
+- There is no way to unset a key of the base: keys that differ between portrait and landscape belong under `[<table>.portrait]` and `[<table>.landscape]` branches or separate `include` files rather than creating a conflicting base key.
 
-## Placeholders in the creative rules
+## Placeholders in optional `[draft] rules_file`
 
-A `[draft] rules_file` line may quote a value of the profile that loads it as `{{table.key}}` (`{{caption_style.size}}`, `{{layout.sizes.title}}`). The engine replaces it with that value of the effective profile, so profiles that share one rules file (`geoverum` and `geoverum_landscape`) each quote their own numbers. A placeholder that names no key, or a key that is not set, is an error naming the file.
+When a channel sets `[draft] rules_file`, a line may quote a value of the resolved profile as `{{table.key}}` (`{{caption_style.size}}`, `{{layout.sizes.title}}`). The engine replaces it with that value for the resolved orientation of the timeline. A placeholder that names no key, or a key that is not set, is an error naming the file.
 
 
 - Global safety limits: a profile may set `audio.true_peak` and `audio.tolerance_lu` only at or below the default profile value; a looser value is an error.

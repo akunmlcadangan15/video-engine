@@ -19,7 +19,7 @@ Istilah dan singkatan yang dipakai di kode dan dokumentasi. Istilah tetap dalam 
 | **Profil channel** | Berkas TOML di `profiles/` berisi gaya dan aturan satu channel. Prioritas: default, profil channel, proyek. |
 | **Taste store** | `profiles/taste/<channel>.json`: hal yang disukai dan ditolak beserta alasannya, dipakai director saat draft. |
 | **Director** | Tahap draft yang membuat tiga konsep storyboard dan memilih satu berdasarkan skor. |
-| **Creative rules** | Aturan keras per channel di `profiles/<channel>/creative.md` (sumber tunggal, dimuat sebagai `[draft] rules`). Bukan taste, bukan guidance. |
+| **Creative rules** | Aturan opsional per channel di `[draft] rules` atau `[draft] rules_file` (mis. `profiles/<channel>/creative.md`). Profil merek seperti `geoverum` mengosongkannya agar directing bebas. Bukan taste, bukan guidance. |
 | **Type scale** | Basis kanonis ukuran teks `[type]` di profil; `[theme]`/`[print]`/`[layout]` adalah override per-surface. |
 | **Agent handoff** | Provider AI `agent`: mesin menulis paket permintaan ke berkas dan keluar dengan kode 3; agent menjawab lewat `response.json`. |
 | **Build report** | `out/build_report.json` (sukses) atau `out/build_report.failed.json` (gagal). |

@@ -84,7 +84,9 @@ def test_good_path_opens_on_moving_map_and_keys_count_as_novelty(project):
         _path(preset="static")(d)
         d["segments"] = [d["segments"][2] | {"seg_index": 0, "start_frame": 0, "end_frame": 60}]
     p, tl = project(mut)
-    h = style.h01_hook(tl, p, None, profiles.load("geoverum").gates.hook)
+    hook = profiles.HookGate(vo_warn_s=0.5, vo_fail_s=0.8, caption_warn_s=0.2, caption_fail_s=1.0,
+                             graphic_warn_s=1.5, graphic_fail_s=3.0, open_on_moving_map=True)
+    h = style.h01_hook(tl, p, None, hook)
     assert not [f for f in h if "moving map" in f.message]
     assert style.camera_events(tl.segments[0]) == [0, 30, 45]
 

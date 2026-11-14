@@ -228,6 +228,8 @@ def check_caption_style(cs: dict, orient: str = "portrait", where: str = "") -> 
 
 
 PORTRAIT_GEOMETRY_CAPTION_KEYS = ("fixed_y", "max_bottom_y", "place_band")
+ORIENTATIONS = ("portrait", "landscape")
+ORIENTED_TABLES = ("caption_style", "watermark", "layout", "print")
 # Approved brand ranges of the [print] positions, px at the reference canvas of each orientation.
 PRINT_RANGES = {
     "portrait": {"year_cx": (0, 1080), "year_cy": (520, 600), "heading_baseline_y": (360, 400)},
@@ -235,24 +237,37 @@ PRINT_RANGES = {
 }
 
 
+def _has_branch(d: ProfileData, orient: str) -> bool:
+    return any(getattr(getattr(d, t), orient, None) is not None for t in ORIENTED_TABLES if getattr(d, t) is not None)
+
+
+def _has_any_branches(d: ProfileData) -> bool:
+    return any(_has_branch(d, o) for o in ORIENTATIONS)
+
+
 def profile_orientation(d: ProfileData) -> str | None:
-    """Declared [format] orientation, else "portrait" for a profile with portrait geometry, else None (any)."""
+    """Declared [format] orientation, else None for dual-orientation profiles (`.landscape` branch), else "portrait"
+    for legacy portrait-only geometry, else None (any)."""
     if d.format.orientation is not None:
         return d.format.orientation
-    if d.layout is not None or d.print is not None or any(k in d.caption_style for k in PORTRAIT_GEOMETRY_CAPTION_KEYS):
+    if _has_branch(d, "landscape"):
+        return None
+    if (d.layout is not None or d.print is not None
+            or any(k in d.caption_style for k in PORTRAIT_GEOMETRY_CAPTION_KEYS)
+            or _has_branch(d, "portrait")):
         return "portrait"
     return None
 
 
-def _check_print(name: str, d: ProfileData) -> None:
+def _check_print(name: str, d: ProfileData, orient: str | None = None) -> None:
     if d.print is None:
         return
-    orient = profile_orientation(d) or "portrait"
-    for key, (lo, hi) in PRINT_RANGES[orient].items():
+    o = orient or profile_orientation(d) or "portrait"
+    for key, (lo, hi) in PRINT_RANGES[o].items():
         v = getattr(d.print, key)
         if not lo <= v <= hi:
-            raise EngineError(f"profile '{name}': print.{key} = {v:g} outside the approved {orient} range {lo:g}..{hi:g} "
-                              f"(px at {units.REF[orient][0]}x{units.REF[orient][1]})")
+            raise EngineError(f"profile '{name}': print.{key} = {v:g} outside the approved {o} range {lo:g}..{hi:g} "
+                              f"(px at {units.REF[o][0]}x{units.REF[o][1]})")
 
 
 def check_orientation(prof: "Profile", W: int, H: int) -> None:
@@ -261,7 +276,7 @@ def check_orientation(prof: "Profile", W: int, H: int) -> None:
     have = units.orientation_of(W, H)
     if want is not None and want != have:
         raise EngineError(f"profile '{prof.name}' is a {want} profile but the frame {W}x{H} is {have}; "
-                          f"use a {have} profile (for example geoverum_landscape) or change settings.width/height")
+                          f"use a {have} or dual-orientation profile (for example geoverum) or change settings.width/height")
 
 
 def _check_safety(name: str, d: ProfileData, base: ProfileData) -> None:
@@ -427,8 +442,23 @@ def _type_cascade(raw: dict, channel: dict) -> dict:
     return out
 
 
-@lru_cache(maxsize=32)
-def _resolved(name: str, layers: tuple[Layer, ...]) -> tuple[dict, dict]:
+def _branch_raw(d: dict, orientation: str) -> dict:
+    """Resolve `[<table>.<orientation>]` sub-tables in `d` for `orientation` (`portrait` or `landscape`)."""
+    out = dict(d)
+    for tbl in ORIENTED_TABLES:
+        t = out.get(tbl)
+        if not isinstance(t, dict) or not any(o in t for o in ORIENTATIONS):
+            continue
+        branch = t.get(orientation)
+        base_t = {k: v for k, v in t.items() if k not in ORIENTATIONS}
+        if branch is not None and not isinstance(branch, dict):
+            continue
+        out[tbl] = merge(base_t, branch) if isinstance(branch, dict) else base_t
+    return out
+
+
+@lru_cache(maxsize=64)
+def _resolved(name: str, layers: tuple[Layer, ...], orientation: str | None = None) -> tuple[dict, dict]:
     """(effective raw table, default.toml table) of the layers, before validation. Memoised on the file contents:
     the tables are shared between callers and must be read, never changed."""
     tables = _tables(name, layers)
@@ -436,7 +466,17 @@ def _resolved(name: str, layers: tuple[Layer, ...]) -> tuple[dict, dict]:
     channel: dict = {}
     for _, t in tables[1:]:
         channel = merge(channel, t)
-    return _type_cascade(merge(base, channel), channel), base
+    had_branches = any(
+        isinstance(t.get(tbl), dict) and any(o in t[tbl] for o in ORIENTATIONS)
+        for t in (base, channel) for tbl in ORIENTED_TABLES
+    )
+    if orientation is not None:
+        base = _branch_raw(base, orientation)
+        channel = _branch_raw(channel, orientation)
+    out = _type_cascade(merge(base, channel), channel)
+    if orientation is not None and had_branches and (out.get("format") or {}).get("orientation") is None:
+        out = {**out, "format": {**(out.get("format") or {}), "orientation": orientation}}
+    return out, base
 
 
 # ------------------------------------------------------------------------------------------------ creative rules
@@ -542,25 +582,71 @@ def hash_dump(data: ProfileData) -> dict:
 
 
 # ------------------------------------------------------------------------------------------------------- build
-@lru_cache(maxsize=32)
-def _build(name: str, layers: tuple[Layer, ...], rules_text: str | None) -> Profile:
-    """Profile of the layers (`_layers` order). Memoised on the file contents (and the text of the rules file), so
-    an edited file is a new profile and an unchanged one is not validated twice."""
-    raw, base_raw = _resolved(name, layers)
-    if "caption_style" in raw and isinstance(raw["caption_style"], dict):
-        # Preserve exact `check_caption_style` error text before Pydantic type/constraint validation.
-        fmt_o = (raw.get("format") or {}).get("orientation") if isinstance(raw.get("format"), dict) else None
-        raw_cs = raw["caption_style"]
-        pre_o = fmt_o or ("portrait" if (raw.get("layout") is not None or raw.get("print") is not None or any(
-            k in raw_cs for k in PORTRAIT_GEOMETRY_CAPTION_KEYS)) else "portrait")
-        check_caption_style(raw_cs, pre_o, f"profile '{name}'")
+def _check_caption_raw(name: str, raw: dict, orientation: str | None) -> None:
+    """Validate `raw["caption_style"]` (root and optional `.portrait`/`.landscape` branches) before Pydantic."""
+    raw_cs = raw.get("caption_style")
+    if not isinstance(raw_cs, dict):
+        return
+    if orientation is not None:
+        check_caption_style(raw_cs, orientation, f"profile '{name}'")
+        return
+    has_cs_branches = any(o in raw_cs for o in ORIENTATIONS)
+    fmt_o = (raw.get("format") or {}).get("orientation") if isinstance(raw.get("format"), dict) else None
+    if has_cs_branches:
+        root_cs = {k: v for k, v in raw_cs.items() if k not in ORIENTATIONS}
+        check_caption_style(root_cs, fmt_o or "portrait", f"profile '{name}'")
+        for o in ((fmt_o,) if fmt_o else ORIENTATIONS):
+            sub = raw_cs.get(o)
+            if sub is not None:
+                if not isinstance(sub, dict):
+                    raise EngineError(f"profile '{name}': caption_style.{o} must be a table")
+                check_caption_style(merge(root_cs, sub), o, f"profile '{name}'")
+        return
+    pre_o = fmt_o or ("portrait" if (raw.get("layout") is not None or raw.get("print") is not None or any(
+        k in raw_cs for k in PORTRAIT_GEOMETRY_CAPTION_KEYS)) else "portrait")
+    check_caption_style(raw_cs, pre_o, f"profile '{name}'")
+
+
+def _validate_resolved_view(name: str, layers: tuple[Layer, ...], orient: str, base: ProfileData) -> None:
+    raw_o, _ = _resolved(name, layers, orient)
+    _check_caption_raw(name, raw_o, orient)
+    try:
+        data_o = ProfileData.model_validate(raw_o)
+    except ValidationError as e:
+        raise EngineError(f"profile '{name}' ({orient}): {e}") from e
+    check_caption_style(data_o.caption_style.to_dict(), orient, f"profile '{name}'")
+    _check_print(name, data_o, orient)
+    _check_safety(name, data_o, base)
+
+
+@lru_cache(maxsize=64)
+def _build(name: str, layers: tuple[Layer, ...], rules_text: str | None,
+           orientation: str | None = None) -> Profile:
+    """Profile of the layers (`_layers` order). Memoised on file contents, rules file text and orientation."""
+    if orientation is not None:
+        if orientation not in ORIENTATIONS:
+            raise EngineError(f"unknown orientation {orientation!r} (expected: {', '.join(ORIENTATIONS)})")
+        un = _build(name, layers, rules_text, None)
+        want = profile_orientation(un.data)
+        if want is not None and want != orientation:
+            raise EngineError(f"profile '{name}' is a {want} profile and cannot be resolved for {orientation}")
+    raw, base_raw = _resolved(name, layers, orientation)
+    _check_caption_raw(name, raw, orientation)
     try:
         data = ProfileData.model_validate(raw)
-        base = data if name == DEFAULT else ProfileData.model_validate(base_raw)
+        base = data if (name == DEFAULT and orientation is None) else ProfileData.model_validate(base_raw)
     except ValidationError as e:
         raise EngineError(f"profile '{name}': {e}") from e
-    check_caption_style(data.caption_style.to_dict(), profile_orientation(data) or "portrait", f"profile '{name}'")
-    _check_print(name, data)
+    if orientation is not None:
+        check_caption_style(data.caption_style.to_dict(), orientation, f"profile '{name}'")
+        _check_print(name, data, orientation)
+    elif _has_any_branches(data):
+        check_o = (data.format.orientation,) if data.format.orientation else ORIENTATIONS
+        for o in check_o:
+            _validate_resolved_view(name, layers, o, base)
+    else:
+        check_caption_style(data.caption_style.to_dict(), profile_orientation(data) or "portrait", f"profile '{name}'")
+        _check_print(name, data)
     try:
         from . import framing
         framing.check_overrides(data.framing)
@@ -593,7 +679,7 @@ def _parse(name: str, texts: tuple[str, ...]) -> Profile:
 OVERRIDABLE = ("theme", "camera", "watermark", "motion", "grade", "render", "flags")   # project profile_overrides tables
 _CACHE_MAX = 64
 _OVERRIDDEN: dict[tuple[str, str], Profile] = {}          # (base hash, overrides JSON) -> profile, bounded
-_LOADED: dict[tuple[str, str], tuple[tuple, Profile]] = {}   # (profiles dir, name) -> (file signature, profile)
+_LOADED: dict[tuple[str, str, str | None], tuple[tuple, Profile]] = {}   # (profiles dir, name, orientation) -> (sig, profile)
 _RACY_NS = RACY_NS   # util.RACY_NS: a file changed this recently may change again inside one timestamp tick
 
 
@@ -660,38 +746,41 @@ def _override(base: Profile, over: dict) -> Profile:
     return prof
 
 
-def load(name: str | None = None, overrides: dict | None = None) -> Profile:
-    """The effective profile `name` (None = the default profile), with a project's `overrides` on top. Layers, lowest
-    first: Pydantic defaults < default.toml < the `extends` chain (each profile's `include` files, then its file) <
-    overrides. A profile that cannot be read or validated is an EngineError: there is no fallback to another
-    profile. Repeated calls cost a few `stat` calls while the files are unchanged."""
+def load(name: str | None = None, overrides: dict | None = None, *, orientation: str | None = None) -> Profile:
+    """The effective profile `name` (None = the default profile), with optional orientation resolution (`portrait` /
+    `landscape`) and a project's `overrides` on top. Layers, lowest first: Pydantic defaults < default.toml <
+    `extends` chain (each profile's `include` files, then its file) < orientation branch < overrides."""
+    if orientation is not None and orientation not in ORIENTATIONS:
+        raise EngineError(f"unknown orientation {orientation!r} (expected: {', '.join(ORIENTATIONS)})")
     if overrides:
-        return _override(load(name), overrides)
+        return _override(load(name, orientation=orientation), overrides)
     name = name or DEFAULT
     if not NAME_RE.match(name):
         raise EngineError(f"profile name {name!r} invalid (lowercase letters, digits, '_' and '-')")
-    key = (str(config.PROFILES_DIR), name)
+    key = (str(config.PROFILES_DIR), name, orientation)
     hit = _LOADED.get(key)
     if hit is not None and hit[0] == _signature(tuple(f for f, *_ in hit[0])):
         return hit[1]
     layers = _layers(name)
-    raw, _ = _resolved(name, layers)
+    raw, _ = _resolved(name, layers, orientation)
     files = [where for _, where, _ in layers]
     rules_text = None
     rel = raw.get("draft", {}).get("rules_file") if isinstance(raw.get("draft"), dict) else None
     if isinstance(rel, str):
         rules_text = _read_file(name, rel, ".md", "[draft] rules_file")
         files.append(str(_profile_file(name, rel, ".md", "[draft] rules_file")))
-    prof = _build(name, layers, rules_text)
+    prof = _build(name, layers, rules_text, orientation)
     sig = _signature(tuple(files))
     if sig is not None:
         _bounded_put(_LOADED, key, (sig, prof))
     return prof
 
 
-def origins(name: str | None = None) -> dict[str, str]:
+def origins(name: str | None = None, *, orientation: str | None = None) -> dict[str, str]:
     """Where each key of the effective profile `name` comes from: dotted key -> the profiles-relative file that set
     it last, "[type] title_px" style notes for a cascaded size, or ENGINE_ORIGIN for a key no file writes."""
+    if orientation is not None and orientation not in ORIENTATIONS:
+        raise EngineError(f"unknown orientation {orientation!r} (expected: {', '.join(ORIENTATIONS)})")
     name = name or DEFAULT
     layers = _layers(name)
     root = config.PROFILES_DIR.resolve()
@@ -705,25 +794,45 @@ def origins(name: str | None = None) -> dict[str, str]:
                 out[f"{pre}{k}"] = v
         return out
 
-    src: dict[str, str] = {}
+    src_root: dict[str, str] = {}
+    src_branch: dict[str, str] = {}
     for where, table in _tables(name, layers):
         try:
             rel = Path(where).resolve().relative_to(root).as_posix()
         except ValueError:
             rel = where
-        for k in flat(table):
-            src[k] = rel
-    raw, _ = _resolved(name, layers)
+        if orientation is None:
+            for k in flat(table):
+                src_root[k] = rel
+            continue
+        root_t = dict(table)
+        branch_t: dict[str, dict] = {}
+        for tbl in ORIENTED_TABLES:
+            t = root_t.get(tbl)
+            if isinstance(t, dict) and any(o in t for o in ORIENTATIONS):
+                root_t[tbl] = {k: v for k, v in t.items() if k not in ORIENTATIONS}
+                if isinstance(t.get(orientation), dict):
+                    branch_t[tbl] = t[orientation]
+        for k in flat(root_t):
+            src_root[k] = rel
+        for k in flat(branch_t):
+            src_branch[k] = rel
+    src = {**src_root, **src_branch}
+    raw, _ = _resolved(name, layers, orientation)
     merged_plain: dict = {}
     for _, t in _tables(name, layers):
         merged_plain = merge(merged_plain, t)
+    if orientation is not None:
+        merged_plain = _branch_raw(merged_plain, orientation)
     before, after = flat(merged_plain), flat(raw)
     for key, targets in TYPE_CASCADE.items():
         for path in targets:
             k = ".".join(path)
             if after.get(k) != before.get(k):
                 src[k] = f"[type] {key} ({src.get('type.' + key, ENGINE_ORIGIN)})"
-    effective = flat(json.loads(load(name).data.model_dump_json(by_alias=True)))
+    if orientation is not None and "format.orientation" not in src and after.get("format.orientation") == orientation:
+        src["format.orientation"] = f"({orientation} branch)"
+    effective = flat(json.loads(load(name, orientation=orientation).data.model_dump_json(by_alias=True)))
     return {k: src.get(k, ENGINE_ORIGIN) for k in sorted(effective)}
 
 
@@ -890,7 +999,8 @@ def quality_report(tl: "Timeline") -> dict:
 
 
 def of(tl: "Timeline") -> Profile:
-    return load(tl.profile, tl.profile_overrides)
+    return load(tl.profile, tl.profile_overrides,
+                orientation=units.orientation_of(tl.settings.width, tl.settings.height))
 
 
 def caption_style(tl: "Timeline") -> dict:

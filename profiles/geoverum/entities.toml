@@ -2,7 +2,7 @@
 # Locks specific recurring countries, alliances, and water bodies to fixed OKLCH-calibrated hex colors
 # from [theme] palette so each named entity maintains consistent visual identity throughout a video.
 # Entities not listed here are assigned unused colors sequentially from [theme] palette.
-# Included automatically by profiles/geoverum.toml and profiles/geoverum_landscape.toml.
+# Included automatically by profiles/geoverum.toml.
 
 [theme.entities]
 Indonesia = "#B56A95"         # Muted plum rose

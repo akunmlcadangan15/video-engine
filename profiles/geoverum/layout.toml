@@ -1,30 +1,49 @@
 # Map Scene Spatial Layout, Safe Zones, Element Budgets, & Fly-Through Timing Specification (Gates L01-L10).
-# Defines the 6-column portrait grid, vertical placement zones (Z1-Z3), typographic size hierarchy,
-# concurrent element budgets, and GSAP fly-in/fly-out easing curves at a 1080 x 1920 reference canvas.
-# Included automatically by profiles/geoverum.toml and overridden in geometry by profiles/geoverum/landscape/layout.toml.
+# Shared typographic hierarchy, element budgets, and fly timings live at root; portrait (9:16 at 1080 x 1920)
+# and landscape (16:9 at 1920 x 1080) grids/zones/scale overrides live under [layout.portrait] and [layout.landscape].
 
 [layout.grid]
-x0 = 64                       # Horizontal left margin in pixels; 6 columns of 104 px with 40 px gutters span x = 64 to x = 888
-columns = 6                   # Number of vertical layout columns across the safe area
 col_w = 104                   # Width of each layout column in pixels
 gutter = 40                   # Horizontal gutter width in pixels between adjacent columns
 unit = 8                      # Base spatial quantization grid unit in pixels
 
 [layout.zones]
-safe = [48, 288, 888, 1248]   # Overall map typography and overlay safe bounding box [x0, y0, x1, y1] in pixels
-z1 = [64, 304, 888, 440]      # Upper zone [x0, y0, x1, y1]: reserved for primary display titles, section headings, or top stat cards
-z2 = [64, 488, 888, 1100]     # Central map focus zone [x0, y0, x1, y1]: primary active polygon, pins, map labels, and animated routes
 z2_pad = 48                   # Internal padding in pixels inside the Z2 map focus zone
-z3 = [64, 1100, 888, 1248]    # Optional reference zone [x0, y0, x1, y1] above the caption band; not read by the planner or gates (they use safe, z1, z2)
 group_gap = 48                # Minimum vertical/horizontal separation in pixels between distinct visual groups
 
 [layout.sizes]
-year = 128                    # Standalone chronological year height in pixels inside layout beats
 time = 56                     # Secondary time/date subtitle height in pixels
 pin_label_min = 44            # Minimum pin label height in pixels after collision auto-scaling
 area_label = 44               # Regional or hydrographic area label height in pixels
 area_tracking = 0.08          # Letter-spacing in em units for area labels
 hero_ratio = 1.5              # Minimum size ratio between the primary hero figure/title and secondary labels in the same beat
+
+[layout.portrait.grid]
+x0 = 64                       # 6 columns of 104 px with 40 px gutters span x = 64 to x = 888
+columns = 6
+
+[layout.portrait.zones]
+safe = [48, 288, 888, 1248]   # Overall map typography and overlay safe bounding box [x0, y0, x1, y1] in pixels
+z1 = [64, 304, 888, 440]      # Upper zone [x0, y0, x1, y1]: primary display titles, section headings, or data cards
+z2 = [64, 488, 888, 1100]     # Central map focus zone [x0, y0, x1, y1]: active polygon, pins, labels, and routes
+z3 = [64, 1100, 888, 1248]    # Optional reference zone above caption band; not read by the planner or gates
+
+[layout.portrait.sizes]
+year = 128                    # Standalone chronological year height in pixels inside portrait layout beats
+
+[layout.landscape.grid]
+x0 = 116                      # 12 columns of 104 px with 40 px gutters (1688 px) centred: 116 .. 1804
+columns = 12
+
+[layout.landscape.zones]
+safe = [96, 54, 1824, 1026]   # Landscape safe area (96 px sides, 54 px top / bottom)
+z1 = [116, 72, 1100, 200]     # Title band at top left
+z2 = [116, 216, 1804, 880]    # Map focus: the wide middle of the frame
+z3 = [116, 880, 1804, 1026]   # Optional reference zone (lower third); not read by the planner or gates
+
+[layout.landscape.sizes]
+title = 88                    # 8% of 1080 height (portrait title cascades from [type] title_px = 104)
+year = 112                    # Standalone chronological year height in pixels inside landscape layout beats
 
 [layout.budget]
 texts = 3                     # Maximum concurrent text groups permitted in a single layout beat (gate L01)

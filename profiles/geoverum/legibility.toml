@@ -1,7 +1,7 @@
 # Adaptive Map Text & Line Legibility Specification (Gate R64).
 # Defines APCA luminance contrast targets, ink polarity selection, glyph halo escalation, knock-back vignettes,
 # and vector stroke contrast rules across both dark satellite imagery and bright archival paper surfaces.
-# Included automatically by profiles/geoverum.toml and profiles/geoverum_landscape.toml.
+# Included automatically by profiles/geoverum.toml.
 
 [legibility]                  # Adaptive map typography and vector contrast controller (docs/SPEC.md, Section F)
 samples = 12                  # Number of temporal frames sampled across each text or vector element's visible lifespan

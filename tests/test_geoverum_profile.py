@@ -74,8 +74,8 @@ def _drift_frames(tl, p):
 # good ---------------------------------------------------------------------------------------------------------------
 def test_good_geoverum_drift_wait_counts_as_moving_in_P01(project):
     p, tl = project(_drift_wait)
-    g = GEO.gates.camera
-    assert GEO.theme.camera_drift_per_s == 0.06 and g.still_zoom_ln_s == 0.05
+    g = profiles.CameraGate(still_zoom_ln_s=0.05)
+    assert GEO.gates.camera is None and GEO.theme.camera_drift_per_s == 0.06 and g.still_zoom_ln_s == 0.05
     zs = [m[0] for m in _drift_frames(tl, p)]
     assert all(z >= g.still_zoom_ln_s for z in zs)                 # every drift frame is above the still threshold
     assert max(zs) == pytest.approx(GEO.theme.camera_drift_per_s, rel=0.02)
@@ -126,7 +126,7 @@ def test_bad_old_drift_wait_is_still_in_P01(project, monkeypatch):
     _geo(monkeypatch, camera_drift_per_s=0.02)
     p, tl = project(_drift_wait)
     zs = [m[0] for m in _drift_frames(tl, p)]
-    assert all(z < GEO.gates.camera.still_zoom_ln_s for z in zs)    # the whole drift-only wait is a hold
+    assert all(z < profiles.CameraGate().still_zoom_ln_s for z in zs)    # the whole drift-only wait is a hold
 
 
 def test_bad_old_palette_six_unpinned_entities_share_colours_warn_E01(project, monkeypatch):

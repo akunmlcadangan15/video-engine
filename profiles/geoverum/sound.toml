@@ -1,7 +1,7 @@
 # Render-Event Sound Effects (SFX) Mapping & Voiceover Music Ducking Specification.
 # Defines automatic audio cue triggers bound to visual timeline events (pins, figures, labels, regions,
 # routes, camera whips, counters, and titles) and dynamic background music attenuation under narration.
-# Included automatically by profiles/geoverum.toml and profiles/geoverum_landscape.toml.
+# Included automatically by profiles/geoverum.toml.
 
 [sound]                       # Master music ducking envelope synchronized to voiceover word timestamps
 duck_db = -12.0               # Attenuation in dB applied to the background music bed while the narrator is speaking

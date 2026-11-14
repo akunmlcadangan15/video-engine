@@ -210,6 +210,16 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 ### Diubah
 
 
+- **Profil merek murni multi-orientasi (`geoverum`)**: Profil channel `geoverum` kini mendukung output
+  portrait 9:16 dan landscape 16:9 dalam satu profil melalui cabang `.portrait` / `.landscape` pada
+  `[caption_style]`, `[watermark]`, `[layout]` (`LayoutBranch` di `video_engine/layout_models.py`), dan
+  `[print]` (`video_engine/profile_schema.py`, `video_engine/profiles.py`), sehingga `[format] orientation`
+  tidak lagi dikunci mati oleh profil dan orientasi frame proyek menentukan cabang yang dipakai (`engine profile`
+  menambah `--orientation portrait|landscape`). Aturan kreatif, struktur cerita, dan batas durasi/segmen baku
+  dilepas dari profil merek (hanya gaya visual/brand dan pemeriksaan kualitas teknis). Pengujian terkait di
+  `tests/test_geoverum_profile.py`, `tests/test_landscape.py`, `tests/test_profile_layers.py`, dan
+  `tests/test_taste_lint.py` diperbarui, serta `profiles/taste/geoverum.json` disesuaikan dengan kontrak baru.
+
 - **Identitas browser di kunci cache HyperFrames** (`video_engine/toolchain.py`): yang di-hash adalah direktori
   instalasi browser itu sendiri (atau berkas biner hasil resolusi beserta keluaran `--version`), bukan direktori induk
   seperti `/usr/bin`. Kunci segmen HyperFrames, probe DOM dan sprite model berubah satu kali pada mesin yang Chrome-nya
@@ -405,6 +415,10 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ### Dihapus
 
+
+- Profil terpisah `profiles/geoverum_landscape.toml`, direktori override `profiles/geoverum/landscape/`,
+  serta aturan kreatif baku `profiles/geoverum/creative.md` (disatukan ke profil merek murni
+  `profiles/geoverum.toml` yang mendukung kedua orientasi tanpa aturan cerita atau durasi baku).
 
 - Alias `MANDATORY_GATE_IDS`, `PROFILE_GATE_IDS`, `FLEXIBLE_GATE_IDS` (pakai `KERNEL_GATE_IDS` dan `Gate.tier`),
   field `Profile.gate_warnings` yang selalu kosong, `profiles._drop_nulls` (identik dengan `merge`), dependensi

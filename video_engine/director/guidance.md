@@ -5,7 +5,7 @@ Adapted from the public `REMOTION.md` prompt guidance of [motif-dev/motif](https
 ([benjitaylor/skills](https://github.com/benjitaylor/skills), MIT, Copyright (c) 2026 Benji Taylor), reworded for this
 engine's locked-voiceover documentary timeline and channel taste store. Attribution: `NOTICE` in this directory.
 
-Global principles only: channel identity, defaults and alternatives live in `profiles/<channel>/creative.md` (loaded as `[draft] rules`); historical preferences live in the taste store. Do not turn these preferences into new technical constraints.
+Global principles only: channel visual style and technical legibility live in the channel profile (brand profiles leave directing and duration open unless optional `[draft] rules` / `rules_file` are configured); historical preferences live in the taste store. Do not turn these preferences into new technical constraints.
 Each `## SECTION` is prompt text (`director.guidance`): STORYBOARD for the storyboard request, EDIT for the timeline draft, REVIEW for the frame review. Every request pays for it, so keep it short.
 
 ## STORYBOARD

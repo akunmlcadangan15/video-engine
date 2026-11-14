@@ -1,7 +1,7 @@
 # Printed Cartographic Typography & Surface Grading Specification (Gates T01 & B01).
 # Controls surface classification between dark satellite imagery and bright archival paper maps,
 # paper texture compositing, multiply ink blending, and serif/handwritten typographic roles.
-# Included automatically by profiles/geoverum.toml and profiles/geoverum_landscape.toml.
+# Included automatically by profiles/geoverum.toml; orientation positions live under [print.portrait] / [print.landscape].
 
 [print]                       # Printed surface grading and archival typography controller (video_engine/printstyle.py; docs/SPEC.md, Section F2)
 paper_min_y = 0.52            # Median basemap APCA luminance threshold (Y >= 0.52) required to classify a map as a bright archival/parchment surface. Keeps dark satellite basemaps (typically Y 0.05-0.25, or up to Y ~ 0.48 on snowy/glacial frames) in satellite rendering mode with glowing neon borders rather than vintage paper multiply mode
@@ -31,8 +31,6 @@ dark_tracking = 0.04          # Tighter letter-spacing in em units applied to sa
 emboss_colour = "#FAF5E8"     # Warm highlight color for subtle letterpress embossing on paper titles
 emboss_alpha = 0.40           # Opacity of the letterpress highlight emboss
 emboss_dy = 2                 # Vertical offset in pixels for the letterpress highlight emboss
-year_cx = 540                 # Default horizontal center in pixels (at 1080 width) for large historical epoch year anchors
-year_cy = 560                 # Default vertical center in pixels (at 1920 height) for large historical epoch year anchors
 year_width = 0.38             # Target fraction of canvas width spanned by a 4-digit historical year anchor
 year_px_min = 220             # Minimum font size in pixels for hero historical year anchors
 year_px_max = 250             # Maximum font size in pixels for hero historical year anchors
@@ -46,7 +44,6 @@ time_gap = 24                 # Vertical gap in pixels between a hero year ancho
 heading_px = 42               # Font size in pixels for upper cartographic section headings
 heading_tracking = 0.14       # Letter-spacing in em units for upper cartographic section headings
 heading_weight = 600          # Font weight for upper cartographic section headings
-heading_baseline_y = 384      # Vertical baseline position in pixels (at 1920 height) for upper section headings
 heading_ink = "#5B3A23"       # Warm bronze-sepia ink color for section headings on paper surfaces
 heading_light = "#F3EAD8"     # Warm cream color for section headings on dark satellite surfaces
 heading_shadow_alpha = 0.40   # Drop-shadow opacity behind section headings on dark satellite surfaces
@@ -65,3 +62,13 @@ note_px = 56                  # Font size in pixels for handwritten callout note
 note_ink = "#2E4E7A"          # Archival fountain-pen blue ink color for handwritten notes on bright paper surfaces
 note_light = "#FFFFFF"        # Crisp white ink color for handwritten notes on dark satellite surfaces (when not overridden by signal yellow #FFD417)
 note_write_s = 0.5            # Progressive stroke write-on duration in seconds for handwritten notes and curved arrows
+
+[print.portrait]              # Positions in px at 1080 x 1920 reference canvas (PRINT_RANGES["portrait"])
+year_cx = 540
+year_cy = 560
+heading_baseline_y = 384
+
+[print.landscape]             # Positions in px at 1920 x 1080 reference canvas (PRINT_RANGES["landscape"])
+year_cx = 960
+year_cy = 380
+heading_baseline_y = 150

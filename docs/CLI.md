@@ -146,7 +146,7 @@ Drops every sound-cache pin owned by P. The next LRU eviction may delete those c
 
 Builds a project (`master_timeline.json`, `credits.txt`, `assets/`) from a shot-list CSV (`shot,type,file,title,source_url,author,licence,on_screen_s`) of an existing edit.
 Sources are only read.
-`--format` sets the output size: `short` (1080x1920, default), `short-4k`, `landscape-1080p`, `landscape-1440p` or `landscape-4k` (`units.FORMATS`); a landscape project needs a landscape profile such as `geoverum_landscape`.
+`--format` sets the output size: `short` (1080x1920, default), `short-4k`, `landscape-1080p`, `landscape-1440p` or `landscape-4k` (`units.FORMATS`); a landscape project needs a multi-orientation profile (such as `geoverum`) or a landscape profile.
 Credits come only from CSV or manifest rows; a row without `source_url` is an error.
 `--substitute` takes the new file's credit from the manifest (no row = error).
 `--exclude` merges a shot into the previous one.
@@ -163,10 +163,11 @@ Prints the channel taste store (`profiles/taste/<channel>.json`, or `$VIDEO_ENGI
 Entries without a check and the free-text `rules` cannot be checked by a program; `--lint` only counts them.
 
 
-## `engine profile [NAME] [--origin] [--table T]`
+## `engine profile [NAME] [--orientation portrait|landscape] [--origin] [--table T]`
 
 Read-only. Without a name: every profile with the first 16 characters of its hash and its description.
 With a name: the profile as the engine resolves it (model defaults < `default.toml` < `extends` chain < `include` files < the profile's file), as JSON; the full hash goes to stderr.
+`--orientation` resolves orientation branches (`.portrait` / `.landscape`) for that target frame orientation before printing or tracing `--origin`.
 `--origin` prints one line per key instead: the value and the profiles-relative file that set it, `[type] <size> (<file>)` for a size that reached the surface through the type scale, or `(engine default)` for a key no file writes.
 `--table T` limits the output to one top-level table (`theme`, `caption_style`, `gates`, ...).
 Exit 1 for an unknown profile or table, or a profile that does not validate (the error names the file and key).

@@ -73,9 +73,36 @@ def test_good_default_profile_runs_no_style_gates(project, W):
     assert style.run_style(tl, d, W(("Halo", 0, 10))) == []
 
 
-def test_good_geoverum_runs_active_style_gates_and_no_cut_or_cadence_gate(project):
+HOOK = profiles.HookGate(vo_warn_s=0.3, vo_fail_s=0.8, caption_warn_s=0.2, caption_fail_s=1.0,
+                         graphic_warn_s=1.5, graphic_fail_s=3.0, open_on_moving_map=True)
+NOVELTY = profiles.NoveltyGate(max_gap_s=3.0)
+KEYWORD_RET = profiles.KeywordReturnGate(hook_s=6.0, end_s=10.0, min_chars=4)
+ENDING_KW = profiles.EndingKeywordGate(hook_s=6.0, end_s=10.0, min_chars=4)
+CTA = profiles.CtaGate(phrases=["subscribe", "follow", "terima kasih"])
+DURATION = profiles.DurationGate(min_s=30.0, max_s=120.0)
+
+
+def test_good_geoverum_has_no_creative_or_duration_style_gates(project, tmp_path, monkeypatch):
     d, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, None)))
-    fs = style.run_style(tl, d, words(("Pagi", 0, 10), ("Titik", 10, 20)))
+    assert style.run_style(tl, d, words(("Pagi", 0, 10), ("Titik", 10, 20))) == []
+
+    pdir = tmp_path / "profiles"
+    pdir.mkdir()
+    (pdir / "default.toml").write_text((config.PROFILES_DIR / "default.toml").read_text())
+    (pdir / "chan.toml").write_text(
+        "[theme]\ncamera_drift_per_s = 0.06\n"
+        "[gates.hook]\nvo_warn_s = 0.5\nvo_fail_s = 0.8\ncaption_warn_s = 0.2\ncaption_fail_s = 1.0\n"
+        "graphic_warn_s = 1.5\ngraphic_fail_s = 3.0\nopen_on_moving_map = true\n"
+        "[gates.camera]\nhold_warn_s = 3.0\nhold_fail_s = 5.0\nmoving_warn = 0.65\nmin_drift_per_s = 0.06\n"
+        "[gates.novelty]\nmax_gap_s = 3.0\n"
+        "[gates.keyword_return]\nhook_s = 6.0\nend_s = 10.0\nmin_chars = 4\n"
+        "[gates.ending_keyword]\nhook_s = 6.0\nend_s = 10.0\nmin_chars = 4\n"
+        '[gates.cta]\nphrases = ["subscribe", "terima kasih"]\n'
+        "[gates.duration]\nmin_s = 30.0\nmax_s = 120.0\n"
+    )
+    monkeypatch.setattr(config, "PROFILES_DIR", pdir)
+    d2, tl2 = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, None), profile="chan"))
+    fs = style.run_style(tl2, d2, words(("Pagi", 0, 10), ("Titik", 10, 20)))
     assert {f.gate for f in fs} == {"H01", "C02", "N01", "K01", "K02", "D01", "P01", "P02", "P03"}
     assert not any("caption" in f.message and "per 10" in f.message for f in fs)
 
@@ -86,8 +113,7 @@ def test_h01_narration_start_good_and_bad(project, lead, lv):
     d, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, None)))
     tone(d / "vo.wav", lead_s=lead)
     tl.audio_chain.voiceover_path = "vo.wav"
-    fs = [f for f in style.h01_hook(tl, d, words(("Pagi", 0, 10)), profiles.load("geoverum").gates.hook)
-          if f.message.startswith("narration")]
+    fs = [f for f in style.h01_hook(tl, d, words(("Pagi", 0, 10)), HOOK) if f.message.startswith("narration")]
     assert [f.level for f in fs] == [lv]
 
 
@@ -95,24 +121,23 @@ def test_h01_narration_start_good_and_bad(project, lead, lv):
 def test_h01_first_caption_good_and_bad(project, start_s, lv):
     d, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, None)))
     a = round(start_s * FPS)
-    fs = [f for f in style.h01_hook(tl, d, words(("Pagi", a, a + 10)), profiles.load("geoverum").gates.hook)
+    fs = [f for f in style.h01_hook(tl, d, words(("Pagi", a, a + 10)), HOOK)
           if f.message.startswith("first caption")]
     assert [f.level for f in fs] == [lv]
 
 
 def test_bad_h01_opening_not_a_moving_map(project):
-    g = profiles.load("geoverum").gates.hook
     d, tl = project(layout(("photo", 30, None), ("map", 30, pins_every(2, 30))))
-    assert any(f.level == "fail" and "moving map" in f.message for f in style.h01_hook(tl, d, None, g))
+    assert any(f.level == "fail" and "moving map" in f.message for f in style.h01_hook(tl, d, None, HOOK))
     d, tl = project(layout(("map", 30, {"scene": {"camera_preset": "static"}}), ("photo", 30, None)))
-    assert any(f.level == "fail" and "moving map" in f.message for f in style.h01_hook(tl, d, None, g))
+    assert any(f.level == "fail" and "moving map" in f.message for f in style.h01_hook(tl, d, None, HOOK))
 
 
 @pytest.mark.parametrize("at_s,lv", [(0.4, "pass"), (2.0, "warn"), (3.5, "fail")])
 def test_h01_first_graphic_good_and_bad(project, at_s, lv):
     pin = {"scene": {"pins": [{"label": "Titik", "x": 0.5, "y": 0.5, "at_frame": round(at_s * FPS)}]}}
     d, tl = project(layout(("map", 30, pin), ("photo", 30, None)))
-    fs = [f for f in style.h01_hook(tl, d, None, profiles.load("geoverum").gates.hook) if "graphic" in f.message]
+    fs = [f for f in style.h01_hook(tl, d, None, HOOK) if "graphic" in f.message]
     assert [f.level for f in fs] == [lv]
 
 
@@ -190,13 +215,13 @@ def test_bad_visual_type_unknown_value(project):
 def test_good_n01_new_element_every_2_s(project):
     _, tl = project(layout(("map", 30, pins_every(2, 30)), ("map", 30, {**pins_every(2, 30),
                     "visual_type": "diagram"})))
-    assert levels(style.n01_novelty(tl, profiles.load("geoverum").gates.novelty), "N01") == ["pass"]
+    assert levels(style.n01_novelty(tl, NOVELTY), "N01") == ["pass"]
 
 
 def test_bad_n01_still_stretch_longer_than_3_s(project):
     _, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 4, None),
                            ("map", 26, {**pins_every(2, 26), "visual_type": "diagram"})))
-    fs = style.n01_novelty(tl, profiles.load("geoverum").gates.novelty)
+    fs = style.n01_novelty(tl, NOVELTY)
     assert levels(fs, "N01") == ["warn"] and fs[0].seg == 1 and "4.0 s" in fs[0].message
 
 
@@ -208,20 +233,20 @@ def _end_label(text):
 
 def test_good_k01_hook_keyword_back_at_the_end(project):
     _, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, _end_label("Surabaya hari ini"))))
-    fs = style.k01_keyword_return(tl, words(("Surabaya", 0, 10)), profiles.load("geoverum").gates.keyword_return)
+    fs = style.k01_keyword_return(tl, words(("Surabaya", 0, 10)), KEYWORD_RET)
     assert levels(fs, "K01") == ["pass"] and "surabaya" in fs[0].message
 
 
 def test_bad_k01_no_hook_keyword_at_the_end(project):
     _, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, _end_label("Selesai"))))
-    fs = style.k01_keyword_return(tl, words(("Surabaya", 0, 10)), profiles.load("geoverum").gates.keyword_return)
+    fs = style.k01_keyword_return(tl, words(("Surabaya", 0, 10)), KEYWORD_RET)
     assert levels(fs, "K01") == ["warn"]
 
 
 # K02 ending keyword on the final frame -----------------------------------------------------------------------------------
 def test_good_k02_hook_keyword_still_on_screen_on_the_final_frame(project):
     _, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, _end_label("Surabaya hari ini"))))
-    fs = style.k02_ending_keyword(tl, words(("Surabaya", 0, 10)), profiles.load("geoverum").gates.ending_keyword)
+    fs = style.k02_ending_keyword(tl, words(("Surabaya", 0, 10)), ENDING_KW)
     assert levels(fs, "K02") == ["pass"] and "surabaya" in fs[0].message
 
 
@@ -229,20 +254,20 @@ def test_bad_k02_keyword_only_earlier_not_on_the_final_frame(project):
     gone = {"overlays": [{"id": "end", "kind": "label", "box": [140, 300, 800, 160], "text": "Surabaya",
                           "start_frame": 0, "end_frame": 20}]}
     _, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, gone)))
-    fs = style.k02_ending_keyword(tl, words(("Surabaya", 0, 10)), profiles.load("geoverum").gates.ending_keyword)
+    fs = style.k02_ending_keyword(tl, words(("Surabaya", 0, 10)), ENDING_KW)
     assert levels(fs, "K02") == ["fail"] and "final" in fs[0].message
 
 
 # C02 no CTA / end card ----------------------------------------------------------------------------------------------------
 def test_good_c02_no_cta_phrase(project):
     _, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, _end_label("Surabaya hari ini"))))
-    fs = style.c02_cta(tl, words(("Surabaya", 0, 10)), profiles.load("geoverum").gates.cta)
+    fs = style.c02_cta(tl, words(("Surabaya", 0, 10)), CTA)
     assert levels(fs, "C02") == ["pass"]
 
 
 def test_bad_c02_cta_in_captions_or_on_screen(project):
     _, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, _end_label("Jangan lupa subscribe"))))
-    fs = style.c02_cta(tl, words(("Terima", 0, 10), ("kasih", 10, 20)), profiles.load("geoverum").gates.cta)
+    fs = style.c02_cta(tl, words(("Terima", 0, 10), ("kasih", 10, 20)), CTA)
     assert levels(fs, "C02") == ["fail"] and "subscribe" in fs[0].message and "terima kasih" in fs[0].message
 
 
@@ -259,7 +284,7 @@ def test_good_and_bad_d02_exact_duration(project):
 @pytest.mark.parametrize("sec,lv", [(30, "pass"), (60, "pass"), (29, "warn"), (120, "pass"), (121, "warn")])
 def test_d01_duration_good_and_bad(project, sec, lv):
     _, tl = project(layout(("map", sec / 2, None), ("photo", sec / 2, None)))
-    assert levels(style.d01_duration(tl, profiles.load("geoverum").gates.duration), "D01") == [lv]
+    assert levels(style.d01_duration(tl, DURATION), "D01") == [lv]
 
 
 # S01 silence on the final file ---------------------------------------------------------------------------------------
@@ -530,11 +555,19 @@ def test_good_default_draft_prompt_keeps_engine_rules():
     assert "Suggested length 1.5-7.0 s each (45-210 frames)" in p and "\n6. " not in p
 
 
-def test_good_geoverum_draft_prompt_adds_channel_rules():
+def test_good_geoverum_draft_prompt_keeps_channel_pace_without_creative_rules(tmp_path, monkeypatch):
     p = draft.prompt(_inp("geoverum"))
-    rules = profiles.load("geoverum").draft.rules
-    assert "Suggested length 3.0-30.0 s each (90-900 frames)" in p
-    assert all(f"\n- {r}" in p for r in rules) and p.endswith("matching the schema.")
+    assert profiles.load("geoverum").draft.rules == []
+    assert "Suggested length 3.0-30.0 s each (90-900 frames)" in p and "\n6. " not in p
+    assert p.endswith("matching the schema.")
+
+    pdir = tmp_path / "profiles"
+    pdir.mkdir()
+    (pdir / "default.toml").write_text((config.PROFILES_DIR / "default.toml").read_text())
+    (pdir / "chan.toml").write_text('[draft]\nmin_seg_s = 2.0\nmax_seg_s = 10.0\nrules = ["Keep maps moving."]\n')
+    monkeypatch.setattr(config, "PROFILES_DIR", pdir)
+    pc = draft.prompt(_inp("chan"))
+    assert "Suggested length 2.0-10.0 s each (60-300 frames)" in pc and "\n- Keep maps moving." in pc
 
 
 def test_bad_draft_range_inverted(tmp_path, monkeypatch):
@@ -548,13 +581,28 @@ def test_bad_draft_range_inverted(tmp_path, monkeypatch):
 
 
 # preflight wiring ---------------------------------------------------------------------------------------------------
-def test_good_preflight_reports_style_gates_for_geoverum_only(project):
+def test_good_preflight_reports_style_gates_when_configured_only(project, tmp_path, monkeypatch):
     d, tl = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, None)))
     rep = run_preflight(tl, d, None, dom=False, snapshots=False)
-    assert {"H01", "D01"} <= {f.gate for f in rep.findings} and "style" in rep.timings
-    d, tl = project()
-    rep = run_preflight(tl, d, None, dom=False, snapshots=False)
     assert not {"H01", "C01", "V01", "N01", "K01", "D01"} & {f.gate for f in rep.findings}
+    assert "style" in rep.timings
+
+    pdir = tmp_path / "profiles"
+    pdir.mkdir()
+    (pdir / "default.toml").write_text((config.PROFILES_DIR / "default.toml").read_text())
+    (pdir / "chan.toml").write_text(
+        "[gates.hook]\nvo_warn_s = 0.5\nvo_fail_s = 0.8\ncaption_warn_s = 0.2\ncaption_fail_s = 1.0\n"
+        "graphic_warn_s = 1.5\ngraphic_fail_s = 3.0\n"
+        "[gates.duration]\nmin_s = 30.0\nmax_s = 120.0\n"
+    )
+    monkeypatch.setattr(config, "PROFILES_DIR", pdir)
+    d2, tl2 = project(layout(("map", 30, pins_every(2, 30)), ("photo", 30, None), profile="chan"))
+    rep2 = run_preflight(tl2, d2, None, dom=False, snapshots=False)
+    assert {"H01", "D01"} <= {f.gate for f in rep2.findings} and "style" in rep2.timings
+
+    d0, tl0 = project()
+    rep0 = run_preflight(tl0, d0, None, dom=False, snapshots=False)
+    assert not {"H01", "C01", "V01", "N01", "K01", "D01"} & {f.gate for f in rep0.findings}
 
 
 # GOOD / BAD: Geoverum caption outline + drop shadow; Z01 counts the shadow reach -------------------------------------

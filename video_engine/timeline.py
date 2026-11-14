@@ -250,12 +250,13 @@ class Timeline(Strict):
 
     @model_validator(mode="after")
     def _profile_exists(self):
-        from . import profiles
+        from . import profiles, units
         from .util import EngineError
         try:
-            prof = profiles.load(self.profile, self.profile_overrides)
+            orient = units.orientation_of(self.settings.width, self.settings.height)
+            profiles.check_orientation(profiles.load(self.profile), self.settings.width, self.settings.height)
+            prof = profiles.load(self.profile, self.profile_overrides, orientation=orient)
             mz = prof.camera.max_zoom
-            profiles.check_orientation(prof, self.settings.width, self.settings.height)
         except EngineError as e:
             raise ValueError(str(e)) from e
         for s in self.segments[1:]:

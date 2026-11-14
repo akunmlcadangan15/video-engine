@@ -97,8 +97,10 @@ def test_good_geoverum_sets_the_title_size_once():
     core = tomllib.loads((config.PROFILES_DIR / "geoverum" / "core.toml").read_text())
     layout = tomllib.loads((config.PROFILES_DIR / "geoverum" / "layout.toml").read_text())
     assert core["type"] == {"title_px": 104} and "title_px" not in core["theme"] and "title" not in layout["layout"]["sizes"]
-    p, wide = profiles.load("geoverum"), profiles.load("geoverum_landscape")
+    p = profiles.load("geoverum", orientation="portrait")
+    wide = profiles.load("geoverum", orientation="landscape")
     assert p.theme.title_px == p.layout.sizes.title == 104 and (wide.theme.title_px, wide.layout.sizes.title) == (104, 88)
+    assert p.blake3 != wide.blake3
 
 
 def test_bad_a_cascaded_size_is_validated_by_its_surface(pdir):
@@ -167,7 +169,8 @@ def test_good_caption_key_tables_match_the_rust_style_and_the_python_reader():
     assert sorted(re.findall(r'"(\w+)"', known)) == sorted(profile_schema.CAPTION_RUST_KEYS)
     assert captions.PY_KEYS == profile_schema.CAPTION_PY_KEYS
     for name in profiles.names():
-        assert set(profiles.load(name).caption_style) <= set(captions.PY_KEYS) | set(profile_schema.CAPTION_RUST_KEYS)
+        for o in ("portrait", "landscape"):
+            assert set(profiles.load(name, orientation=o).caption_style) <= set(captions.PY_KEYS) | set(profile_schema.CAPTION_RUST_KEYS)
 
 
 def test_bad_reference_style_typo_fails_at_load(pdir):
@@ -194,11 +197,14 @@ def test_good_origins_name_the_file_that_set_each_key(pdir):
 
 def test_good_repository_profiles_have_an_origin_for_every_key():
     for name in profiles.names():
-        o = profiles.origins(name)
-        assert o and all(o.values())
+        for o in (None, "portrait", "landscape"):
+            orig = profiles.origins(name, orientation=o)
+            assert orig and all(orig.values())
     geo = profiles.origins("geoverum")
-    assert geo["caption_style.font"] == "geoverum/core.toml" and geo["caption_style.fixed_y"] == "geoverum.toml"
-    assert profiles.origins("geoverum_landscape")["caption_style.fixed_y"] == "landscape/format.toml"
+    assert geo["caption_style.font"] == "geoverum/core.toml" and geo["caption_style.portrait.fixed_y"] == "geoverum.toml"
+    assert geo["caption_style.landscape.fixed_y"] == "geoverum.toml"
+    assert profiles.origins("geoverum", orientation="portrait")["caption_style.fixed_y"] == "geoverum.toml"
+    assert profiles.origins("geoverum", orientation="landscape")["caption_style.fixed_y"] == "geoverum.toml"
 
 
 # --------------------------------------------------------------------------------------------------------- memo
@@ -239,3 +245,59 @@ def test_good_default_toml_states_the_code_defaults_it_repeats():
     own = ("audio", "draft", "theme", "description", "caption_style")   # tables only default.toml defines
     drift = {k: (minimal[k], written[k]) for k in written if k not in own and minimal[k] != written[k]}
     assert drift == {}
+
+
+# --------------------------------------------------------------------------------------------- multi-orientation
+def test_good_dual_orientation_isolates_hashes_and_resolves_all_tables(pdir):
+    body = (
+        '[caption_style]\nfont = "Inter"\n'
+        '[caption_style.portrait]\nsize = 48\nfixed_y = 1366\n'
+        '[caption_style.landscape]\nsize = 58\nfixed_y = 900\n'
+        '[watermark]\ntext = "Brand"\n'
+        '[watermark.portrait]\npx = 40\n'
+        '[watermark.landscape]\npx = 28\ncorner = "bottom_right"\n'
+        '[layout.portrait.sizes]\ntitle = 104\n'
+        '[layout.landscape.sizes]\ntitle = 88\n'
+        '[print]\ntitle_px = 88\n'
+        '[print.portrait]\nyear_cx = 540\nyear_cy = 560\nheading_baseline_y = 384\n'
+        '[print.landscape]\nyear_cx = 960\nyear_cy = 380\nheading_baseline_y = 150\n'
+    )
+    pdir("dual.toml", body)
+    p_port = profiles.load("dual", orientation="portrait")
+    p_land = profiles.load("dual", orientation="landscape")
+    assert (p_port.caption_style["size"], p_port.caption_style["fixed_y"]) == (48, 1366)
+    assert (p_land.caption_style["size"], p_land.caption_style["fixed_y"]) == (58, 900)
+    assert (p_port.watermark.px, p_port.watermark.corner) == (40, None)
+    assert (p_land.watermark.px, p_land.watermark.corner) == (28, "bottom_right")
+    assert p_port.layout.sizes.title == 104 and p_land.layout.sizes.title == 88
+    assert p_port.print.year_cy == 560 and p_land.print.year_cy == 380
+
+    # Changing landscape-only values changes unoriented and landscape hashes, never portrait hash.
+    pdir("dual.toml", body.replace("px = 28", "px = 32"))
+    assert profiles.load("dual", orientation="portrait").blake3 == p_port.blake3
+    assert profiles.load("dual", orientation="landscape").blake3 != p_land.blake3
+
+
+def test_bad_dual_orientation_invalid_branch_rejected_on_unoriented_load(pdir):
+    pdir("badprint.toml", '[print]\ntitle_px = 88\n[print.landscape]\nyear_cy = 560\n')
+    with pytest.raises(EngineError, match="landscape range"):
+        profiles.load("badprint")
+
+    pdir("badcap.toml", '[caption_style.landscape]\nfixed_y = 1382\n')
+    with pytest.raises(EngineError, match=r"0\.\.1080"):
+        profiles.load("badcap")
+
+    pdir("badtype.toml", '[caption_style]\nportrait = 123\n')
+    with pytest.raises(EngineError, match="caption_style.portrait must be a table"):
+        profiles.load("badtype")
+
+
+def test_good_cli_profile_orientation_flag(capsys):
+    from video_engine import cli
+    assert cli.main(["profile", "geoverum", "--orientation", "landscape", "--table", "caption_style"]) == 0
+    out = json.loads(capsys.readouterr().out)["caption_style"]
+    assert out["size"] == 58 and out["fixed_y"] == 900
+    assert "portrait" not in out and "landscape" not in out
+    with pytest.raises(SystemExit) as e:
+        cli.main(["profile", "geoverum", "--orientation", "square"])
+    assert e.value.code == 2

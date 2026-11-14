@@ -116,9 +116,10 @@ def test_good_geoverum_requires_no_style_gate_and_lowers_advisory_gates(project)
     assert p.gates.advisory == []   # Advisory list is empty because lint gates automatically warn unless required.
     assert all(g in reg.LINT_GATE_IDS for g in ("R64", "E01", "R56", "T01", "R44", "L01", "L06", "R62", "R63", "Z01", "O01", "M02", "B01"))
     assert not set(p.gates.advisory) & set(reg.NEVER_ADVISORY)
-    assert p.gates.camera.min_drift_per_s == 0.06
+    assert p.gates.camera is None and p.theme.camera_drift_per_s == 0.06
     _, tl = project(two_maps())
-    assert [f.level for f in style.p02_drift(tl, p.gates.camera)] == ["pass"]
+    gate = profiles.CameraGate(hold_warn_s=1.7, hold_fail_s=3.0, min_drift_per_s=0.06)
+    assert [f.level for f in style.p02_drift(tl, gate)] == ["pass"]
 
 
 def test_good_geoverum_style_and_advisory_fails_become_warn_while_safety_gates_block(project):
@@ -148,7 +149,7 @@ def test_bad_p02_drift_below_floor_fails(project, monkeypatch):
         th = pr.data.theme.model_copy(update={"camera_drift_per_s": 0.03})
         return profiles.Profile(pr.name, pr.data.model_copy(update={"theme": th}), pr.blake3 + "-slow")
     monkeypatch.setattr(profiles, "of", slow)
-    fs = style.p02_drift(tl, real(tl).gates.camera)
+    fs = style.p02_drift(tl, profiles.CameraGate(hold_warn_s=1.7, hold_fail_s=3.0, min_drift_per_s=0.06))
     assert [f.level for f in fs] == ["fail"] and "waits are still" in fs[0].message
 
 

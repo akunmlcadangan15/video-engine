@@ -101,26 +101,41 @@ def test_good_flatten_inlines_rules_file_text_with_unicode_and_backslashes(pdir)
     assert profiles.load("chan").draft.rules == rules
 
 
-def test_good_repository_geoverum_flatten_keeps_creative_rules():
+def test_good_repository_geoverum_flatten_keeps_pure_brand_structure():
     flat = profiles.flatten("geoverum")
-    assert tomllib.loads(flat)["draft"]["rules"] == profiles.load("geoverum").draft.rules
+    raw = tomllib.loads(flat)
+    assert "rules" not in raw["draft"] and "rules_file" not in raw["draft"]
+    assert raw["caption_style"]["portrait"]["fixed_y"] == 1366
+    assert raw["caption_style"]["landscape"]["fixed_y"] == 900
+    assert profiles.load("geoverum").draft.rules == []
 
 
-def test_good_geoverum_overrides_keep_resolved_rules_and_do_not_leak():
+def test_good_rules_file_overrides_keep_resolved_rules_and_do_not_leak(pdir):
     """A rules_file profile accepts legal overrides. Resolved rules stay, and one call does not change another."""
-    base = profiles.load("geoverum")
+    pdir("chan/creative.md", "- Default only ≠ optional\n- Max zoom {{camera.max_zoom}}\n")
+    pdir("chan.toml", '[camera]\nmax_zoom = 8.0\n[draft]\nmin_seg_s = 1.5\nmax_seg_s = 4.0\nrules_file = "chan/creative.md"\n')
+    base = profiles.load("chan")
     rules = list(base.draft.rules)
-    indo = base.data.theme.entities["Indonesia"]
-    assert base.draft.rules_file == "geoverum/creative.md" and any("≠" in r for r in rules)
-    a = profiles.load("geoverum", {"theme": {"entities": {"Indonesia": "#010203"}}})
-    b = profiles.load("geoverum", {"theme": {"entities": {"Sekutu": "#445566"}}})
-    assert a.data.theme.entities["Indonesia"] == "#010203"
-    assert a.data.theme.entities["Sekutu"] == base.data.theme.entities["Sekutu"]
-    assert b.data.theme.entities["Sekutu"] == "#445566" and b.data.theme.entities["Indonesia"] == indo
+    assert base.draft.rules_file == "chan/creative.md" and any("≠" in r for r in rules)
+    assert any("Max zoom 8" in r for r in rules)
+    a = profiles.load("chan", {"camera": {"max_zoom": 10.0}})
+    b = profiles.load("chan", {"theme": {"title_px": 96.0}})
     assert a.draft.rules == rules and b.draft.rules == rules
-    assert a.draft.rules_file == b.draft.rules_file == "geoverum/creative.md"
-    assert base.draft.rules == rules and base.data.theme.entities["Indonesia"] == indo
-    assert profiles.load("geoverum").blake3 == base.blake3
+    assert a.draft.rules_file == b.draft.rules_file == "chan/creative.md"
+    assert base.draft.rules == rules and profiles.load("chan").camera.max_zoom == 8.0
+    assert profiles.load("chan").blake3 == base.blake3
+
+
+def test_good_geoverum_overrides_do_not_leak():
+    """Legal overrides on geoverum stay isolated across calls and orientations."""
+    g_base = profiles.load("geoverum")
+    indo = g_base.data.theme.entities["Indonesia"]
+    ga = profiles.load("geoverum", {"theme": {"entities": {"Indonesia": "#010203"}}})
+    gb = profiles.load("geoverum", {"theme": {"entities": {"Sekutu": "#445566"}}})
+    assert ga.data.theme.entities["Indonesia"] == "#010203"
+    assert ga.data.theme.entities["Sekutu"] == g_base.data.theme.entities["Sekutu"]
+    assert gb.data.theme.entities["Sekutu"] == "#445566" and gb.data.theme.entities["Indonesia"] == indo
+    assert g_base.data.theme.entities["Indonesia"] == indo and profiles.load("geoverum").blake3 == g_base.blake3
 
 
 def test_good_overrides_keep_unicode_and_backslash_rules(pdir):

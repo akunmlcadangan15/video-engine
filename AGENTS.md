@@ -15,7 +15,7 @@ Dokumen ini merupakan panduan operasional teknis bagi *engineer* maupun *AI agen
 - `rust/hypoverum_core_rs/` — Ekstensi native Rust (PyO3): interpolasi kamera, kompilator subtitle `.ass`, deteksi jeda suara, dan perhitungan metrik piksel cepat (`BLAKE3`, `frame_stats`).
 - `profiles/` — Konfigurasi profil berbasis TOML:
   - `default.toml`: Nilai dasar mesin.
-  - `geoverum.toml` & `geoverum_landscape.toml`: Profil channel Geoverum (portrait 9:16 & landscape 16:9) yang berbagi aturan inti melalui `profiles/geoverum/core.toml` serta sub-tabel modular (`entities.toml`, `legibility.toml`, `print.toml`, `sound.toml`, `layout.toml`, `creative.md`).
+  - `geoverum.toml`: Profil merek tunggal Geoverum untuk portrait 9:16 dan landscape 16:9 (cabang `.portrait` / `.landscape` pada `caption_style`, `watermark`, `layout`, dan `print`) yang berbagi aturan inti melalui `profiles/geoverum/core.toml` serta sub-tabel modular (`entities.toml`, `legibility.toml`, `print.toml`, `sound.toml`, `layout.toml`).
   - `taste/geoverum.json`: Basis data preferensi desain (*liked* / *rejected*) dengan pemeriksaan otomatis (`engine taste geoverum --lint`).
 - `deploy/` — Definisi image container: `modal.Dockerfile` (dipakai `modal_build.py`) dan `test.Dockerfile`.
 - `scripts/` — Skrip pemeriksaan dokumentasi (`check_docs.py`) dan pembungkus eksekusi aman (`engine-build`, `engine-batch`, `engine-draft`).
@@ -29,7 +29,7 @@ Dokumen ini merupakan panduan operasional teknis bagi *engineer* maupun *AI agen
 - **Inspeksi Gate & Selera**: `engine gates [--profile geoverum]` · `engine taste geoverum --lint`
 - **Pratinjau & Aset**: `engine preview <PROJECT> --seg N --time S` · `engine sheet <PROJECT>` · `engine doctor`
 - **Penyusunan Draf AI**: `engine draft <PROJECT> [--provider NAME] [--review] [--resume]` (tanpa `--provider`: provider `agent`, yaitu model AI yang sedang menjalankan engine menjawab bundel di `<PROJECT>/ai_request/`)
-- **Inspeksi Profil & Kontrak**: `engine profile [NAME] [--origin] [--table T]` · `engine schema timeline|profile`
+- **Inspeksi Profil & Kontrak**: `engine profile [NAME] [--orientation portrait|landscape] [--origin] [--table T]` · `engine schema timeline|profile`
 - **Verifikasi Kode & Dokumen**:
   - `python scripts/check_docs.py`
   - `ruff check --select E9,F63,F7,F82,F401,F841 video_engine tests scripts`
@@ -37,7 +37,7 @@ Dokumen ini merupakan panduan operasional teknis bagi *engineer* maupun *AI agen
 - **Kode Keluar (Exit Codes)**: `0` berhasil, `1` gate/engine gagal, `2` kesalahan argumen CLI, `3` menunggu berkas respons agent (`response.json`).
 
 ## 4. Prinsip Pengembangan Wajib
-- **Satu Sumber Kebenaran**: Jangan menduplikasi aturan kreatif di luar `profiles/<channel>/creative.md` atau menduplikasi tabel bersama di luar `profiles/geoverum/core.toml`.
+- **Satu Sumber Kebenaran**: Profil merek hanya mendefinisikan gaya visual/brand dan pemeriksaan kualitas teknis (bukan aturan cerita/durasi wajib); jangan menduplikasi tabel bersama di luar `profiles/geoverum/core.toml` atau aturan opsional `rules_file` ke luar file tunggalnya.
 - **Integritas Kunci Cache**: Setiap perubahan perilaku pada kode Python atau Rust (`ALGO_VERSION`) harus tercermin pada kunci cache segmen terkait. Memecah file profil dengan `include` tidak boleh mengubah nilai `profiles.load(name).blake3`.
 - **Tanpa Default Vendor AI**: Mesin tidak menunjuk provider AI bawaan. Tanpa `--provider`, env `VIDEO_ENGINE_AI_PROVIDER`, atau `default` di `ai_providers.toml`, permintaan menjadi bundel berkas untuk provider `agent`: model AI yang sedang menjalankan mesin yang menjawab. Jangan menambah fallback ke layanan lain: tiap provider hanya mencoba daftar modelnya sendiri. Gemini adalah provider opsional (`--provider gemini`, extra `gemini`), bukan pilihan bawaan dan bukan fallback.
 - **Keamanan Kredensial**: Jangan pernah mencetak atau menyimpan nilai `GEMINI_API_KEY`, `XAI_API_KEY`, atau kunci API lainnya ke dalam log maupun laporan *build*.
