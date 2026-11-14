@@ -2,7 +2,7 @@
 
 use rayon::prelude::*;
 
-use crate::num::{rgb_len, usize_to_f64};
+use crate::num::{rgb_len, usize_to_f64, MAX_BUF, MAX_SIDE};
 
 /// Smallest accepted frame side (px): the luma plane is sampled every 4 px.
 pub const MIN_SIDE: usize = 4;
@@ -123,6 +123,132 @@ pub fn motion(frames: &[&[u8]], w: usize, h: usize) -> Result<Vec<f64>, String> 
         .collect())
 }
 
+fn check_mask(mask: &[u8], w: usize, h: usize) -> Result<usize, String> {
+    if w > MAX_SIDE || h > MAX_SIDE {
+        return Err(format!("mask size {w}x{h} exceeds {MAX_SIDE} per side"));
+    }
+    let need = w
+        .checked_mul(h)
+        .filter(|&n| n <= MAX_BUF)
+        .ok_or_else(|| format!("mask size {w}x{h} exceeds {MAX_BUF} bytes"))?;
+    if mask.len() != need {
+        return Err(format!(
+            "mask has {} bytes, expected {need} ({w}x{h})",
+            mask.len()
+        ));
+    }
+    Ok(need)
+}
+
+#[inline]
+fn flood_4(
+    w: usize,
+    h: usize,
+    active: impl Fn(usize) -> bool,
+    seen: &mut [u8],
+    stack: &mut Vec<usize>,
+    mut visit: impl FnMut(usize),
+) {
+    while let Some(p) = stack.pop() {
+        visit(p);
+        let y = p / w;
+        let x = p % w;
+        let mut try_push = |q: usize| {
+            if seen[q] == 0 && active(q) {
+                seen[q] = 1;
+                stack.push(q);
+            }
+        };
+        if x > 0 {
+            try_push(p - 1);
+        }
+        if x + 1 < w {
+            try_push(p + 1);
+        }
+        if y > 0 {
+            try_push(p - w);
+        }
+        if y + 1 < h {
+            try_push(p + w);
+        }
+    }
+}
+
+/// Enclosed 4-connected background holes (`mask[i] == 0` pixels unreachable from the crop border).
+/// Output bytes are `1` inside enclosed holes and `0` elsewhere.
+pub fn enclosed_holes(mask: &[u8], w: usize, h: usize) -> Result<Vec<u8>, String> {
+    let n = check_mask(mask, w, h)?;
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+    let mut reachable = vec![0u8; n];
+    let mut stack = Vec::new();
+    let mut seed = |idx: usize| {
+        if mask[idx] == 0 && reachable[idx] == 0 {
+            reachable[idx] = 1;
+            stack.push(idx);
+        }
+    };
+    for x in 0..w {
+        seed(x);
+        seed((h - 1) * w + x);
+    }
+    for y in 1..h.saturating_sub(1) {
+        seed(y * w);
+        seed(y * w + (w - 1));
+    }
+    flood_4(w, h, |q| mask[q] == 0, &mut reachable, &mut stack, |_| {});
+    Ok(mask
+        .iter()
+        .zip(&reachable)
+        .map(|(&m, &r)| u8::from(m == 0 && r == 0))
+        .collect())
+}
+
+/// Keep only 4-connected foreground components (`mask[i] != 0`) whose pixel count is `>= min_px`.
+/// Output bytes are `1` for retained component pixels and `0` elsewhere.
+pub fn keep_components_min_px(
+    mask: &[u8],
+    w: usize,
+    h: usize,
+    min_px: usize,
+) -> Result<Vec<u8>, String> {
+    let n = check_mask(mask, w, h)?;
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+    if min_px <= 1 {
+        return Ok(mask.iter().map(|&m| u8::from(m != 0)).collect());
+    }
+    let mut seen = vec![0u8; n];
+    let mut out = vec![0u8; n];
+    let mut stack = Vec::new();
+    let mut comp = Vec::new();
+    for p0 in 0..n {
+        if mask[p0] == 0 || seen[p0] != 0 {
+            continue;
+        }
+        seen[p0] = 1;
+        stack.clear();
+        comp.clear();
+        stack.push(p0);
+        flood_4(
+            w,
+            h,
+            |q| mask[q] != 0,
+            &mut seen,
+            &mut stack,
+            |p| comp.push(p),
+        );
+        if comp.len() >= min_px {
+            for &p in &comp {
+                out[p] = 1;
+            }
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,5 +279,49 @@ mod tests {
         assert!(stats_many(&[&f[..47]], 4, 4).is_err());
         assert!(motion(&[], 4, 4).unwrap().is_empty());
         assert!(stats_many(&[&f], usize::MAX, 4).is_err());
+    }
+
+    #[test]
+    fn holes_and_components_match_expected() {
+        // 5x5 glyph ring with enclosed 3x3 hole at centre minus 1 px; open C-shape must NOT be a hole.
+        #[rustfmt::skip]
+        let ring: [u8; 25] = [
+            1, 1, 1, 1, 1,
+            1, 0, 0, 0, 1,
+            1, 0, 0, 0, 1,
+            1, 0, 0, 0, 1,
+            1, 1, 1, 1, 1,
+        ];
+        let holes = enclosed_holes(&ring, 5, 5).unwrap();
+        let expected_holes: Vec<u8> = ring.iter().map(|&v| u8::from(v == 0)).collect();
+        assert_eq!(holes, expected_holes);
+
+        let mut open = ring;
+        open[2] = 0; // breach top border -> hole escapes to outside
+        assert!(enclosed_holes(&open, 5, 5).unwrap().iter().all(|&v| v == 0));
+
+        // 4x4 mask with one 4-px component and two isolated/small components
+        #[rustfmt::skip]
+        let comps: [u8; 16] = [
+            1, 1, 0, 1,
+            1, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 1, 0,
+        ];
+        #[rustfmt::skip]
+        let expect_ge4: [u8; 16] = [
+            1, 1, 0, 0,
+            1, 1, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+        ];
+        assert_eq!(keep_components_min_px(&comps, 4, 4, 4).unwrap(), expect_ge4);
+        assert_eq!(keep_components_min_px(&comps, 4, 4, 2).unwrap()[10], 1);
+        assert_eq!(keep_components_min_px(&comps, 4, 4, 2).unwrap()[3], 0);
+        assert!(enclosed_holes(&[], 0, 0).unwrap().is_empty());
+        assert!(keep_components_min_px(&[], 0, 0, 5).unwrap().is_empty());
+        assert!(enclosed_holes(&[0; 3], 2, 2).is_err());
+        assert!(keep_components_min_px(&[], usize::MAX, 4, 2).is_err());
+        assert!(enclosed_holes(&[], MAX_SIDE + 1, 0).is_err());
     }
 }

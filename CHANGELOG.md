@@ -210,6 +210,12 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 ### Diubah
 
 
+- **Efisiensi build & Modal (A2–A5)**:
+  - **Throttle isyarat `counter_tick`**: `SoundKind.min_gap_s` (`0..5`, bawaan `0.0`, keluar dari hash saat default) di `video_engine/profile_schema.py`, diset `0.065` s di `profiles/geoverum/sound.toml`, dan ditegakkan di `video_engine/sfx.py` untuk menyatukan tick simultan, menjaga jarak minimum antar-tick, serta mempertahankan tick penutup angka; didokumentasikan di `docs/PROFILES.md`. Pengujian: `tests/test_sfx_cues.py`.
+  - **Deduplikasi probe DOM Pass 1 (`_inks`) vs Pass 2 (`r63_dom`)**: `hyperframes.build_dir(..., ink_dir=...)` menyimpan artefak `bgonly`, dan `hf_probe.probe_dom(..., reuse_ink=...)` (`PROBE_VERSION = "dom-2"`) meneruskan `skipInkTimes` ke `video_engine/hf/dom_probe.mjs` agar Pass 2 tidak memotret ulang `bg_i.png`/`mask_i.png` yang sudah diambil pada Pass 1 sambil menyimpannya utuh di cache `"dom"`; `video_engine/gates/layer2.py` membersihkan direktori sementara sesudahnya. Pengujian: `tests/test_dom_cache.py`.
+  - **Porting `holes()` dan `counters()` R64 ke Rust**: `enclosed_holes` dan `keep_components_min_px` di `rust/hypoverum_core_rs/src/pixel.rs` (`lib.rs`, `hypoverum_core_rs.pyi`, melepas GIL via `py.detach`) menggantikan loop `PIL.ImageDraw.floodfill` dan `_components` Python di `video_engine/legibility.py` dengan keluaran bit-identik. Pengujian: `tests/test_rust_core.py`, `tests/test_legibility.py`.
+  - **Persistensi cache lintas-build di Volume Modal (`/vol/cache`)**: `pull_remote_cache` dan `push_remote_cache` di `video_engine/modal_transfer.py` menyinkronkan entri valid `cache.KINDS` antara `/vol/cache` dan NVMe `/work/cache` di `modal_build.py` sambil menjaga `fcntl.flock`/`.leases` tetap di `/work/cache` dan menjalankan `cache.prune()` sebelum `volume.commit()`; ditambah flag `--no-remote-cache` dan env `VIDEO_ENGINE_MODAL_NO_CACHE` di `video_engine/modal_cli.py`, `video_engine/modal_launch.py`, `docs/BUILD.md`, dan `docs/ENVIRONMENT.md`. Pengujian: `tests/test_modal_build.py`.
+
 - **Profil merek murni multi-orientasi (`geoverum`)**: Profil channel `geoverum` kini mendukung output
   portrait 9:16 dan landscape 16:9 dalam satu profil melalui cabang `.portrait` / `.landscape` pada
   `[caption_style]`, `[watermark]`, `[layout]` (`LayoutBranch` di `video_engine/layout_models.py`), dan

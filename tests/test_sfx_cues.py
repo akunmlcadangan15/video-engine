@@ -63,8 +63,12 @@ def test_good_whip_cue_sits_mid_camera_whip_leg_after_a_hold(project, hold):
 def test_good_cues_carry_time_kind_gain_and_source_asset(project):
     p, tl = project(_geo())
     sp = profiles.of(tl).sound
+    ev = sfx.events(tl)
     cs = sfx.cues(tl, lambda k: (f"id:{k}", 0.25))
-    assert len(cs) == len(sfx.events(tl))
+    assert [c.event for c in cs if c.event != "counter_tick"] == [e["event"] for e in ev if e["event"] != "counter_tick"]
+    tick_frames = [c.frame for c in cs if c.event == "counter_tick"]
+    raw_tick_frames = [e["frame"] for e in ev if e["event"] == "counter_tick"]
+    assert tick_frames and set(tick_frames) <= set(raw_tick_frames) and raw_tick_frames[-1] in tick_frames
     for c in cs:
         k = sp.kinds[c.kind]
         assert c.kind == sp.events[c.event] and c.gain_db == k.gain_db and c.asset_id == f"id:{c.kind}"
@@ -72,6 +76,48 @@ def test_good_cues_carry_time_kind_gain_and_source_asset(project):
         assert c.time_s == pytest.approx(max(0, want), abs=1e-4) and c.trim_s == pytest.approx(max(0, -want), abs=1e-4)
     whoosh = [c for c in cs if c.kind == "whoosh"]
     assert whoosh and all(c.time_s == pytest.approx(c.frame / FPS - 0.25, abs=1e-4) for c in whoosh)  # peak on event
+
+
+def test_good_counter_tick_throttled_by_min_gap_s(project, tmp_path, monkeypatch):
+    """[sound.kinds.counter_tick] min_gap_s caps cue rate, coalesces simultaneous counters, and keeps closing ticks;
+    min_gap_s = 0.0 emits one cue per event."""
+    def two_dense(d):
+        _geo()(d)
+        d["segments"][2]["gsap_scene_config"]["figures"] = [
+            {"kind": "number", "value": 60, "motion": "counter", "at_frame": 12, "count_s": 0.5, "position": [0.4, 0.5]},
+            {"kind": "number", "value": 60, "motion": "counter", "at_frame": 12, "count_s": 0.6, "position": [0.6, 0.7]},
+        ]
+
+    p, tl = project(two_dense)
+    sp = profiles.of(tl).sound
+    min_gap = sp.kinds["counter_tick"].min_gap_s
+    assert min_gap == pytest.approx(0.065)
+    raw = hyperframes.sfx_events(tl)
+    cs = [c for c in sfx.cues(tl, lambda k: (f"id:{k}", 0.0)) if c.event == "counter_tick"]
+    frames = [c.frame for c in cs]
+    assert len(cs) < len(raw) and len(frames) == len(set(frames))
+    assert all((b - a) / FPS >= min_gap - 1e-9 for a, b in zip(frames, frames[1:]))
+    assert frames[0] == raw[0]["frame"]
+    closing_fig1 = max(e["frame"] for e in raw if e["figure"] == 1)
+    assert closing_fig1 in frames
+
+    # Explicit min_gap_s = 0.0 preserves 1:1 unthrottled cue emission.
+    from video_engine import config
+    pdir = tmp_path / "profiles"
+    pdir.mkdir()
+    (pdir / "default.toml").write_text((config.PROFILES_DIR / "default.toml").read_text())
+    (pdir / "unthrottled.toml").write_text(
+        '[sound.events]\ncounter_tick = "counter_tick"\n'
+        '[sound.kinds.counter_tick]\ngain_db = -20.0\nmax_s = 0.08\nmin_gap_s = 0.0\n'
+    )
+    monkeypatch.setattr(config, "PROFILES_DIR", pdir)
+    profiles.clear_cache()
+    try:
+        tl0 = tl.model_copy(update={"profile": "unthrottled"})
+        cs0 = sfx.cues(tl0, lambda k: (f"id:{k}", 0.0))
+        assert [c.frame for c in cs0] == [e["frame"] for e in sfx.events(tl0) if e["event"] == "counter_tick"]
+    finally:
+        profiles.clear_cache()
 
 
 def test_good_default_profile_has_no_cues(project):
@@ -91,6 +137,8 @@ def test_bad_unknown_cue_kind_is_rejected():
     ({"events": {"pin": "boom"}, "kinds": {"boom": {"gain_db": -6}}}, "unknown"),
     ({"events": {"pin": "pop"}, "kinds": {}}, "has no"),
     ({"events": {"explosion": "pop"}, "kinds": {"pop": {"gain_db": -6}}}, "unknown event"),
+    ({"kinds": {"counter_tick": {"gain_db": -20, "min_gap_s": -0.1}}}, "greater than or equal to 0"),
+    ({"kinds": {"counter_tick": {"gain_db": -20, "min_gap_s": 6.0}}}, "less than or equal to 5"),
 ])
 def test_bad_profile_sound_tables_are_rejected(sound, msg):
     with pytest.raises(ValidationError, match=msg):

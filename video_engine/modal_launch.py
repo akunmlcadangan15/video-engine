@@ -128,7 +128,7 @@ def _load_app():
 def _resources(args: Args) -> dict:
     return {
         "cpu": args.cpu, "memory_mb": args.memory_mb, "timeout_s": args.timeout_s, "gpu": args.gpu,
-        "volume": args.volume,
+        "volume": args.volume, "remote_cache": args.remote_cache,
     }
 
 

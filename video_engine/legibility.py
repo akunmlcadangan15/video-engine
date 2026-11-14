@@ -11,6 +11,7 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import hypoverum_core_rs as core
 import numpy as np
 
 from .util import hex_to_rgb, rgb_to_hex, source_digest
@@ -246,12 +247,15 @@ def disk_dilate(mask: np.ndarray, r: float) -> np.ndarray:
     return out
 
 
+def _mask_bytes(mask: np.ndarray, fn) -> np.ndarray:
+    h, w = mask.shape
+    raw = fn(np.ascontiguousarray(mask, dtype=np.uint8).tobytes(), w, h)
+    return np.frombuffer(raw, dtype=np.uint8).reshape(h, w) != 0
+
+
 def holes(glyph: np.ndarray) -> np.ndarray:
     """Enclosed counters: background pixels (4-connected) not connected to the border of the crop."""
-    from PIL import Image, ImageDraw
-    im = Image.fromarray(np.pad(~glyph, 1, constant_values=True).astype(np.uint8) * 255).copy()   # own buffer
-    ImageDraw.floodfill(im, (0, 0), 128)
-    return (np.asarray(im) == 255)[1:-1, 1:-1]
+    return _mask_bytes(glyph, core.enclosed_holes)
 
 
 def halo_coverage(glyph: np.ndarray, hw: float, sd: float, punch: bool = True) -> np.ndarray:
@@ -316,30 +320,6 @@ def measure(bg: np.ndarray, mask_img: np.ndarray, rect: dict, el: dict, lg: dict
                   None if lt is None else _down(lt, f)[region], None if lt is None else lt[ring])
 
 
-def _components(mask: np.ndarray) -> list[np.ndarray]:
-    """4-connected components of a boolean mask, as index arrays (flat)."""
-    h, w = mask.shape
-    seen = np.zeros(h * w, bool)
-    flat = mask.ravel()
-    out = []
-    for p0 in np.flatnonzero(flat):
-        if seen[p0]:
-            continue
-        seen[p0] = True
-        st: list = [p0]
-        comp: list = []
-        while st:
-            p = st.pop()
-            comp.append(p)
-            y, x = divmod(p, w)
-            for q in (p - 1 if x else -1, p + 1 if x < w - 1 else -1, p - w if y else -1, p + w if y < h - 1 else -1):
-                if q >= 0 and flat[q] and not seen[q]:
-                    seen[q] = True
-                    st.append(q)
-        out.append(np.asarray(comp))
-    return out
-
-
 def counters(png: np.ndarray, bg: np.ndarray, mask_img: np.ndarray, rect: dict, el: dict, lg: dict,
              origin: tuple, st: dict, others: tuple = ()) -> tuple[int, float] | None:
     """Counter check of one element: the enclosed loops of its glyph mask (full resolution, own box + 0.1 em),
@@ -358,11 +338,8 @@ def counters(png: np.ndarray, bg: np.ndarray, mask_img: np.ndarray, rect: dict, 
     full = mask_img[y0:y1, x0:x1].mean(axis=2) < 128
     hl = holes(full)
     hl &= ~_dilate(~hl, 1)
-    keep: np.ndarray = np.zeros(hl.size, bool)
-    for c in _components(hl):
-        if len(c) >= lg["counter_min_px"]:
-            keep[c] = True
-    keep = keep.reshape(hl.shape)
+    min_px = int(lg["counter_min_px"])
+    keep = _mask_bytes(hl, lambda b, w, h: core.keep_components_min_px(b, w, h, min_px))
     if not keep.any():
         return None
     ys, xs = np.nonzero(keep)

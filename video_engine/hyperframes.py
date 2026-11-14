@@ -193,8 +193,10 @@ def keys(seg: Segment, tl: Timeline, project_dir: Path) -> tuple[str, str]:
     return _key(scene, [config.TEXTURES_DIR / f for f in textures(scene)] + script_files(scene), mk, tl), mk
 
 
-def build_dir(seg: Segment, tl: Timeline, project_dir: Path, out_dir: Path) -> tuple[Path, dict]:
-    """Write the per-segment HyperFrames project. Returns (dir, scene)."""
+def build_dir(seg: Segment, tl: Timeline, project_dir: Path, out_dir: Path,
+              *, ink_dir: Path | None = None) -> tuple[Path, dict]:
+    """Write the per-segment HyperFrames project. Returns (dir, scene). When `ink_dir` is given on a legibility
+    segment, Pass 1 keeps its `bgonly` probe artifacts (`probe.json` + PNGs) there for reuse by R63/R64."""
     S = tl.settings
     scene = scene_data(seg, tl, project_dir)
     if out_dir.exists():
@@ -259,24 +261,33 @@ def build_dir(seg: Segment, tl: Timeline, project_dir: Path, out_dir: Path) -> t
     (out_dir / "index.html").write_text(html)
     (out_dir / "scene.js").write_text("window.SCENE=" + json.dumps(scene, ensure_ascii=False) + ";\n")
     if "legibility" in scene:
-        scene["inks"] = _inks(seg, tl, project_dir, out_dir, scene)
+        scene["inks"] = _inks(seg, tl, project_dir, out_dir, scene, ink_dir=ink_dir)
         (out_dir / "scene.js").write_text("window.SCENE=" + json.dumps(scene, ensure_ascii=False) + ";\n")
     return out_dir, scene
 
 
-def _inks(seg: Segment, tl: Timeline, project_dir: Path, seg_dir: Path, scene: dict) -> dict:
+def _inks(seg: Segment, tl: Timeline, project_dir: Path, seg_dir: Path, scene: dict,
+          ink_dir: Path | None = None) -> dict:
     """Adaptive text styles of a legibility segment: probe the built (ink-less) segment at every element sample time
-    with the text hidden and as a glyph mask, then `legibility.choose` per element."""
+    with the text hidden and as a glyph mask, then `legibility.choose` per element. When `ink_dir` is supplied, retain
+    the probe JSON (`probe.json`) and PNGs there instead of deleting them so Pass 2 (`bg`) can skip re-shooting them."""
     key = keys(seg, tl, project_dir)[0]
-    if key in _INKS:
+    if key in _INKS and ink_dir is None:
         return _INKS[key]
     lg, S = scene["legibility"], tl.settings
-    snap = seg_dir.parent / f"{seg_dir.name}_ink"
+    snap = ink_dir if ink_dir is not None else (seg_dir.parent / f"{seg_dir.name}_ink")
+    if ink_dir is not None and snap.exists():
+        shutil.rmtree(snap, ignore_errors=True)
     try:
         probe = probe_dom(seg_dir, legibility.all_times(scene, lg), S.width, S.height, snap, bg="bgonly", ref=key)
+        if ink_dir is not None:
+            (snap / "probe.json").write_text(json.dumps(probe))
+        if key in _INKS:
+            return _INKS[key]
         samples = legibility.collect(scene, lg, probe)
     finally:
-        shutil.rmtree(snap, ignore_errors=True)
+        if ink_dir is None:
+            shutil.rmtree(snap, ignore_errors=True)
     choices = {e["id"]: legibility.choose(e, samples[e["id"]], lg, S.fps)
                for e in legibility.elements(scene) if samples.get(e["id"])}
     inks = legibility.scene_inks(choices)

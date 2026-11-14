@@ -1,5 +1,5 @@
 // dom_probe.mjs <url> <out_dir|-> <t1,t2,...> <width> <height> [bg|bgonly]
-// --server mode: reads NDJSON requests {id, url, outDir, times, width, height, mode} on stdin against one warm browser.
+// --server mode: reads NDJSON requests {id, url, outDir, times, width, height, mode, skipInkTimes} on stdin against one warm browser.
 // ENGINE_WEBGL=1 (globe and 3D camera scenes) enables SwiftShader WebGL.
 // Seeks window.__timelines.main to each time, prints JSON {timing, times:[{t, rects:[{id,text,x,y,w,h,opacity,color,stroke_px,stroke,paint_order,ink_state}], paints, png, bg, mask}]}.
 // bg (needs out_dir; bgonly = without snap_i.png): two more screenshots per time, clipped to the visible [data-ink] text elements + 64 px
@@ -26,8 +26,9 @@ function launchBrowser() {
   });
 }
 
-async function runProbe(browser, { url, outDir, times, width, height, mode }) {
+async function runProbe(browser, { url, outDir, times, width, height, mode, skipInkTimes }) {
   const W = +width, H = +height;
+  const skipInk = new Set((skipInkTimes || []).map(t => Number(t).toFixed(4)));
   const ms = { load: 0, rects: 0, snaps: 0, bg: 0, masks: 0 };
   let t0 = performance.now();
   const lap = k => { const t = performance.now(); ms[k] += t - t0; t0 = t; };
@@ -90,7 +91,8 @@ async function runProbe(browser, { url, outDir, times, width, height, mode }) {
       let bg = null, mask = null, clip = null;
       if (outDir !== '-' && mode !== 'bgonly') { png = `${outDir}/snap_${i}.png`; await page.screenshot({ path: png, optimizeForSpeed: true }); }
       lap('snaps');
-      if (outDir !== '-' && (mode === 'bg' || mode === 'bgonly')) {
+      const takeInk = outDir !== '-' && (mode === 'bg' || mode === 'bgonly') && !skipInk.has(Number(t).toFixed(4));
+      if (takeInk) {
         const ink = rects.filter(r => r.opacity > 0 && r.w > 0 && r.h > 0 && inkIds.has(r.id));
         if (ink.length) {
           const P = 64, x0 = Math.max(0, Math.floor(Math.min(...ink.map(r => r.x)) - P)), y0 = Math.max(0, Math.floor(Math.min(...ink.map(r => r.y)) - P));
@@ -155,7 +157,8 @@ try {
   } else {
     const [url, outDir, ts, W, H, mode] = process.argv.slice(2);
     const times = ts.split(',').map(Number);
-    const result = await runProbe(browser, { url, outDir, times, width: +W, height: +H, mode: mode || '' });
+    const skipInkTimes = (process.env.ENGINE_SKIP_INK_TIMES || '').split(',').filter(Boolean);
+    const result = await runProbe(browser, { url, outDir, times, width: +W, height: +H, mode: mode || '', skipInkTimes });
     process.stdout.write(JSON.stringify(result));
   }
 } finally {

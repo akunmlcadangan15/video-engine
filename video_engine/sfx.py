@@ -72,20 +72,53 @@ def kinds_used(tl: Timeline) -> list[str]:
     return sorted(kinds)
 
 
+def _closing_counter_frames(tl: Timeline) -> set[int]:
+    """Absolute frame of the final value-change tick of each animated counter figure."""
+    last_by_counter: dict[tuple[int, int], int] = {}
+    for e in hyperframes.sfx_events(tl):
+        last_by_counter[(e["seg"], e["figure"])] = e["frame"]
+    return set(last_by_counter.values())
+
+
+def _append_throttled(kept: list[tuple[int, bool, SfxCue]], frame: int, is_closing: bool,
+                      cue: SfxCue, fps: int, min_gap_s: float) -> None:
+    """Append `cue` while enforcing `min_gap_s` for its kind, coalescing same-frame ticks and swapping in closing ticks."""
+    if min_gap_s <= 0 or not kept:
+        kept.append((frame, is_closing, cue))
+        return
+    last_f, last_closing, last_cue = kept[-1]
+    if frame == last_f:
+        if is_closing and not last_closing:
+            kept[-1] = (last_f, True, last_cue)
+        return
+    if (frame - last_f) / fps >= min_gap_s - 1e-9:
+        kept.append((frame, is_closing, cue))
+        return
+    if is_closing and len(kept) >= 2 and not last_closing and (frame - kept[-2][0]) / fps >= min_gap_s - 1e-9:
+        kept[-1] = (frame, True, cue)
+
+
 def cues(tl: Timeline, asset: Callable[[str], tuple[str, float]]) -> list[SfxCue]:
-    """One cue per mapped event. asset(kind) -> (source asset id, peak time s of the file); align "peak" puts
-    that peak on the event (whoosh peak on the middle of the move), "onset" starts the file on it."""
+    """One cue per mapped event (throttled when `[sound.kinds.<k>] min_gap_s > 0`). asset(kind) -> (source asset id,
+    peak time s of the file); align "peak" puts that peak on the event, "onset" starts the file on it."""
     sp, fps = profiles.of(tl).sound, tl.settings.fps
     if sp is None:
         return []
-    out = []
-    for e in events(tl):
+    ev_list = events(tl)
+    closing = _closing_counter_frames(tl) if any(
+        sp.kinds[sp.events[k]].min_gap_s > 0 for k in ("counter_tick",) if k in sp.events
+    ) else set()
+    kept_by_kind: dict[str, list[tuple[int, bool, SfxCue]]] = {}
+    for e in ev_list:
         kind = sp.events.get(e["event"])
         if not kind:
             continue
         k = sp.kinds[kind]
         aid, peak = asset(kind)
         t = e["frame"] / fps - (peak if k.align == "peak" else 0.0)
-        out.append(SfxCue(time_s=round(max(0.0, t), 4), kind=kind, gain_db=k.gain_db, asset_id=aid,
-                          event=e["event"], frame=e["frame"], trim_s=round(max(0.0, -t), 4), max_s=k.max_s))
-    return out
+        cue = SfxCue(time_s=round(max(0.0, t), 4), kind=kind, gain_db=k.gain_db, asset_id=aid,
+                     event=e["event"], frame=e["frame"], trim_s=round(max(0.0, -t), 4), max_s=k.max_s)
+        is_closing = e["event"] == "counter_tick" and e["frame"] in closing
+        _append_throttled(kept_by_kind.setdefault(kind, []), e["frame"], is_closing, cue, fps, k.min_gap_s)
+    out = [cue for items in kept_by_kind.values() for _, _, cue in items]
+    return sorted(out, key=lambda c: (c.frame, c.event))

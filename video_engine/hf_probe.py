@@ -21,7 +21,7 @@ from .util import EngineError, blake3_files, blake3_json, code_hash, run
 _INKS: dict[str, dict] = {}   # in-process memo: segment key -> scene inks (the key covers scene, files, template)
 
 PROBE_JS = config.PKG / "hf" / "dom_probe.mjs"
-PROBE_VERSION = "dom-1"   # bump when the cached probe result format or the probe call changes
+PROBE_VERSION = "dom-2"   # bump when the cached probe result format or the probe call changes
 SHOT_FIELDS = ("png", "bg", "mask", "line_bg", "line_mask")   # screenshot paths of one probe time item
 
 _DEFAULT_RUN = run
@@ -300,12 +300,48 @@ def _probe_store(name: str, res: dict) -> None:
     cache.put_json("dom", name, out)
 
 
+def _reusable_ink(ink_dir: Path | None, bg: str, snap_dir: Path | None) -> dict[str, dict]:
+    """Reusable (clip, bg, mask) entries keyed by 4-dp time string from a prior `bgonly` probe."""
+    if ink_dir is None or bg != "bg" or snap_dir is None or not (meta := ink_dir / "probe.json").is_file():
+        return {}
+    try:
+        data = json.loads(meta.read_text())
+    except (OSError, ValueError):
+        return {}
+    out: dict[str, dict] = {}
+    for item in data.get("times", []):
+        clip, bg_p, mk_p = item.get("clip"), item.get("bg"), item.get("mask")
+        if clip is None and bg_p is None and mk_p is None:
+            out[f"{item['t']:.4f}"] = {"clip": None, "bg": None, "mask": None}
+        elif clip and bg_p and mk_p and Path(bg_p).is_file() and Path(mk_p).is_file():
+            out[f"{item['t']:.4f}"] = {"clip": dict(clip), "bg": str(bg_p), "mask": str(mk_p)}
+    return out
+
+
+def _apply_reused_ink(res: dict, reusable: dict[str, dict], snap_dir: Path) -> None:
+    """Copy prior `bg`/`mask` screenshots and `clip` bounds onto matching time items returned by `dom_probe.mjs`."""
+    for i, item in enumerate(res.get("times", [])):
+        src = reusable.get(f"{item['t']:.4f}")
+        if not src or not src["clip"]:
+            continue
+        bg_dst = snap_dir / f"bg_{i}.png"
+        mk_dst = snap_dir / f"mask_{i}.png"
+        shutil.copyfile(src["bg"], bg_dst)
+        shutil.copyfile(src["mask"], mk_dst)
+        item["bg"] = str(bg_dst)
+        item["mask"] = str(mk_dst)
+        item["clip"] = dict(src["clip"])
+
+
 def probe_dom(seg_dir: Path, times: list[float], width: int, height: int, snap_dir: Path | None = None,
-              bg: str = "", ref: str | None = None, timeout: int | None = None) -> dict:
+              bg: str = "", ref: str | None = None, timeout: int | None = None,
+              reuse_ink: Path | None = None) -> dict:
     """DOM probe (hf/dom_probe.mjs); bg "bg" (needs snap_dir) adds the text-hidden and glyph-mask screenshots,
-    "bgonly" takes only those. Results are cached (kind "dom", probe_key; `ref` = the segment cache key of the probed
-    segment, the entry name prefix `engine cache --prune` keeps entries by); a hit spawns no browser and copies the
-    screenshots into snap_dir under the names the probe gives them. "cached" in the result: True on a hit."""
+    "bgonly" takes only those. When `reuse_ink` holds a prior `bgonly` probe (`probe.json` + PNGs) for `bg="bg"`,
+    matching timestamps skip re-capturing `bg`/`mask` in Chrome and reuse its PNGs before caching. Results are
+    cached (kind "dom", probe_key; `ref` = the segment cache key of the probed segment, the entry name prefix
+    `engine cache --prune` keeps entries by); a hit spawns no browser and copies the screenshots into snap_dir under
+    the names the probe gives them. "cached" in the result: True on a hit."""
     name = f"{ref or 'adhoc'}.{probe_key(seg_dir, times, width, height, snap_dir is not None, bg)}"
     if (hit := _probe_cached(name, snap_dir)) is not None:
         hit["cached"] = True
@@ -318,6 +354,8 @@ def probe_dom(seg_dir: Path, times: list[float], width: int, height: int, snap_d
         env["ENGINE_WEBGL"] = "1"     # globe and 3D camera scenes: SwiftShader WebGL in the probe browser
     if snap_dir:
         snap_dir.mkdir(parents=True, exist_ok=True)
+    reusable = _reusable_ink(reuse_ink, bg, snap_dir)
+    skip_ink = [f"{t:.4f}" for t in times if f"{t:.4f}" in reusable]
     t_limit = timeout if timeout is not None else (120 + (2 * len(times) if bg else 0))
     _hf = sys.modules.get("video_engine.hyperframes")
     cur_run = getattr(_hf, "run", _DEFAULT_RUN)
@@ -329,24 +367,26 @@ def probe_dom(seg_dir: Path, times: list[float], width: int, height: int, snap_d
     )
     with serve(seg_dir) as url:
         if use_pool:
-            res = _POOL.run_probe(
-                _DEFAULT_PROBE_JS,
-                env,
-                {
-                    "url": url + "/index.html",
-                    "outDir": str(snap_dir) if snap_dir else "-",
-                    "times": [float(f"{t:.4f}") for t in times],
-                    "width": int(width),
-                    "height": int(height),
-                    "mode": str(bg or ""),
-                },
-                timeout=t_limit,
-            )
+            payload: dict = {
+                "url": url + "/index.html",
+                "outDir": str(snap_dir) if snap_dir else "-",
+                "times": [float(f"{t:.4f}") for t in times],
+                "width": int(width),
+                "height": int(height),
+                "mode": str(bg or ""),
+            }
+            if skip_ink:
+                payload["skipInkTimes"] = skip_ink
+            res = _POOL.run_probe(_DEFAULT_PROBE_JS, env, payload, timeout=t_limit)
         else:
+            if skip_ink:
+                env["ENGINE_SKIP_INK_TIMES"] = ",".join(skip_ink)
             out = cur_run([config.NODE, cur_probe_js, url + "/index.html", snap_dir or "-",
                            ",".join(f"{t:.4f}" for t in times), width, height, *([bg] if bg else [])],
                           env=env, timeout=t_limit)
             res = json.loads(out)
+    if reusable and snap_dir is not None:
+        _apply_reused_ink(res, reusable, snap_dir)
     _probe_store(name, res)
     res["cached"] = False
     return res

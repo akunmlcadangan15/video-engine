@@ -59,6 +59,7 @@ class Args:
     timeout_s: int = DEFAULT_TIMEOUT_S
     gpu: str = "none"
     keep_volume: bool = False
+    remote_cache: bool = True
     dry_run: bool = False
     selftest: bool = False
     fetch: str | None = None
@@ -142,6 +143,8 @@ def parse_args(argv: list[str]) -> Args:
                         help="GPU type, or none (default). The build is CPU-bound; GPU is off unless this is set")
     parser.add_argument("--keep-volume", action="store_true",
                         help="leave this run's volume directory in place after a successful fetch")
+    parser.add_argument("--no-remote-cache", action="store_true",
+                        help="do not seed from or save back to /cache on the Modal volume")
     parser.add_argument("--dry-run", action="store_true",
                         help="validate, preflight and print the closure; do not upload or call Modal")
     parser.add_argument("--selftest", action="store_true",
@@ -162,13 +165,13 @@ def parse_args(argv: list[str]) -> Args:
         raise UsageError(f"project directory not found: {project}")
     return Args(
         project=project, cpu=ns.cpu, memory_mb=ns.memory_mb, timeout_s=ns.timeout_s, gpu=ns.gpu,
-        keep_volume=ns.keep_volume, dry_run=ns.dry_run, selftest=ns.selftest, fetch=ns.fetch,
-        disk_mb=ns.disk_mb,
+        keep_volume=ns.keep_volume, remote_cache=not ns.no_remote_cache, dry_run=ns.dry_run,
+        selftest=ns.selftest, fetch=ns.fetch, disk_mb=ns.disk_mb,
     )
 
 
 def apply_runtime_env(args: Args, environ: dict | None = None) -> Args:
-    """Chunk size, volume name and free-disk reserve. Invalid values are usage errors."""
+    """Chunk size, volume name, cache opt-out and free-disk reserve. Invalid values are usage errors."""
     env = environ if environ is not None else os.environ
     raw_chunk = env.get("VIDEO_ENGINE_MODAL_CHUNK_MB", str(DEFAULT_CHUNK_MB))
     try:
@@ -193,6 +196,11 @@ def apply_runtime_env(args: Args, environ: dict | None = None) -> Args:
         raw_disk = env.get("VIDEO_ENGINE_MODAL_DISK_MB", "")
         if str(raw_disk).strip():
             args.disk_mb = require_disk_mb(raw_disk)
+    raw_no_cache = str(env.get("VIDEO_ENGINE_MODAL_NO_CACHE", "")).strip().lower()
+    if raw_no_cache in ("1", "true", "yes"):
+        args.remote_cache = False
+    elif raw_no_cache not in ("", "0", "false", "no"):
+        raise UsageError(f"VIDEO_ENGINE_MODAL_NO_CACHE must be boolean, got {env.get('VIDEO_ENGINE_MODAL_NO_CACHE')!r}")
     return args
 
 
@@ -406,6 +414,7 @@ def format_dry_run(closure: Closure, args: Args, *, toolchain: dict | None = Non
         f"retries=0 min_containers=0 scaledown_window=2 single_use_containers=true",
         f"volume: {args.volume}",
         f"keep_volume: {str(args.keep_volume).lower()}",
+        f"remote_cache: {str(args.remote_cache).lower()}",
         "env:",
     ]
     for key in sorted(closure.env):

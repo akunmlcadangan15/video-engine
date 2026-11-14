@@ -842,6 +842,7 @@ class SoundKind(_Strict):
     gain_db: float = Field(ge=-60, le=0)
     align: Literal["onset", "peak"] = "onset"         # onset = file start on the event; peak = loudest sample on it
     max_s: float = Field(2.0, gt=0, le=10)            # cue length cap (short fade-out at the cap)
+    min_gap_s: float = Field(0.0, ge=0, le=5, exclude_if=lambda v: v == 0.0)   # min s between cues of this kind (0 = every event)
 
 
 class SoundProfile(_Strict):

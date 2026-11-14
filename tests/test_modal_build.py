@@ -32,6 +32,8 @@ from video_engine.modal_transfer import (
     assemble_file,
     download_manifest,
     publish_outputs,
+    pull_remote_cache,
+    push_remote_cache,
     upload_plan,
     verified_prefix,
     write_chunks,
@@ -774,3 +776,72 @@ def test_bad_missing_active_hyperframes_keeps_the_discovered_version():
     checks = [{"name": "hyperframes", "got": "0.8.223"},
               {"name": "hyperframes-active", "got": "missing at /x/vendor/npm/node_modules/hyperframes"}]
     assert components_from_checks(checks)["hyperframes"] == "0.8.223"
+
+
+def test_good_no_remote_cache_flag_env_and_resources(tmp_path: Path):
+    from video_engine.modal_launch import _resources
+
+    default = parse_args([str(ROOT)])
+    assert default.remote_cache is True and _resources(default)["remote_cache"] is True
+    flagged = parse_args([str(ROOT), "--no-remote-cache"])
+    assert flagged.remote_cache is False and _resources(flagged)["remote_cache"] is False
+    via_env = apply_runtime_env(parse_args([str(ROOT)]), {"VIDEO_ENGINE_MODAL_NO_CACHE": "1", "VIDEO_ENGINE_MIN_FREE_GB": "0"})
+    assert via_env.remote_cache is False
+
+    profiles = tmp_path / "profiles"
+    proj = _project(tmp_path, {"profile": "default"}, profiles)
+    closure = _closure(proj, _env(VIDEO_ENGINE_PROFILES=str(profiles)), tmp_path / "eng")
+    assert "remote_cache: true" in format_dry_run(closure, Args(project=proj, dry_run=True, remote_cache=True))
+    assert "remote_cache: false" in format_dry_run(closure, Args(project=proj, dry_run=True, remote_cache=False))
+
+
+def test_bad_invalid_no_remote_cache_env_rejected():
+    with pytest.raises(UsageError):
+        apply_runtime_env(parse_args([str(ROOT)]), {"VIDEO_ENGINE_MODAL_NO_CACHE": "maybe"})
+
+
+def test_good_pull_and_push_remote_cache_syncs_and_prunes_without_volume_locks(tmp_path: Path):
+    remote = tmp_path / "vol_cache"
+    local = tmp_path / "work_cache"
+    (remote / "segments").mkdir(parents=True)
+    (remote / "dom").mkdir(parents=True)
+    (remote / "words").mkdir(parents=True)
+    (remote / "local_test_sfx" / "v1").mkdir(parents=True)
+    (remote / ".leases").mkdir(parents=True)
+    (remote / ".leases" / "999-stale.json").write_text("{}", encoding="utf-8")
+    (remote / ".lock").write_bytes(b"")
+    (remote / "segments" / "seg1.mp4").write_bytes(b"A" * 600)
+    os.utime(remote / "segments" / "seg1.mp4", (1_700_000_000, 1_700_000_000))
+    (remote / "dom" / "k.json").write_text('{"ok":true}', encoding="utf-8")
+    (remote / "local_test_sfx" / "v1" / "tick.wav").write_bytes(b"W" * 100)
+    # Invalid/ignored artifacts on volume must not enter local_cache, and existing CAS file in local wins.
+    (remote / "segments" / "half.mp4.1.tmp").write_bytes(b"partial")
+    (remote / "segments" / "zero.mp4").write_bytes(b"")
+    (remote / "words" / "pinned.json").write_text('{"from":"stale_vol"}', encoding="utf-8")
+    (local / "words").mkdir(parents=True)
+    (local / "words" / "pinned.json").write_text('{"from":"cas"}', encoding="utf-8")
+
+    pull = pull_remote_cache(remote, local)
+    assert pull["files"] == 3 and pull["skipped"] == 1
+    assert (local / "segments" / "seg1.mp4").read_bytes() == b"A" * 600
+    assert (local / "dom" / "k.json").read_text(encoding="utf-8") == '{"ok":true}'
+    assert (local / "local_test_sfx" / "v1" / "tick.wav").read_bytes() == b"W" * 100
+    assert (local / "words" / "pinned.json").read_text(encoding="utf-8") == '{"from":"cas"}'
+    assert not (local / "segments" / "zero.mp4").exists()
+    assert not any((local / "segments").glob("*.tmp"))
+    assert not (local / ".leases").exists()
+
+    # Build adds a newer 700-byte entry; cap=900 bytes evicts oldest seg1.mp4 (600B) from local and remote.
+    (local / "segments" / "seg2.mp4").write_bytes(b"B" * 700)
+    os.utime(local / "segments" / "seg2.mp4", (1_800_000_000, 1_800_000_000))
+    os.utime(local / "dom" / "k.json", (1_800_000_100, 1_800_000_100))
+    push = push_remote_cache(local, remote, max_bytes=900)
+    assert push["pruned_local"] >= 1 and push["removed"] >= 1
+    assert not (remote / "segments" / "seg1.mp4").exists()
+    assert not (remote / "segments" / "zero.mp4").exists()
+    assert not (remote / "segments" / "half.mp4.1.tmp").exists()
+    assert (remote / "segments" / "seg2.mp4").read_bytes() == b"B" * 700
+    assert (remote / "dom" / "k.json").read_text(encoding="utf-8") == '{"ok":true}'
+    assert not any(p.name.endswith(".tmp") for p in remote.rglob("*"))
+    # Lock/lease bookkeeping stays on local NVMe cache only (touched by cache.prune), not created during pull.
+    assert (local / ".lock").exists()

@@ -474,6 +474,37 @@ mod py {
         .map_err(PyValueError::new_err)
     }
 
+    /// Enclosed 4-connected background pixels (value 0) unreachable from the crop border.
+    /// Returns bytes of 0/1 (length width * height). Errors: ValueError on bad size or length.
+    #[pyfunction]
+    fn enclosed_holes<'py>(
+        py: Python<'py>,
+        mask: &[u8],
+        width: usize,
+        height: usize,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let out = py
+            .detach(|| pixel::enclosed_holes(mask, width, height))
+            .map_err(PyValueError::new_err)?;
+        Ok(PyBytes::new(py, &out))
+    }
+
+    /// Filter 4-connected foreground components (nonzero bytes), keeping components with >= min_px pixels.
+    /// Returns bytes of 0/1 (length width * height). Errors: ValueError on bad size or length.
+    #[pyfunction]
+    fn keep_components_min_px<'py>(
+        py: Python<'py>,
+        mask: &[u8],
+        width: usize,
+        height: usize,
+        min_px: usize,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let out = py
+            .detach(|| pixel::keep_components_min_px(mask, width, height, min_px))
+            .map_err(PyValueError::new_err)?;
+        Ok(PyBytes::new(py, &out))
+    }
+
     fn io_err(msg: String) -> PyErr {
         if msg.contains("not found") {
             PyFileNotFoundError::new_err(msg)
@@ -628,6 +659,8 @@ mod py {
         m.add_function(wrap_pyfunction!(warp_stream_to_fd, m)?)?;
         m.add_function(wrap_pyfunction!(frame_stats, m)?)?;
         m.add_function(wrap_pyfunction!(frame_motion, m)?)?;
+        m.add_function(wrap_pyfunction!(enclosed_holes, m)?)?;
+        m.add_function(wrap_pyfunction!(keep_components_min_px, m)?)?;
         m.add_function(wrap_pyfunction!(make_proxy, m)?)?;
         m.add_function(wrap_pyfunction!(detect_pauses_pcm, m)?)?;
         m.add_function(wrap_pyfunction!(detect_pauses_file, m)?)?;

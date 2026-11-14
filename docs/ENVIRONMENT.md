@@ -147,6 +147,7 @@ Order for a real run:
 | `--disk MB` | unset | ephemeral disk in MiB. Omit it and the container uses Modal's default disk. A set value must be 524288–3145728. `--disk` wins over `VIDEO_ENGINE_MODAL_DISK_MB` |
 | `--gpu none\|L4` | `none` | no GPU unless this is `L4` |
 | `--keep-volume` | off | leave `/runs/<id>` on the volume after a successful fetch |
+| `--no-remote-cache` | off | do not seed `/work/cache` from or save entries back to `/cache` on the volume |
 | `--dry-run` | off | local validate, preflight and closure only |
 | `--selftest` | off | compare in-image `engine doctor` with this machine |
 | `--fetch RUN_ID` | unset | resume the download of that run |
@@ -158,6 +159,7 @@ The container is created with `min_containers=0`, `max_containers=1`, `scaledown
 | `VIDEO_ENGINE_MODAL_VOLUME` | `video-engine-builds` | Volume name. Created as version 2 when missing |
 | `VIDEO_ENGINE_MODAL_CHUNK_MB` | 64 | output chunk size (1–1024) |
 | `VIDEO_ENGINE_MODAL_DISK_MB` | unset | ephemeral disk in MiB when `--disk` is omitted. Allowed only 524288–3145728. Unset leaves Modal's default; the wrapper does not send a disk size |
+| `VIDEO_ENGINE_MODAL_NO_CACHE` | unset | set to `1` / `true` to skip reading from and writing to `/cache` on the volume (same as `--no-remote-cache`) |
 | `VIDEO_ENGINE_MIN_FREE_GB` | 8 | reserve on the local filesystem. Chunk writes must leave strictly more than this free. `0` disables the reserve; the chunk itself must still fit |
 | `VIDEO_ENGINE_RENDER_LOCK` | same path as `scripts/engine-build` | held for the remote build and for `--fetch` |
 
@@ -173,7 +175,7 @@ Also included when they exist: the Natural Earth land and admin-0 files the geo 
 
 Blobs are stored at `/cas/blobs/<sha256[:2]>/<sha256>`. A blob whose sha256 is already on the volume is not uploaded again. Each run also writes `/runs/<run_id>/layout.json`. The run id is printed before the upload.
 
-Not uploaded: `out/final.mp4`, previous reports, the draft tree, or any cache file the timeline and the sound lock do not name. The remote segment cache therefore starts empty. Locked sounds are present, so the build does not ask the sound resolver for them again.
+Not uploaded: `out/final.mp4`, previous reports, the draft tree, or any cache file the timeline and the sound lock do not name. Cross-build cache entries (`cache.KINDS`) live on the Modal volume under `/cache` and are synced into NVMe `/work/cache` before `engine build` (and pruned/synced back before commit), unless `--no-remote-cache` or `VIDEO_ENGINE_MODAL_NO_CACHE=1` is set. Locked sounds are present, so the build does not ask the sound resolver for them again.
 
 ### Cost control
 

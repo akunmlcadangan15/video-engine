@@ -296,11 +296,11 @@ def annotate_reports(project: Path, remote: dict) -> list[str]:
 def remote_record(*, host: dict, image_id: str, toolchain_pin_sha256: str, cpu: tuple[float, float],
                   memory_mb: tuple[int, int], gpu: str, wall_s: float, peak_rss_mb: float | None,
                   vcpu: int | None, timeout_s: int, toolchain: dict | None = None,
-                  mismatches: list[str] | None = None) -> dict:
+                  mismatches: list[str] | None = None, remote_cache: dict | None = None) -> dict:
     """Facts a remote build records in build_report.json and build_manifest.json."""
     request_core_s = round(cpu[0] * wall_s, 3)
     request_gib_s = round((memory_mb[0] / 1024) * wall_s, 3)
-    return {
+    rec = {
         "remote": True,
         "host": host,
         "image_id": image_id,
@@ -322,3 +322,110 @@ def remote_record(*, host: dict, image_id: str, toolchain_pin_sha256: str, cpu: 
                      "GPU time is billed only when a GPU is requested."),
         },
     }
+    if remote_cache is not None:
+        rec["remote_cache"] = remote_cache
+    return rec
+
+
+def _iter_cache_entries(root: Path) -> list[tuple[Path, Path]]:
+    """Valid cached entry files `(src, rel_path)` across `cache.KINDS`, skipping locks, leases, symlinks, `.tmp`
+    writers, and empty files."""
+    from . import cache
+
+    entries: list[tuple[Path, Path]] = []
+    for kind in cache.KINDS:
+        kdir = root / kind
+        if not kdir.is_dir():
+            continue
+        for p in sorted(kdir.rglob("*")):
+            if not p.is_file() or p.is_symlink() or p.name.endswith(".tmp"):
+                continue
+            try:
+                if p.stat().st_size <= 0:
+                    continue
+            except OSError:
+                continue
+            entries.append((p, p.relative_to(root)))
+    return entries
+
+
+def _copy_atomic_preserve(src: Path, dst: Path) -> int:
+    """Copy `src` onto `dst` atomically via a sibling `.tmp` file + `os.replace`, preserving mtime for LRU order."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_name(f".{dst.name}.{os.getpid()}.tmp")
+    try:
+        shutil.copy2(src, tmp)
+        size = tmp.stat().st_size
+        os.replace(tmp, dst)
+        return size
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def pull_remote_cache(remote_cache: Path, local_cache: Path) -> dict:
+    """Seed local NVMe `local_cache` with valid entries (`cache.KINDS`) from volume path `remote_cache`.
+
+    Existing paths in `local_cache` (such as CAS-materialised closure files) are left intact so verified closure inputs
+    always win. Never acquires `fcntl.flock` on `remote_cache`."""
+    stats = {"files": 0, "skipped": 0, "bytes": 0}
+    if not remote_cache.is_dir():
+        return stats
+    local_cache.mkdir(parents=True, exist_ok=True)
+    for src, rel in _iter_cache_entries(remote_cache):
+        dst = local_cache / rel
+        if dst.exists():
+            stats["skipped"] += 1
+            continue
+        stats["bytes"] += _copy_atomic_preserve(src, dst)
+        stats["files"] += 1
+    return stats
+
+
+def push_remote_cache(local_cache: Path, remote_cache: Path, max_bytes: int | None = None) -> dict:
+    """Prune NVMe `local_cache` with `cache.prune`, mirror new/touched `cache.KINDS` entries atomically back to
+    `remote_cache`, and remove entries no longer kept after pruning so volume cache stays bounded."""
+    from . import cache
+
+    stats = {"files": 0, "touched": 0, "skipped": 0, "removed": 0, "pruned_local": 0, "bytes": 0}
+    if not local_cache.is_dir():
+        return stats
+    if max_bytes is None and (raw_mb := os.environ.get("VIDEO_ENGINE_CACHE_MAX_MB")):
+        try:
+            max_bytes = int(raw_mb) * 1024 * 1024
+        except ValueError:
+            max_bytes = None
+    pruned = cache.prune(max_bytes=max_bytes, root=local_cache)
+    stats["pruned_local"] = len(pruned.deleted)
+    entries = _iter_cache_entries(local_cache)
+    keep = {rel for _, rel in entries}
+    remote_cache.mkdir(parents=True, exist_ok=True)
+    for kind in cache.KINDS:
+        kdir = remote_cache / kind
+        if not kdir.is_dir():
+            continue
+        for p in sorted(kdir.rglob("*")):
+            if (p.is_file() or p.is_symlink()) and p.relative_to(remote_cache) not in keep:
+                p.unlink(missing_ok=True)
+                stats["removed"] += 1
+    for src, rel in entries:
+        dst = remote_cache / rel
+        try:
+            src_st = src.stat()
+        except FileNotFoundError:
+            continue
+        if dst.is_file():
+            dst_st = dst.stat()
+            if dst_st.st_size == src_st.st_size:
+                if abs(dst_st.st_mtime - src_st.st_mtime) < 1e-3:
+                    stats["skipped"] += 1
+                    continue
+                try:
+                    os.utime(dst, ns=(src_st.st_atime_ns, src_st.st_mtime_ns))
+                    stats["touched"] += 1
+                    continue
+                except OSError:
+                    pass
+        stats["bytes"] += _copy_atomic_preserve(src, dst)
+        stats["files"] += 1
+    return stats

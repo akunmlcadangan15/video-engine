@@ -52,7 +52,7 @@ The format of a channel profile and the profiles that ship with the engine.
   Speech spans come from the voiceover word timestamps; ducking applies when `audio_chain.auto_ducking` is on and a voiceover is set.
   `[sound.events]`: render event -> SFX kind;
     events `pin` (teardrop: when the drop first touches its shadow, 0.22 s after it appears; dot: when it appears), `region` (fade-in start), `route` (mid-draw), `whip` (mid-move of a `camera_path` whip, or of the push of a `camera3d_preset` `crash_zoom`), `label` (HyperFrames card, drawn native overlay), `title` (entrance), `figure` (bounce figure entrance), `counter_tick` (each frame on which a counter's shown text changes).
-  `[sound.kinds.<kind>]` for every mapped kind: `gain_db` (-60 to 0), `align` (`onset`: the file starts on the event; `peak`: its loudest sample lands on the event, default `onset`), `max_s` (cue length cap, default 2.0).
+  `[sound.kinds.<kind>]` for every mapped kind: `gain_db` (-60 to 0), `align` (`onset`: the file starts on the event; `peak`: its loudest sample lands on the event, default `onset`), `max_s` (cue length cap, default 2.0), `min_gap_s` (minimum seconds between cues of this kind, 0-5, default 0.0; `geoverum` caps `counter_tick` at 0.065 s so rapid counts stay crisp and keep their opening and closing ticks).
   Kinds: `pop`, `tick`, `whoosh`, `click`, `beep`, `counter_tick`, `impact`, `riser`, `rumble` (`rumble` is a low bed for manual cues; it is not mapped to a render event unless a profile says so).
   Timeline cues in `audio_chain.sfx` use the same kinds, or a project file (docs/TIMELINE.md, docs/SOUND.md).
   Unknown events or kinds and events mapped to a kind without a table are errors.

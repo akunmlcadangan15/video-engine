@@ -7,6 +7,7 @@ import dataclasses
 import json
 import math
 import re
+import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -758,6 +759,7 @@ def r63_dom(tl: Timeline, project_dir: Path, workdir: Path, snaps: dict) -> tupl
 
     def panel(s: Segment, tl: Timeline, name: str, where: str, y_off: float = 0.0) -> list[Finding]:
         W, H = tl.settings.width, tl.settings.height
+        ink_dir = workdir / "snaps" / f"{name}_ink"
         try:
             t0 = time.perf_counter()
             skey = hyperframes.keys(s, tl, project_dir)[0]
@@ -767,17 +769,20 @@ def r63_dom(tl: Timeline, project_dir: Path, workdir: Path, snaps: dict) -> tupl
                 d = hf_dir
                 scene = json.loads((hf_dir / "scene.js").read_text().removeprefix("window.SCENE=").rstrip(";\n"))
             else:
-                d, scene = hyperframes.build_dir(s, tl, project_dir, hf_dir)
+                d, scene = hyperframes.build_dir(s, tl, project_dir, hf_dir, ink_dir=ink_dir)
                 kfile.write_text(skey)
             build_s = time.perf_counter() - t0
             times = probe_times(s, fps)
             lg = scene.get("legibility")
-            # R64 also probes every element sample time, with background and glyph-mask screenshots
+            # R64 also probes every element sample time, with background and glyph-mask screenshots (reusing Pass-1 shots)
             all_t = sorted(set(times) | set(legibility.all_times(scene, lg))) if lg else times
-            res = hyperframes.probe_dom(d, all_t, W, H, workdir / "snaps" / name, bg="bg" if lg else "", ref=skey)
+            res = hyperframes.probe_dom(d, all_t, W, H, workdir / "snaps" / name, bg="bg" if lg else "", ref=skey,
+                                      reuse_ink=ink_dir if (ink_dir / "probe.json").is_file() else None)
             res["build_s"] = round(build_s, 3)
         except EngineError as e:
             return [Finding("R63", "fail", f"DOM probe failed: {str(e)[-300:]}", s.seg_index)]
+        finally:
+            shutil.rmtree(ink_dir, ignore_errors=True)
         res["all_times"] = list(res["times"])
         if lg:
             res["legibility"] = {"lg": lg, "elements": legibility.elements(scene),

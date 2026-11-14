@@ -357,7 +357,8 @@ def test_good_type_stubs_ship_with_module():
     stub = pkg / "__init__.pyi"
     assert stub.exists() and (pkg / "py.typed").exists()
     text = stub.read_text()
-    for name in ("ALGO_VERSION", "set_threads", "compile_ass", "warp_frame", "blake3_files", "frame_stats"):
+    for name in ("ALGO_VERSION", "set_threads", "compile_ass", "warp_frame", "blake3_files", "frame_stats",
+                 "enclosed_holes", "keep_components_min_px"):
         assert name in text
 
 
@@ -393,3 +394,67 @@ def test_bad_shared_temp_name_would_collide(tmp_path):
     [t.start() for t in ts]
     [t.join() for t in ts]
     assert len(names) == 4
+
+
+def _py_holes(glyph):
+    import numpy as np
+    from PIL import Image, ImageDraw
+    im = Image.fromarray(np.pad(~glyph, 1, constant_values=True).astype(np.uint8) * 255).copy()
+    ImageDraw.floodfill(im, (0, 0), 128)
+    return (np.asarray(im) == 255)[1:-1, 1:-1]
+
+
+def _py_keep_min_px(mask, min_px):
+    import numpy as np
+    h, w = mask.shape
+    seen = np.zeros(h * w, bool)
+    flat = mask.ravel()
+    keep = np.zeros(h * w, bool)
+    for p0 in np.flatnonzero(flat):
+        if seen[p0]:
+            continue
+        seen[p0] = True
+        st, comp = [p0], []
+        while st:
+            p = st.pop()
+            comp.append(p)
+            y, x = divmod(p, w)
+            for q in (p - 1 if x else -1, p + 1 if x < w - 1 else -1, p - w if y else -1, p + w if y < h - 1 else -1):
+                if q >= 0 and flat[q] and not seen[q]:
+                    seen[q] = True
+                    st.append(q)
+        if len(comp) >= min_px:
+            keep[comp] = True
+    return keep.reshape(h, w)
+
+
+def test_good_rust_holes_and_components_match_python_reference():
+    import numpy as np
+    from video_engine import legibility
+    rng = np.random.default_rng(42)
+    for h, w in [(1, 1), (3, 7), (17, 13), (48, 64)]:
+        for p_fg in (0.0, 0.35, 0.7, 1.0):
+            g = rng.random((h, w)) < p_fg
+            np.testing.assert_array_equal(legibility.holes(g), _py_holes(g))
+            raw = np.ascontiguousarray(g, dtype=np.uint8).tobytes()
+            for min_px in (1, 3, 9):
+                got = np.frombuffer(core.keep_components_min_px(raw, w, h, min_px), dtype=np.uint8).reshape(h, w) != 0
+                np.testing.assert_array_equal(got, _py_keep_min_px(g, min_px))
+    # Non-contiguous slice must still produce exact result through legibility.holes.
+    big = rng.random((40, 40)) < 0.65
+    view = big[5:35:2, 3:39:3]
+    assert not view.flags["C_CONTIGUOUS"]
+    np.testing.assert_array_equal(legibility.holes(view), _py_holes(view))
+
+
+@pytest.mark.parametrize("args", [
+    (b"\x00\x01", 2, 2),
+    (b"", 1, 1),
+    (b"\x00", 1 << 16, 1),
+    (b"", 1 << 15, 1 << 15),
+])
+def test_bad_mask_ops_reject_invalid_sizes(args):
+    with pytest.raises(ValueError):
+        core.enclosed_holes(*args)
+    with pytest.raises(ValueError):
+        core.keep_components_min_px(*args, 4)

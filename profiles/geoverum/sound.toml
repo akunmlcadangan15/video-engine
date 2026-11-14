@@ -37,6 +37,7 @@ max_s = 1.5                   # Maximum duration cap in seconds for whoosh SFX s
 [sound.kinds.counter_tick]
 gain_db = -20.0               # Low-level playback gain in dBFS so rapid counter ticks support numbers without masking speech
 max_s = 0.08                  # Short sample truncation window in seconds for high-frequency counter ticks
+min_gap_s = 0.065             # Minimum gap in seconds between counter_tick cues (~15 Hz cap) to keep ticks crisp without buzzing
 
 [sound.kinds.impact]
 gain_db = -10.0               # Playback level in dBFS for primary title impact cues

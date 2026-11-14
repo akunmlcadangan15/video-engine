@@ -149,3 +149,116 @@ def test_good_probe_pool_reuses_worker_and_respects_run_patch(project, tmp_path,
     finally:
         hf_probe.shutdown_probe_pool()
     assert not any(hf_probe._POOL._idle.values())
+
+
+# GOOD / BAD: reuse Pass-1 ink shots in Pass-2 bg probes ----------------------------------------------------------------
+def test_good_reuse_ink_skips_pass1_bg_masks_and_populates_complete_cache(project, tmp_path, monkeypatch):
+    import json
+    from video_engine import hf_probe
+
+    monkeypatch.setattr(config, "CACHE_DIR", tmp_path / "cache")
+    _plain_labels(monkeypatch)
+    def mut(d):
+        d["profile"] = "geoverum"
+    p, tl = project(mut)
+    seg = tl.segments[2]
+    ink_dir = tmp_path / "ink"
+    d, sc = hyperframes.build_dir(seg, tl, p, tmp_path / "hf", ink_dir=ink_dir)
+    assert (ink_dir / "probe.json").is_file()
+    ink_probe = json.loads((ink_dir / "probe.json").read_text())
+    ink_times = {f"{i['t']:.4f}": i for i in ink_probe["times"]}
+    # Pick an extra timestamp guaranteed not in Pass-1 legibility sample times
+    extra_t = 0.01
+    while f"{extra_t:.4f}" in ink_times:
+        extra_t = round(extra_t + 0.03, 4)
+    all_t = sorted({i["t"] for i in ink_probe["times"]} | {extra_t})
+
+    seen_payloads = []
+    real_run_probe = hf_probe._POOL.run_probe
+    def spy_run_probe(probe_js, env, payload, timeout):
+        seen_payloads.append(payload)
+        return real_run_probe(probe_js, env, payload, timeout)
+    monkeypatch.setattr(hf_probe._POOL, "run_probe", spy_run_probe)
+    monkeypatch.setenv("VIDEO_ENGINE_PROBE_POOL", "1")
+    try:
+        res = hyperframes.probe_dom(d, all_t, tl.settings.width, tl.settings.height,
+                                  tmp_path / "snaps1", bg="bg", ref="reuse", reuse_ink=ink_dir)
+    finally:
+        hf_probe.shutdown_probe_pool()
+    assert len(seen_payloads) == 1
+    skipped = set(seen_payloads[0]["skipInkTimes"])
+    assert set(ink_times).issubset(skipped) and f"{extra_t:.4f}" not in skipped
+    for item in res["times"]:
+        tk = f"{item['t']:.4f}"
+        if item.get("clip") and tk in ink_times and ink_times[tk].get("clip"):
+            assert Path(item["bg"]).read_bytes() == Path(ink_times[tk]["bg"]).read_bytes()
+            assert Path(item["mask"]).read_bytes() == Path(ink_times[tk]["mask"]).read_bytes()
+        assert Path(item["png"]).is_file()
+
+    _no_browser(monkeypatch)
+    monkeypatch.setenv("VIDEO_ENGINE_PROBE_POOL", "0")
+    cached = hyperframes.probe_dom(d, all_t, tl.settings.width, tl.settings.height,
+                                 tmp_path / "snaps2", bg="bg", ref="reuse", reuse_ink=ink_dir)
+    assert cached["cached"] is True
+    for a, b in zip(res["times"], cached["times"]):
+        if a.get("bg"):
+            assert Path(b["bg"]).read_bytes() == Path(a["bg"]).read_bytes()
+
+
+def test_bad_corrupt_reuse_ink_falls_back_to_chrome_capture(project, tmp_path, monkeypatch):
+    import json
+    from video_engine import hf_probe
+
+    monkeypatch.setattr(config, "CACHE_DIR", tmp_path / "cache")
+    _plain_labels(monkeypatch)
+    def mut(d):
+        d["profile"] = "geoverum"
+    p, tl = project(mut)
+    ink_dir = tmp_path / "ink_bad"
+    d, _ = hyperframes.build_dir(tl.segments[2], tl, p, tmp_path / "hf", ink_dir=ink_dir)
+    meta = json.loads((ink_dir / "probe.json").read_text())
+    clip_item = next(i for i in meta["times"] if i.get("bg"))
+    Path(clip_item["bg"]).unlink()   # remove one Pass-1 screenshot -> cannot skip that timestamp
+
+    seen_payloads = []
+    real_run_probe = hf_probe._POOL.run_probe
+    def spy_run_probe(probe_js, env, payload, timeout):
+        seen_payloads.append(payload)
+        return real_run_probe(probe_js, env, payload, timeout)
+    monkeypatch.setattr(hf_probe._POOL, "run_probe", spy_run_probe)
+    monkeypatch.setenv("VIDEO_ENGINE_PROBE_POOL", "1")
+    try:
+        res = hyperframes.probe_dom(d, [clip_item["t"]], tl.settings.width, tl.settings.height,
+                                  tmp_path / "snaps", bg="bg", ref="badreuse", reuse_ink=ink_dir)
+    finally:
+        hf_probe.shutdown_probe_pool()
+    assert "skipInkTimes" not in seen_payloads[0]
+    assert Path(res["times"][0]["bg"]).is_file() and Path(res["times"][0]["mask"]).is_file()
+
+
+def test_good_r63_dom_reuses_ink_and_cleans_temp_dir(project, tmp_path, monkeypatch):
+    from video_engine import hf_probe
+
+    monkeypatch.setattr(config, "CACHE_DIR", tmp_path / "cache")
+    _plain_labels(monkeypatch)
+    def mut(d):
+        d["profile"] = "geoverum"
+    p, tl = project(mut)
+    seen = []
+    real_run_probe = hf_probe._POOL.run_probe
+    def spy(probe_js, env, payload, timeout):
+        seen.append(payload)
+        return real_run_probe(probe_js, env, payload, timeout)
+    monkeypatch.setattr(hf_probe._POOL, "run_probe", spy)
+    monkeypatch.setenv("VIDEO_ENGINE_PROBE_POOL", "1")
+    wd = tmp_path / "wd"
+    try:
+        fs, dom = layer2.r63_dom(tl, p, wd, {})
+    finally:
+        hf_probe.shutdown_probe_pool()
+    assert fs and dom
+    modes = [m.get("mode") for m in seen]
+    assert "bgonly" in modes and "bg" in modes
+    bg_payload = next(m for m in seen if m.get("mode") == "bg")
+    assert bg_payload.get("skipInkTimes")
+    assert not any((wd / "snaps").glob("*_ink"))

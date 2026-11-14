@@ -118,7 +118,13 @@ def _build(run_id: str, resources: dict) -> dict:
     import subprocess
     import time
     from video_engine.modal_closure import materialize
-    from video_engine.modal_transfer import annotate_reports, publish_outputs, remote_record
+    from video_engine.modal_transfer import (
+        annotate_reports,
+        publish_outputs,
+        pull_remote_cache,
+        push_remote_cache,
+        remote_record,
+    )
     layout_path = Path("/vol/runs") / run_id / "layout.json"
     layout = json.loads(layout_path.read_text(encoding="utf-8"))
     materialize(layout, Path("/vol/cas/blobs"))
@@ -127,9 +133,17 @@ def _build(run_id: str, resources: dict) -> dict:
     cpu = int(resources.get("cpu") or _CPU)
     env["VIDEO_ENGINE_THREADS"] = str(max(1, cpu))
     env["PYTHONUNBUFFERED"] = "1"
+    cache_root = Path(env.get("VIDEO_ENGINE_CACHE") or "/work/cache")
+    remote_cache_dir = Path("/vol/cache")
+    use_remote_cache = bool(resources.get("remote_cache", True))
+    cache_sync: dict = {"enabled": use_remote_cache}
+    if use_remote_cache:
+        cache_sync["pull"] = pull_remote_cache(remote_cache_dir, cache_root)
     started = time.perf_counter()
     proc = subprocess.run(["engine", "build", "/work/project"], env=env, check=False)
     wall = time.perf_counter() - started
+    if use_remote_cache:
+        cache_sync["push"] = push_remote_cache(cache_root, remote_cache_dir)
     project = Path("/work/project")
     record = remote_record(
         host=_host(), image_id=os.environ.get("MODAL_IMAGE_ID", ""),
@@ -137,7 +151,7 @@ def _build(run_id: str, resources: dict) -> dict:
         memory_mb=(int(resources.get("memory_mb") or _MEM), int(resources.get("memory_mb") or _MEM)),
         gpu=str(resources.get("gpu") or "none"), wall_s=wall, peak_rss_mb=_peak_rss_mb(),
         vcpu=os.cpu_count(), timeout_s=int(resources.get("timeout_s") or _TIMEOUT),
-        toolchain=_remote_toolchain(), mismatches=_mismatches(layout),
+        toolchain=_remote_toolchain(), mismatches=_mismatches(layout), remote_cache=cache_sync,
     )
     annotate_reports(project, record)
     publish_outputs(project, Path("/vol/runs") / run_id / "fetch", _chunk_bytes())

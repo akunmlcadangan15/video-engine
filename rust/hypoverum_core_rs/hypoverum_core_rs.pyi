@@ -75,6 +75,11 @@ def frame_stats(
     """(mean_luma, black_frac, third_std[3], third_detail[3]) per frame; width, height >= 4."""
 
 def frame_motion(frames: Iterable[bytes], width: int, height: int) -> list[float]: ...
+def enclosed_holes(mask: bytes, width: int, height: int) -> bytes:
+    """Enclosed 4-connected background holes (`mask[i] == 0` pixels unreachable from the border) as 0/1 bytes."""
+
+def keep_components_min_px(mask: bytes, width: int, height: int, min_px: int) -> bytes:
+    """Retain 4-connected foreground components (`mask[i] != 0`) with at least `min_px` pixels as 0/1 bytes."""
 
 PauseRow = tuple[int, int, float]  # (start_frame, end_frame) half-open, mean dBFS
 
