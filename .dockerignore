@@ -7,3 +7,11 @@ vendor/hf
 .pytest_cache
 dist
 *.egg-info
+.cache
+.venv
+.mypy_cache
+.ruff_cache
+.DS_Store
+projects
+rust/hypoverum_core_rs/target
+
