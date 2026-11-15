@@ -8,9 +8,11 @@ Stages (wall time of each is recorded):
              and the Epidemic Sound credit lines appended to credits.txt (proxy and delivery)
              A sound lock in out/build_manifest.json (video_engine/manifest.py) replaces both unless --relock.
   manifest   out/build_manifest.json: build_id, input/font/sound sha256, profile hash, toolchain, seeds, budget
-  segments   NATIVE_RUST_FFMPEG segments in a thread pool (budget.native_workers x budget.x264_threads) and
-             HYPERFRAMES_GSAP segments in a thread pool of budget.hf_parallel(native count) (budget.hf_workers
-             Chrome workers each); both run concurrently with loudnorm pass 1 (video_engine/resources.py: one shared worker budget)
+  segments   NATIVE_RUST_FFMPEG segments in a thread pool (budget.native_workers x budget.x264_threads), each
+             graded (grade.apply, lossless) in its pool slot right after its render, and HYPERFRAMES_GSAP segments in
+             a thread pool sized by resources.hf_allocation_for (Chrome workers per segment from the same call; the
+             grade is part of the HyperFrames pass); both run concurrently with loudnorm pass 1
+             (video_engine/resources.py: one shared worker budget)
   ass        Rust .ass compile of the caption words
   composite  transition clips (profile [transitions], video_engine/transitions.py) from the segment files, then
              ONE video encode: concat + transition clips + caption burn + watermark, exact frame count, no audio
@@ -163,10 +165,14 @@ def project_workdir(tl: Timeline) -> Path:
 
 
 def render_segments(tl: Timeline, project_dir: Path, workdir: Path, use_cache: bool = True,
-                    budget: resources.Budget | None = None) -> list[SegResult]:
+                    budget: resources.Budget | None = None, alloc_tl: Timeline | None = None) -> list[SegResult]:
+    """Every segment of tl rendered (and graded), in segment order. The HyperFrames allocation (parallel segments,
+    Chrome workers each, which is part of every HF render key) is resources.hf_allocation_for(alloc_tl or tl): a
+    preview of some segments passes the full timeline so its renders share the full build's cache entries."""
     budget = budget or resources.budget(tl)
     natives = [s for s in tl.segments if s.engine_type == NATIVE]
     hfs = [s for s in tl.segments if s.engine_type == HYPERFRAMES]
+    hf_parallel, hf_workers = resources.hf_allocation_for(alloc_tl or tl, budget)
     total = len(tl.segments)
     done = 0
     lock = threading.Lock()
@@ -184,14 +190,20 @@ def render_segments(tl: Timeline, project_dir: Path, workdir: Path, use_cache: b
         t = time.perf_counter()
         job = native.plan(s, tl, project_dir)
         p, hit, mode = native.render(job, tl, workdir, threads=budget.x264_threads, use_cache=use_cache)
+        if grade.ranges(s, tl, project_dir):
+            streams.verify(p, s.n_frames, tl.settings.fps, f"segment {s.seg_index}")
+            p, ghit = grade.apply(s, tl, project_dir, Path(p), workdir, use_cache=use_cache)
+            streams.verify(p, s.n_frames, tl.settings.fps, f"graded segment {s.seg_index}")
+            mode += "+grade" + ("(hit)" if ghit else "")
         return _report(SegResult(s.seg_index, NATIVE, str(p), hit, mode, round(time.perf_counter() - t, 3)))
 
     def do_hf(s):
         t = time.perf_counter()
-        p, hit = hyperframes.render(s, tl, project_dir, workdir, workers=budget.hf_workers, use_cache=use_cache)
-        return _report(SegResult(s.seg_index, HYPERFRAMES, str(p), hit, "hyperframes", round(time.perf_counter() - t, 3)))
+        p, hit = hyperframes.render(s, tl, project_dir, workdir, workers=hf_workers, use_cache=use_cache)
+        mode = "hyperframes+grade" if grade.ranges(s, tl, project_dir) else "hyperframes"
+        return _report(SegResult(s.seg_index, HYPERFRAMES, str(p), hit, mode, round(time.perf_counter() - t, 3)))
 
-    with ThreadPoolExecutor(max_workers=budget.hf_parallel(len(natives))) as hf_ex, \
+    with ThreadPoolExecutor(max_workers=hf_parallel) as hf_ex, \
             ThreadPoolExecutor(max_workers=budget.native_workers) as nat_ex:
         hf_f = [hf_ex.submit(do_hf, s) for s in hfs]
         nat = list(nat_ex.map(do_native, natives))
@@ -200,12 +212,6 @@ def render_segments(tl: Timeline, project_dir: Path, workdir: Path, use_cache: b
     for r in res:
         seg = tl.segments[r.seg]
         streams.verify(r.path, seg.n_frames, tl.settings.fps, f"segment {r.seg}")
-        if grade.ranges(seg, tl, project_dir):
-            t = time.perf_counter()
-            p, hit = grade.apply(seg, tl, project_dir, Path(r.path), workdir, use_cache=use_cache)
-            streams.verify(p, seg.n_frames, tl.settings.fps, f"graded segment {r.seg}")
-            r.path, r.mode = str(p), r.mode + "+grade" + ("(hit)" if hit else "")
-            r.seconds = round(r.seconds + time.perf_counter() - t, 3)
         r.frames = seg.n_frames
     return res
 
@@ -408,7 +414,15 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
             "gates": severity.summary(rep.findings + findings, tl),
             "not_checked": not_checked(rep.findings + findings, tl, ai_qa, audio_cached=a_hit, sampled=True),
             "timings": [list(r) for r in timer.rows], "preflight_subtimings": rep.subtimings,
-            "resources": {"budget": budget.report(), "stages": timer.resources},
+            "resources": {
+                "budget": budget.report(),
+                # Actual HyperFrames CLI --workers (budget.hf_workers is only the allocation floor).
+                "hf_allocation": {
+                    "parallel_segments": (hf_alloc := resources.hf_allocation_for(tl, budget))[0],
+                    "workers_per_segment": hf_alloc[1],
+                },
+                "stages": timer.resources,
+            },
             "stage_keys": man["stage_keys"],
             **({"workdir": str(workdir)} if keep_workdir else {}),
             **({"sfx_events": sfx} if (sfx := hyperframes.sfx_events(tl)) else {}),

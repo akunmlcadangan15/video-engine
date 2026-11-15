@@ -321,8 +321,10 @@ No M-patches, no meta-gates. Every gate must be proven with labelled good + bad 
 - Final pass split into cached composite (video), master audio and stream-copy mux; stage keys are the ffmpeg command
   with inputs replaced by their sha256. Same inputs -> same bytes.
 - Worker budget `[resources] workers` / VIDEO_ENGINE_WORKERS (auto from CPU and RAM) shared by every stage; per-stage
-  wall, CPU and peak RSS in build_report.json `resources`. HyperFrames segments render up to 2 at once when the budget
-  holds both next to the native renders; the output is the same bytes in the same order as one at a time.
+  wall, CPU and peak RSS in build_report.json `resources` (plus `hf_allocation` for the Chrome `--workers` actually
+  used). HyperFrames segments render up to 2 at once when the budget holds both next to the native renders, with
+  Chrome workers per segment from `resources.hf_allocation_for` (1 CPU and 3 GB charged per worker); the
+  allocation follows the segment mix, not timing, and the worker and thread counts are in the render key.
 - DOM probe results (rects, screenshots) are cached (cache kind `dom`) under the content of the built segment dir, the
   probe times, viewport and mode, the toolchain identity and the HyperFrames engine source; gate verdicts are computed
   on every run. build_report.json `preflight_subtimings.layer2_dom`: seconds of build, browser_load, r63_rects,

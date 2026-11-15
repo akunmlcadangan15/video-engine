@@ -4,17 +4,24 @@ Budget: one number `workers` (env VIDEO_ENGINE_WORKERS > profile `[resources] wo
 parallel consumer of a build at once:
   auto workers   = clamp(min(CPU count, total RAM GB // ram_per_worker_gb(W, H)), 2, 64); per worker 1.8 GB at
                    1080x1920, scaled by pixel count above it (4K: 7.2 GB)
-  native_workers = max(1, workers // 4)   native segments rendered in parallel, X264_THREADS (2) x264 threads each
-  hf_workers     = max(1, workers // 4)   HyperFrames Chrome capture workers of one HF segment render
-  hf_segments    = 2 when 2 * hf_workers * 2 <= workers, else 1: HF segments rendered at once at most; a build
-                   uses hf_parallel(native segment count)
+  native_workers = max(1, workers // (2 * X264_THREADS))   native segments rendered in parallel, X264_THREADS x264
+                   threads each (VIDEO_ENGINE_X264_THREADS, else 2: workers // 4)
+  hf_workers     = max(1, workers // 4)   base HyperFrames Chrome capture workers of one HF segment render; a build
+                   raises it with hf_allocation(hf segment count, native count) unless VIDEO_ENGINE_HF_WORKERS
+                   (integer >= 1) pins it
+  hf_segments    = 2 when 2 * hf_workers * CHROME_WORKER_CPUS <= workers, else 1: HF segments rendered at once at
+                   most; a build uses hf_parallel(native segment count)
   mux_threads    = clamp(workers - 2, 1, 6)  x264 threads of the composite pass (runs alone)
-  native_workers * X264_THREADS + hf_workers * 2 <= workers whenever workers >= 4, and with the HF segments a
-  build renders at once: min(natives, native_workers) * X264_THREADS + hf_parallel * hf_workers * 2 <= workers.
-The x264 thread counts are part of the encoded bytes: X264_THREADS stays 2 and mux_threads is 6 for every budget
->= 8, so builds at the default budget of an 8-CPU machine keep their bitstreams. Each libx264 encode also passes
-config.X264_REPEATABLE (config.x264_threads): one lookahead thread, sliced threads off and deterministic frame
-threading, so a busy CPU does not change the bitstream.
+  native_workers * X264_THREADS + hf_workers * CHROME_WORKER_CPUS <= workers whenever
+  workers >= max(4, 2 * X264_THREADS), and with the HF segments a build renders at once:
+  native_cpus(natives) + hf_parallel * hf_workers * CHROME_WORKER_CPUS <= workers, where native_cpus is 0 without
+  natives and native_workers * X264_THREADS with any (the actual native load is at most that; charging two states
+  keeps the Chrome worker count of an HF render, part of its cache key, equal for every native count >= 1).
+The x264 thread counts are part of the encoded bytes: X264_THREADS is 2 unless VIDEO_ENGINE_X264_THREADS sets it
+(1..16; then every engine encode and the HyperFrames CLI encode use it, and every affected key carries it), and
+mux_threads is 6 for every budget >= 8, so builds at the default budget of an 8-CPU machine keep their bitstreams.
+Each libx264 encode also passes config.X264_REPEATABLE (config.x264_threads): one lookahead thread, sliced threads
+off and deterministic frame threading, so a busy CPU does not change the bitstream.
 
 Measurement (Monitor): a sampler thread reads /proc every SAMPLE_S for the engine process and all its descendants
 (where /proc is absent, e.g. macOS: one `ps -axo pid=,ppid=,rss=,time=,comm=` snapshot per tick, and `sysctl -n hw.memsize`
@@ -35,8 +42,17 @@ import threading
 import time
 from dataclasses import asdict, dataclass
 
+from . import config, tuning
+from .util import EngineError
+
 RAM_PER_WORKER_GB = 1.8
-X264_THREADS = 2
+X264_THREADS = config.X264_THREADS_OVERRIDE or 2   # libx264 frame threads of every engine encode
+# One Chrome capture worker is charged 1 CPU: measured Modal map renders with 4 workers averaged ~1.6 process
+# cores total (~0.4/worker) under single-raster SwiftShader, so the old charge of 2 left most of an 8-CPU host
+# reserved and capped allocation at 4. RAM stays 3 GB (map/WebGL peak ~2–3 GB/worker; HyperFrames' ~256 MB figure
+# is for light DOM, not Geoverum maps).
+CHROME_WORKER_CPUS = 1         # CPUs charged to one HyperFrames Chrome capture worker
+CHROME_WORKER_GB = 3           # GB of RAM one HyperFrames Chrome capture worker needs; caps workers per HF segment
 SAMPLE_S = 0.2
 CLK = os.sysconf("SC_CLK_TCK")
 PAGE = os.sysconf("SC_PAGE_SIZE")
@@ -55,15 +71,37 @@ class Budget:
     hf_workers: int
     mux_threads: int
     hf_segments: int = 1
+    hf_workers_pinned: bool = False   # hf_workers came from VIDEO_ENGINE_HF_WORKERS and is never raised
+
+    def native_cpus(self, natives: int) -> int:
+        """CPUs charged to `natives` native segments, in two states: 0 without natives, else the whole native pool
+        (native_workers * x264_threads). The Chrome worker count of an HF render is part of its cache key, so it must
+        not change when a build gains or loses one native segment; the pool is an upper bound of the actual load."""
+        return self.native_workers * self.x264_threads if natives > 0 else 0
 
     def hf_parallel(self, natives: int) -> int:
-        """HF segments to render at once next to `natives` native segments: hf_segments when the natives' x264
-        threads and hf_segments renders of hf_workers Chrome workers (2 workers each) fit the budget, else 1."""
-        nat = min(natives, self.native_workers) * self.x264_threads
-        if nat + self.hf_segments * self.hf_workers * 2 <= self.workers:
+        """HF segments to render at once next to `natives` native segments: hf_segments when native_cpus(natives)
+        and hf_segments renders of hf_workers Chrome workers (CHROME_WORKER_CPUS CPUs each) fit the budget, else 1."""
+        nat = self.native_cpus(natives)
+        if nat + self.hf_segments * self.hf_workers * CHROME_WORKER_CPUS <= self.workers:
             return self.hf_segments
         return 1
 
+    def hf_allocation(self, hf_count: int, natives: int) -> tuple[int, int]:
+        """(parallel HF segments, Chrome workers per segment) for a build with `hf_count` HF and `natives` native
+        segments. A pinned hf_workers is kept. Otherwise the parallel count is hf_parallel capped at hf_count, and
+        the CPUs left after native_cpus(natives) (CHROME_WORKER_CPUS per Chrome worker) and the RAM
+        (CHROME_WORKER_GB per Chrome worker) are split evenly across them; never fewer than hf_workers. The result
+        depends on `natives` only through `natives > 0`."""
+        if self.hf_workers_pinned:
+            return self.hf_parallel(natives), self.hf_workers
+        if hf_count <= 0:
+            return 1, self.hf_workers
+        k = min(hf_count, self.hf_parallel(natives))
+        cpu_left = self.workers - self.native_cpus(natives)
+        by_cpu = cpu_left // (CHROME_WORKER_CPUS * k)
+        by_ram = int(self.ram_gb // CHROME_WORKER_GB) // k
+        return k, max(1, self.hf_workers, min(by_cpu, by_ram))
 
     def report(self) -> dict:
         return asdict(self)
@@ -113,10 +151,25 @@ def plan(workers: int, source: str = "explicit", cpus: int | None = None, gb: fl
         raise ValueError(f"workers must be >= 1, got {workers}")
     cpus = cpus or os.cpu_count() or 2
     gb = ram_gb() if gb is None else gb
-    hf_env = os.environ.get("VIDEO_ENGINE_HF_WORKERS")
-    hf = max(1, int(hf_env)) if hf_env else max(1, workers // 4)
-    return Budget(workers, source, cpus, gb, max(1, workers // 4), X264_THREADS, hf, max(1, min(6, workers - 2)),
-                  2 if 2 * hf * 2 <= workers else 1)
+    try:
+        tuning.x264_threads()           # the import-time X264_THREADS reads an invalid value as unset
+        pinned = tuning.hf_workers()
+    except ValueError as e:
+        raise EngineError(str(e)) from None
+    hf = pinned or max(1, workers // 4)
+    native = max(1, workers // (2 * X264_THREADS))
+    return Budget(workers, source, cpus, gb, native, X264_THREADS, hf, max(1, min(6, workers - 2)),
+                  2 if CHROME_WORKER_CPUS * hf * 2 <= workers else 1, pinned is not None)
+
+
+def hf_allocation_for(tl, budget_: Budget | None = None) -> tuple[int, int]:
+    """(parallel HF segments, Chrome workers per HF segment) a full build of `tl` uses: budget_ (default
+    budget(tl)).hf_allocation over the timeline's HF and native segment counts. The workers value is the `--workers`
+    every HF segment of that build renders with, and so part of its render key (hyperframes.render_key)."""
+    from .timeline_common import NATIVE
+    b = budget_ or budget(tl)
+    natives = sum(s.engine_type == NATIVE for s in tl.segments)
+    return b.hf_allocation(len(tl.segments) - natives, natives)
 
 
 def budget(tl=None) -> Budget:

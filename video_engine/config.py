@@ -4,10 +4,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import tempfile
 from pathlib import Path
 
-from . import discover, platform_info
+from . import discover, platform_info, tuning
 
 # Local engine.env (VIDEO_ENGINE_ENV_FILE, ./engine.env, or <user-config>/video-engine/engine.env)
 # fills in unset variables only: an explicit environment always wins.
@@ -117,6 +118,14 @@ def x264_threads(threads: int) -> list[str]:
     return ["-threads", str(threads), "-x264-params", X264_REPEATABLE]
 
 
+# VIDEO_ENGINE_X264_THREADS (tuning.x264_threads, 1..16; None when unset): one libx264 frame-thread count for every
+# engine encode. Unset, the engine encodes (resources.X264_THREADS) use 2 and the encode inside the HyperFrames CLI
+# (hf/ffmpeg_repeatable.py) uses 1. The count is part of the bitstream, so every key of an affected encode carries it.
+# An invalid value reads as unset at import; the CLI (cli.main) and resources.plan reject it before any key or encode.
+X264_THREADS_OVERRIDE = tuning.x264_threads_or_none()
+HF_X264_THREADS = X264_THREADS_OVERRIDE or 1
+
+
 # Colour conversion of every engine encode: RGB frames -> BT.709 limited-range yuv420p (matches the x264 bt709 tags).
 BT709_VF = "scale=out_color_matrix=bt709:out_range=tv:flags=lanczos+accurate_rnd+full_chroma_int,format=yuv420p"
 # An RGBA overlay (native overlays, watermark) converted on its own to BT.709 yuva420p and blended with
@@ -141,6 +150,18 @@ def _node_module_roots() -> list[str]:
     return roots
 
 
+HF_CAPTURE_MODES = tuning.HF_CAPTURE_MODES
+
+
+def hf_capture_mode(environ=None, platform: str | None = None) -> str:
+    """Effective HyperFrames capture mode: VIDEO_ENGINE_HF_CAPTURE (screenshot by default). `beginframe` applies only
+    on Linux, the one platform where the producer launches Chrome with BeginFrame control; elsewhere it resolves to
+    `screenshot`. A value outside HF_CAPTURE_MODES raises ValueError."""
+    mode = tuning.hf_capture(environ) or "screenshot"
+    plat = sys.platform if platform is None else platform
+    return mode if mode == "screenshot" or plat.startswith("linux") else "screenshot"
+
+
 def hf_env() -> dict:
     env = dict(os.environ)
     env.update({
@@ -148,11 +169,16 @@ def hf_env() -> dict:
         "PRODUCER_HEADLESS_SHELL_PATH": str(PKG / "hf" / "chrome_repeatable.py"),
         "VIDEO_ENGINE_CHROME_REAL": str(CHROME),
         "HYPERFRAMES_SKIP_SKILLS": "1", "HYPERFRAMES_NO_TELEMETRY": "1", "HYPERFRAMES_NO_UPDATE_CHECK": "1",
-        # Screenshot capture on SwiftShader. BeginFrame is not available on current Chrome
-        # (HeadlessExperimental.enable is missing) and its fallback is this same screenshot path.
-        "PRODUCER_BROWSER_GPU_MODE": "software", "PRODUCER_FORCE_SCREENSHOT": "true",
+        # Capture mode (hf_capture_mode): the default is screenshot capture on SwiftShader (software GPU mode with
+        # PRODUCER_FORCE_SCREENSHOT=true). `beginframe` is opt-in and Linux-only: it sets PRODUCER_FORCE_SCREENSHOT=false
+        # so the producer may launch chrome-headless-shell with BeginFrame control, still on software GPU mode; its
+        # byte-reproducibility is not validated.
+        "PRODUCER_BROWSER_GPU_MODE": "software",
+        "PRODUCER_FORCE_SCREENSHOT": "false" if hf_capture_mode() == "beginframe" else "true",
         "HYPERFRAMES_FFMPEG_PATH": str(PKG / "hf" / "ffmpeg_repeatable.py"),
         "VIDEO_ENGINE_FFMPEG_REAL": _SYSTEM_FFMPEG,
+        # libx264 frame threads the shim gives the HyperFrames CLI encode (hyperframes.render_key carries it).
+        "VIDEO_ENGINE_HF_X264_THREADS": str(HF_X264_THREADS),
         "HYPERFRAMES_FFPROBE_PATH": _SYSTEM_FFPROBE,
         "NODE_PATH": os.pathsep.join(_node_module_roots()),
     })

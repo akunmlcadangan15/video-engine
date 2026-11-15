@@ -1,8 +1,9 @@
 """`engine cache --prune`: delete cache entries that no current project references.
 
 Referenced keys are recomputed from each project's master_timeline.json (default: every project under examples/ if present):
-words (voiceover transcription), segments (native and HyperFrames, and the graded file of a graded segment whose
-rendered file is cached), maps (downscaled map copies, deep tiles and the measured effective width of each
+words (voiceover transcription), segments (native segments and the lossless graded file of a graded native segment
+whose rendered file is cached; HyperFrames segment and split-panel files under hyperframes.render_key at the Chrome
+worker count the build allocates, resources.hf_allocation_for), maps (downscaled map copies, deep tiles and the measured effective width of each
 map source), models (model prop sprites), dom (DOM probe
 results and screenshots named <segment key>.<probe key>[.<file>]: kept while their HyperFrames segment key is
 referenced; "adhoc." entries of probes without a segment are never referenced). Only the entry kinds words/,
@@ -16,7 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import audio, cache, config, globe, grade, hyperframes, maps, native, props, timeline
+from . import audio, cache, config, globe, grade, hyperframes, maps, native, props, resources, timeline
 from .sound import cache as sound_cache
 from .timeline import NATIVE
 
@@ -34,19 +35,27 @@ def referenced(projects: list[Path], root: Path | None = None) -> tuple[set[str]
             ac = tl.audio_chain
             if ac.voiceover_path and (p / ac.voiceover_path).is_file():
                 names.add(audio.words_key(p / ac.voiceover_path, ac.language, ac.stt.model, ac.stt.keyterms) + ".json")
+            hf_workers = None
             for s in tl.segments:
                 if s.engine_type == NATIVE:
                     sk = native.plan(s, tl, p).key
                     names.add(sk + ".mp4")
+                    rendered = root / "segments" / (sk + ".mp4")
+                    if rendered.is_file() and (gk := grade.key(s, tl, p, rendered)):
+                        names.add(gk + ".mp4")
                 else:
+                    if hf_workers is None:
+                        hf_workers = resources.hf_allocation_for(tl)[1]
                     sk, mk = hyperframes.keys(s, tl, p)
-                    names |= {sk + ".mp4", mk + ".jpg"}
+                    names |= {hyperframes.render_key(s, tl, p, hf_workers) + ".mp4", mk + ".jpg"}
                     names.add(DOM_REF + sk)
-                    panels = (hyperframes.split_panels(s, tl)
-                              if s.gsap_scene_config and s.gsap_scene_config.split is not None else [(s, tl)])
+                    split = s.gsap_scene_config is not None and s.gsap_scene_config.split is not None
+                    panels = hyperframes.split_panels(s, tl) if split else [(s, tl)]
                     for ps, pt in panels:
                         psk, pmk = hyperframes.keys(ps, pt, p)
-                        names |= {psk + ".mp4", pmk + ".jpg", DOM_REF + psk}
+                        names |= {pmk + ".jpg", DOM_REF + psk}
+                        if split:
+                            names.add(hyperframes.render_key(ps, pt, p, hf_workers, grade_pass=False) + ".mp4")
                         scene = hyperframes.scene_data(ps, pt, p)
                         names |= {Path(e["img"]).name for e in scene.get("deep", [])}
                         if (sc := ps.gsap_scene_config) and sc.map_asset and (en := maps.effective_cache_name(p / sc.map_asset)):
@@ -57,9 +66,6 @@ def referenced(projects: list[Path], root: Path | None = None) -> tuple[set[str]
                         if "globe" in scene:
                             names |= globe.cache_names(ps, pt, p, scene["globe"])
                         names |= props.model_cache_names(ps, p, pt.settings.fps)
-                rendered = root / "segments" / (sk + ".mp4")
-                if rendered.is_file() and (gk := grade.key(s, tl, p, rendered)):
-                    names.add(gk + ".mp4")
         except Exception as e:  # noqa: BLE001  (any unreadable project must stop the prune)
             problems.append(f"{p}: {type(e).__name__}: {e}")
     return names, problems
