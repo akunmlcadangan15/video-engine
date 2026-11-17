@@ -544,7 +544,7 @@ def test_good_template_fly_block_replaces_fades_only_with_ly_fly():
 # ---------------------------------------------------------------- counter-scale (template window.__inv, window.__legs)
 
 def _js_helpers() -> str:
-    src = (Path(config.ENGINE_ROOT) / "video_engine" / "template" / "index.html").read_text()
+    src = (config.TEMPLATE_DIR / "index.html").read_text()
     a = src.index("window.__bez=function")
     b = src.index("</script>", a)
     g = json.dumps(str(config.GSAP_JS))
@@ -708,7 +708,7 @@ def test_good_planner_plan_has_no_layout_conflict_on_drift_frames(project, monke
 def test_bad_planner_drift_conflict_bounds_only_that_wait(project, monkeypatch):
     # a zone break on one frame inside one wait's drift (not on its first frame): only that key gets a drift bound
     from test_layout import beats_doc
-    from video_engine.gates import layout_gates
+    from video_engine.layout import constraints
     d, tl = project(beats_doc)
     seg = tl.segments[2]
     _profile(monkeypatch, "geoverum")
@@ -718,10 +718,10 @@ def test_bad_planner_drift_conflict_bounds_only_that_wait(project, monkeypatch):
     leg = next(L for L in base.cam["legs"] if L["ease"] == "drift" and "away" not in L and L["f1"] - L["f0"] > 12)
     i = max(j for j, a in enumerate(ats) if a <= leg["f0"])
     bad = leg["f0"] + 6
-    real_zones, real_items, cur = layout_gates.zones, layout.frame_items, {}
+    real_zones, real_items, cur = constraints.zones, layout.frame_items, {}
     monkeypatch.setattr(layout, "frame_items", lambda pp, f: cur.update(f=f, moving=bool(pp.cam["legs"]))
                         or real_items(pp, f))
-    monkeypatch.setattr(layout_gates, "zones", lambda items, L, W, H: ["fake"] if cur["f"] == bad and cur["moving"]
+    monkeypatch.setattr(constraints, "zones", lambda items, L, W, H: ["fake"] if cur["f"] == bad and cur["moving"]
                         else real_zones(items, L, W, H))
     p = layout._Planner(seg, tl, d).run()
     assert p.keys[i].get("drift_max") == layout.DRIFT_MIN

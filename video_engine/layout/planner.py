@@ -9,6 +9,7 @@ from video_engine.layout.camera import _frange, animating, area_box, bound_drift
 from video_engine.layout.geometry import Box, _closest, _pt_seg_dist, _r, corners_box, crosses_edge, halo, inflate, inside, overlap_area, point_in_poly, poly_edges, polyline_box_dist, quad_inside_poly, quad_outside_poly, rot_corners, seg_box_dist, text_box, text_metrics, wt
 from video_engine.layout.models import ENTRY_ORDER, EXIT_ORDER, HEAD, HEAD_C, Heading, Label, LayoutProfile, Note, Plan, SHADOW, Span, Area, _detail, _frames
 from video_engine.core.units import Units
+from video_engine.core.util import EngineError
 
 if TYPE_CHECKING:
     from video_engine.timeline import GsapScene, Segment, Timeline
@@ -422,15 +423,24 @@ class _Planner:
         sc, L = self.sc, self.L
         col = self.L.grid.edges()[0] * self.kx
         top = math.ceil(self.z1[1] / (L.grid.unit * self.ky)) * (L.grid.unit * self.ky)
+        unit = L.grid.unit * self.ky
+
+        def z1_top(m):
+            """Highest grid row at or below `top` whose ink stays within Z1's vertical bounds."""
+            candidate = top - math.ceil(max(0.0, top + m.ink[3] - self.z1[3]) / unit) * unit
+            if candidate + m.ink[1] < self.z1[1] or candidate + m.ink[3] > self.z1[3]:
+                raise EngineError("Z1 is too short for the configured title or data-card font metrics")
+            return candidate
         beats = sc.beats
         assert beats is not None
         if sc.title and any(b.title for b in beats) and self.pr is None:
             px = L.sizes.title * self.ky
             m = text_metrics(sc.title, self.title_role, px, 1.04)
             x = col - m.ink[0]
-            p.title = {"text": sc.title, "x": round(x, 2), "y": top, "px": px, "box": text_box(m, x, top, halo(self.theme, True, px)),
-                       "css": (x, top, x + m.adv, top + m.h),
-                       "ink": (x + m.ink[0], top + m.ink[1], x + m.ink[2], top + m.ink[3])}
+            title_top = z1_top(m)
+            p.title = {"text": sc.title, "x": round(x, 2), "y": title_top, "px": px, "box": text_box(m, x, title_top, halo(self.theme, True, px)),
+                       "css": (x, title_top, x + m.adv, title_top + m.h),
+                       "ink": (x + m.ink[0], title_top + m.ink[1], x + m.ink[2], title_top + m.ink[3])}
         figures = sc.figures
         for b in beats:
             if not b.card:
@@ -444,11 +454,12 @@ class _Planner:
             px = L.sizes.year * self.ky
             my = text_metrics(ytext, "serif", px, 1.0, weight=800, nums=True)
             x = col - my.ink[0]
-            base = top + my.base
-            p.figs[b.card[0]] = {"text": ytext, "kind": "year", "x": round(x, 2), "y": top, "px": px,
-                                 "box": text_box(my, x, top, halo(self.theme, False, px)), "base": base,
-                                 "css": (x, top, x + my.adv, top + my.h),
-                                 "ink": (x + my.ink[0], top + my.ink[1], x + my.ink[2], top + my.ink[3])}
+            year_top = z1_top(my)
+            base = year_top + my.base
+            p.figs[b.card[0]] = {"text": ytext, "kind": "year", "x": round(x, 2), "y": year_top, "px": px,
+                                 "box": text_box(my, x, year_top, halo(self.theme, False, px)), "base": base,
+                                 "css": (x, year_top, x + my.adv, year_top + my.h),
+                                 "ink": (x + my.ink[0], year_top + my.ink[1], x + my.ink[2], year_top + my.ink[3])}
             if len(b.card) > 1:
                 ft = figures[b.card[1]]
                 ttext = figure_text(ft, ft.value, self.theme)

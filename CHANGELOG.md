@@ -9,6 +9,16 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ## Belum dirilis
 
+### Diperbaiki
+
+- **Cache dan grading HyperFrames.** Kunci render mencakup jumlah worker Chrome, thread encode, dan pass
+  normalisasi/grading, terpisah dari kunci scene/DOM. Panel split disimpan tanpa grade dan hasil stack diberi
+  grade sekali; pruning mempertahankan file render dan panel yang dirujuk timeline. Pengujian:
+  `tests/test_hf_concurrency.py`, `tests/test_dom_cache.py`, dan `tests/test_grade.py`.
+- **Penempatan judul dan kartu data di Z1.** Planner memilih baris grid tertinggi yang menampung ink font di
+  dalam batas vertikal Z1; posisi tidak lagi melampaui batas karena pembulatan metrik font. Zona dan ambang gate
+  tidak berubah. Pengujian: `tests/test_layout.py`.
+
 ### Diubah
 
 - **Identitas error migrasi.** `core/errors.py` menjadi sumber tunggal `EngineError`;

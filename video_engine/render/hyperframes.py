@@ -11,7 +11,7 @@ from video_engine.core.runtime import core
 from video_engine import assets, profiles as profiles, streams
 from video_engine.core import cache as cache, config as config, hfversion as hfversion, projection as projection, resources as resources, toolchain as toolchain
 from video_engine.layout import camera3d as camera3d, camera_full3d as camera_full3d, entities as entities, legibility as legibility, printstyle as printstyle
-from video_engine.render import components as components, fx as fx, globe as globe, parallax as parallax, props as props
+from video_engine.render import components as components, fx as fx, globe as globe, grade as grade, parallax as parallax, props as props
 from video_engine.layout.scene_camera import FIT_PAD_REF, HF_PRESETS, _FIT_SLACK, _fit_box, _monotone, _pin_xy, _pins_inside, _scaled_pulse, _state, camera_frames, camera_frames_sig, camera_plan, camera_states, card_frame, drift_base, drift_legs, fit_hold, fit_points, flow_legs, glide_speeds, leg_ease, motion_px, pin_frame, whip_blur
 from video_engine.render.hf_probe import _INKS, PROBE_JS, PROBE_VERSION, SHOT_FIELDS, _QuietHandler, _probe_cached, _probe_store, probe_dom, probe_key, probe_props, serve, shutdown_probe_pool
 from video_engine.render.hf_scene import _GSAP_IN, _GSAP_POWER, _SCENES, CARD_TOP, CARD_TOP_LANDSCAPE, FIGURE_POP_S, FX2_JS, FX_BACKDROP_JS, FX_BUBBLE_JS, FX_TIMEZONE_JS, HF_CRF, HF_FONTS, HF_QUALITY, HF_VERSION, INK_CACHE_MAX, PROPS_JS, SCENE3D_JS, SCENE_CACHE_MAX, TEMPLATE_SCALED, THEME_FONTS, TITLE_GAP_EM, TITLE_TOP, TITLE_TOP_LANDSCAPE, _accent, _bounded_put, _card_name, _centroid, _flag_data, _scene_key, _svg_aspect, clear_scene_cache, counter_value, figure_end_frame, figure_text, flag_fit, font_faces, font_files, font_roles, gsap_ease, landscape_theme, region_aspect, region_data, route_end_frame, scene_data, script_files, sfx_events, split_panels, tint, title_place
@@ -60,7 +60,7 @@ __all__ = [
     "font_faces", "font_files", "font_roles", "glide_speeds", "gsap_ease",
     "keys", "landscape_theme", "leg_ease", "motion_px", "pin_frame",
     "probe_dom", "probe_key", "probe_props", "region_aspect", "region_data",
-    "render", "route_end_frame", "scene_data", "script_files", "serve",
+    "render", "render_key", "route_end_frame", "scene_data", "script_files", "serve",
     "sfx_events", "shutdown_probe_pool", "split_panels", "tint", "title_place",
     "whip_blur",
 ]
@@ -216,21 +216,52 @@ def _key(scene: dict, files: list[Path], mk: str, tl: Timeline) -> str:
                         "toolchain": toolchain.hf_identity()})
 
 
+def _pass_filter(rs: list, n_frames: int, workdir: Path) -> str:
+    """Normalisation, with any non-identity grade baked into the same yuv-to-RGB-to-yuv conversion."""
+    vf = f"fps={{fps}},tpad=stop_mode=clone:stop=-1,setsar=1,{config.BT709_VF}"
+    if not rs:
+        return vf
+    chain = []
+    for i, (a, e, _) in enumerate(rs):
+        on = "" if (a, e) == (0, n_frames) else f":enable='between(n,{a},{e - 1})'"
+        chain.append(f"lut3d=file={workdir / f'g{i}.cube'}:interp=tetrahedral{on}")
+    return (vf + ",scale=in_color_matrix=bt709:in_range=tv:flags=neighbor+accurate_rnd,format=gbrp16le,"
+            + ",".join(chain) + ",scale=out_color_matrix=bt709:out_range=tv:flags=area+accurate_rnd,format=yuv420p")
+
+
+def _pass_spec(seg: Segment, tl: Timeline, project_dir: Path, workers: int, grade_pass: bool) -> dict:
+    """Inputs of the encode after HyperFrames, independent of temporary work paths."""
+    rs = [(a, e, grade.cube_text(g, root)) for a, e, g, root in grade.ranges(seg, tl, project_dir)] if grade_pass else []
+    _, _, x264 = encode_settings(tl)
+    return {"workers": workers, "hf_threads": config.HF_X264_THREADS,
+            "threads": config.x264_threads(resources.X264_THREADS), "x264": x264,
+            "filter": _pass_filter(rs, seg.n_frames, Path("/grade")), "n": seg.n_frames}
+
+
+def render_key(seg: Segment, tl: Timeline, project_dir: Path, workers: int = 3,
+               grade_pass: bool = True) -> str:
+    """Cache key of the finished HyperFrames file: scene identity plus capture workers and the normalise/grade pass.
+    `grade_pass=False` names an ungraded split panel; the stacked split is graded once in its own pass."""
+    scene_key = keys(seg, tl, project_dir)[0]
+    return blake3_json({"scene": scene_key, "pass": _pass_spec(seg, tl, project_dir, workers, grade_pass)})
+
+
 def render(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, workers: int = 3,
-           use_cache: bool = True) -> tuple[Path, bool]:
-    key = keys(seg, tl, project_dir)[0]
+           use_cache: bool = True, grade_pass: bool = True) -> tuple[Path, bool]:
+    scene_key = keys(seg, tl, project_dir)[0]
+    key = render_key(seg, tl, project_dir, workers, grade_pass)
     if use_cache and (hit := cache.get_file("segments", key)):
         return hit, True
     assert seg.gsap_scene_config is not None
     if seg.gsap_scene_config.split is not None:
-        return _render_split(seg, tl, project_dir, workdir, workers, use_cache, key), False
+        return _render_split(seg, tl, project_dir, workdir, workers, use_cache, key, grade_pass), False
     hf_dir = workdir / "hf" / f"seg{seg.seg_index:03d}"
     kfile = workdir / "hf" / f"seg{seg.seg_index:03d}.key"
-    if (hf_dir / "index.html").is_file() and (hf_dir / "scene.js").is_file() and kfile.is_file() and kfile.read_text() == key:
+    if (hf_dir / "index.html").is_file() and (hf_dir / "scene.js").is_file() and kfile.is_file() and kfile.read_text() == scene_key:
         d = hf_dir
     else:
         d, _ = build_dir(seg, tl, project_dir, hf_dir)
-        kfile.write_text(key)
+        kfile.write_text(scene_key)
     out = workdir / "seg" / f"seg{seg.seg_index:03d}_hf.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)
     raw = out.with_suffix(".raw.mp4")
@@ -238,20 +269,19 @@ def render(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, workers
     run([config.NODE, hfversion.require().cli, "render", d, "--fps", str(tl.settings.fps), "--sdr", "-q", q, "--crf", str(crf),
          "--no-browser-gpu", "--workers", str(workers), "-o", raw], env=config.hf_env(), timeout=900)
     n = seg.n_frames
-    if _is_engine_format(raw, tl, n):
-        raw.replace(out)
-    else:
-        # normalise to the engine's exact BT.709 stream format and frame count so concat demuxer joins Native + HF seamlessly
-        run([config.FFMPEG, "-v", "error", "-y", "-i", raw, "-an", "-vf",
-             f"fps={tl.settings.fps},tpad=stop_mode=clone:stop=-1,setsar=1,{config.BT709_VF}", *x264,
-             *config.x264_threads(resources.X264_THREADS), "-frames:v", str(n), "-movflags", "+faststart", out])
-        raw.unlink(missing_ok=True)
+    rs = grade.ranges(seg, tl, project_dir) if grade_pass else []
+    vf = _pass_filter(rs, n, workdir).format(fps=tl.settings.fps)
+    for i, (_, _, g, root) in enumerate(rs):
+        (workdir / f"g{i}.cube").write_text(grade.cube_text(g, root))
+    run([config.FFMPEG, "-v", "error", "-y", "-i", raw, "-an", "-vf", vf, *x264,
+         *config.x264_threads(resources.X264_THREADS), "-frames:v", str(n), "-movflags", "+faststart", out])
+    raw.unlink(missing_ok=True)
     streams.verify(out, n, tl.settings.fps, f"segment {seg.seg_index} (HyperFrames)")
     return (cache.put_file("segments", key, out) if use_cache else out), False
 
 
 def _render_split(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, workers: int, use_cache: bool,
-                  key: str) -> Path:
+                  key: str, grade_pass: bool = True) -> Path:
     """Both panels rendered by HyperFrames (each its own scene, map and camera, same frames), stacked top / divider /
     bottom into the segment file; nothing animated outside HyperFrames."""
     assert seg.gsap_scene_config is not None
@@ -261,14 +291,21 @@ def _render_split(seg: Segment, tl: Timeline, project_dir: Path, workdir: Path, 
     files = []
     for k, (s, t) in enumerate(split_panels(seg, tl)):
         sub = workdir / "split" / f"seg{seg.seg_index:03d}_{k}"
-        p, _ = render(s.model_copy(update={"seg_index": seg.seg_index}), t, project_dir, sub, workers, use_cache)
+        p, _ = render(s.model_copy(update={"seg_index": seg.seg_index}), t, project_dir, sub, workers, use_cache,
+                      grade_pass=False)
         files.append(p)
     out = workdir / "seg" / f"seg{seg.seg_index:03d}_hf.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)
     _, _, x264 = encode_settings(tl)
+    rs = grade.ranges(seg, tl, project_dir) if grade_pass else []
+    vf = "[0:v][2:v][1:v]vstack=inputs=3,setsar=1[v]"
+    if rs:
+        vf = "[0:v][2:v][1:v]vstack=inputs=3,setsar=1," + _pass_filter(rs, n, workdir).split(",", 1)[1] + "[v]"
+        for i, (_, _, g, root) in enumerate(rs):
+            (workdir / f"g{i}.cube").write_text(grade.cube_text(g, root))
     run([config.FFMPEG, "-v", "error", "-y", "-i", files[0], "-i", files[1], "-f", "lavfi", "-i",
          f"color=c={sp.divider_colour}:s={S.width}x{sp.divider_px}:r={S.fps}", "-filter_complex",
-         "[0:v][2:v][1:v]vstack=inputs=3,setsar=1[v]", "-map", "[v]", "-an", *x264,
+         vf, "-map", "[v]", "-an", *x264,
          *config.x264_threads(resources.X264_THREADS), "-frames:v", str(n), out])
     streams.verify(out, n, S.fps, f"segment {seg.seg_index} (split screen)")
     return cache.put_file("segments", key, out) if use_cache else out

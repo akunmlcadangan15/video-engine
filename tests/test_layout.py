@@ -284,6 +284,7 @@ def test_good_planner_plan_passes_every_layout_gate(project, monkeypatch):
     p = layout.apply_segment(seg, tl, d)
     assert p is not None and seg.gsap_scene_config.camera_path[0].at_frame == 0
     assert abs(p.title["ink"][0] - 64) < 0.5 and p.title["y"] % 8 == 0
+    assert p.figs[0]["y"] % 8 == 0 and p.figs[0]["ink"][3] <= L.zones.z1[3]
     assert all(p.tracks[i] and p.tracks[i][0][1].name in L.labels.order for i in (0, 1)) and p.log == []
     fs = G.check_segment(seg, tl, d, [], None)
     fails = [f.line() for f in fs if f.level == "fail"]
