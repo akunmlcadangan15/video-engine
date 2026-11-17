@@ -172,5 +172,3 @@ def describe(orientation: str, overrides: dict | None = None) -> str:
         lines.append(f"- {shot}: {SHOT_HELP[shot]}; camera {f.hf} (native {f.native}), subject at "
                      f"x={f.subject[0]:.2f} y={f.subject[1]:.2f}, title slot {f.title_slot}")
     return "\n".join(lines)
-
-

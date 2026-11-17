@@ -329,5 +329,3 @@ def typefaces(rects: list[dict], max_n: int) -> list[str]:
     if len(faces) > max_n:
         return [f"{len(faces)} typefaces (max {max_n}): " + "; ".join(f"{k} {', '.join(v)}" for k, v in faces.items())]
     return []
-
-

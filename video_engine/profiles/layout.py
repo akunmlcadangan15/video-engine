@@ -177,5 +177,3 @@ class LayoutProfile(_M):
             if v % u:
                 raise ValueError(f"layout {name} = {v} is not a multiple of grid.unit {u}")
         return self
-
-

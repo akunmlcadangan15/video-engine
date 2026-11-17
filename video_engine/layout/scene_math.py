@@ -11,4 +11,3 @@ def figure_text(f, v: float, theme: dict) -> str:
     whole = f"{n // m:,}".replace(",", theme["number_group"])
     frac = f"{theme['number_decimal']}{n % m:0{f.decimals}d}" if f.decimals else ""
     return f"{f.prefix}{'-' if v < 0 and n else ''}{whole}{frac}{f.suffix}"
-

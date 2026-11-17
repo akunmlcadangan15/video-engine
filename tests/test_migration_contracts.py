@@ -11,6 +11,14 @@ def _schema_hash(model):
     return hashlib.sha256(json.dumps(model.model_json_schema(), sort_keys=True).encode()).hexdigest()
 
 
+def test_engine_error_has_one_identity():
+    from video_engine.core.errors import EngineError
+    from video_engine.core.util import EngineError as CoreError
+    from video_engine.util import EngineError as LegacyError
+
+    assert EngineError is CoreError is LegacyError
+
+
 def test_timeline_schema_contract_is_unchanged():
     assert _schema_hash(Timeline) == "c56bf64068259d9c9a776c24b58bc8aa97e36ba3b42dc2502315c771cd097d85"
 

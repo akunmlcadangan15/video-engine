@@ -53,5 +53,3 @@ class Grade(_Strict):
 
 def _rgb(hex_: str) -> np.ndarray:
     return np.array([int(hex_[k:k + 2], 16) for k in (1, 3, 5)]) / 255.0
-
-

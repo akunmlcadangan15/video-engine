@@ -295,4 +295,3 @@ def thermo_starts(items: list) -> list[float]:
         starts[i] = start
         prev = float(t.value)
     return starts
-

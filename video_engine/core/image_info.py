@@ -6,4 +6,3 @@ def image_size(path: Path) -> tuple[int, int]:
     Image.MAX_IMAGE_PIXELS = None
     with Image.open(path) as im:
         return im.size
-

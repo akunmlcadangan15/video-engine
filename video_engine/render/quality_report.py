@@ -12,4 +12,3 @@ def quality_report(tl: "Timeline") -> dict:
             "hf_quality": q, "hf_crf": crf, "segment_x264": segment, "final_x264": r.x264("final"),
             "final_pix_fmt": r.final_pix_fmt(), "map_jpeg_quality": r.map_jpeg_quality or maps.MAP_JPEG_QUALITY,
             "aac_bitrate": aac_bitrate(tl)}
-

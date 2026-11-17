@@ -42,7 +42,7 @@ profil: file `include` sesuai urutan, lalu file profilnya) < `profile_overrides`
 (`caption_style`, `audio_chain`). Fallback berlaku per kunci; profil yang gagal dibaca atau divalidasi adalah
 error, tidak pernah diganti diam-diam dengan profil default. `engine profile NAMA --origin` menunjukkan file
 asal tiap kunci. `profile_overrides` proyek hanya boleh untuk tabel di
-`OVERRIDABLE` di `video_engine/profiles/resolver.py` (API publik tetap `profiles.OVERRIDABLE`). Safety limit (`true_peak`, `tolerance_lu`)
+`OVERRIDABLE` di `video_engine/profiles/__init__.py` (API publik tetap `profiles.OVERRIDABLE`). Safety limit (`true_peak`, `tolerance_lu`)
 hanya boleh diketatkan, tidak dilonggarkan.
 
 Data merek tetap berada di direktori root `profiles/`, berbeda dari paket Python `video_engine/profiles/`.

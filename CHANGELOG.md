@@ -11,6 +11,9 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ### Diubah
 
+- **Identitas error migrasi.** `core/errors.py` menjadi sumber tunggal `EngineError`;
+  `core.util` dan alias `util` mengekspos kelas yang sama agar penanganan exception tetap konsisten.
+
 - **Restrukturisasi paket Python.** Implementasi dikelompokkan ke `core/`, `profiles/`, `timeline/`,
   `layout/`, `render/`, `gates/`, `draft/`, `sound/`, dan `cloud/`; entrypoint/orkestrator tetap di root
   `video_engine/`. Lima lapisan konseptual tidak berubah. Kontrak layout/grade dipisahkan dari plan

@@ -8,4 +8,3 @@ VisualType = Literal["map", "photo", "video", "diagram", "archive", "illustratio
 
 SFX_KINDS = ("pop", "tick", "whoosh", "click", "beep", "counter_tick", "impact", "riser", "rumble")
 SfxKind = Literal["pop", "tick", "whoosh", "click", "beep", "counter_tick", "impact", "riser", "rumble"]
-

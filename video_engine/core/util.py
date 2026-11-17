@@ -14,12 +14,9 @@ from pathlib import Path
 from typing import Protocol
 
 from video_engine.core.runtime import core
+from video_engine.core.errors import EngineError
 
 from video_engine.core import config as config
-
-
-class EngineError(RuntimeError):
-    tried: list[tuple[str, str]]
 
 
 class _StageMonitor(Protocol):

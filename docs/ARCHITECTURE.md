@@ -25,7 +25,7 @@ Fallback is **per key, never per file**. A key the channel does not set takes th
 profile that cannot be read, parsed or validated is an `EngineError` (exit 1): the engine never renders with a
 silently substituted default profile, because the output would look right and be wrong.
 
-Resolution order, lowest first (`video_engine/profiles/resolver.py`: `load` -> `_layers` -> `_build` -> `_override`):
+Resolution order, lowest first (`video_engine/profiles/__init__.py`: `load` -> `_layers` -> `_build` -> `_override`):
 
 1. Model field defaults (`video_engine/profiles/schema.py`): a key `default.toml` does not write.
 2. `profiles/default.toml`.
@@ -94,7 +94,7 @@ engine copies facts from `credits.txt`, sidecars and the profile (`draft.assembl
 |---|---|---|
 | Timeline contract | `video_engine/timeline/` | Main models and load/save in `__init__.py`; `common.py`, `scene.py`, `map.py`, `fx.py`, `audio.py` hold component contracts. All times are integer frames; `sec_to_frame` is the only seconds-to-frames conversion. |
 | Profile tables | `video_engine/profiles/schema.py`, `profiles/layout.py`, `profiles/grade.py` | Keys, ranges, defaults; separate from layout plans and grading execution. |
-| Profile resolution | `video_engine/profiles/resolver.py` | Layers, `extends`, `include`, cascade, overrides, hash, `origins`, `flatten`. Lazy package facade retains `profiles.load` and table exports (`profiles.Theme`). TOML data remains in root `profiles/`. |
+| Profile resolution | `video_engine/profiles/__init__.py` | Layers, `extends`, `include`, cascade, overrides, hash, `origins`, `flatten`. `profiles/resolver.py` aliases the public package with the same module identity. TOML data remains in root `profiles/`. |
 | Gates | `video_engine/gates/registry.py`, `gates/runner.py` | Registry is the single definition; `gates/severity.py` decides fail / warn / info. Package initialization defers importing the runner. |
 | AI providers | `video_engine/ai/` | `base.py` (parts, retry, reply parsing, schema subset), `agent.py` (file handoff, exit 3), `gemini.py`, `openai_compat.py`. |
 | Draft | `video_engine/draft/`, `video_engine/director/` | Workflow in `draft/__init__.py`, assembly in `draft/scene.py`, recipes in `draft/recipes.py`. Technical preview `draft_build.py` remains an application module. |
