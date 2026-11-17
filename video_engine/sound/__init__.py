@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 
-from ..timeline import SFX_KINDS
+from video_engine.timeline import SFX_KINDS
 
 SOURCES = ("epidemic", "local-test")
 EPIDEMIC = "epidemic"

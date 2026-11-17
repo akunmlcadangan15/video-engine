@@ -16,8 +16,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import timeline as timeline_mod
-from .util import EngineError, probe
+from video_engine import timeline as timeline_mod
+from video_engine.core.util import EngineError, probe
 
 STILL_PRESETS = ("ken_burns_zoom_in", "ken_burns_zoom_out")
 VIDEO_EXT = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}

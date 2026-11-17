@@ -16,9 +16,9 @@ import os
 import time
 from types import SimpleNamespace
 
-from . import base
-from .base import AIResult, Image, Media, Part, Text, code_of, status_of
-from ..util import EngineError
+from video_engine.ai import base
+from video_engine.ai.base import AIResult, Image, Media, Part, Text, code_of, status_of
+from video_engine.core.util import EngineError
 
 NAME = "gemini"
 MODEL = "gemini-3.8-flash"

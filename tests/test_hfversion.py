@@ -150,5 +150,5 @@ def test_good_build_report_records_the_version_used(vendor, monkeypatch):
 
 def test_good_real_vendor_pin_is_0_9_13_and_render_uses_the_active_cli():
     assert hfversion.pinned_version() == "0.9.13"
-    src = (Path(config.PKG) / "hyperframes.py").read_text()
+    src = (Path(config.PKG) / "render" / "hyperframes.py").read_text()
     assert "hfversion.require().cli" in src and "config.HF_CLI" not in src

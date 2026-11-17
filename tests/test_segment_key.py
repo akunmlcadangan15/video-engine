@@ -13,7 +13,7 @@ from video_engine import config, hyperframes, maps, profiles, toolchain
 
 REAL_TEMPLATE = config.TEMPLATE_DIR
 REAL_GSAP = config.GSAP_JS
-REAL_PROBE = config.PKG / "hf" / "dom_probe.mjs"
+REAL_PROBE = config.PKG / "render" / "hf" / "dom_probe.mjs"
 
 
 @pytest.fixture(autouse=True)
@@ -43,8 +43,8 @@ def tools(tmp_path, monkeypatch):
     (t / "js").mkdir()
     shutil.copyfile(REAL_GSAP, t / "js" / "gsap.min.js")
     shutil.copytree(REAL_TEMPLATE, t / "template")
-    (t / "pkg" / "hf").mkdir(parents=True)
-    shutil.copyfile(REAL_PROBE, t / "pkg" / "hf" / "dom_probe.mjs")
+    (t / "pkg" / "render" / "hf").mkdir(parents=True)
+    shutil.copyfile(REAL_PROBE, t / "pkg" / "render" / "hf" / "dom_probe.mjs")
     shutil.copytree(config.FONTS_DIR, t / "fonts")
     for name, v in {"VENDOR": t, "NODE": t / "node/bin/node",
                     "CHROME": t / "chrome/chrome-headless-shell-linux64/chrome-headless-shell",
@@ -69,7 +69,7 @@ TOOL_CHANGES = {
     "npm-dependency-added": lambda t, mp: ((t / "npm/node_modules/dep").mkdir(), (t / "npm/node_modules/dep/index.js").write_text("x")),
     "gsap": lambda t, mp: _append(t / "js/gsap.min.js", "\n//2"),
     "template": lambda t, mp: _append(t / "template/index.html", "\n<!-- 2 -->"),
-    "dom-probe": lambda t, mp: _append(t / "pkg/hf/dom_probe.mjs", "\n// 2"),
+    "dom-probe": lambda t, mp: _append(t / "pkg/render/hf/dom_probe.mjs", "\n// 2"),
     "ffmpeg": lambda t, mp: mp.setattr(toolchain, "ffmpeg_version", lambda exe: "ffmpeg version 7.2"),
     "font": lambda t, mp: _append(t / "fonts/Inter-Bold.otf", "\0"),
 }

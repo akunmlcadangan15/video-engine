@@ -40,7 +40,7 @@ Indeks seluruh dokumentasi. Cari pertanyaan Anda di tabel pertama, lalu buka dok
 
 ## Menjaga dokumen tetap benar
 
-- Tabel gate di [GATES.md](GATES.md) dibuat dari `video_engine/gate_registry.py` dengan
+- Tabel gate di [GATES.md](GATES.md) dibuat dari `video_engine/gates/registry.py` dengan
   `engine gates --format md`. Jangan ubah isinya dengan tangan; jalankan perintah itu dan tempel hasilnya.
 - `python scripts/check_docs.py` memeriksa tautan, anchor, tabel gate yang dibuat otomatis, dan bahwa setiap dokumen
   ada di indeks ini. CI menjalankannya.

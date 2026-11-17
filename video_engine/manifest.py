@@ -35,8 +35,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from . import config
-from .util import EngineError, blake3_json
+from video_engine.core import config as config
+from video_engine.core.util import EngineError, blake3_json
 
 MANIFEST = "build_manifest.json"
 VERSION = 1
@@ -100,7 +100,7 @@ def ffmpeg_version() -> str:
 def toolchain() -> dict:
     """Toolchain of this build; "hyperframes" is the version the segments were rendered with (hfversion.active),
     "hyperframes_pinned" the vendor/VERSIONS.json pin."""
-    from . import hfversion
+    from video_engine.core import hfversion as hfversion
     pins = json.loads((config.VENDOR / "VERSIONS.json").read_text())
     hf = hfversion.active()
     from importlib.metadata import PackageNotFoundError, version
@@ -154,7 +154,7 @@ def timeline_files(tl, project_dir: Path) -> list[Path]:
                 pass
 
     walk(json.loads(tl.model_dump_json()))
-    from . import profiles
+    from video_engine import profiles as profiles
     g = profiles.of(tl).data.grade
     if g is not None and g.lut:
         lut = config.PROFILES_DIR / g.lut
@@ -195,7 +195,7 @@ def _check(e: dict, what: str, project_dir: Path | None) -> Path:
     p = resolve(e["path"], project_dir)
     sha = e.get("sha256")
     if not p.is_file() and project_dir is not None and isinstance(sha, str):
-        from .sound import pins
+        from video_engine.sound import pins
         alt = pins.fallback(project_dir, sha, Path(str(e.get("path", ""))).suffix.lower())
         if alt is not None:
             p = alt
@@ -205,7 +205,7 @@ def _check(e: dict, what: str, project_dir: Path | None) -> Path:
         raise EngineError(f"locked {what} {p} changed (sha256 differs from out/{MANIFEST}); "
                           f"run `engine build --relock` to resolve sounds again")
     if project_dir is not None and isinstance(sha, str) and p.is_file():
-        from .sound import pins
+        from video_engine.sound import pins
         try:
             rel = str(p.resolve().relative_to(Path(config.CACHE_DIR).resolve()))
         except ValueError:
@@ -249,8 +249,8 @@ def sounds_entry(tl, mix, kinds_of: dict[str, str], project_dir: Path | None = N
 
 def write(out_dir: Path, tl, project_dir: Path, *, mix, kinds_of: dict[str, str], budget, relock: bool,
           quality: str = "delivery", source_profile: dict | None = None) -> dict:
-    from . import profiles
-    from .mixer import LOCAL_TONES
+    from video_engine import profiles as profiles
+    from video_engine.sound.mixer import LOCAL_TONES
     prof = profiles.of(tl)
     tf = project_dir / "master_timeline.json"
     doc = {
@@ -273,7 +273,7 @@ def write(out_dir: Path, tl, project_dir: Path, *, mix, kinds_of: dict[str, str]
     }
     save(out_dir, doc)
     rel = Path(out_dir).resolve().relative_to(Path(project_dir).resolve()).as_posix() + "/" + MANIFEST
-    from .sound import pins
+    from video_engine.sound import pins
     pins.sync_document(project_dir, doc, rel)
     return doc
 

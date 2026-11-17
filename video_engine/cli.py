@@ -12,12 +12,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from . import config
-from .util import EngineError
+from video_engine.core import config as config
+from video_engine.core.util import EngineError
 
 
 def _load(project: str):
-    from . import timeline
+    from video_engine import timeline as timeline
     p = Path(project).resolve()
     return p, timeline.load(p)
 
@@ -38,7 +38,7 @@ AI_REQUEST_DIR = "ai_request"
 
 def _provider(a, root: Path):
     """Provider from --provider / env / AI config; agent bundles go under `root`."""
-    from . import ai
+    from video_engine import ai
     argv = [x for x in a.argv if x != "--resume"]
     return ai.get(a.provider, root=root, resume=a.resume, resume_cmd=shlex.join(["engine", *argv, "--resume"]))
 
@@ -67,7 +67,8 @@ def cmd_validate(a) -> int:
 
 
 def cmd_preflight(a) -> int:
-    from . import audio, gates, timeline
+    from video_engine.sound import audio as audio
+    from video_engine import gates, timeline as timeline
     p, tl = _load(a.project)
     words = None
     if tl.captions:
@@ -86,18 +87,18 @@ def cmd_preflight(a) -> int:
 
 
 def cmd_build(a) -> int:
-    from . import build
-    from . import profiles
+    from video_engine import build
+    from video_engine import profiles as profiles
     profiles.validate_quality(a.quality, a.mode)
     if a.quality == "proxy" and a.repin:
         raise EngineError("proxy quality cannot --repin the source timeline; pin words separately")
     p = Path(a.project).resolve()
     if a.no_cache:
-        from . import cache
+        from video_engine.core import cache as cache
         c = cache.clear()
         if c["skipped_leased"]:
             print(f"cache: kept {len(c['skipped_leased'])} files leased by a running build")
-    from .batch import ProjectLock
+    from video_engine.batch import ProjectLock
     argv = [x for x in a.argv if x != "--resume"]
     with ProjectLock(p):   # one build per project at a time (shared with `engine batch`)
         r = build.build(p, use_cache=True, run_label=a.label, ai_qa=_ai_qa(a, p), keep_workdir=a.keep_workdir,
@@ -135,7 +136,7 @@ def _print_cache(c: dict) -> None:
 
 
 def _preview_one(s, tl, p: Path, t_sec: float, out: Path, timeout: int | None) -> Path:
-    from . import hyperframes, native
+    from video_engine.render import hyperframes as hyperframes, native as native
     out.parent.mkdir(parents=True, exist_ok=True)
     fi = round(t_sec * tl.settings.fps)
     if s.engine_type == "NATIVE_RUST_FFMPEG":
@@ -157,7 +158,7 @@ def _preview_one(s, tl, p: Path, t_sec: float, out: Path, timeout: int | None) -
 
 
 def cmd_preview(a) -> int:
-    from . import sheet
+    from video_engine.render import sheet as sheet
     p, tl = _load(a.project)
     if getattr(a, "all", False):
         if a.seg is not None or a.time is not None:
@@ -190,8 +191,8 @@ def cmd_preview(a) -> int:
 
 
 def cmd_draft_preview(a) -> int:
-    from . import draft_build
-    from .batch import ProjectLock
+    from video_engine import draft_build
+    from video_engine.batch import ProjectLock
     p = Path(a.project).resolve()
     out = Path(a.out) if a.out else None
     with ProjectLock(p):
@@ -203,7 +204,7 @@ def cmd_draft_preview(a) -> int:
 
 
 def cmd_audio(a) -> int:
-    from . import audio
+    from video_engine.sound import audio as audio
     p, tl = _load(a.project)
     words, src = audio.captions_for(tl, p, use_cache=not a.no_cache)
     print(f"{len(words)} caption words from {src}")
@@ -213,7 +214,7 @@ def cmd_audio(a) -> int:
 
 
 def cmd_words(a) -> int:
-    from . import audio
+    from video_engine.sound import audio as audio
     p, tl = _load(a.project)
     old = [(w.word, w.start_frame, w.end_frame) for w in tl.captions]
     fresh, meta = audio.pin_captions(p, use_cache=not a.retranscribe)
@@ -229,7 +230,7 @@ def cmd_words(a) -> int:
 
 
 def cmd_deliver(a) -> int:
-    from . import deliver
+    from video_engine import deliver
     if not a.dry_run and not a.export:
         print("error: pass --dry-run (print the plan) or --export DIR (write the upload package)", file=sys.stderr)
         raise SystemExit(2)
@@ -244,7 +245,7 @@ def cmd_deliver(a) -> int:
 
 
 def cmd_director(a) -> int:
-    from .ai import tasks
+    from video_engine.ai import tasks
     src = Path(a.src)
     prov = _provider(a, Path(a.bundle_root) if a.bundle_root else config.SHM_ROOT / AI_REQUEST_DIR)
     if hasattr(prov, "reset"):
@@ -260,7 +261,7 @@ def cmd_director(a) -> int:
 
 
 def cmd_pauses(a) -> int:
-    from . import pauses
+    from video_engine.sound import pauses as pauses
     p, tl = _load(a.project)
     if not tl.audio_chain.voiceover_path:
         raise EngineError("audio_chain.voiceover_path is empty")
@@ -280,7 +281,7 @@ def cmd_pauses(a) -> int:
 
 
 def cmd_draft(a) -> int:
-    from . import draft
+    from video_engine import draft as draft
     p = Path(a.project).resolve()
     out = Path(a.out) if a.out else (p / "master_timeline.json" if a.force else None)
     if out is not None and out.name == "master_timeline.json" and out.exists() and not a.force:
@@ -318,7 +319,7 @@ def cmd_draft(a) -> int:
 
 
 def cmd_taste(a) -> int:
-    from . import director, profiles, taste_lint
+    from video_engine import director, profiles as profiles, taste_lint
     if bool(a.like) + bool(a.reject) > 1:
         raise EngineError("pass one of --like / --reject")
     if a.lint and (a.like or a.reject or a.check):
@@ -350,7 +351,7 @@ def cmd_taste(a) -> int:
 
 def cmd_profile(a) -> int:
     """The effective profile after every layer, and with --origin the file that set each key."""
-    from . import profiles
+    from video_engine import profiles as profiles
     if not a.name:
         for n in profiles.names():
             p = profiles.load(n)
@@ -385,9 +386,9 @@ def cmd_profile(a) -> int:
 def cmd_schema(a) -> int:
     """JSON Schema of a data contract, generated from the Pydantic model that validates it."""
     if a.contract == "timeline":
-        from .timeline import Timeline as model
+        from video_engine.timeline import Timeline as model
     else:
-        from .profiles import ProfileData as model
+        from video_engine.profiles import ProfileData as model
     text = json.dumps(model.model_json_schema(by_alias=True), indent=2, ensure_ascii=False) + "\n"
     if a.out:
         Path(a.out).write_text(text)
@@ -399,7 +400,7 @@ def cmd_schema(a) -> int:
 
 def _gate_level(gid: str) -> str:
     """Classify a gate ID into KERNEL (blocking integrity), LINT (advisory/style), or ERROR (technical default)."""
-    from . import gate_registry as _reg
+    from video_engine.gates import registry as _reg
     if gid in _reg.KERNEL_GATE_IDS:
         return "KERNEL"
     if gid in _reg.LINT_GATE_IDS:
@@ -408,8 +409,9 @@ def _gate_level(gid: str) -> str:
 
 
 def cmd_gates(a) -> int:
-    from . import gate_tools, profiles
-    from . import gate_registry as reg
+    from video_engine.gates import tools as gate_tools
+    from video_engine import profiles as profiles
+    from video_engine.gates import registry as reg
     if a.stats:
         if a.profile or a.format == "md" or a.id:
             raise EngineError("--stats takes report paths only; --profile, gate ids and --format md do not apply")
@@ -442,7 +444,7 @@ def cmd_gates(a) -> int:
         print(f"  KERNEL: {', '.join(reg.KERNEL_GATE_IDS)}")
         print(f"  LINT: {', '.join(reg.LINT_GATE_IDS)}")
         if prof is not None and not a.id:
-            from . import gate_conformance
+            from video_engine.gates import conformance as gate_conformance
             issues = gate_conformance.check_profile(prof)
             req = sorted(set(prof.gates.require or []))
             print(f"profile {prof.name!r}: KERNEL vs LINT")
@@ -457,11 +459,11 @@ def cmd_gates(a) -> int:
 
 
 def cmd_import_shots(a) -> int:
-    from . import importer
+    from video_engine import importer
     subs = _pairs(a.substitute, "--substitute")
     settings = {k: v for k, v in {"project_number": a.project_number, "topic": a.topic, "date": a.date}.items() if v}
     if a.format:
-        from .units import FORMATS
+        from video_engine.core.units import FORMATS
         settings["width"], settings["height"] = FORMATS[a.format]
     r = importer.import_shots(Path(a.csv), Path(a.dst), [Path(d) for d in a.search], credits_txt=Path(a.credits),
                               voiceover=Path(a.voiceover), manifest=Path(a.manifest) if a.manifest else None,
@@ -472,7 +474,8 @@ def cmd_import_shots(a) -> int:
 
 
 def cmd_sheet(a) -> int:
-    from . import sheet, timeline
+    from video_engine.render import sheet as sheet
+    from video_engine import timeline as timeline
     p = Path(a.project)
     out = sheet.make(timeline.load(p), Path(a.video) if a.video else p / "out" / "final.mp4",
                      Path(a.out) if a.out else p / "out" / "sheet.png", cols=a.cols)
@@ -481,9 +484,9 @@ def cmd_sheet(a) -> int:
 
 
 def cmd_assets(a) -> int:
-    from . import library
+    from video_engine import library
     if a.action == "add":
-        from . import assets
+        from video_engine import assets
         if not a.path or not a.licence or not a.source:
             raise EngineError("assets add requires PATH, --licence and --source")
         result = assets.register(Path(a.path), licence=a.licence, source=a.source, source_url=a.source_url or "",
@@ -492,7 +495,7 @@ def cmd_assets(a) -> int:
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
     if a.action == "backfill":
-        from . import assets
+        from video_engine import assets
         print(json.dumps(assets.backfill(dry_run=a.dry_run), indent=2, ensure_ascii=False))
         return 0
     if a.copy:
@@ -507,7 +510,7 @@ def cmd_assets(a) -> int:
     if a.query and not a.open_assets and not a.stock_root:
         from dataclasses import asdict
 
-        from . import assets
+        from video_engine import assets
         aliases = {"broll": "video", "photos": "image", "icons": "icon", "textures": "texture",
                    "maps": "map", "models": "model", "fonts": "font"}
         kind = aliases.get(a.kind, a.kind)
@@ -532,7 +535,7 @@ def cmd_assets(a) -> int:
 
 
 def cmd_block(a) -> int:
-    from . import blocks
+    from video_engine import blocks
     kw = {"width": a.width, "height": a.height}
     if a.colour:
         kw["colour"] = a.colour
@@ -544,7 +547,7 @@ def cmd_block(a) -> int:
 
 
 def cmd_batch(a) -> int:
-    from . import batch
+    from video_engine import batch
     projects = [Path(x) for x in a.project]
     if a.queue:
         projects = [*batch.load_queue(Path(a.queue)), *projects]
@@ -557,8 +560,8 @@ def cmd_batch(a) -> int:
 
 
 def cmd_cache(a) -> int:
-    from . import cache_prune
-    from .sound import pins
+    from video_engine import cache_prune
+    from video_engine.sound import pins
     modes = [name for name in ("prune", "pin", "unpin") if getattr(a, name)]
     if len(modes) != 1:
         print("error: cache needs exactly one of --prune, --pin, --unpin", file=sys.stderr)
@@ -583,7 +586,7 @@ def cmd_cache(a) -> int:
 
 
 def cmd_doctor(a) -> int:
-    from . import doctor
+    from video_engine import doctor
     res = doctor.install() if a.install else doctor.check()
     for c in res:
         print(c.line())
@@ -595,7 +598,8 @@ def cmd_doctor(a) -> int:
 
 def cmd_toolchain(a) -> int:
     """show / list / use SPEC: which HyperFrames the build renders with (hfversion.py)."""
-    from . import doctor, hfversion
+    from video_engine import doctor
+    from video_engine.core import hfversion as hfversion
     if a.action == "use":
         if not a.spec:
             print("usage: engine toolchain use auto|pinned|latest|system|X.Y.Z", file=sys.stderr)
@@ -626,7 +630,7 @@ def cmd_toolchain(a) -> int:
 
 
 def _clean_project_ids(projects: list[str]) -> set[str]:
-    from . import timeline
+    from video_engine import timeline as timeline
     ids = set()
     for pr in projects:
         d = Path(pr).resolve()
@@ -656,7 +660,8 @@ def cmd_clean(a) -> int:
             removed.append(str(d))
     kept = []
     if a.cache:
-        from . import cache, cache_prune
+        from video_engine.core import cache as cache
+        from video_engine import cache_prune
         if a.project:
             root = Path(config.CACHE_DIR)
             with cache._mu:
@@ -934,11 +939,11 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     from pydantic import ValidationError
 
-    from .ai import AwaitingAgent
+    from video_engine.ai import AwaitingAgent
     argv = sys.argv[1:] if argv is None else list(argv)
     a = parser().parse_args(argv)
     a.argv = argv
-    from . import cache
+    from video_engine.core import cache as cache
     try:
         with cache.session():     # cache files this command resolves stay leased until it returns or raises
             return a.fn(a)

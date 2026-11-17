@@ -18,8 +18,8 @@ from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from . import config
-from .util import EngineError
+from video_engine.core import config as config
+from video_engine.core.util import EngineError
 
 OPEN_ASSETS = Path(os.environ.get("VIDEO_ENGINE_OPEN_ASSETS", config.WORKSPACE / "open-assets"))
 STOCK_DIRS = tuple(Path(x) for x in os.environ.get(

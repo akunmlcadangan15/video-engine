@@ -7,14 +7,15 @@ from contextvars import ContextVar
 from itertools import pairwise
 from pathlib import Path
 
-import hypoverum_core_rs as core
+from video_engine.core.runtime import core
 
-from .. import hyperframes, profiles, props
-from ..assets import flag_for
-from ..licence import EPIDEMIC_URL, OWN_LICENCES, epidemic_licence, epidemic_url, licence_allowed, norm_licence
-from ..timeline import HYPERFRAMES, NATIVE, CaptionWord, Timeline
-from ..util import EngineError
-from .core import Finding
+from video_engine.render import hyperframes as hyperframes, props as props
+from video_engine import profiles as profiles
+from video_engine.assets import flag_for
+from video_engine.licence import EPIDEMIC_URL, OWN_LICENCES, epidemic_licence, epidemic_url, licence_allowed, norm_licence
+from video_engine.timeline import HYPERFRAMES, NATIVE, CaptionWord, Timeline
+from video_engine.core.util import EngineError
+from video_engine.gates.core import Finding
 
 URL_RE = re.compile(r"^https?://[^\s/]+\.[^\s]+$")
 REPEAT_GAP_S = 1.0
@@ -78,13 +79,13 @@ def t02_integrity(tl: Timeline, project_dir: Path) -> list[Finding]:
             if s.is_still and s.camera_move is None:
                 out.append(Finding("T02", "fail", "still image segment needs camera_move", s.seg_index))
         elif s.engine_type == HYPERFRAMES:
-            from ..hyperframes import HF_PRESETS
+            from video_engine.render.hyperframes import HF_PRESETS
             sc = s.gsap_scene_config
             assert sc is not None
             if not (project_dir / sc.map_asset).is_file():
                 out.append(Finding("T02", "fail", f"map_asset not found: {sc.map_asset}", s.seg_index))
             if sc.globe and sc.globe.detail_tiles:
-                from ..globe import tile_files
+                from video_engine.render.globe import tile_files
                 try:
                     tile_files(project_dir / sc.globe.detail_tiles)
                 except EngineError as e:
@@ -170,7 +171,7 @@ def _proven_epidemic(project_dir: Path, path: str | None) -> dict | None:
     audio = project_dir / path
     if not audio.is_file():
         return None
-    from ..sound import provenance
+    from video_engine.sound import provenance
     return provenance.for_file(audio, project_dir)
 
 
@@ -295,7 +296,7 @@ def w01_pinned_words(tl: Timeline, project_dir: Path) -> list[Finding]:
         return [Finding("W01", "fail", "captions_meta is present but audio_chain.voiceover_path is missing or the file "
                                        "does not exist; restore the voiceover, then run "
                                        f"`engine words {shlex.quote(str(project_dir))}`; never edit captions_meta by hand")]
-    from ..audio import expected_meta
+    from video_engine.sound.audio import expected_meta
     exp = expected_meta(tl, project_dir)
     names = {"voiceover_blake3": "voiceover audio", "stt_model": "stt.model", "language": "language",
              "keyterms_blake3": "stt.keyterms", "fixes_blake3": "caption_fixes", "fps": "settings.fps"}
@@ -317,7 +318,7 @@ def pins_stale(tl: Timeline, project_dir: Path) -> bool:
 def o01_overlays(tl: Timeline) -> list[Finding]:
     """O01: every drawn overlay fits its text in its box, sits in the safe area, has a valid frame range and does not
     overlap another drawn overlay of the same segment while both are visible."""
-    from .. import overlays
+    from video_engine.render import overlays as overlays
     out, n = [], 0
     for s in tl.segments:
         n += len(overlays.drawn(s))
@@ -333,7 +334,7 @@ def o01_overlays(tl: Timeline) -> list[Finding]:
 def u01_frame_aspect(tl: Timeline) -> list[Finding]:
     """U01 (advisory): the frame aspect differs from its reference canvas (9:16 portrait, 16:9 landscape) by more
     than units.ASPECT_TOL, so profile lengths and positions are scaled non-uniformly."""
-    from ..units import ASPECT_TOL, units
+    from video_engine.core.units import ASPECT_TOL, units
     u = units(tl)
     if u.uniform():
         return []

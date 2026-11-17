@@ -14,9 +14,9 @@ import os
 import tomllib
 from pathlib import Path
 
-from .. import config
-from ..util import EngineError
-from .base import AIResult, AwaitingAgent, Image, Media, Part, Provider, Text  # noqa: F401
+from video_engine.core import config as config
+from video_engine.core.util import EngineError
+from video_engine.ai.base import AIResult, AwaitingAgent, Image, Media, Part, Provider, Text  # noqa: F401
 
 SESSION = "agent"                 # no provider selected: the model that runs the engine answers (file handoff)
 BUILTIN = ("agent", "gemini")
@@ -24,8 +24,8 @@ GEMINI_KEYS = ("models", "qa_models")
 ENV_PROVIDER = "VIDEO_ENGINE_AI_PROVIDER"
 ENV_CONFIG = "VIDEO_ENGINE_AI_CONFIG"
 ENV_MODEL = "VIDEO_ENGINE_AI_MODEL"   # agent provider: the name of the model that answers, written to the reports
-STT_DEFAULTS = {"provider": "xai", "url": "https://api.x.ai/v1/stt", "model": "grok-voice-transcribe-2.0",
-                "api_key_env": "XAI_API_KEY", "timeout_s": 300}
+from video_engine.core.stt_defaults import STT_DEFAULTS
+
 
 
 def config_path() -> Path:
@@ -56,7 +56,7 @@ def resolve(flag: str | None, cfg: dict | None = None) -> str:
 
 
 def _openai_provider(name: str, cfg: dict, post=None):
-    from .openai_compat import Entry, OpenAICompatProvider
+    from video_engine.ai.openai_compat import Entry, OpenAICompatProvider
     return OpenAICompatProvider(Entry.from_config(name, cfg["providers"][name]), post=post)
 
 
@@ -67,7 +67,7 @@ def get(flag: str | None = None, *, root: Path | None = None, resume_cmd: str = 
     cfg = load_config()
     name = resolve(flag, cfg)
     if name == "gemini":
-        from .gemini import GeminiProvider
+        from video_engine.ai.gemini import GeminiProvider
         gemini_cfg = cfg.get("gemini", {})
         if not isinstance(gemini_cfg, dict):
             raise EngineError(f"{config_path()}: [gemini] must be a table")
@@ -79,7 +79,7 @@ def get(flag: str | None = None, *, root: Path | None = None, resume_cmd: str = 
         cfg_qa_models = gemini_cfg.get("qa_models") or cfg_models
         return GeminiProvider(client=client, models=cfg_models, qa_models=cfg_qa_models)
     if name == "agent":
-        from .agent import MODEL_LABEL, AgentProvider
+        from video_engine.ai.agent import MODEL_LABEL, AgentProvider
         if root is None:
             raise EngineError("agent provider needs a bundle root")
         label = os.environ.get(ENV_MODEL) or cfg.get("agent", {}).get("model_label") or MODEL_LABEL

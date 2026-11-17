@@ -6,12 +6,12 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import hypoverum_core_rs as core
+from video_engine.core.runtime import core
 
-from .. import native
-from ..timeline import NATIVE, SegmentIntent, Timeline
-from ..util import EngineError, file_identity, memo_put
-from .core import Finding
+from video_engine.render import native as native
+from video_engine.timeline import NATIVE, SegmentIntent, Timeline
+from video_engine.core.util import EngineError, file_identity, memo_put
+from video_engine.gates.core import Finding
 
 SNAP_DIV = 4                  # snapshot size = output size / SNAP_DIV
 EMPTY_STD = 6.0               # a third is empty when luma std < EMPTY_STD and edge detail < EMPTY_DETAIL
@@ -84,8 +84,9 @@ def r65_caption_contrast(tl: Timeline, paths: dict[int, str], events: list[tuple
     (percentile CAPTION_BG_PCT), a dark one against the dark end; the soft shadow is not counted."""
     import numpy as np
     from PIL import Image
-    from .. import legibility, profiles
-    from .layer2 import caption_box
+    from video_engine.layout import legibility as legibility
+    from video_engine import profiles as profiles
+    from video_engine.gates.layer2 import caption_box
     st = profiles.caption_style(tl)
     if st.get("box_bg") is True:
         return [Finding("R65", "pass", "captions sit on a box")]

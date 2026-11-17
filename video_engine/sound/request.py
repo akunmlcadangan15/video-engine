@@ -16,11 +16,11 @@ import shlex
 import shutil
 from pathlib import Path
 
-from .. import profiles
-from ..ai.base import AwaitingAgent, schema_errors
-from ..util import EngineError, blake3_json, probe
-from . import AUDIO_EXTS, EPIDEMIC, required_source
-from . import cache
+from video_engine import profiles as profiles
+from video_engine.ai.base import AwaitingAgent, schema_errors
+from video_engine.core.util import EngineError, blake3_json, probe
+from video_engine.sound import AUDIO_EXTS, EPIDEMIC, required_source
+from video_engine.sound import cache
 
 BUNDLE = Path("out") / "sound_request"
 ITEM_KEYS = ("slot", "file", "source", "id", "title", "artist", "duration_ms")
@@ -157,7 +157,7 @@ def ensure_sounds(tl, project_dir: Path, resume: bool = False, resume_cmd: str |
 
 def resolved(tl, project_dir: Path) -> list[cache.ResolvedSound]:
     """What the mixer resolves for the timeline: one file per SFX kind used, then the music (if any)."""
-    from .. import mixer, sfx
+    from video_engine.sound import mixer as mixer, sfx as sfx
     prof = profiles.of(tl)
     out = [cache.resolve(k, prof) for k in sfx.kinds_used(tl)]
     m = mixer.resolve_music(tl, Path(project_dir), prof) if prof.sound is not None else None

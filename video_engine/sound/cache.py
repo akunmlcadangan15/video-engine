@@ -17,12 +17,11 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from .. import cache as engine_cache, config
-from ..licence import EPIDEMIC_LICENCE, EPIDEMIC_URL
-from ..timeline import MusicBrief
-from ..util import EngineError, blake3_files, blake3_json
-from . import (AUDIO_EXTS, EPIDEMIC, LOCAL_TEST, PROVENANCE_KEYS, SFX_KINDS, SOURCES, generated_tones_allowed,
-               required_source)
+from video_engine.core import cache as engine_cache, config as config
+from video_engine.licence import EPIDEMIC_LICENCE, EPIDEMIC_URL
+from video_engine.timeline import MusicBrief
+from video_engine.core.util import EngineError, blake3_files, blake3_json
+from video_engine.sound import AUDIO_EXTS, EPIDEMIC, LOCAL_TEST, PROVENANCE_KEYS, SFX_KINDS, SOURCES, generated_tones_allowed, required_source
 CREDITS_HEADER = "Audio (Epidemic Sound)"
 
 
@@ -167,7 +166,7 @@ def resolve(kind: str, profile, *, allow_generated: bool | None = None) -> Resol
     if r:
         return r
     if generated_tones_allowed(allow_generated):
-        from .. import mixer
+        from video_engine.sound import mixer as mixer
         t = mixer.local_sfx(kind)
         return ResolvedSound(t.path, t.provenance)
     src = required_source(profile) or EPIDEMIC
@@ -188,7 +187,7 @@ def missing(tl, profile) -> list[dict]:
     when no source has a file for it (SFX then use a cached or generated local-test tone). Without generated tones:
     every SFX kind with no cached file from the configured source (epidemic when none is required), for every kind
     including riser and rumble, plus the music brief when no source has a file for it."""
-    from .. import sfx
+    from video_engine.sound import sfx as sfx
     if profile.sound is None:
         return []
     req = required_source(profile)
@@ -243,7 +242,7 @@ def prune(dry_run: bool = False, cache_dir: Path | None = None) -> dict:
     pinned by a project sound lock (video_engine.sound.pins) are kept and listed in "skipped_leased" and
     "skipped_pinned". Size-based LRU eviction is engine cache.prune(), which also skips pins.
     cache_dir: engine cache root (default config.CACHE_DIR); paths are reported relative to <cache_dir>/sound."""
-    from . import pins
+    from video_engine.sound import pins
     base = Path(cache_dir) if cache_dir is not None else config.CACHE_DIR
     r = base / "sound"
     with engine_cache.locked(base, exclusive=True):

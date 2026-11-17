@@ -179,7 +179,7 @@ Prints the JSON Schema of `master_timeline.json` or of a profile, generated from
 
 ## `engine gates [ID ...] [--profile NAME] [--layer L] [--kind technical|style] [--format table|json|md] [--stats PATH ...]`
 
-Read-only. Lists the gates of the registry (`video_engine/gate_registry.py`): id, class, layer, name and rule.
+Read-only. Lists the gates of the registry (`video_engine/gates/registry.py`): id, class, layer, name and rule.
 Gate ids as arguments print the full entry of each gate.
 `--profile NAME` adds what a failing gate does under that channel profile: `off` (its table is absent), `warns`, `blocks`, `on request` (`AIQA`, only with `--ai-qa`) or `meta`.
 `--layer` and `--kind` filter the list; `--format json` prints machine-readable rows.

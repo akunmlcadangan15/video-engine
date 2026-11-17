@@ -17,9 +17,9 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import base
-from .base import AIResult, Image, Media, Part, Text
-from ..util import EngineError, wav_16k_mono
+from video_engine.ai import base
+from video_engine.ai.base import AIResult, Image, Media, Part, Text
+from video_engine.core.util import EngineError, wav_16k_mono
 
 
 @dataclass

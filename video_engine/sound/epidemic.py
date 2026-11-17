@@ -15,7 +15,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-from . import SFX_KINDS
+from video_engine.sound import SFX_KINDS
 
 RETRY_DEFAULT_S = 5
 MAX_RETRIES = 3

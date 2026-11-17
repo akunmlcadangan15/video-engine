@@ -65,7 +65,7 @@ A session removes only its own root, so simultaneous sessions do not interfere (
 ## Conventions
 
 - Every gate has labelled GOOD and BAD cases (`test_good_...`, `test_bad_...`).
-- `tests/test_gate_registry.py` fails when a gate id emitted by the code is not in `video_engine/gate_registry.py`, when a registered gate is emitted nowhere, or when the generated index in docs/GATES.md is stale.
+- `tests/test_gate_registry.py` fails when a gate id emitted by the code is not in `video_engine/gates/registry.py`, when a registered gate is emitted nowhere, or when the generated index in docs/GATES.md is stale.
 - Caption against pin: `tests/test_gates_layer2.py::test_R63_bad_caption_too_close_to_pusat_kota_pin` and `..._good_caption_auto_placed_away_from_pin` cover the "Pusat Kota" pin case; `test_R63_dom_demo_end_to_end` runs the real DOM probe on a synthetic project with and without automatic placement.
 - AI tests use mocks (Gemini client, OpenAI-compatible HTTP post) and agent bundles on disk; they use no network.
 - A change to a keyed module must keep the cache-key tests (`tests/test_stage_keys.py`, `tests/test_code_hash.py`) true: a change of behaviour changes the key, a comment does not.

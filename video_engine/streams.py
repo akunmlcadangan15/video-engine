@@ -21,8 +21,8 @@ import tempfile
 from functools import lru_cache
 from pathlib import Path
 
-from . import config
-from .util import EngineError, run
+from video_engine.core import config as config
+from video_engine.core.util import EngineError, run
 
 VIDEO_KEYS = ("codec_name", "codec_tag_string", "profile", "level", "width", "height", "pix_fmt",
               "sample_aspect_ratio", "r_frame_rate", "avg_frame_rate", "time_base", "field_order", "color_range",

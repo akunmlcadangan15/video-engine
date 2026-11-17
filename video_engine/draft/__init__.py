@@ -19,20 +19,22 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
-import hypoverum_core_rs as core
+from video_engine.core.runtime import core
 from pydantic import ValidationError
 
-from . import ai
-from .ai import tasks
-from .ai.base import AwaitingAgent, Image, Media, Text
-from . import assets, audio, config, draft_scene, geodata, pauses, profiles, recipes
-from .hyperframes import HF_PRESETS
-from .licence import is_licence_field
-from .timeline import (HYPERFRAMES, IMAGE_EXT, NATIVE, ROLL_MAX, AudioChain, CaptionWord, CaptionsMeta, Settings, Timeline,
-                       sec_to_frame)
-from .util import EngineError, frame_jpeg, image_jpeg, video_info
-from . import framing
-from .units import units
+from video_engine import ai
+from video_engine.ai import tasks
+from video_engine.ai.base import AwaitingAgent, Image, Media, Text
+from video_engine import assets, geodata, profiles as profiles
+from video_engine.sound import audio as audio, pauses as pauses
+from video_engine.core import config as config
+from video_engine.draft import scene as draft_scene, recipes as recipes
+from video_engine.render.hyperframes import HF_PRESETS
+from video_engine.licence import is_licence_field
+from video_engine.timeline import HYPERFRAMES, IMAGE_EXT, NATIVE, ROLL_MAX, AudioChain, CaptionWord, CaptionsMeta, Settings, Timeline, sec_to_frame
+from video_engine.core.util import EngineError, frame_jpeg, image_jpeg, video_info
+from video_engine.layout import framing as framing
+from video_engine.core.units import units
 
 LANGUAGE_NAMES = {"id": "Indonesian", "en": "English", "ms": "Malay", "es": "Spanish", "pt": "Portuguese",
                   "fr": "French", "de": "German", "ar": "Arabic", "hi": "Hindi", "ja": "Japanese", "ko": "Korean",
@@ -197,7 +199,7 @@ def inventory(pdir: Path, credit_lines: list[CreditLine], exclude: set[str], exi
             continue
         try:
             if ext in IMAGE_EXT:
-                from .native import image_size
+                from video_engine.render.native import image_size
                 w, h = image_size(p)
                 a = AssetInfo(_asset_id(p, taken), rel, "image", w, h)
             else:
@@ -234,7 +236,7 @@ def collect(pdir: Path, voiceover: str | None = None, script: str | None = None,
     pdir = pdir.resolve()
     existing = None
     if (pdir / "master_timeline.json").is_file():
-        from . import timeline
+        from video_engine import timeline as timeline
         existing = timeline.load(pdir)
     profile = profile or (existing.profile if existing else None)
     settings = existing.settings if existing else Settings()
@@ -315,7 +317,7 @@ def _words_text(inp: Inputs) -> str:
 
 
 def prompt(inp: Inputs) -> str:
-    from . import director as dr
+    from video_engine import director as dr
     S, fps = inp.settings, inp.settings.fps
     assets = "\n".join(
         f"- {a.id}: {a.kind} {a.width}x{a.height}" + (f", {a.duration_s:.1f}s" if a.duration_s else "")
@@ -665,7 +667,7 @@ def _existing_credit(inp: Inputs, aid: str) -> dict | None:
     p = inp.pdir / "master_timeline.json"
     if not p.is_file():
         return None
-    from . import timeline
+    from video_engine import timeline as timeline
     c = timeline.load(inp.pdir).credit_for(ref=aid)
     return c.model_dump(exclude_none=True) if c else None
 
@@ -674,8 +676,8 @@ def _existing_credit(inp: Inputs, aid: str) -> dict | None:
 def check(tl: Timeline, pdir: Path, dom: bool = True):
     """Pre-flight gates as the build runs them: open-asset credits (registry rows, e.g. flag-icons) count as listed,
     like the build's ensure_credits step (EXTRA_CREDIT_URLS)."""
-    from .gates import run_preflight
-    from .gates.layer1 import EXTRA_CREDIT_URLS
+    from video_engine.gates import run_preflight
+    from video_engine.gates.layer1 import EXTRA_CREDIT_URLS
     token = EXTRA_CREDIT_URLS.set(tuple(c.source_url for c in tl.credits_manifest if (c.path or "").startswith("open:")))
     try:
         return run_preflight(tl, pdir, tl.captions, dom=dom)
@@ -731,7 +733,7 @@ def draft(pdir: Path, *, out: Path | None = None, provider=None, max_repairs: in
     (<project>/draft/storyboards.json). review: frame review + at most `review_rounds` (1-2) revisions, versions kept
     as <project>/draft/timeline.v<N>.json. frame_sampler: director.sample_frames replacement (tests). Raises
     AwaitingAgent when the agent provider wrote a request bundle."""
-    from . import director as dr
+    from video_engine import director as dr
     if review_rounds not in (1, 2):
         raise EngineError("review_rounds must be 1 or 2")
     t0 = time.perf_counter()
@@ -823,12 +825,12 @@ def draft(pdir: Path, *, out: Path | None = None, provider=None, max_repairs: in
             _finish(tl, rep)
             if rep is not None:
                 report["fixes"] = rep.fixes
-        from .gates.severity import not_checked, unchecked
+        from video_engine.gates.severity import not_checked, unchecked
         if rep is not None:
             report["not_checked"] = not_checked(rep.findings, tl)
             if not review:
                 report["not_checked"].append(unchecked(None, "not_run", "AI frame review not requested (--review)"))
-        from . import timeline
+        from video_engine import timeline as timeline
         target = out if ok else out.with_name(out.stem + ".rejected.json")
         timeline.save(tl, target)
         path = target
@@ -848,8 +850,8 @@ def _review(provider, inp, pdir, ddir, tl, rep, why, data, base, sch, files, dom
     a revision that fails the gates is recorded and the previous version stays. The reviewer gets a fresh eye: frames,
     the timed narration and a brief per segment, not the timeline or the builder's reasons; a finding that cites no
     sent frame or no segment is dropped and recorded."""
-    from . import director as dr
-    from . import timeline as tlm
+    from video_engine import director as dr
+    from video_engine import timeline as tlm
     ddir.mkdir(exist_ok=True)
     log: list[dict] = []
     report["review"] = log

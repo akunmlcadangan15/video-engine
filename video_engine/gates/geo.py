@@ -12,9 +12,9 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
-from .. import config, projection
-from ..timeline import Timeline
-from .core import Finding
+from video_engine.core import config as config, projection as projection
+from video_engine.timeline import Timeline
+from video_engine.gates.core import Finding
 
 WATER = ("sea", "ocean", "lake", "river", "strait", "bay", "gulf", "channel", "mediterranean", "atlantic",
          "paratethys")
@@ -187,8 +187,8 @@ def on_land(lat: float, lng: float, coast_km: float = 0.0) -> bool | None:
 def run(tl: Timeline, require_land: bool | None = None) -> list[Finding]:
     """G02 findings for every map scene (polygon sanity, pins in their beat region, labels not naming another region,
     geographic pins on land). `require_land` None = profile [gates.geo] value, default warn-only."""
-    from .. import profiles
-    from ..profile_schema import COAST_KM
+    from video_engine import profiles as profiles
+    from video_engine.profiles.schema import COAST_KM
     g = profiles.of(tl).gates.geo
     need_land = bool(g.require_land) if (g is not None and require_land is None) else bool(require_land)
     coast = float(g.coast_km) if g is not None else COAST_KM

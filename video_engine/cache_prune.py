@@ -17,9 +17,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import audio, cache, config, globe, grade, hyperframes, maps, native, props, resources, timeline
-from .sound import cache as sound_cache
-from .timeline import NATIVE
+from video_engine.sound import audio as audio
+from video_engine.core import cache as cache, config as config, resources as resources
+from video_engine.render import globe as globe, grade as grade, hyperframes as hyperframes, maps as maps, native as native, props as props
+from video_engine import timeline as timeline
+from video_engine.sound import cache as sound_cache
+from video_engine.timeline import NATIVE
 
 PRUNE_KINDS = ("words", "segments", "maps", "models", "dom")   # the only entry kinds this prune scans
 DOM_REF = "dom:"   # marker in the referenced set: DOM probe entries whose name starts with this segment key are kept
@@ -98,7 +101,7 @@ def prune(projects: list[Path], cache_dir: Path | None = None, dry_run: bool = F
                 continue
             if not dry_run:
                 f.unlink(missing_ok=True)
-        from .sound import pins
+        from video_engine.sound import pins
         for project in projects:
             pins.pin_project(project, cache_root=root)
         snd = sound_cache.prune(dry_run=dry_run, cache_dir=root)

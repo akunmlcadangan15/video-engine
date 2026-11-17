@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import profiles
-from .core import Finding
+from video_engine import profiles as profiles
+from video_engine.gates.core import Finding
 
 GATE = "A02"
 
@@ -24,7 +24,7 @@ def sources(tl, mix, project_dir=None) -> list[tuple[str, dict]]:
         if project_dir is not None:
             path = Path(project_dir) / bgm
             if path.is_file():
-                from ..sound import provenance
+                from video_engine.sound import provenance
                 found = provenance.for_file(path, Path(project_dir))
                 if found:
                     prov = found

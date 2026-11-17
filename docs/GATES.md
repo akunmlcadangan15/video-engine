@@ -14,7 +14,7 @@ Most gates run before any segment is rendered, because a failed render costs sev
 ## 3-level model: error / fix / lint
 
 - Pre-flight target: < 5 s in total (stage times: `--timing-tsv`).
-- Three levels (`video_engine/gate_registry.py`):
+- Three levels (`video_engine/gates/registry.py`):
   - **error** — a kernel gate failed. The build stops and `out/final.mp4` is not published (see [Publish with warnings](BUILD.md#publish-with-warnings)).
   - **fix** — the finding was repaired automatically (camera intensity, caption slot). The fix is recorded in `build_report.json` (`preflight_fixes`) and the build continues.
   - **lint** — a non-kernel gate failed. The finding is reported as a warning; the build publishes with warnings. A lint gate blocks only when it is explicitly listed in `[gates] require` (profile) or `gates.require` (project).
@@ -34,7 +34,7 @@ Any kernel fail stops `build`; a failed run keeps the last published `out/final.
 
 ### Lint list (warn by default, 51 gates)
 
-Lint gates never block, except when explicitly required. The list (`video_engine/gate_registry.py`, `LINT_GATE_IDS`):
+Lint gates never block, except when explicitly required. The list (`video_engine/gates/registry.py`, `LINT_GATE_IDS`):
 
 - style gates: `R38space`, `H01`, `C01`, `V01`, `N01`, `P01`, `P02`, `P03`, `K01`, `K02`, `C02`, `D01`, `D02`, `S01`, `AS01`, `AS02`, `AS03`, `AS05`, `AS06`
 - layout: `L01`, `L02`, `L03`, `L04`, `L05`, `L06`, `L07`, `L08`, `L09`, `L10`
@@ -92,7 +92,7 @@ The findings of that gate become info, the reason is stored in `build_report.jso
 
 ## Where the list of gates comes from
 
-`video_engine/gate_registry.py` describes every gate once: id, class, layer, name, rule, switch, and whether it is never-advisory or waivable.
+`video_engine/gates/registry.py` describes every gate once: id, class, layer, name, rule, switch, and whether it is never-advisory or waivable.
 `profiles.STYLE_GATE_IDS`, `TECHNICAL_GATE_IDS`, `KNOWN_GATE_IDS` and `NEVER_ADVISORY` are derived from it.
 `KERNEL_GATE_IDS` (8) and `LINT_GATE_IDS` (51) define the 3-level severity classification: `engine gates` prints **KERNEL (error)** vs **LINT** per gate.
 `engine gates` prints it; `engine gates --profile NAME` shows what each gate does under a profile; `engine gates --stats PATH ...` counts findings in build reports.

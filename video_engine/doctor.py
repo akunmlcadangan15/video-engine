@@ -22,8 +22,8 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import config, platform_info
-from .util import EngineError
+from video_engine.core import config as config, platform_info as platform_info
+from video_engine.core.util import EngineError
 
 
 def pins(vendor: Path | None = None) -> dict:
@@ -127,7 +127,7 @@ def check(vendor: Path | None = None, run_binaries: bool = True, *, machine: boo
         out.append(check_ffmpeg())
         out.append(check_ffmpeg_version())
     if machine:
-        from . import hfversion
+        from video_engine.core import hfversion as hfversion
         policy = hfversion.setting(vendor, environ)[0]
         out = _merge_machine_discovery(out, vendor, environ=environ, home=home, system=system, confine=confine,
                                        warn_if_not_pin=(policy == "pinned"))
@@ -148,7 +148,7 @@ def check(vendor: Path | None = None, run_binaries: bool = True, *, machine: boo
 def check_active(vendor: Path | None = None, environ: dict | None = None) -> Check:
     """The HyperFrames the build renders with (hfversion.resolve): FAIL when not installed (or the setting is
     invalid). WARN only when the policy is `pinned` and the installed version is not the pin."""
-    from . import hfversion
+    from video_engine.core import hfversion as hfversion
     vendor = vendor or config.VENDOR
     pin = pins(vendor)["npm"]["hyperframes"]
     try:
@@ -189,7 +189,7 @@ def check_chrome_libs(binary: Path | None) -> Check:
     A Mach-O binary (macOS) and a missing binary do not fail this line: the chrome check
     already covers a missing file, and ldd does not apply off Linux.
     """
-    from .chrome_probe import chrome_libs_status
+    from video_engine.render.chrome_probe import chrome_libs_status
     ok, got, warn = chrome_libs_status(binary)
     return Check("chrome-libs", ok, "ldd clean", got, warn=warn)
 
@@ -291,7 +291,7 @@ def install_chrome(vendor: Path, p: dict, tmp: Path) -> None:
 def install(vendor: Path | None = None, tmp: Path | None = None, *, latest: bool | None = None) -> list[Check]:
     """Install only the components whose check fails. Default (`latest=True`, the `auto` policy): newest
     releases into the user toolchain directory. `latest=False` or the `pinned` policy: lockfile pins into vendor/."""
-    from . import hfversion
+    from video_engine.core import hfversion as hfversion
     vendor = vendor or config.VENDOR
     platform_info.platform_key()   # unsupported platform: EngineError before anything is downloaded
     tmp = tmp or config.workdir("doctor")
@@ -307,7 +307,7 @@ def install(vendor: Path | None = None, tmp: Path | None = None, *, latest: bool
         install_npm(vendor, tmp)
     if not status["chrome"]:
         install_chrome(vendor, p, tmp)
-    from . import hfversion
+    from video_engine.core import hfversion as hfversion
     try:
         a = hfversion.resolve(vendor=vendor)
         if a.source == "vendor" and not a.installed:
@@ -370,7 +370,7 @@ def install_latest_node(dest: Path, tmp: Path, key: str | None = None) -> Path:
 
 def _any_npm(vendor: Path, tmp: Path) -> tuple[Path, Path, dict]:
     """(node, npm, env) from PATH, the user toolchain, or vendor/node."""
-    from . import discover
+    from video_engine.core import discover as discover
     node_res = discover.resolve_node(vendor=vendor, environ=os.environ)
     node = node_res.path if node_res.found else vendor / "node" / "bin" / "node"
     npm = (node.parent / "npm") if node else None
@@ -431,7 +431,7 @@ def install_latest_chrome(dest: Path, vendor: Path, tmp: Path) -> None:
 def install_latest(vendor: Path | None = None, tmp: Path | None = None,
                    environ: dict | None = None, home: Path | None = None) -> list[Check]:
     """Install the newest release of each missing tool into the user toolchain directory."""
-    from . import discover
+    from video_engine.core import discover as discover
     vendor = vendor or config.VENDOR
     tmp = tmp or config.workdir("doctor")
     env = environ if environ is not None else os.environ
@@ -453,7 +453,7 @@ def install_latest(vendor: Path | None = None, tmp: Path | None = None,
 
 def npm_latest(vendor: Path | None = None, tmp: Path | None = None) -> str:
     """Newest hyperframes version on the npm registry (`npm view hyperframes version`, vendored npm)."""
-    from . import hfversion
+    from video_engine.core import hfversion as hfversion
     vendor = vendor or config.VENDOR
     tmp = tmp or config.workdir("doctor")
     r = subprocess.run([vendor / "node" / "bin" / "npm", "view", "hyperframes", "version"], capture_output=True,
@@ -468,7 +468,7 @@ def install_hf_version(vendor: Path, version: str, tmp: Path) -> Path:
     """Install hyperframes@VERSION (and its own dependencies) into vendor/hf/VERSION with the vendored npm. Not
     lockfile-pinned like vendor/npm. Install scripts are skipped as for vendor/npm (esbuild ships its binary as an
     optional dependency, so no postinstall is needed); the CLI and esbuild binary are checked after the install."""
-    from . import hfversion
+    from video_engine.core import hfversion as hfversion
     version = hfversion.parse_spec(version)
     if version in hfversion.KEYWORDS:
         raise EngineError(f"install_hf_version needs an exact version, got {version!r}")
@@ -512,7 +512,7 @@ def _merge_machine_discovery(out: list[Check], vendor: Path, *, environ: dict | 
                              system: str | None, confine: Path | None, warn_if_not_pin: bool = False) -> list[Check]:
     """If a vendor pin check failed but the portable resolver found the tool, report it as found.
     When `warn_if_not_pin` (the `pinned` policy), a machine hit that is not the vendor pin is a WARN."""
-    from . import discover
+    from video_engine.core import discover as discover
     env = environ if environ is not None else __import__("os").environ
     disc = discover.resolve_all(vendor=vendor, environ=env, system=system, home=home, confine=confine)
     by = {c.name: c for c in out}

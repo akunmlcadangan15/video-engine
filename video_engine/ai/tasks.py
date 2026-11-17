@@ -7,10 +7,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import config
-from ..gates.core import Finding
-from ..util import EngineError
-from .base import AIResult, Image, Media, Part, Provider, Text, schema_errors
+from video_engine.core import config as config
+from video_engine.gates.core import Finding
+from video_engine.core.util import EngineError
+from video_engine.ai.base import AIResult, Image, Media, Part, Provider, Text, schema_errors
 
 PROXY_HEIGHT = 360
 PROXY_FPS = 5
@@ -19,7 +19,7 @@ DIRECTOR_FRAMES = 8
 
 def make_proxy(src: Path, out: Path, start_s: float = 0.0, seconds: float | None = 5.0) -> Path:
     """360p 5 fps H.264 proxy, no audio. ffmpeg is spawned by the Rust core (`core.make_proxy`)."""
-    import hypoverum_core_rs as core
+    from video_engine.core.runtime import core
     try:
         return Path(core.make_proxy(src, out, height=PROXY_HEIGHT, fps=PROXY_FPS, start_s=start_s, seconds=seconds,
                                     crf=30, threads=2, ffmpeg=config.FFMPEG))

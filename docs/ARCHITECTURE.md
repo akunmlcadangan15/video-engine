@@ -25,9 +25,9 @@ Fallback is **per key, never per file**. A key the channel does not set takes th
 profile that cannot be read, parsed or validated is an `EngineError` (exit 1): the engine never renders with a
 silently substituted default profile, because the output would look right and be wrong.
 
-Resolution order, lowest first (`video_engine/profiles.py`: `load` -> `_layers` -> `_build` -> `_override`):
+Resolution order, lowest first (`video_engine/profiles/resolver.py`: `load` -> `_layers` -> `_build` -> `_override`):
 
-1. Model field defaults (`video_engine/profile_schema.py`): a key `default.toml` does not write.
+1. Model field defaults (`video_engine/profiles/schema.py`): a key `default.toml` does not write.
 2. `profiles/default.toml`.
 3. The profile's `extends` chain, the base first. For each profile: its `include` files in list order, then its file.
 4. The `[type]` cascade: a base size the channel sets reaches the surfaces the channel left open.
@@ -46,8 +46,9 @@ engine profile geoverum --orientation landscape --origin --table caption_style
 
 ## Profile contract
 
-- Schema: the Pydantic models in `video_engine/profile_schema.py` (`ProfileData` and its tables) plus
-  `LayoutProfile` in `video_engine/layout.py` and `video_engine/layout_models.py`. Every model forbids unknown keys.
+- Schema: the Pydantic models in `video_engine/profiles/schema.py` (`ProfileData` and its tables),
+  `LayoutProfile` in `video_engine/profiles/layout.py`, and `Grade` in `video_engine/profiles/grade.py`.
+  Layout runtime plans live separately in `video_engine/layout/models.py`. Every model forbids unknown keys.
   `engine schema profile` prints the JSON Schema. Key reference: [PROFILES.md](PROFILES.md).
 - `caption_style` and `framing` stay dicts, each with its own check at load: `profiles.check_caption_style` (known
   keys, value types, geometry; it also runs for a timeline's `caption_style`) and `framing.check_overrides`.
@@ -58,7 +59,7 @@ engine profile geoverum --orientation landscape --origin --table caption_style
   `layout`, `print`, `watermark`) carries a `.landscape` branch (and set automatically when `orientation` is resolved),
   else inferred as portrait when the profile has root `[layout]`, `[print]`, `.portrait` branch, or portrait caption
   geometry. `profiles.of(tl)` resolves the profile for the timeline's frame orientation; lengths are px at the
-  reference canvas (1080x1920 or 1920x1080, `video_engine/units.py`).
+  reference canvas (1080x1920 or 1920x1080, `video_engine/core/units.py`).
 - `Profile.blake3` hashes the effective profile (`profiles.hash_dump`), isolated per resolved orientation. Splitting
   files with `include`, building on a base with `extends`, and deleting a key that only repeats a lower layer leave
   it unchanged. A new field must stay out of the hash at its default (`Field(exclude_if=...)`, or a rule in
@@ -79,7 +80,7 @@ engine draft   inputs (voiceover, script, credits.txt, assets/) -> STT words (pi
                -> ai.base.schema_errors -> draft.assemble -> Timeline (Pydantic) -> gates.run_preflight
                -> errors fed back (max_repairs) -> master_timeline.draft.json + draft_report.json
 engine build   timeline.load -> profiles.of -> gates.run_preflight (layer 1, 2, 3; severity.apply)
-               -> segments: native.py (Rust/FFmpeg) or hyperframes.py (headless Chrome), cached by content key
+               -> segments: render/native.py (Rust/FFmpeg) or render/hyperframes.py (headless Chrome), cached by content key
                -> transitions, captions (.ass via Rust), audio mix + loudnorm, final mux
                -> post-render gates -> out/final.mp4 + out/build_report.json
 ```
@@ -91,19 +92,56 @@ engine copies facts from `credits.txt`, sidecars and the profile (`draft.assembl
 
 | Concern | Module | Notes |
 |---|---|---|
-| Timeline contract | `video_engine/timeline.py` | All times are integer frames; `sec_to_frame` is the only seconds-to-frames conversion. `engine schema timeline` prints the JSON Schema. |
-| Profile tables | `video_engine/profile_schema.py` | Pure models: keys, ranges, defaults. Reads no file. |
-| Profile resolution | `video_engine/profiles.py` | Layers, `extends`, `include`, cascade, overrides, hash, `origins`, `flatten`. Re-exports the table models (`profiles.Theme`). |
-| Gates | `video_engine/gate_registry.py`, `video_engine/gates/` | The registry is the single definition; `gates/severity.py` decides fail / warn / info. |
+| Timeline contract | `video_engine/timeline/` | Main models and load/save in `__init__.py`; `common.py`, `scene.py`, `map.py`, `fx.py`, `audio.py` hold component contracts. All times are integer frames; `sec_to_frame` is the only seconds-to-frames conversion. |
+| Profile tables | `video_engine/profiles/schema.py`, `profiles/layout.py`, `profiles/grade.py` | Keys, ranges, defaults; separate from layout plans and grading execution. |
+| Profile resolution | `video_engine/profiles/resolver.py` | Layers, `extends`, `include`, cascade, overrides, hash, `origins`, `flatten`. Lazy package facade retains `profiles.load` and table exports (`profiles.Theme`). TOML data remains in root `profiles/`. |
+| Gates | `video_engine/gates/registry.py`, `gates/runner.py` | Registry is the single definition; `gates/severity.py` decides fail / warn / info. Package initialization defers importing the runner. |
 | AI providers | `video_engine/ai/` | `base.py` (parts, retry, reply parsing, schema subset), `agent.py` (file handoff, exit 3), `gemini.py`, `openai_compat.py`. |
-| Draft | `video_engine/draft.py`, `draft_scene.py`, `recipes.py`, `director/` | Prompt and schema are built from the effective profile (`draft._profile`). |
-| Renderers | `video_engine/native.py`, `hyperframes.py`, `template/`, `hf/` | Python/JS twins must stay in step (`FIGURE_POP_S`, eases). |
+| Draft | `video_engine/draft/`, `video_engine/director/` | Workflow in `draft/__init__.py`, assembly in `draft/scene.py`, recipes in `draft/recipes.py`. Technical preview `draft_build.py` remains an application module. |
+| Layout | `video_engine/layout/` | Planner, runtime plan models, geometry, camera, framing, legibility, constraints, entities and print styling. Shared projection/vector math lives in `core/`. |
+| Renderers | `video_engine/render/` | Native and HyperFrames execution, scene/probe adapters, components, maps, grading, captions, transitions, sheet and quality reporting. Templates and JS/wrappers live in `render/template/` and `render/hf/`; Python/JS twins must stay in step. |
+| Sound | `video_engine/sound/` | Audio processing, mixer, SFX, pauses, sound requests, provenance, cache and pins. |
+| Cloud | `video_engine/cloud/` | `cli.py`, `closure.py`, `launch.py`, `transfer.py`; package initializer does not load Modal or render services. |
 | Native core | `rust/hypoverum_core_rs/` | Camera, `.ass`, silence, hashing. Bump `ALGO_VERSION` on a behaviour change. |
-| Shared helpers | `video_engine/util.py` | `EngineError`, hashing, `atomic_write_text`, `frame_jpeg` (video frame), `image_jpeg` (still image, in process), `wav_16k_mono`: one implementation each. |
-| Paths, limits | `video_engine/config.py` | Everything machine-specific; `VIDEO_ENGINE_*` in [ENVIRONMENT.md](ENVIRONMENT.md). |
+| Shared helpers | `video_engine/core/util.py` | Hashing, atomic writes and media I/O helpers; shared units, discovery, tuning and cache have their own modules in `core/`. |
+| Paths, limits | `video_engine/core/config.py` | Machine-specific configuration; `VIDEO_ENGINE_*` in [ENVIRONMENT.md](ENVIRONMENT.md). `core/resources.py` owns worker budgets and measurements, not packaged assets. |
+| Applications | Root `video_engine/cli.py`, `build.py`, `draft_build.py`, `preview.py`, `batch.py`, `deliver.py`, `doctor.py` | Entrypoints and orchestration remain outside domain packages; asset-management modules also remain at root. |
 
-`video_engine/config.py` imports the Rust extension and reads `vendor/VERSIONS.json` at import time, so no engine
-module imports without a built `hypoverum_core_rs` wheel ([CONTRIBUTING.md](../CONTRIBUTING.md), environment setup).
+### Package boundaries and migration
+
+These packages implement the same [five conceptual layers](STRUCTURE.md), not five Python directories.
+Contract models must not depend on renderer execution or AI providers. Layout owns pure predicates consumed
+by gates (`layout/constraints.py`); findings, IDs and severity belong to gates. Shared scene calculations live
+in `layout/scene_math.py`, while low-level projection/math live in `core/`. `render/quality_report.py` owns
+the rendering report implementation; `profiles.quality_report` retains a compatibility forwarding function.
+`build.py` and CLI coordinate these packages, never
+serve as dependencies of renderers. These are dependency rules, not a claim that all transition exceptions
+or packaging/render regressions have already been verified.
+
+Use canonical imports in new internal code. Retained flat modules such as `video_engine.hyperframes`,
+`video_engine.config` and `video_engine.gate_registry` are compatibility aliases to the implementation module,
+not independent implementations. Their `sys.modules` aliasing preserves module identity and monkeypatches;
+replacing it with `from ... import *` would break that contract. `profiles`, `timeline`, `layout` and `draft`
+are packages at their existing public import names, not same-named files alongside packages.
+
+Code-derived cache keys must read canonical implementation files and extracted helpers, never only alias files.
+Relocation and changed import ASTs can invalidate existing render/stage caches once; that is distinct from
+the effective profile hash, which must remain unchanged for identical configuration. Do not prune old caches
+as part of migration. Resource paths must follow `render/template/` and `render/hf/`, while external
+`profiles/` and `vendor/` remain separate resource roots; an editable checkout does not prove wheel packaging.
+
+### Runtime initialization
+
+The `core`, `render` and `cloud` package initializers are lightweight; importing a package is not equivalent to
+initializing its services. `gates` exposes findings/reports and imports its runner only when preflight is called.
+`core/runtime.py` provides the single lazy accessor `native()` and a `core` proxy: first attribute access
+loads `hypoverum_core_rs` under a lock, configures its thread pool and records `config.RUST_THREADS_ACTIVE`.
+That value is `None` before initialization. An unavailable extension raises an actionable `EngineError`;
+no alternative hash or algorithm replaces Rust. `core/config.py` still loads environment defaults,
+reads `vendor/VERSIONS.json` and resolves tools at import, so lazy Rust does not mean side-effect-free
+configuration. Profile resolution/hash and `sec_to_frame` still require native operations even when importing
+their model definitions does not. Non-native CLI paths and import-order independence require subprocess
+verification; relocation alone proves neither. See [CONTRIBUTING.md](../CONTRIBUTING.md) for setup and checks.
 
 ## AI layer contract
 

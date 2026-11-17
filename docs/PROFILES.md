@@ -11,7 +11,7 @@ The format of a channel profile and the profiles that ship with the engine.
 - Which safety limits a profile cannot loosen.
 
 - Files: `profiles/default.toml` holds the engine values; `profiles/<channel>.toml` lists only the keys a channel changes. Tables merge key by key.
-- Precedence, lowest first: model field defaults (`video_engine/profile_schema.py`) < `default.toml` < the profile's `extends` chain (for each profile its `include` files, then its own file) < project `profile_overrides` < project values (`caption_style` keys, `audio_chain.target_lufs` / `true_peak` / `lra`).
+- Precedence, lowest first: model field defaults (`video_engine/profiles/schema.py`) < `default.toml` < the profile's `extends` chain (for each profile its `include` files, then its own file) < project `profile_overrides` < project values (`caption_style` keys, `audio_chain.target_lufs` / `true_peak` / `lra`).
   Fallback is per key: a key a profile does not write takes the value of the layer below. A profile that cannot be read or validated is an error; the engine never substitutes the default profile for it.
 - `engine profile NAME` prints the resolved profile; `--origin` adds the file that set each key (or `(engine default)`); `engine schema profile` prints the JSON Schema of the tables.
 - Tables:

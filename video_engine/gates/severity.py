@@ -23,10 +23,10 @@ Two more ways to lower a gate:
 """
 from __future__ import annotations
 
-from .. import profiles
-from ..gate_registry import KERNEL_GATE_IDS, LINT_GATE_IDS, STYLE_GATE_IDS
-from ..timeline import HYPERFRAMES, Timeline
-from .core import Finding
+from video_engine import profiles as profiles
+from video_engine.gates.registry import KERNEL_GATE_IDS, LINT_GATE_IDS, STYLE_GATE_IDS
+from video_engine.timeline import HYPERFRAMES, Timeline
+from video_engine.gates.core import Finding
 
 HOLD_GATES = ("P01", "N01")   # style gates whose frame-ranged findings a hold:"read" intent lowers
 WARN_ONLY_LINT_GATES = ("R38space", "A02", "N01", "K01", "D01", "P03", "U01")
@@ -106,7 +106,7 @@ def apply(findings: list[Finding], tl: Timeline, *, draft: bool = False) -> list
 
 def summary(findings: list[Finding], tl: Timeline) -> dict:
     """build_report.json `gates`: fails, warns and waived (lowered) findings listed separately."""
-    from ..gate_registry import BY_ID
+    from video_engine.gates.registry import BY_ID
     def row(f: Finding) -> dict:
         return {"gate": f.gate, "class": "style" if is_style(f.gate, tl) else "technical",
                 "tier": BY_ID[f.gate].tier if f.gate in BY_ID else "unknown", "level": f.level,
@@ -134,8 +134,8 @@ def not_checked(findings: list[Finding], tl: Timeline | None = None) -> list[dic
     entry (kind "not_run" when its message starts with core.NOT_RUN, else "skipped"); with `tl`, every gate the
     effective profile switches off (gate_tools.effect "off") adds one entry of kind "off". The build adds what only
     it knows (build.py). Waived and lowered findings stay in `summary()`'s `waived` and are not repeated here."""
-    from .. import gate_registry, gate_tools
-    from .core import NOT_RUN
+    from video_engine.gates import registry as gate_registry, tools as gate_tools
+    from video_engine.gates.core import NOT_RUN
     out = [unchecked(f.gate, "not_run", f.message[len(NOT_RUN):], f.seg) if f.message.startswith(NOT_RUN)
            else unchecked(f.gate, "skipped", f.message, f.seg)
            for f in findings if f.level == "skip"]

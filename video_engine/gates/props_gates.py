@@ -18,12 +18,13 @@ from pathlib import Path
 
 from PIL import Image
 
-from .. import hyperframes, layout as lay, props
-from ..timeline import HYPERFRAMES, Segment, Timeline
-from ..util import EngineError
-from ..units import Units
-from . import layer2
-from .core import Finding
+from video_engine.render import hyperframes as hyperframes, props as props
+from video_engine import layout as lay
+from video_engine.timeline import HYPERFRAMES, Segment, Timeline
+from video_engine.core.util import EngineError
+from video_engine.core.units import Units
+from video_engine.gates import layer2
+from video_engine.gates.core import Finding
 
 RES_FAIL = 1.0
 RES_WARN = 1.5

@@ -24,7 +24,7 @@ def _int_env(name: str, default: int) -> int:
 
 def _build_args() -> dict[str, str]:
     try:
-        from video_engine.modal_cli import ffmpeg_pin, image_build_args, toolchain_snapshot, version_pins
+        from video_engine.cloud.cli import ffmpeg_pin, image_build_args, toolchain_snapshot, version_pins
         args = image_build_args(toolchain_snapshot(), version_pins())
         pin = ffmpeg_pin()
         args["FFMPEG_MAJOR"] = str(pin.get("major") or 8)
@@ -42,7 +42,7 @@ _VOLUME = os.environ.get("VIDEO_ENGINE_MODAL_VOLUME", "video-engine-builds")
 
 def _disk_kwargs() -> dict[str, int]:
     """Pass ephemeral_disk only when VIDEO_ENGINE_MODAL_DISK_MB is set. Otherwise Modal's default disk."""
-    from video_engine.modal_cli import ephemeral_disk_kwargs
+    from video_engine.cloud.cli import ephemeral_disk_kwargs
     return ephemeral_disk_kwargs(os.environ.get("VIDEO_ENGINE_MODAL_DISK_MB"))
 
 
@@ -91,9 +91,10 @@ def main(selftest: bool = False, run_id: str = "") -> None:
 
 def _selftest() -> dict:
     import json
-    from video_engine import config, doctor
-    from video_engine.chrome_probe import launch_chrome
-    from video_engine.modal_cli import components_from_checks
+    from video_engine import doctor
+    from video_engine.core import config
+    from video_engine.render.chrome_probe import launch_chrome
+    from video_engine.cloud.cli import components_from_checks
     checks = doctor.check()
     serialized = [{"name": item.name, "ok": item.ok, "want": item.want, "got": item.got, "path": item.path}
                   for item in checks]
@@ -117,8 +118,8 @@ def _build(run_id: str, resources: dict) -> dict:
     import json
     import subprocess
     import time
-    from video_engine.modal_closure import materialize
-    from video_engine.modal_transfer import (
+    from video_engine.cloud.closure import materialize
+    from video_engine.cloud.transfer import (
         annotate_reports,
         publish_outputs,
         pull_remote_cache,
@@ -194,7 +195,7 @@ def _pin_sha() -> str:
 def _remote_toolchain() -> dict:
     try:
         from video_engine import doctor
-        from video_engine.modal_cli import components_from_checks
+        from video_engine.cloud.cli import components_from_checks
         checks = [{"name": item.name, "got": item.got} for item in doctor.check()]
         return components_from_checks(checks)
     except Exception as exc:  # noqa: BLE001
@@ -203,7 +204,7 @@ def _remote_toolchain() -> dict:
 
 def _mismatches(layout: dict) -> list[str]:
     try:
-        from video_engine.modal_cli import compare_components
+        from video_engine.cloud.cli import compare_components
     except Exception:
         return []
     local = (layout.get("local_toolchain") or {}).get("components") or {}

@@ -14,29 +14,29 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .layout_camera import camera_at, _glide, _quart_in_out, EASES, PULSE_STEPS, PULSE_FLOOR, _LABEL_MOVE, label_move_frames, shrink_pulses, DRIFT_SHARE, DRIFT_MIN, bound_drift, cubic_bezier, head_box, _label_metrics, label_box, area_tracking, area_metrics, area_corners, note_corners, note_box, _frange, area_box, Item, frame_items, animating, scene_layout
-from .layout_geometry import Box, FONT_FILES, VARIABLE, wt, Metrics, text_metrics, halo, text_box, inflate, overlap_area, inside, _r, _seg_hits_box, poly_edges, crosses_edge, point_in_poly, _pt_seg_dist, seg_box_dist, polyline_box_dist, clip_area, rot_corners, corners_box, quad_inside_poly, _segs_cross, quad_outside_poly, _closest
-from .layout_models import _M, LayoutGrid, LayoutZones, LayoutSizes, LayoutBudget, LayoutTiming, LayoutLabels, LayoutFly, LayoutBranch, LayoutProfile, HEAD, HEAD_C, SHADOW, ENTRY_ORDER, EXIT_ORDER, Span, Label, Area, Note, Heading, Plan, _frames, _detail
-from .layout_planner import _Planner
+from video_engine.layout.camera import camera_at, _glide, _quart_in_out, EASES, PULSE_STEPS, PULSE_FLOOR, _LABEL_MOVE, label_move_frames, shrink_pulses, DRIFT_SHARE, DRIFT_MIN, bound_drift, cubic_bezier, head_box, _label_metrics, label_box, area_tracking, area_metrics, area_corners, note_corners, note_box, _frange, area_box, Item, frame_items, animating, scene_layout
+from video_engine.layout.geometry import Box, FONT_FILES, VARIABLE, wt, Metrics, text_metrics, halo, text_box, inflate, overlap_area, inside, _r, _seg_hits_box, poly_edges, crosses_edge, point_in_poly, _pt_seg_dist, seg_box_dist, polyline_box_dist, clip_area, rot_corners, corners_box, quad_inside_poly, _segs_cross, quad_outside_poly, _closest
+from video_engine.layout.models import _M, LayoutGrid, LayoutZones, LayoutSizes, LayoutBudget, LayoutTiming, LayoutLabels, LayoutFly, LayoutBranch, LayoutProfile, HEAD, HEAD_C, SHADOW, ENTRY_ORDER, EXIT_ORDER, Span, Label, Area, Note, Heading, Plan, _frames, _detail
+from video_engine.layout.planner import _Planner
 
 if TYPE_CHECKING:
-    from .timeline import Segment, Timeline
+    from video_engine.timeline import Segment, Timeline
 
 __all__ = ['Box', 'FONT_FILES', 'VARIABLE', 'wt', 'Metrics', 'text_metrics', 'halo', 'text_box', 'inflate', 'overlap_area', 'inside', '_r', '_seg_hits_box', 'poly_edges', 'crosses_edge', 'point_in_poly', '_pt_seg_dist', 'seg_box_dist', 'polyline_box_dist', 'clip_area', 'rot_corners', 'corners_box', 'quad_inside_poly', '_segs_cross', 'quad_outside_poly', '_closest', '_M', 'LayoutGrid', 'LayoutZones', 'LayoutSizes', 'LayoutBudget', 'LayoutTiming', 'LayoutLabels', 'LayoutFly', 'LayoutBranch', 'LayoutProfile', 'HEAD', 'HEAD_C', 'SHADOW', 'ENTRY_ORDER', 'EXIT_ORDER', 'Span', 'Label', 'Area', 'Note', 'Heading', 'Plan', '_frames', '_detail', 'camera_at', '_glide', '_quart_in_out', 'EASES', 'PULSE_STEPS', 'PULSE_FLOOR', '_LABEL_MOVE', 'label_move_frames', 'shrink_pulses', 'DRIFT_SHARE', 'DRIFT_MIN', 'bound_drift', 'cubic_bezier', 'head_box', '_label_metrics', 'label_box', 'area_tracking', 'area_metrics', 'area_corners', 'note_corners', 'note_box', '_frange', 'area_box', 'Item', 'frame_items', 'animating', 'scene_layout', '_Planner', 'profile_layout', 'is_beats', '_plan_key', '_PLANS', 'plan', 'apply_segment', 'apply']
 
 def profile_layout(tl: "Timeline") -> LayoutProfile | None:
-    from . import profiles
+    from video_engine import profiles as profiles
     return profiles.of(tl).layout
 
 
 def is_beats(seg: "Segment", tl: "Timeline") -> bool:
-    from .timeline import HYPERFRAMES
+    from video_engine.timeline import HYPERFRAMES
     sc = seg.gsap_scene_config
     return seg.engine_type == HYPERFRAMES and sc is not None and bool(sc.beats) and profile_layout(tl) is not None
 
 
 def _plan_key(seg: "Segment", tl: "Timeline", project_dir: Path) -> str:
-    from . import profiles
+    from video_engine import profiles as profiles
     scene = seg.gsap_scene_config
     assert scene is not None
     sc = scene.model_dump(mode="json", exclude={"camera_path", "title_at_frame"})
@@ -68,7 +68,7 @@ def apply_segment(seg: "Segment", tl: "Timeline", project_dir: Path) -> Plan | N
         return None
     if not (Path(project_dir) / sc.map_asset).is_file():
         return None
-    from .timeline import CameraKey
+    from video_engine.timeline import CameraKey
     p = plan(seg, tl, project_dir)
     sc.camera_path = [CameraKey(**{k: v for k, v in kk.items() if not (k == "move_s" and kk["move"] != "settle")})
                       for kk in p.keys]

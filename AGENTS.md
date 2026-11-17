@@ -10,8 +10,12 @@ Dokumen ini merupakan panduan operasional teknis bagi *engineer* maupun *AI agen
 - **Output**: `<project>/out/final.mp4` (H.264 8-bit atau 10-bit High 10, resolusi portrait 9:16 `1080×1920` atau landscape 16:9 hingga `3840×2160`, audio AAC 48 kHz ternormalisasi `-14.0 LUFS` / `-1.5 dBTP`) beserta `<project>/out/build_report.json`. Jika terdapat kegagalan pada *kernel gate*, *build* tidak menerbitkan `final.mp4` dan hanya menulis `out/build_report.failed.json`.
 
 ## 2. Peta Direktori Repositori
-- `video_engine/` — Paket utama Python: CLI (`cli.py`), kontrak data (`timeline.py`), skema tabel profil (`profile_schema.py`), resolver profil (`profiles.py`), kompilator adegan (`hyperframes.py`, `native.py`, `layout.py`, `legibility.py`, `printstyle.py`, `transitions.py`), audio & SFX (`audio.py`, `mixer.py`, `sfx.py`, `sound/`), serta penyusun draf AI (`draft.py`, `draft_scene.py`, `recipes.py`, `director/`, `ai/`).
-- `video_engine/gates/` — Sistem *pre-flight* & *post-render* gate (terdaftar terpusat di `video_engine/gate_registry.py`).
+- `video_engine/` — Entrypoint dan orkestrasi (`cli.py`, `build.py`, `draft_build.py`, preview/batch/deliver/doctor) serta pengelolaan aset tetap di root paket.
+- `video_engine/core/` — Konfigurasi, discovery/toolchain, cache, utilitas I/O/hash, satuan dan matematika dasar; `resources.py` mengatur anggaran worker.
+- `video_engine/profiles/` dan `video_engine/timeline/` — Resolver/skema profil dan kontrak timeline. Data TOML tetap di root `profiles/`; kontrak layout/grade terpisah dari eksekusi.
+- `video_engine/layout/` dan `video_engine/render/` — Perencanaan/geometri/legibilitas dan eksekusi native/HyperFrames. Template, JS dan wrapper berada di `render/template/` serta `render/hf/`.
+- `video_engine/draft/`, `director/`, `ai/`, `sound/`, `cloud/` — Workflow draf AI, arahan kreatif, provider, audio/SFX, dan bootstrap/transfer Modal. `draft_build.py` bukan workflow AI.
+- `video_engine/gates/` — Sistem *pre-flight* & *post-render* gate (terdaftar terpusat di `video_engine/gates/registry.py`, runner dimuat saat dipakai).
 - `rust/hypoverum_core_rs/` — Ekstensi native Rust (PyO3): interpolasi kamera, kompilator subtitle `.ass`, deteksi jeda suara, dan perhitungan metrik piksel cepat (`BLAKE3`, `frame_stats`).
 - `profiles/` — Konfigurasi profil berbasis TOML:
   - `default.toml`: Nilai dasar mesin.
@@ -39,6 +43,8 @@ Dokumen ini merupakan panduan operasional teknis bagi *engineer* maupun *AI agen
 ## 4. Prinsip Pengembangan Wajib
 - **Satu Sumber Kebenaran**: Profil merek hanya mendefinisikan gaya visual/brand dan pemeriksaan kualitas teknis (bukan aturan cerita/durasi wajib); jangan menduplikasi tabel bersama di luar `profiles/geoverum/core.toml` atau aturan opsional `rules_file` ke luar file tunggalnya.
 - **Integritas Kunci Cache**: Setiap perubahan perilaku pada kode Python atau Rust (`ALGO_VERSION`) harus tercermin pada kunci cache segmen terkait. Memecah file profil dengan `include` tidak boleh mengubah nilai `profiles.load(name).blake3`.
+- **Lokasi Kanonis & Kompatibilitas**: Import internal baru memakai paket kanonis di atas. Modul flat yang dipertahankan adalah alias kompatibilitas, bukan rumah implementasi kedua; identitas modul dan propagasi monkeypatch harus terjaga. Hash kode mencakup implementasi asli dan helper hasil ekstraksi, bukan hanya alias. Relokasi dapat menginvalidasi cache render, tetapi bukan alasan mengubah hash profil efektif.
+- **Batas Dependency & Runtime**: Pertahankan lima lapisan konseptual; kontrak tidak mengimpor renderer/provider, layout tidak mengimpor implementasi gate/render, dan renderer tidak mengimpor orkestrator build. Initializer `core`, `render`, `cloud` tetap ringan. Lazy Rust harus dibuktikan terpisah dengan tes tanpa ekstensi; pemindahan folder bukan bukti startup ringan atau render lebih cepat.
 - **Tanpa Default Vendor AI**: Mesin tidak menunjuk provider AI bawaan. Tanpa `--provider`, env `VIDEO_ENGINE_AI_PROVIDER`, atau `default` di `ai_providers.toml`, permintaan menjadi bundel berkas untuk provider `agent`: model AI yang sedang menjalankan mesin yang menjawab. Jangan menambah fallback ke layanan lain: tiap provider hanya mencoba daftar modelnya sendiri. Gemini adalah provider opsional (`--provider gemini`, extra `gemini`), bukan pilihan bawaan dan bukan fallback.
 - **Keamanan Kredensial**: Jangan pernah mencetak atau menyimpan nilai `GEMINI_API_KEY`, `XAI_API_KEY`, atau kunci API lainnya ke dalam log maupun laporan *build*.
 - **Komentar Murni Teknis**: Komentar dan docstring hanya menjelaskan fungsi, kontrak, satuan, dan alasan teknis kode saat ini. Jangan menulis riwayat perubahan, catatan percakapan, atau kronologi bug di dalam kode sumber; riwayat tempatnya di `CHANGELOG.md` dan pesan commit.

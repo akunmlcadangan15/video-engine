@@ -43,30 +43,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from . import (
-    audio,
-    cache,
-    captions,
-    config,
-    grade,
-    hyperframes,
-    manifest,
-    mixer,
-    native,
-    profiles,
-    qa,
-    resources,
-    streams,
-    timeline,
-    transitions,
-)
-from .ai import AwaitingAgent
-from .gates import audio_source, layer1, run_preflight, severity, style
-from .sfx import kinds_used as sfx_kinds
-from .sound import cache as sound_cache
-from .sound import request as sound_request
-from .timeline import HYPERFRAMES, NATIVE, Timeline
-from .util import EngineError, Timer, count_frames, video_info
+from video_engine.sound import audio as audio, mixer as mixer
+from video_engine.core import cache as cache, config as config, resources as resources
+from video_engine.render import captions as captions, grade as grade, hyperframes as hyperframes, native as native, transitions as transitions
+from video_engine import manifest, profiles as profiles, streams, timeline as timeline
+from video_engine.gates import qa as qa
+from video_engine.ai import AwaitingAgent
+from video_engine.gates import audio_source, layer1, run_preflight, severity, style
+from video_engine.sound.sfx import kinds_used as sfx_kinds
+from video_engine.sound import cache as sound_cache
+from video_engine.sound import request as sound_request
+from video_engine.timeline import HYPERFRAMES, NATIVE, Timeline
+from video_engine.core.util import EngineError, Timer, count_frames, video_info
 
 REPORT = "build_report.json"
 FAILED_REPORT = "build_report.failed.json"
@@ -87,7 +75,7 @@ def _sound_provenances(tl: Timeline, project_dir: Path, mix) -> list[dict]:
     path = Path(project_dir) / bgm
     if not path.is_file():
         return []
-    from .sound import provenance
+    from video_engine.sound import provenance
     found = provenance.for_file(path, project_dir)
     return [found] if found else []
 
@@ -295,9 +283,9 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
     credit_token = None
     report_tmp: Path | None = None
     try:
-        from . import assets
-        from .gates.layer1 import EXTRA_CREDIT_URLS
-        from .sound import pins
+        from video_engine import assets
+        from video_engine.gates.layer1 import EXTRA_CREDIT_URLS
+        from video_engine.sound import pins
         pins.pin_project(project_dir)   # lock-referenced sounds survive this build's own cache stores
         tl, asset_credits = assets.ensure_credits(tl, project_dir)
         tl = assets.resolve_timeline_paths(tl, project_dir)
@@ -477,7 +465,7 @@ def build(project_dir: Path, *, use_cache: bool = True, run_label: str = "build"
         # Clean up a stale .batch.lock if its recorded PID is dead; leave live locks or locks
         # held by this process (via ProjectLock outside build) untouched.
         try:
-            from .batch import _clean_stale_lock
+            from video_engine.batch import _clean_stale_lock
             _clean_stale_lock(project_dir / "out" / ".batch.lock")
         except OSError:
             pass

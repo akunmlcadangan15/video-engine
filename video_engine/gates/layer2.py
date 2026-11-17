@@ -12,13 +12,15 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import hypoverum_core_rs as core
+from video_engine.core.runtime import core
 
-from .. import captions, entities, hyperframes, legibility, maps, native, profiles, props, watermark
-from ..units import units
-from ..timeline import HYPERFRAMES, NATIVE, CaptionWord, Segment, Timeline
-from ..util import EngineError, decode_colour, rgb_to_hex, video_info
-from .core import Finding
+from video_engine.render import captions as captions, hyperframes as hyperframes, maps as maps, native as native, props as props, watermark as watermark
+from video_engine.layout import entities as entities, legibility as legibility
+from video_engine import profiles as profiles
+from video_engine.core.units import units
+from video_engine.timeline import HYPERFRAMES, NATIVE, CaptionWord, Segment, Timeline
+from video_engine.core.util import EngineError, decode_colour, rgb_to_hex, video_info
+from video_engine.gates.core import Finding
 
 R56_MIN_PX_1080P = 100.0     # minimum camera motion over a segment, output px, at a 1080p-class diagonal (1080x1920 or 1920x1080)
 INTENSITY_MAX = 6.0
@@ -116,8 +118,8 @@ def m02_map_resolution(tl: Timeline, project_dir: Path) -> list[Finding]:
 
 def m03_tilt_cover(tl: Timeline, project_dir: Path) -> list[Finding]:
     """Tilted HyperFrames cameras: every screen corner of every frame shows map (camera3d.uncovered); fail otherwise."""
-    from .. import camera3d
-    from .. import camera_full3d
+    from video_engine.layout import camera3d as camera3d
+    from video_engine.layout import camera_full3d as camera_full3d
     out, n = [], 0
     for s in tl.segments:
         if s.engine_type == HYPERFRAMES and _gs(s).camera3d:
@@ -154,7 +156,7 @@ def m03_tilt_cover(tl: Timeline, project_dir: Path) -> list[Finding]:
 def m04_globe_resolution(tl: Timeline, project_dir: Path) -> list[Finding]:
     """Globe scenes: lowest over frames of texels per degree drawn at the view centre (finest detail patch there, else
     the whole-globe texture) / screen px per degree: warn below M02_WARN, fail below M02_FAIL."""
-    from .. import globe
+    from video_engine.render import globe as globe
     out, n = [], 0
     fps, W, H = tl.settings.fps, tl.settings.width, tl.settings.height
     for s in tl.segments:
@@ -178,7 +180,7 @@ def m04_globe_resolution(tl: Timeline, project_dir: Path) -> list[Finding]:
 
 def g01_grade_luts(tl: Timeline, project_dir: Path) -> list[Finding]:
     """Every .cube LUT a grade reads (segment, beat or profile [grade]) exists and parses as a 3D LUT; fail otherwise."""
-    from .. import grade
+    from video_engine.render import grade as grade
     out = [Finding("G01", "fail", e, s.seg_index) for s in tl.segments for e in grade.check(s, tl, project_dir)]
     n = sum(1 for s in tl.segments if grade.ranges(s, tl, project_dir))
     return out or [Finding("G01", "pass", f"{n} graded segments, every grade LUT readable" if n else "no grades")]
@@ -235,7 +237,7 @@ def _r56_cam3d(s: Segment, tl: Timeline, project_dir: Path, target: float) -> li
 
 def _r56_globe(s: Segment, tl: Timeline, project_dir: Path, target: float) -> list[Finding]:
     """R56 on a globe: every key-to-key leg moves at least the minimum; one key: the drift zoom over the segment."""
-    from .. import globe
+    from video_engine.render import globe as globe
     W, H = tl.settings.width, tl.settings.height
     G = hyperframes.scene_data(s, tl, project_dir)["globe"]
     motion = globe.key_motion(G, W, H)

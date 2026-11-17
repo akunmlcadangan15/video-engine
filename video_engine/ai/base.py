@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Protocol
 
-from ..util import EngineError, frame_jpeg
+from video_engine.core.util import EngineError, frame_jpeg
 
 SAME_MODEL_RETRY_CODES = {408, 429, 500, 502, 503, 504}
 NEXT_MODEL_CODES = {404}
@@ -263,7 +263,7 @@ def schema_errors(data, schema: dict, path: str = "$") -> list[str]:
 # ----------------------------------------------------------------------------------------------------------- media
 def sample_frames(path: Path, n: int, px: int = FRAME_PX) -> list[tuple[float, bytes]]:
     """n JPEG frames at k/n of the duration (k = 0..n-1): [(time_s, jpeg)]."""
-    from ..util import probe
+    from video_engine.core.util import probe
     dur = float(probe(path)["format"].get("duration") or 1.0)
     out = []
     for k in range(max(1, n)):

@@ -8,10 +8,13 @@ import math
 import re
 from pathlib import Path
 
-from .. import config, hyperframes, overlays, pauses, profiles, transitions
-from ..timeline import HYPERFRAMES, CaptionWord, Segment, Timeline
-from ..util import EngineError
-from .core import Finding
+from video_engine.core import config as config
+from video_engine.render import hyperframes as hyperframes, overlays as overlays, transitions as transitions
+from video_engine.sound import pauses as pauses
+from video_engine import profiles as profiles
+from video_engine.timeline import HYPERFRAMES, CaptionWord, Segment, Timeline
+from video_engine.core.util import EngineError
+from video_engine.gates.core import Finding
 
 
 PLAIN_NUMBERS = {"number_group": "", "number_decimal": "."}
@@ -150,11 +153,11 @@ def _is_file(root: Path, name: str | None) -> bool:
 def motion_frames(tl: Timeline, project_dir: Path) -> list[tuple[float, float] | None]:
     """Per output frame: (|zoom speed| ln scale / s, 2D frame-centre speed in frame widths / s) of the planned camera,
     or None where the camera is not planned (native footage without camera_move). Transition frames are (inf, inf)."""
-    import hypoverum_core_rs as core
+    from video_engine.core.runtime import core
 
-    from .. import native
-    from ..layout import camera_at
-    from . import layer2
+    from video_engine.render import native as native
+    from video_engine.layout import camera_at
+    from video_engine.gates import layer2
     fps, W, H = tl.settings.fps, tl.settings.width, tl.settings.height
     out: list[tuple[float, float] | None] = [None] * tl.total_frames
     for s in tl.segments:
@@ -165,13 +168,14 @@ def motion_frames(tl: Timeline, project_dir: Path) -> list[tuple[float, float] |
             if not (project_dir / sc.map_asset).is_file():
                 continue
             if sc.globe:
-                from .. import globe
+                from video_engine.render import globe as globe
                 G = hyperframes.scene_data(s, tl, project_dir)["globe"]
                 for f, m in enumerate(globe.motion(G, n, fps, W, H)):
                     out[s.start_frame + f] = m
                 continue
             if sc.camera3d:
-                from .. import camera_full3d, maps
+                from video_engine.layout import camera_full3d as camera_full3d
+                from video_engine.render import maps as maps
                 iw, ih = maps.map_image_size(project_dir / sc.map_asset)
                 cover = max(W / iw, H / ih)
                 states = camera_full3d.frames(sc.camera3d, n, iw * cover, ih * cover)
@@ -245,7 +249,7 @@ def camera_path_metrics(tl: Timeline, mf: list[tuple[float, float] | None]) -> l
     The cosine glide's tails are below the zoom-still threshold; scoring them with the pan floor (0.02) reported
     a smooth ease as a large relative step.
     step_frame (absolute frame of that change)}."""
-    from ..profiles import CameraGate
+    from video_engine.profiles import CameraGate
     still_zoom, still_pan = CameraGate().still_zoom_ln_s, CameraGate().still_pan_w_s
     W, H, fps = tl.settings.width, tl.settings.height, tl.settings.fps
     zk = math.hypot(W, H) / 2 / W
@@ -438,7 +442,7 @@ def run_style(tl: Timeline, project_dir: Path, words: list[CaptionWord] | None,
         out += d01_duration(tl, g.duration)
     if g.duration_exact:
         out += d02_duration_exact(tl, g.duration_exact)
-    from . import anti_slop
+    from video_engine.gates import anti_slop
     out += anti_slop.run(tl, project_dir, words, g.anti_slop, built_dirs=built_dirs)
     return out
 

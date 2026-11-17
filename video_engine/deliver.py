@@ -28,8 +28,8 @@ import shutil
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from .timeline import Timeline
-from .util import EngineError
+from video_engine.timeline import Timeline
+from video_engine.core.util import EngineError
 
 PART_MAX_BYTES = 100 * 1000 * 1000
 BAD_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
@@ -86,7 +86,7 @@ def join_text(final_name: str, parts: list[str]) -> str:
 
 def check_build(final: Path) -> dict:
     """Raise EngineError unless `final` is the published output of the last build; returns its build report."""
-    from .manifest import MANIFEST, sha256
+    from video_engine.manifest import MANIFEST, sha256
     d = Path(final).parent
     if not Path(final).is_file():
         raise EngineError(f"final video not found: {final} (run `engine build` first)")
@@ -146,7 +146,7 @@ THUMB_LANDSCAPE = (1280, 720)
 def metadata(tl: Timeline) -> dict:
     """Metadata from the timeline: title, description, tags and hashtags. Portrait: YouTube Shorts / Instagram Reels;
     landscape (units.py): a normal YouTube video (no #Shorts, shorts false, no Reels block)."""
-    from .units import units
+    from video_engine.core.units import units
     S = tl.settings
     title = clean(S.topic or tl.project_id)[:100]
     script = " ".join(w.word.strip() for w in tl.captions if w.word.strip())
@@ -189,7 +189,7 @@ def thumbnail(tl: Timeline, final: Path, out: Path) -> Path:
     """Middle frame of `final` as a JPEG thumbnail."""
     from PIL import Image
 
-    from .sheet import frame_rgb
+    from video_engine.render.sheet import frame_rgb
     S = tl.settings
     frame = max(0, tl.total_frames // 2)
     img = Image.frombytes("RGB", (S.width, S.height), frame_rgb(final, frame, S.fps, S.width, S.height))

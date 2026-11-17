@@ -10,10 +10,11 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from . import config, library
+from video_engine.core import config as config
+from video_engine import library
 
 if TYPE_CHECKING:
-    from .timeline import Timeline
+    from video_engine.timeline import Timeline
 
 _MEDIA_EXT = library.VIDEO_EXT | library.IMAGE_EXT
 _COLUMNS = ("file", "source_id", "source_url", "licence_credit", "first_used_project", "sha256")
@@ -115,8 +116,8 @@ import shutil
 from dataclasses import asdict, dataclass, replace
 from functools import lru_cache
 
-from .licence import OWN_LICENCES, licence_allowed, norm_licence
-from .util import EngineError
+from video_engine.licence import OWN_LICENCES, licence_allowed, norm_licence
+from video_engine.core.util import EngineError
 
 
 @dataclass(frozen=True)
@@ -413,7 +414,7 @@ def register(path: Path, *, licence: str, source: str, source_url: str = '', aut
             timeline_path = root / 'master_timeline.json'
             if not timeline_path.is_file():
                 raise EngineError(f'project timeline missing: {timeline_path}')
-            from . import timeline
+            from video_engine import timeline as timeline
             timeline.load(root)
 
     check()
@@ -465,8 +466,8 @@ def _atomic_text(path: Path, text: str) -> None:
 
 def ensure_credits(tl: Timeline, project: Path) -> tuple[Timeline, list[dict]]:
     """Return a timeline copy and new credits; never edit the source timeline or credits file."""
-    from .gates.layer1 import visual_refs
-    from .timeline import Credit
+    from video_engine.gates.layer1 import visual_refs
+    from video_engine.timeline import Credit
 
     result = tl.model_copy(deep=True)
     new = []
@@ -505,7 +506,7 @@ def ensure_credits(tl: Timeline, project: Path) -> tuple[Timeline, list[dict]]:
 
 def resolve_timeline_paths(tl, project: Path):
     """Prepare only new or non-project asset references for existing path-based renderers."""
-    from . import props
+    from video_engine.render import props as props
 
     result = tl.model_copy(deep=True)
     replacements = {}

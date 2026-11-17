@@ -23,9 +23,11 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import audio, build, config, resources, streams, timeline
-from .gates.severity import unchecked
-from .util import EngineError, probe, run
+from video_engine.sound import audio as audio
+from video_engine import build, streams, timeline as timeline
+from video_engine.core import config as config, resources as resources
+from video_engine.gates.severity import unchecked
+from video_engine.core.util import EngineError, probe, run
 
 DEFAULT_MAX_SEGMENTS = 5
 PREVIEW_NAME = "preview.mp4"
@@ -58,8 +60,9 @@ def concat_demuxer_cmd(files: list[Path], list_path: Path, out: Path) -> list[st
 
 def _preview_mix(tl, project_dir: Path):
     """Sound mix for the preview, or None when it cannot be planned from files already on disk."""
-    from . import mixer, profiles, sfx
-    from . import manifest
+    from video_engine.sound import mixer as mixer, sfx as sfx
+    from video_engine import profiles as profiles
+    from video_engine import manifest
     if profiles.of(tl).sound is None and not tl.audio_chain.sfx:
         return None
     lock = None

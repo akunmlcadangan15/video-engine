@@ -22,8 +22,8 @@ import re
 import shutil
 from pathlib import Path
 
-from .base import AIResult, AwaitingAgent, Image, Media, Part, Text, sample_frames, schema_errors
-from ..util import EngineError, blake3_json
+from video_engine.ai.base import AIResult, AwaitingAgent, Image, Media, Part, Text, sample_frames, schema_errors
+from video_engine.core.util import EngineError, blake3_json
 
 NAME = "agent"
 EXIT_AWAITING = 3

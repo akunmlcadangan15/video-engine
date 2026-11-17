@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import config
-from .util import EngineError
+from video_engine.core import config as config
+from video_engine.core.util import EngineError
 
 KINDS = ("chart", "timeline", "infographic")
 FONTS = {"bold": "Inter-Bold.otf", "regular": "Inter-SemiBold.otf"}

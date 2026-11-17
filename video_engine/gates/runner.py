@@ -7,10 +7,13 @@ import shutil
 import time
 from pathlib import Path
 
-from .. import config, gate_registry, gate_tools, layout, profiles, props
-from ..timeline import HYPERFRAMES, CaptionWord, Timeline
-from . import geo, layer1, layer2, layer3, layout_gates, props_gates, severity, style
-from .core import Finding, Report, not_run
+from video_engine.core import config as config
+from video_engine.gates import registry as gate_registry, tools as gate_tools
+from video_engine import layout as layout, profiles as profiles
+from video_engine.render import props as props
+from video_engine.timeline import HYPERFRAMES, CaptionWord, Timeline
+from video_engine.gates import geo, layer1, layer2, layer3, layout_gates, props_gates, severity, style
+from video_engine.gates.core import Finding, Report, not_run
 
 LATER_LAYERS = ("math", "dom", "place", "layout", "props", "visual", "profile")   # pre-flight layers after layer 1
 FINISHED_FILE = ("S01",)   # a profile-layer gate the build judges on the finished file, never in the pre-flight
@@ -148,7 +151,7 @@ def _run(tl: Timeline, project_dir: Path, words, workdir: Path, dom: bool, snaps
             if cc is not None and words:
                 rep.extend(layer3.r65_caption_contrast(tl, paths, events, cc.min_lc))
         if ai_qa is not None and paths:
-            from ..ai import tasks
+            from video_engine.ai import tasks
             with rep.timed("layer3_ai"):
                 rep.extend(tasks.qa_snapshots(paths, ai_qa, meta=rep.ai,
                                               frame=(tl.settings.width, tl.settings.height)))

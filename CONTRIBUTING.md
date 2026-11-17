@@ -18,13 +18,18 @@ Python memakai modul Rust yang terpasang, bukan sumbernya. Setelah mengubah kode
 `maturin develop --release`. Selalu pakai `--release`: build debug jauh lebih lambat dan berhenti pada integer
 overflow. Detail dan jebakan build Rust: [docs/RUST.md](docs/RUST.md).
 
+Initializer paket ringan tidak berarti seluruh operasi bebas Rust. Hash profil/cache, konversi frame,
+dan render tetap dapat membutuhkan ekstensi. Jangan mengganti algoritme native dengan fallback diam-diam.
+Perubahan lazy runtime harus mengatur Rayon sebelum operasi native pertama dan diuji dalam subprocess
+yang memblokir import ekstensi, termasuk urutan import yang berbeda.
+
 ## Pemeriksaan sebelum commit
 
 | Yang diubah | Jalankan |
 |---|---|
 | Satu area Python | `pytest -q tests/test_<area>.py` |
 | Banyak area, atau sebelum push | `pytest -q -n 4` (sekitar 8 menit dengan Chrome terpasang) |
-| Python | `ruff check --select E9,F63,F7,F82 video_engine tests` dan `python -m compileall -q video_engine tests` |
+| Python | `ruff check --select E9,F63,F7,F82,F401,F841 video_engine tests scripts` dan `python -m compileall -q video_engine tests` |
 | Dokumentasi | `python scripts/check_docs.py` |
 | Rust | `cargo fmt --check`, `cargo clippy -j 4 --all-targets -- -D warnings`, `cargo test -j 4 --no-default-features` di `rust/hypoverum_core_rs/` |
 
@@ -34,7 +39,7 @@ Tes yang butuh toolchain HyperFrames dilewati dengan petunjuk bila `vendor/node`
 
 ## Aturan yang harus dijaga
 
-**Gate.** Setiap gate punya satu entri di `video_engine/gate_registry.py` (id, kelas, lapis, ringkasan, saklar).
+**Gate.** Setiap gate punya satu entri di `video_engine/gates/registry.py` (id, kelas, lapis, ringkasan, saklar).
 Menambah gate berarti:
 
 1. menambah entrinya di registry dan menulis logikanya di modul gate;
@@ -50,6 +55,10 @@ Menambah gate berarti:
 wajib menaikkan `ALGO_VERSION` di `lib.rs`. Hash kode Python dihitung dari pohon sintaksnya tanpa docstring, jadi
 mengubah komentar, docstring, atau format tidak membuang cache; mengubah perilaku membuangnya.
 
+Saat relokasi, daftar sumber hash harus menunjuk implementasi kanonis dan helper hasil ekstraksi.
+Perubahan path/import dapat menginvalidasi cache satu kali meskipun kontrak output tidak berubah.
+Jangan menghitung hash hanya dari shim kompatibilitas atau menghapus cache pengguna sebagai langkah migrasi.
+
 **Profil.** Nilai profil gabungan menentukan hash profil. Memecah atau memindahkan bagian profil dengan `include`
 tidak boleh mengubah hash itu: bandingkan `profiles.load(nama).blake3` sebelum dan sesudah.
 
@@ -57,6 +66,32 @@ tidak boleh mengubah hash itu: bandingkan `profiles.load(nama).blake3` sebelum d
 
 **Fakta punya satu rumah.** Jangan menyalin angka atau aturan ke dokumen lain; tautkan ke rumahnya. Ubah
 dokumentasi dalam commit yang sama dengan kodenya.
+
+## Batas paket dan verifikasi migrasi
+
+Baca [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) sebelum memilih lokasi kode. Lima lapisan keputusan
+di [docs/STRUCTURE.md](docs/STRUCTURE.md) tetap berlaku meskipun jumlah paket Python lebih banyak.
+Import internal memakai lokasi kanonis (`core`, `profiles`, `timeline`, `layout`, `render`, `gates`,
+`draft`, `sound`, `cloud`). Modul flat lama yang masih tersedia adalah alias modul: jangan mengubahnya
+menjadi salinan implementasi atau re-export yang memutus identitas modul dan monkeypatch.
+
+Model profil/layout/grade tidak mengimpor eksekusi renderer; layout memakai pemeriksaan murni miliknya
+sendiri, sedangkan gate memiliki ID, severity, dan findings. Registry gate tidak boleh menarik runner
+render saat diimpor. Entrypoint dan orkestrator root bukan dependency paket domain.
+
+Sebelum menyatakan migrasi selesai, periksa:
+
+- Schema/API/CLI, hash profil efektif, gate IDs, serta identitas alias dan propagasi monkeypatch.
+- Boundary import termasuk import lokal di dalam fungsi; pengecualian transisi harus eksplisit dan dikurangi.
+- Kunci cache segmen/stage/transisi/DOM, resource `render/template/` dan `render/hf/`, serta wheel terpasang
+  di luar editable checkout dengan akar `profiles/` dan `vendor/` yang didukung.
+- Bootstrap cloud tanpa Rust/Modal eager, konfigurasi environment sebelum aplikasi Modal dibuat,
+  serta closure `/src` dan aset eksternal. Build Modal berbayar tidak diperlukan untuk uji relokasi.
+- Jalur informasi CLI/model tanpa ekstensi, kegagalan native berupa `EngineError`, pengaturan thread,
+  validate/preflight serta smoke render native dan HyperFrames pada toolchain lengkap.
+
+Jalankan tes area terkait, lint wajib dan pemeriksaan dokumen; untuk migrasi lintas paket jalankan full suite
+dan laporkan skip secara eksplisit. Keberhasilan import saja tidak membuktikan kompatibilitas hasil render.
 
 ## Commit
 

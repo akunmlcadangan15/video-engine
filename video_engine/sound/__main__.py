@@ -8,10 +8,10 @@ import shlex
 import sys
 from pathlib import Path
 
-from .. import timeline
-from ..ai.base import AwaitingAgent
-from ..util import EngineError
-from . import cache, request
+from video_engine import timeline as timeline
+from video_engine.ai.base import AwaitingAgent
+from video_engine.core.util import EngineError
+from video_engine.sound import cache, request
 
 EXIT_AWAITING = 3
 

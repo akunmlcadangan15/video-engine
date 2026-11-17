@@ -53,7 +53,7 @@ def test_good_transition_clip_and_decode_carry_the_budget_thread_count(monkeypat
 
 
 def test_good_hyperframes_ffmpeg_wrapper_matches_the_repeatable_params():
-    path = config.PKG / "hf" / "ffmpeg_repeatable.py"
+    path = config.PKG / "render" / "hf" / "ffmpeg_repeatable.py"
     spec = importlib.util.spec_from_file_location("ffmpeg_repeatable", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -65,7 +65,7 @@ def test_good_hyperframes_ffmpeg_wrapper_matches_the_repeatable_params():
 
 
 def test_good_hyperframes_chrome_wrapper_pins_cpu_raster_single_thread():
-    path = config.PKG / "hf" / "chrome_repeatable.py"
+    path = config.PKG / "render" / "hf" / "chrome_repeatable.py"
     spec = importlib.util.spec_from_file_location("chrome_repeatable", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

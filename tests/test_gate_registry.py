@@ -10,9 +10,10 @@ from video_engine import cli, gate_registry as reg, gate_tools, profiles
 ROOT = Path(__file__).resolve().parents[1]
 GATE_ID = re.compile(r'"((?:[A-Z]\d{2}|AS\d{2}|AIQA|GW01|R56px|R38space))"')
 # Source files that create findings (a gate id in quotes anywhere in them is a gate id).
-SOURCES = [*(ROOT / "video_engine" / "gates").glob("*.py"), ROOT / "video_engine" / "qa.py",
+SOURCES = [*(p for p in (ROOT / "video_engine" / "gates").glob("*.py")
+             if p.name not in {"registry.py", "tools.py", "conformance.py"}),
            ROOT / "video_engine" / "ai" / "tasks.py", ROOT / "video_engine" / "build.py",
-           ROOT / "video_engine" / "audio.py"]
+           ROOT / "video_engine" / "sound" / "audio.py"]
 
 # The id lists before they were derived from the registry (frozen here as the regression baseline).
 OLD_STYLE = {"H01", "C01", "C02", "V01", "N01", "P01", "P02", "K01", "K02", "D01", "D02", "S01",

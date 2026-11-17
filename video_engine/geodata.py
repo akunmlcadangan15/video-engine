@@ -15,8 +15,8 @@ import json
 import math
 from pathlib import Path
 
-from . import config
-from .projection import MERC_LAT_MAX, merc_y, to_map
+from video_engine.core import config as config
+from video_engine.core.projection import MERC_LAT_MAX, merc_y, to_map
 
 DATA_URL = ("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/"
             "ne_50m_admin_0_countries.geojson")

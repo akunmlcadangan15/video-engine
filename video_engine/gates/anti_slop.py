@@ -9,9 +9,11 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from .. import config, overlays, profiles
-from ..timeline import HYPERFRAMES, CaptionWord, Timeline
-from .core import Finding
+from video_engine.core import config as config
+from video_engine.render import overlays as overlays
+from video_engine import profiles as profiles
+from video_engine.timeline import HYPERFRAMES, CaptionWord, Timeline
+from video_engine.gates.core import Finding
 
 SOURCE_SUFFIXES = {".html", ".htm", ".css", ".jsx", ".tsx", ".vue", ".svelte"}
 SOURCE_SKIP = {"assets", "out", "vendor", "node_modules", ".git", ".cache", "drafts", "tmp"}
@@ -23,7 +25,7 @@ def _level(g: profiles.AntiSlopGate, rule: str) -> str:
 
 
 def _all_text(tl: Timeline, words: list[CaptionWord] | None) -> str:
-    from . import style
+    from video_engine.gates import style
     texts = style.screen_text(tl, 0, tl.total_frames)
     texts += [w.word for w in words or []]
     return " ".join(t for t in texts if t)

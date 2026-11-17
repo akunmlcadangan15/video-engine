@@ -28,7 +28,11 @@ Native core of `video_engine`. PyO3 0.27 (abi3, Python >= 3.10) + maturin + rayo
 | `src/proxy.rs` | ffmpeg orchestration (argument vectors, no shell): `proxy_args`/`make_proxy` (H.264 proxy, height even 64..=1080, fps 1..=30, writes `<out>.part` then renames), `decode_pcm` (mono s16le through a pipe, max 6 h at 16 kHz). |
 | `src/pixel.rs` | Pixel QA on RGB24 frames (`check_frames`: >= 4x4, exact length): luma mean, black fraction, per-third std/detail, motion (rayon over frames). |
 
-Python callers: `video_engine/timeline.py` (sec_to_frame), `pauses.py` (detect_pauses_file, suggest_boundaries), `ai/tasks.py` (make_proxy), `captions.py` (compile_ass), `native.py` (camera_*, warp_frame), `qa.py`, `gates/layer2.py`, `gates/layer3.py` (camera_plan, frame_stats, frame_motion), `util.py` (blake3_*).
+Python callers (under `video_engine/`): `timeline/common.py` (sec_to_frame), `sound/pauses.py`
+(detect_pauses_file, suggest_boundaries), `ai/tasks.py` (make_proxy), `render/captions.py` (compile_ass),
+`render/native.py` (camera_*, warp_frame), `gates/qa.py`, `gates/layer2.py`, `gates/layer3.py`
+(camera_plan, frame_stats, frame_motion), `core/util.py` (blake3_*). Native access goes through
+`core/runtime.py`; importing its proxy does not load the extension, accessing a native attribute does.
 
 ## Python API
 
@@ -142,7 +146,10 @@ Facts:
 - Release the GIL with `py.detach` around any work that can exceed ~1 ms: hashing, rayon loops, pixel work, I/O.
   Copy or borrow inputs before `detach`; build Python objects after it.
 - Rayon uses the global pool.
-  `video_engine/config.py` sets `RAYON_NUM_THREADS` and calls `set_threads(RUST_THREADS)` at import, before any parallel call.
+  `video_engine/core/config.py` sets the default `RAYON_NUM_THREADS` without importing Rust.
+  `video_engine/core/runtime.py` loads the extension on first native access under a lock, then calls
+  `set_threads(RUST_THREADS)` before returning it. `RUST_THREADS_ACTIVE` is `None` until that initialization.
+  A missing extension raises `EngineError`; there is no fallback hash or numerical implementation.
   `RUST_THREADS` = env `VIDEO_ENGINE_RUST_THREADS`, default `max(1, THREADS - 2)` (headroom for concurrent ffmpeg).
   Python may call several detached functions concurrently from threads; do not create per-call pools.
 - File hashing (`hash_file`) reads 4 MiB chunks (`update_rayon` for chunks >= 1 MiB).
@@ -176,7 +183,7 @@ Facts:
   Never round to nearest; never subtract 1 cs from ends.
 - `frame_to_cs` is integer-only: `frame.checked_mul(100)? / fps`; negative frames are an error. No floats in frame->cs.
 - Caption hold (`end + hold_frames`) saturates and is capped at `MAX_FRAME`.
-- Schema mirror (`video_engine/timeline.py`): `CaptionWord` requires `0 <= start_frame < end_frame < 2^40`; `Timeline.captions` must be sorted by `start_frame`.
+- Schema mirror (`video_engine/timeline/__init__.py`): `CaptionWord` requires `0 <= start_frame < end_frame < 2^40`; `Timeline.captions` must be sorted by `start_frame`.
   STT words are sorted in `audio.words_to_captions` before compile.
 
 ## .ass rules
@@ -234,13 +241,17 @@ A key must include every input that changes the output:
 - Map derivative key (`hyperframes.map_key`): `MAP_VERSION`, `core.ALGO_VERSION`, source map content hash, output width (after the `MAP_MAX_SIDE` cap), `MAP_MAX_SIDE`, resample filter, `MAP_JPEG_QUALITY`, Pillow version.
 - DOM probe key (`hyperframes.probe_key`, cache kind `dom`, entry name `<segment key>.<probe key>`): `PROBE_VERSION`, `hyperframes.CODE`, `toolchain.hf_identity()`, every file of the built segment dir (relative path, content hash), the probe times (4 dp), viewport, screenshot flag and bg mode.
   It holds measurements only; gates judge them on every run.
-- Toolchain identity (`toolchain.hf_identity()`): content of `vendor/VERSIONS.json`, the node binary, the browser, every file of `vendor/npm/node_modules`, `vendor/js/gsap.min.js`, every file of `video_engine/template/`, `video_engine/hf/dom_probe.mjs`, and the `-version` output of `config.FFMPEG` and of the ffmpeg the HyperFrames CLI encodes with.
+- Toolchain identity (`toolchain.hf_identity()`): content of `vendor/VERSIONS.json`, the node binary, the browser, every file of `vendor/npm/node_modules`, `vendor/js/gsap.min.js`, every file of `video_engine/render/template/`, `video_engine/render/hf/dom_probe.mjs`, and the `-version` output of `config.FFMPEG` and of the ffmpeg the HyperFrames CLI encodes with.
   The browser (`toolchain.browser`) is every file of its own install dir: `config.CHROME` with symlinks resolved, in `vendor/chrome` or next to Chromium `*.pak` files (chrome-headless-shell, Puppeteer and Playwright caches, `/opt/google/chrome`).
     A browser without one (a launcher or wrapper script in a `bin` dir or another PATH entry) is the content of its resolved file plus its `--version` output, never the shared directory.
   Directory hashes use paths relative to the directory.
   Computed once per process; directory content hashes are memoised in `<cache>/toolchain/`, keyed by every file's path, size, mtime_ns, inode and device.
 
 Do not put absolute paths or timestamps in keys: they change without changing output.
+
+After Python package relocation, source lists must cover canonical implementations and extracted helpers,
+not just compatibility aliases. Changed import ASTs can invalidate render caches once without changing the
+effective profile hash. Retain old cache entries under the normal cache lifecycle; migration does not require pruning.
 
 ## Commit checklist (Rust changes)
 

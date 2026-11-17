@@ -22,10 +22,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .. import manifest
-from ..util import EngineError
-from . import EPIDEMIC, PROVENANCE_KEYS
-from .cache import credit_line
+from video_engine import manifest
+from video_engine.core.util import EngineError
+from video_engine.sound import EPIDEMIC, PROVENANCE_KEYS
+from video_engine.sound.cache import credit_line
 
 def _read(path: Path) -> dict | None:
     try:

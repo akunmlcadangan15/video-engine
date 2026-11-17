@@ -3,6 +3,11 @@
 Repo ini diatur dalam lima lapisan. Setiap keputusan punya tepat satu tempat yang benar;
 tempat lain hanya mereferensikan, bukan menyalin.
 
+Kelima lapisan ini adalah pembagian keputusan, bukan jumlah paket Python. Peta lokasi implementasi
+kanonis dan batas dependency ada di [ARCHITECTURE.md](ARCHITECTURE.md#module-map-who-owns-what).
+Paket `core`, `profiles`, `timeline`, `layout`, `render`, `gates`, `draft`, `sound`, dan `cloud`
+memisahkan tanggung jawab teknis tanpa menambah lapisan konseptual.
+
 | Lapisan | Pertanyaan | Sumber kebenaran | Bukan di sini |
 |---|---|---|---|
 | **Profil** (`profiles/*.toml`) | Gaya merek, geometri & batas teknis? | warna, font, animasi, gate teknis/legibilitas, `[type]` | aturan cerita/durasi wajib |
@@ -32,13 +37,18 @@ tempat lain hanya mereferensikan, bukan menyalin.
 
 ## Precedence profil
 
-Default field model (`video_engine/profile_schema.py`) < `profiles/default.toml` < rantai `extends` (untuk tiap
+Default field model (`video_engine/profiles/schema.py`) < `profiles/default.toml` < rantai `extends` (untuk tiap
 profil: file `include` sesuai urutan, lalu file profilnya) < `profile_overrides` proyek < nilai proyek
 (`caption_style`, `audio_chain`). Fallback berlaku per kunci; profil yang gagal dibaca atau divalidasi adalah
 error, tidak pernah diganti diam-diam dengan profil default. `engine profile NAMA --origin` menunjukkan file
 asal tiap kunci. `profile_overrides` proyek hanya boleh untuk tabel di
-`OVERRIDABLE` di `video_engine/profiles.py`. Safety limit (`true_peak`, `tolerance_lu`)
+`OVERRIDABLE` di `video_engine/profiles/resolver.py` (API publik tetap `profiles.OVERRIDABLE`). Safety limit (`true_peak`, `tolerance_lu`)
 hanya boleh diketatkan, tidak dilonggarkan.
+
+Data merek tetap berada di direktori root `profiles/`, berbeda dari paket Python `video_engine/profiles/`.
+Kontrak `LayoutProfile` dan `Grade` berada di `video_engine/profiles/layout.py` dan `grade.py`;
+plan layout runtime berada di `video_engine/layout/models.py`, eksekusi grading di
+`video_engine/render/grade.py`. Model konfigurasi tidak menjadi tempat menjalankan renderer.
 
 ## Type scale
 

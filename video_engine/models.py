@@ -25,16 +25,16 @@ from urllib.parse import unquote
 
 from PIL import Image
 
-from . import cache, config, toolchain
-from .util import EngineError, blake3_files, blake3_json, run
+from video_engine.core import cache as cache, config as config, toolchain as toolchain
+from video_engine.core.util import EngineError, blake3_files, blake3_json, run
 
 MODEL_EXT = {".glb", ".gltf", ".obj"}
 RENDER_VERSION = 1
 SS = 2                 # supersampling factor of the canvas
 MARGIN = 1.02          # bounding-sphere radius factor (a little transparent border)
 FRAMES_MAX = 240       # longest turntable sequence
-PAGE = config.PKG / "hf" / "model_page.html"
-DRIVER = config.PKG / "hf" / "model_render.mjs"
+PAGE = config.PKG / "render" / "hf" / "model_page.html"
+DRIVER = config.PKG / "render" / "hf" / "model_render.mjs"
 THREE = config.THREE     # the resolved three.js package (vendor/npm or the user toolchain)
 LIGHT = {"ambient": 1.6, "key": 2.2}
 
@@ -137,7 +137,7 @@ def render(src: Path, **kw) -> list[Path]:
         env = config.hf_env()
         env["ENGINE_PUPPETEER"] = str(config.PUPPETEER)
         env["ENGINE_CHROME"] = str(config.CHROME)
-        from .hyperframes import serve
+        from video_engine.render.hyperframes import serve
         raw = wd / "raw"
         with serve(stage) as url:
             run([config.NODE, DRIVER, url + "/model_page.html", json.dumps({**p, "file": src.relative_to(root).as_posix()}), raw], env=env,

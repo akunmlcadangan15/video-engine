@@ -10,7 +10,9 @@ Result levels: "fail" blocks the build, "fix" is an automatic timeline change (a
 `engine preflight --write-fixes`), "warn" does not block, "skip" means the gate had no input, or did not run when its
 message starts with "not run: " (core.not_run); reports list every skip in `not_checked` (severity.not_checked).
 """
-from .core import Finding, Report
-from .runner import run_preflight
+from video_engine.gates.core import Finding, Report
+def run_preflight(*args, **kwargs):
+    from video_engine.gates.runner import run_preflight as run
+    return run(*args, **kwargs)
 
 __all__ = ["Finding", "Report", "run_preflight"]

@@ -2,6 +2,7 @@
 conversion in the engine (delegates to the Rust crate so Python and Rust can never disagree)."""
 from __future__ import annotations
 
+import builtins
 import json
 import math
 from pathlib import Path
@@ -9,14 +10,14 @@ from typing import Literal, Optional
 
 from pydantic import Field, ValidationError, model_validator
 
-from . import config
-from .grade import Grade
-from .timeline_audio import SFX_KINDS, SfxKind, SfxCue, ManualSfx, MusicBrief, Stt, AudioChain
-from .timeline_common import NATIVE, HYPERFRAMES, HEX_RE, IMAGE_EXT, VisualType, sec_to_frame, Strict, Settings, Credit, CaptionFix, MAX_FRAME, _LEGACY_MODEL_KEY, _LEGACY_SOURCE
-from .timeline_fx import GLOBE_ALT_MIN, GLOBE_ALT_MAX, GlobeKey, Globe, GridBackdrop, StarsBackdrop, Backdrop, GlobeHalo, TimezoneBand, Timezones, BubbleAnchor, Bubble, FlagCharacter, CutawayLayer, Cutaway, InsetAnchor, Inset, Geoid, Particle, Thermometer, Flow
-from .timeline_map import Hatch, CameraMove, Flag, Pin, Card, RegionChange, Region, Border, MapMorph, MapText, Route, Figure, ZOOM_MAX, ZOOM_LIMIT, TILT_MAX, ROLL_MAX, CameraKey, AreaLabel, Note, PROP_EXT, MODEL_EXT, PROP_DEPTH_MAX, PropMotion, PropIdle, PropShadow, PropModel, Prop, LAYER_EXT, LAYER_DEPTH_MIN, ParallaxLayer, Beat
-from .timeline_scene import GsapScene, CameraKey3D, Camera3DPreset, CAMERA3D_FIELDS, SplitView
-from .util import EngineError, atomic_write_text
+from video_engine.core import config as config
+from video_engine.profiles.grade import Grade
+from video_engine.timeline.audio import SFX_KINDS, SfxKind, SfxCue, ManualSfx, MusicBrief, Stt, AudioChain
+from video_engine.timeline.common import NATIVE, HYPERFRAMES, HEX_RE, IMAGE_EXT, VisualType, sec_to_frame, Strict, Settings, Credit, CaptionFix, MAX_FRAME, _LEGACY_MODEL_KEY, _LEGACY_SOURCE
+from video_engine.timeline.fx import GLOBE_ALT_MIN, GLOBE_ALT_MAX, GlobeKey, Globe, GridBackdrop, StarsBackdrop, Backdrop, GlobeHalo, TimezoneBand, Timezones, BubbleAnchor, Bubble, FlagCharacter, CutawayLayer, Cutaway, InsetAnchor, Inset, Geoid, Particle, Thermometer, Flow
+from video_engine.timeline.map import Hatch, CameraMove, Flag, Pin, Card, RegionChange, Region, Border, MapMorph, MapText, Route, Figure, ZOOM_MAX, ZOOM_LIMIT, TILT_MAX, ROLL_MAX, CameraKey, AreaLabel, Note, PROP_EXT, MODEL_EXT, PROP_DEPTH_MAX, PropMotion, PropIdle, PropShadow, PropModel, Prop, LAYER_EXT, LAYER_DEPTH_MIN, ParallaxLayer, Beat
+from video_engine.timeline.scene import GsapScene, CameraKey3D, Camera3DPreset, CAMERA3D_FIELDS, SplitView
+from video_engine.core.util import EngineError, atomic_write_text
 
 __all__ = ['NATIVE', 'HYPERFRAMES', 'HEX_RE', 'IMAGE_EXT', 'VisualType', 'sec_to_frame', 'Strict', 'Settings', 'Credit', 'CaptionFix', 'MAX_FRAME', '_LEGACY_MODEL_KEY', '_LEGACY_SOURCE', 'SFX_KINDS', 'SfxKind', 'SfxCue', 'ManualSfx', 'MusicBrief', 'Stt', 'AudioChain', 'Hatch', 'CameraMove', 'Flag', 'Pin', 'Card', 'RegionChange', 'Region', 'Border', 'MapMorph', 'MapText', 'Route', 'Figure', 'ZOOM_MAX', 'ZOOM_LIMIT', 'TILT_MAX', 'ROLL_MAX', 'CameraKey', 'AreaLabel', 'Note', 'PROP_EXT', 'MODEL_EXT', 'PROP_DEPTH_MAX', 'PropMotion', 'PropIdle', 'PropShadow', 'PropModel', 'Prop', 'LAYER_EXT', 'LAYER_DEPTH_MIN', 'ParallaxLayer', 'Beat', 'GLOBE_ALT_MIN', 'GLOBE_ALT_MAX', 'GlobeKey', 'Globe', 'GridBackdrop', 'StarsBackdrop', 'Backdrop', 'GlobeHalo', 'TimezoneBand', 'Timezones', 'BubbleAnchor', 'Bubble', 'FlagCharacter', 'CutawayLayer', 'Cutaway', 'InsetAnchor', 'Inset', 'Geoid', 'Particle', 'Thermometer', 'Flow', 'GsapScene', 'CameraKey3D', 'Camera3DPreset', 'CAMERA3D_FIELDS', 'SplitView', 'Overlay', 'SegmentIntent', 'Segment', 'CaptionWord', 'CaptionsMeta', 'MIN_WAIVER_REASON', 'GateWaiver', 'ProjectGates', 'Timeline', 'load', 'save']
 
@@ -199,7 +200,7 @@ class GateWaiver(Strict):
 
     @model_validator(mode="after")
     def _w(self):
-        from .gate_registry import WAIVABLE_WITH_REASON
+        from video_engine.gates.registry import WAIVABLE_WITH_REASON
         if self.gate not in WAIVABLE_WITH_REASON:
             raise ValueError(f"gates.waive_with_reason: {self.gate!r} cannot be waived "
                              f"(waivable with a reason: {', '.join(WAIVABLE_WITH_REASON)})")
@@ -220,7 +221,7 @@ class ProjectGates(Strict):
 
     @model_validator(mode="after")
     def _ids(self):
-        from .gate_registry import KNOWN_GATE_IDS, LINT_GATE_IDS
+        from video_engine.gates.registry import KNOWN_GATE_IDS, LINT_GATE_IDS
         bad = [g for g in self.require if g not in LINT_GATE_IDS]
         if bad:
             raise ValueError(f"gates.require: unknown style gate(s) {bad} (known: {', '.join(LINT_GATE_IDS)})")
@@ -250,53 +251,11 @@ class Timeline(Strict):
 
     @model_validator(mode="after")
     def _profile_exists(self):
-        from . import profiles, units
-        from .util import EngineError
-        try:
-            orient = units.orientation_of(self.settings.width, self.settings.height)
-            profiles.check_orientation(profiles.load(self.profile), self.settings.width, self.settings.height)
-            prof = profiles.load(self.profile, self.profile_overrides, orientation=orient)
-            mz = prof.camera.max_zoom
-        except EngineError as e:
-            raise ValueError(str(e)) from e
-        for s in self.segments[1:]:
-            if s.transition_in == "page_turn" and not prof.transitions.page_turn:
-                raise ValueError(f"segment {s.seg_index}: transition_in 'page_turn' is not allowed by the profile "
-                                 "([transitions] page_turn = false)")
-        try:
-            profiles.check_timeline_caption_style(self, prof)   # keys, types, geometry: the profile's own check
-        except EngineError as e:
-            raise ValueError(str(e)) from e
-        for s in self.segments:
-            sc = s.gsap_scene_config
-            if sc is None:
-                continue
-            mode = sc.camera_mode or prof.camera.mode
-            if sc.camera3d_preset is not None:
-                from . import camera_full3d
-                p = sc.camera3d_preset
-                try:
-                    keys = [CameraKey3D(**k) for k in camera_full3d.preset_keys(
-                        p.name, s.n_frames, self.settings.fps, target=p.target, height=p.height, fov=p.fov, **p.options)]
-                except ValueError as e:
-                    raise ValueError(f"segment {s.seg_index}: {e}") from e
-                if sc.camera3d and sc.camera3d != keys:
-                    raise ValueError(f"segment {s.seg_index}: give camera3d keys or camera3d_preset, not both")
-                sc.camera3d = keys
-            if mode == "3d" and not sc.camera3d:
-                raise ValueError(f"segment {s.seg_index}: camera mode '3d' needs gsap_scene_config.camera3d keys "
-                                 "or camera3d_preset")
-            if sc.camera3d and mode != "3d":
-                raise ValueError(f"segment {s.seg_index}: camera3d keys need camera mode '3d' (set "
-                                 "gsap_scene_config.camera_mode = \"3d\" or the profile [camera] mode)")
-            if sc.camera3d and sc.camera3d[-1].at_frame >= s.n_frames:
-                raise ValueError(f"segment {s.seg_index}: camera3d key at_frame {sc.camera3d[-1].at_frame} is past the "
-                                 f"segment ({s.n_frames} frames)")
-        try:
-            from . import framing
-            framing.apply(self)
-        except (EngineError, ValueError) as e:
-            raise ValueError(str(e)) from e
+        from video_engine.timeline.preparation import prepare
+        return prepare(self)
+
+    @model_validator(mode="after")
+    def _intrinsic_ranges(self):
         total = self.segments[-1].end_frame
         for i, cue in enumerate(self.audio_chain.sfx):
             frame = cue.frame(self.settings.fps)
@@ -305,16 +264,11 @@ class Timeline(Strict):
         for s in self.segments:
             sc = s.gsap_scene_config
             if sc is not None and sc.thermometers:
-                from . import components
+                from video_engine.timeline.scene import thermo_starts
                 try:
-                    components.thermo_starts(sc.thermometers)
+                    thermo_starts(sc.thermometers)
                 except ValueError as e:
                     raise ValueError(f"segment {s.seg_index}: {e}") from e
-        for s in self.segments:
-            for i, k in enumerate((s.gsap_scene_config.camera_path or []) if s.gsap_scene_config else []):
-                if k.zoom > mz + 1e-9:
-                    raise ValueError(f"segment {s.seg_index} camera_path[{i}]: zoom {k.zoom:g} exceeds the profile "
-                                     f"[camera] max_zoom {mz:g}")
         return self
 
     @model_validator(mode="after")
@@ -324,6 +278,11 @@ class Timeline(Strict):
                 raise ValueError(f"captions[{i}] ({self.captions[i].word!r}) starts before captions[{i - 1}]: "
                                  "captions must be sorted by start_frame")
         return self
+
+    def resource_workers(self) -> int:
+        """Profile worker budget for resource planning (zero means automatic)."""
+        from video_engine import profiles
+        return profiles.of(self).data.resources.workers
 
     @property
     def total_frames(self) -> int:
@@ -349,7 +308,7 @@ def load(path: str | Path) -> Timeline:
     except json.JSONDecodeError as e:
         raise EngineError(f"timeline {p} is not valid JSON: {e}") from None
     except ValidationError as e:
-        details = "; ".join(f"{'.'.join(map(str, x['loc'])) or 'value'}: {x['msg']}" for x in e.errors())
+        details = "; ".join(f"{'.'.join(builtins.map(str, x['loc'])) or 'value'}: {x['msg']}" for x in e.errors())
         raise EngineError(f"timeline {p}: invalid values ({details})") from e
 
 

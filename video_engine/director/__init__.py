@@ -20,10 +20,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .. import config
-from ..ai.base import Image, Text, schema_errors
-from ..units import units
-from ..util import EngineError, atomic_write_text, image_jpeg
+from video_engine.core import config as config
+from video_engine.ai.base import Image, Text, schema_errors
+from video_engine.core.units import units
+from video_engine.core.util import EngineError, atomic_write_text, image_jpeg
 
 HERE = Path(__file__).parent
 DIRECTIONS = ("grounded", "contrast", "bold")
@@ -110,7 +110,7 @@ def record_feedback(channel: str, verdict: str, what: str, why: str, checks: lis
         d[k] = [x for x in d[k] if x.get("what") != what]
     entry: dict[str, Any] = {"what": what, "why": why, "at": datetime.now().astimezone().isoformat(timespec="seconds")}
     if checks:
-        from ..taste_lint import validate
+        from video_engine.taste_lint import validate
         entry["check"] = [validate(c) for c in checks]
     d[verdict].append(entry)
     save_taste(d)
@@ -492,7 +492,7 @@ def critical_times(tl) -> list[tuple[float, int]]:
 def sample_frames(tl, pdir: Path, times: list[tuple[float, int]], workdir: Path) -> list[tuple[float, int, bytes]]:
     """Render one frame per (t, seg) and return JPEGs REVIEW_PX wide (downscaled in process). Native segments via the
     native preview, HyperFrames segments via one DOM probe per segment."""
-    from .. import hyperframes, native
+    from video_engine.render import hyperframes as hyperframes, native as native
     fps = tl.settings.fps
     workdir.mkdir(parents=True, exist_ok=True)
     pngs: dict[float, Path] = {}

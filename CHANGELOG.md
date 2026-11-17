@@ -9,6 +9,21 @@ channel yang disimpan sebagai file TOML, **`require`** berarti gate tersebut waj
 
 ## Belum dirilis
 
+### Diubah
+
+- **Restrukturisasi paket Python.** Implementasi dikelompokkan ke `core/`, `profiles/`, `timeline/`,
+  `layout/`, `render/`, `gates/`, `draft/`, `sound/`, dan `cloud/`; entrypoint/orkestrator tetap di root
+  `video_engine/`. Lima lapisan konseptual tidak berubah. Kontrak layout/grade dipisahkan dari plan
+  runtime/eksekusi, dan adapter quality report berada di render. Modul flat yang masih tersedia menjadi
+  alias kompatibilitas untuk menjaga identitas modul dan monkeypatch, bukan implementasi ganda.
+  Template dan JS/wrapper berpindah ke `render/template/` dan `render/hf/`; data profil tetap di root
+  `profiles/`. Perubahan sumber/import dapat menginvalidasi cache render satu kali, sedangkan hash
+  profil efektif untuk konfigurasi identik wajib tetap sama. Initializer `core`, `render`, dan `cloud`
+  ringan; runner gate dimuat saat dipanggil. Accessor `core/runtime.py` memuat Rust dan menginisialisasi
+  thread saat operasi native pertama, dengan `EngineError` bila ekstensi tidak tersedia. Lazy Rust
+  merupakan perubahan terpisah dari relokasi; pembuktian regresi tetap diperlukan. Panduan ownership dan verifikasi: `docs/ARCHITECTURE.md`,
+  `docs/STRUCTURE.md`, `CONTRIBUTING.md`.
+
 ### Ditambahkan
 
 - **Build final di Modal.** `scripts/engine-build-modal PROJECT` menjalankan `engine build` (bukan draf) di container ephemeral: closure berkas (tautan diikuti, akar aset dari `engine.env`) diunggah ke Volume, CPU secara bawaan, GPU hanya dengan `--gpu L4`, lalu `out/` diunduh per chunk dengan pemeriksaan sha256. `--dry-run`, `--selftest`, `--fetch`. Disk ephemeral tidak dikirim kecuali `--disk` atau `VIDEO_ENGINE_MODAL_DISK_MB` (524288–3145728 MiB); di luar rentang itu perintah berhenti sebelum unggah. Image memakai FFmpeg 8.1 static, perkakas vendor dari `vendor/VERSIONS.json`, dan pustaka runtime chrome-headless-shell (nama paket Ubuntu 24.04). `--selftest` menjalankan binary itu pada `about:blank`. `engine doctor` melaporkan pustaka yang hilang lewat `ldd` pada ELF Linux. `modal_render.py` tidak lagi meminta GPU. Dokumentasi: `docs/ENVIRONMENT.md`, `docs/BUILD.md`. Pengujian: `tests/test_modal_build.py`.

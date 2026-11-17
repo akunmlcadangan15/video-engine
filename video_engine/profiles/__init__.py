@@ -24,21 +24,18 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
-from . import config
-from . import units
-from .gate_registry import ANTI_SLOP_IDS, KERNEL_GATE_IDS, LINT_GATE_IDS, NEVER_ADVISORY, STYLE_GATE_IDS, TECHNICAL_GATE_IDS  # noqa: F401  (re-exported as profiles.*, docs/GATES.md)
-from .profile_schema import *  # noqa: F401,F403  (every table model and constant: profiles.Theme, profiles.REVEAL_EASE, ...)
-from .profile_schema import (CAPTION_PY_KEYS, CAPTION_RUST_KEYS, CAPTION_SLOTS, REVEAL_EASE, AntiSlopGate,
-                             CameraProfile, FlagsProfile, FormatProfile, FxProfile, MotionProfile, ProfileData,
-                             ReferenceStyle, RenderProfile, TransitionsProfile, TypeScale)
-from .util import RACY_NS, EngineError, blake3_json
+from video_engine.core import config as config
+from video_engine.core import units as units
+from video_engine.gates.registry import ANTI_SLOP_IDS, KERNEL_GATE_IDS, LINT_GATE_IDS, NEVER_ADVISORY, STYLE_GATE_IDS, TECHNICAL_GATE_IDS  # noqa: F401  (re-exported as profiles.*, docs/GATES.md)
+from video_engine.profiles.schema import *  # noqa: F401,F403  (every table model and constant: profiles.Theme, profiles.REVEAL_EASE, ...)
+from video_engine.profiles.schema import CAPTION_PY_KEYS, CAPTION_RUST_KEYS, CAPTION_SLOTS, REVEAL_EASE, AntiSlopGate, CameraProfile, FlagsProfile, FormatProfile, FxProfile, MotionProfile, ProfileData, ReferenceStyle, RenderProfile, TransitionsProfile, TypeScale
+from video_engine.core.util import RACY_NS, EngineError, blake3_json
 
 if TYPE_CHECKING:
-    from .layout import LayoutProfile
-    from .grade import Grade
-    from .timeline import Timeline
-    from .profile_schema import (AudioProfile, DraftProfile, Legibility, PrintStyle, SoundProfile, StyleGates, Theme,
-                                 Watermark)
+    from video_engine.layout import LayoutProfile
+    from video_engine.profiles.grade import Grade
+    from video_engine.timeline import Timeline
+    from video_engine.profiles.schema import AudioProfile, DraftProfile, Legibility, PrintStyle, SoundProfile, StyleGates, Theme, Watermark
 
 
 @dataclass(frozen=True)
@@ -648,7 +645,7 @@ def _build(name: str, layers: tuple[Layer, ...], rules_text: str | None,
         check_caption_style(data.caption_style.to_dict(), profile_orientation(data) or "portrait", f"profile '{name}'")
         _check_print(name, data)
     try:
-        from . import framing
+        from video_engine.layout import framing as framing
         framing.check_overrides(data.framing)
     except ValueError as e:
         raise EngineError(f"profile '{name}': {e}") from None
@@ -987,15 +984,6 @@ def aac_bitrate_arg(tl: "Timeline") -> str:
     return f"{aac_bitrate(tl)}k"
 
 
-def quality_report(tl: "Timeline") -> dict:
-    """Resolved settings actually passed to capture and encode, not nullable profile defaults."""
-    from . import hyperframes, maps
-    r = of(tl).render
-    q, crf, segment = hyperframes.encode_settings(tl)
-    return {"width": tl.settings.width, "height": tl.settings.height, "fps": tl.settings.fps,
-            "hf_quality": q, "hf_crf": crf, "segment_x264": segment, "final_x264": r.x264("final"),
-            "final_pix_fmt": r.final_pix_fmt(), "map_jpeg_quality": r.map_jpeg_quality or maps.MAP_JPEG_QUALITY,
-            "aac_bitrate": aac_bitrate(tl)}
 
 
 def of(tl: "Timeline") -> Profile:
@@ -1031,3 +1019,10 @@ def loudness(tl: "Timeline") -> Loudness:
     pick = lambda v, d: d if v is None else v   # noqa: E731
     return Loudness(pick(ac.target_lufs, a.target_lufs), pick(ac.true_peak, a.true_peak), pick(ac.lra, a.lra),
                     a.tolerance_lu)
+
+
+def __getattr__(name):
+    if name == "quality_report":
+        from importlib import import_module
+        return import_module("video_engine.render.quality_report").quality_report
+    raise AttributeError(name)

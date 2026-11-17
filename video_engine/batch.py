@@ -13,7 +13,7 @@ import os
 import time
 from pathlib import Path
 
-from .util import EngineError
+from video_engine.core.util import EngineError
 
 LOCK_NAME = ".batch.lock"
 LOCK_ATTEMPTS = 8      # acquire: reopen the lock file when it was unlinked between open and flock
@@ -158,7 +158,7 @@ def load_queue(path: Path) -> list[Path]:
 
 def _default_build(project: Path, *, run_label: str, use_cache: bool, relock: bool,
                    mode: str = "release", quality: str = "delivery"):
-    from . import build
+    from video_engine import build
     return build.build(project, use_cache=use_cache, run_label=run_label, raise_on_fail=False, relock=relock,
                        mode=mode, quality=quality)
 
@@ -166,7 +166,7 @@ def _default_build(project: Path, *, run_label: str, use_cache: bool, relock: bo
 def run(projects: list[Path], *, build_fn=None, fail_fast: bool = False, run_label: str = "batch",
         use_cache: bool = True, relock: bool = False, mode: str = "release", quality: str = "delivery") -> dict:
     """Build every project in order. A gate fail or exception is recorded; `fail_fast` stops after the first one."""
-    from . import profiles
+    from video_engine import profiles as profiles
     profiles.validate_quality(quality, mode)
     if mode not in ("release", "draft"):
         raise EngineError(f"unknown build mode {mode!r}")

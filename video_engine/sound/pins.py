@@ -28,8 +28,10 @@ import os
 import shutil
 from pathlib import Path
 
-from .. import cache as engine_cache
-from .. import config, manifest
+from video_engine.core import cache as engine_cache
+from video_engine.core import cache_pins
+from video_engine.core import config as config
+from video_engine import manifest
 
 PIN_NAME = "pins.json"
 VERSION = 1
@@ -256,3 +258,6 @@ def protected_rels(root: Path | None = None) -> set[str]:
                     extra.add(side.relative_to(root).as_posix())
         extra |= _indexes_naming(root, names)
         return extra
+
+
+cache_pins.register("sound/pins.json", protected_rels)
