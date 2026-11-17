@@ -162,9 +162,12 @@ def test_good_unchanged_inputs_keep_the_key_and_the_second_render_is_a_cache_hit
     seg = tl.segments[2]
     out1, hit1 = hyperframes.render(seg, tl, p, tmp_path / "w1", workers=1)
     k1 = key(p, tl)
+    rk1 = hyperframes.render_key(seg, tl, p, workers=1)
     monkeypatch.setattr(hyperframes, "run", lambda *a, **k: pytest.fail("re-rendered an unchanged segment"))
     out2, hit2 = hyperframes.render(seg, tl, p, tmp_path / "w2", workers=1)
-    assert (hit1, hit2) == (False, True) and key(p, tl) == k1 and out2 == out1 and out2.name == f"{k1}.mp4"
+    rk2 = hyperframes.render_key(seg, tl, p, workers=1)
+    assert ((hit1, hit2) == (False, True) and key(p, tl) == k1 and rk2 == rk1
+            and out2 == out1 and out2.name == f"{rk1}.mp4")
 
 
 def _two_cards(project, tmp_path):
